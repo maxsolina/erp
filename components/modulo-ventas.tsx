@@ -48,6 +48,30 @@ interface ListaPrecios {
   nombre: string
   moneda: "ARS" | "USD"
   activa: boolean
+  fecha_inicio: string
+  fecha_fin: string | null
+  es_base: boolean
+  descuento_global: number
+  margen_global: number
+  redondeo: "sin_redondeo" | "redondeo_arriba" | "redondeo_abajo" | "redondeo_comercial"
+  lista_base_id: number | null
+  seguimiento?: SeguimientoEntry[]
+  items: ItemListaPrecios[]
+}
+
+interface ItemListaPrecios {
+  id: number
+  producto_id: number
+  producto_nombre: string
+  producto_sku: string
+  precio_base: number
+  precio_venta: number
+  descuento: number
+  margen: number
+  fecha_desde: string
+  fecha_hasta: string | null
+  cantidad_minima: number
+  activo: boolean
 }
 
 interface TerminoPago {
@@ -295,9 +319,69 @@ const mockVendedores: Vendedor[] = [
 ]
 
 const mockListasPrecios: ListaPrecios[] = [
-  { id: 1, nombre: "Minorista (ARS)", moneda: "ARS", activa: true },
-  { id: 2, nombre: "Mayorista (ARS)", moneda: "ARS", activa: true },
-  { id: 3, nombre: "Minorista (USD)", moneda: "USD", activa: true },
+  { 
+    id: 1, 
+    nombre: "Minorista (ARS)", 
+    moneda: "ARS", 
+    activa: true,
+    fecha_inicio: "2024-01-01",
+    fecha_fin: null,
+    es_base: true,
+    descuento_global: 0,
+    margen_global: 35,
+    redondeo: "redondeo_comercial",
+    lista_base_id: null,
+    seguimiento: [
+      { id: 1, fecha: "2024-01-01T10:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Lista de precios creada" }
+    ],
+    items: [
+      { id: 1, producto_id: 1, producto_nombre: "iPhone 15 Pro Max 256GB", producto_sku: "IPH15PM256", precio_base: 1500000, precio_venta: 1850000, descuento: 0, margen: 23.3, fecha_desde: "2024-01-01", fecha_hasta: null, cantidad_minima: 1, activo: true },
+      { id: 2, producto_id: 2, producto_nombre: "Samsung Galaxy S24 Ultra", producto_sku: "SGS24U", precio_base: 1100000, precio_venta: 1380000, descuento: 0, margen: 25.5, fecha_desde: "2024-01-01", fecha_hasta: null, cantidad_minima: 1, activo: true },
+      { id: 3, producto_id: 4, producto_nombre: "AirPods Pro 2", producto_sku: "APP2", precio_base: 350000, precio_venta: 450000, descuento: 0, margen: 28.6, fecha_desde: "2024-01-01", fecha_hasta: null, cantidad_minima: 1, activo: true },
+    ]
+  },
+  { 
+    id: 2, 
+    nombre: "Mayorista (ARS)", 
+    moneda: "ARS", 
+    activa: true,
+    fecha_inicio: "2024-01-01",
+    fecha_fin: null,
+    es_base: false,
+    descuento_global: 15,
+    margen_global: 20,
+    redondeo: "redondeo_comercial",
+    lista_base_id: 1,
+    seguimiento: [
+      { id: 1, fecha: "2024-01-01T10:30:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Lista de precios creada" }
+    ],
+    items: [
+      { id: 1, producto_id: 1, producto_nombre: "iPhone 15 Pro Max 256GB", producto_sku: "IPH15PM256", precio_base: 1500000, precio_venta: 1572500, descuento: 15, margen: 4.8, fecha_desde: "2024-01-01", fecha_hasta: null, cantidad_minima: 3, activo: true },
+      { id: 2, producto_id: 2, producto_nombre: "Samsung Galaxy S24 Ultra", producto_sku: "SGS24U", precio_base: 1100000, precio_venta: 1173000, descuento: 15, margen: 6.6, fecha_desde: "2024-01-01", fecha_hasta: null, cantidad_minima: 3, activo: true },
+      { id: 3, producto_id: 4, producto_nombre: "AirPods Pro 2", producto_sku: "APP2", precio_base: 350000, precio_venta: 382500, descuento: 15, margen: 9.3, fecha_desde: "2024-01-01", fecha_hasta: null, cantidad_minima: 5, activo: true },
+    ]
+  },
+  { 
+    id: 3, 
+    nombre: "Minorista (USD)", 
+    moneda: "USD", 
+    activa: true,
+    fecha_inicio: "2024-01-01",
+    fecha_fin: null,
+    es_base: true,
+    descuento_global: 0,
+    margen_global: 30,
+    redondeo: "redondeo_arriba",
+    lista_base_id: null,
+    seguimiento: [
+      { id: 1, fecha: "2024-01-01T11:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Lista de precios creada" }
+    ],
+    items: [
+      { id: 1, producto_id: 1, producto_nombre: "iPhone 15 Pro Max 256GB", producto_sku: "IPH15PM256", precio_base: 1100, precio_venta: 1350, descuento: 0, margen: 22.7, fecha_desde: "2024-01-01", fecha_hasta: null, cantidad_minima: 1, activo: true },
+      { id: 2, producto_id: 2, producto_nombre: "Samsung Galaxy S24 Ultra", producto_sku: "SGS24U", precio_base: 950, precio_venta: 1200, descuento: 0, margen: 26.3, fecha_desde: "2024-01-01", fecha_hasta: null, cantidad_minima: 1, activo: true },
+      { id: 3, producto_id: 4, producto_nombre: "AirPods Pro 2", producto_sku: "APP2", precio_base: 200, precio_venta: 280, descuento: 0, margen: 40, fecha_desde: "2024-01-01", fecha_hasta: null, cantidad_minima: 1, activo: true },
+    ]
+  },
 ]
 
 const mockTerminosPago: TerminoPago[] = [
@@ -626,7 +710,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     ventas: true,
     logistica: true,
     comprobantes: true,
-    cobranzas: true
+    cobranzas: true,
+    configuracion: true
   })
   
   // Data states
@@ -715,6 +800,32 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [reciboFacturaIdForm, setReciboFacturaIdForm] = useState<number | null>(null)
   const [reciboMontoForm, setReciboMontoForm] = useState<number>(0)
   const [reciboPrevisualizando, setReciboPrevisualizando] = useState(false)
+  
+  // Estados para Listas de Precios
+  const [listasPrecios, setListasPrecios] = useState<ListaPrecios[]>(mockListasPrecios)
+  const [selectedListaPrecios, setSelectedListaPrecios] = useState<ListaPrecios | null>(null)
+  const [editingListaPrecios, setEditingListaPrecios] = useState<ListaPrecios | null>(null)
+  const [creandoListaPrecios, setCreandoListaPrecios] = useState(false)
+  const [modoEdicionListaPrecios, setModoEdicionListaPrecios] = useState(false)
+  const [listaPreciosSearchText, setListaPreciosSearchText] = useState("")
+  const [listaPreciosTab, setListaPreciosTab] = useState<"items" | "configuracion">("items")
+  const [nuevoItemListaPrecios, setNuevoItemListaPrecios] = useState<{
+    producto_id: number | null
+    producto_nombre: string
+    producto_sku: string
+    precio_base: string
+    precio_venta: string
+    descuento: string
+    cantidad_minima: string
+  }>({
+    producto_id: null,
+    producto_nombre: "",
+    producto_sku: "",
+    precio_base: "",
+    precio_venta: "",
+    descuento: "0",
+    cantidad_minima: "1"
+  })
   
   // Estados para ubicación de stock en NV
   const [nvDepositoId, setNvDepositoId] = useState<number>(1) // Casa Central por defecto
@@ -962,6 +1073,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       icon: CreditCard,
       items: [
         { id: "recibos", label: "Recibos", icon: CreditCard },
+      ]
+    },
+    {
+      id: "configuracion",
+      label: "Configuración",
+      icon: Tag,
+      items: [
+        { id: "listas_precios", label: "Listas de Precios", icon: Tag },
       ]
     },
   ]
@@ -6966,7 +7085,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       className="p-1.5 text-gray-400 hover:text-blue-600"
                       title="Abrir ficha cliente"
                     >
-                      <ExternalLink className="w-4 h-4" />
+                      <ArrowRight className="w-4 h-4" />
                     </button>
                   )}
                 </div>
@@ -7408,6 +7527,790 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     </div>
   )
 
+  // Funciones CRUD Listas de Precios
+  const crearNuevaListaPrecios = () => {
+    const nuevaLista: ListaPrecios = {
+      id: 0,
+      nombre: "",
+      moneda: "ARS",
+      activa: true,
+      fecha_inicio: new Date().toISOString().split("T")[0],
+      fecha_fin: null,
+      es_base: false,
+      descuento_global: 0,
+      margen_global: 30,
+      redondeo: "redondeo_comercial",
+      lista_base_id: null,
+      seguimiento: [],
+      items: []
+    }
+    setSelectedListaPrecios(nuevaLista)
+    setEditingListaPrecios(nuevaLista)
+    setCreandoListaPrecios(true)
+    setModoEdicionListaPrecios(true)
+    setListaPreciosTab("configuracion")
+  }
+
+  const guardarListaPrecios = () => {
+    if (!editingListaPrecios) return
+    
+    const fechaActual = new Date().toISOString()
+    
+    if (creandoListaPrecios) {
+      const nuevoId = Math.max(...listasPrecios.map(l => l.id), 0) + 1
+      const nuevaLista: ListaPrecios = {
+        ...editingListaPrecios,
+        id: nuevoId,
+        seguimiento: [
+          {
+            id: 1,
+            fecha: fechaActual,
+            usuario: "Max Solina",
+            tipo: "creacion",
+            descripcion: "Lista de precios creada"
+          }
+        ]
+      }
+      setListasPrecios(prev => [...prev, nuevaLista])
+      setSelectedListaPrecios(nuevaLista)
+      setEditingListaPrecios(null)
+      setCreandoListaPrecios(false)
+      setModoEdicionListaPrecios(false)
+    } else {
+      const seguimientoActualizado = [
+        {
+          id: (editingListaPrecios.seguimiento?.length || 0) + 1,
+          fecha: fechaActual,
+          usuario: "Max Solina",
+          tipo: "cambio_campo" as const,
+          campo: "Datos",
+          valor_nuevo: "Lista actualizada"
+        },
+        ...(editingListaPrecios.seguimiento || [])
+      ]
+      
+      const listaActualizada = {
+        ...editingListaPrecios,
+        seguimiento: seguimientoActualizado
+      }
+      
+      setListasPrecios(prev => prev.map(l => 
+        l.id === editingListaPrecios.id ? listaActualizada : l
+      ))
+      setSelectedListaPrecios(listaActualizada)
+      setEditingListaPrecios(null)
+      setModoEdicionListaPrecios(false)
+    }
+  }
+
+  const descartarListaPrecios = () => {
+    if (creandoListaPrecios) {
+      setSelectedListaPrecios(null)
+      setEditingListaPrecios(null)
+      setCreandoListaPrecios(false)
+      setModoEdicionListaPrecios(false)
+    } else {
+      setEditingListaPrecios(null)
+      setModoEdicionListaPrecios(false)
+    }
+  }
+
+  const iniciarEdicionListaPrecios = () => {
+    if (selectedListaPrecios) {
+      setEditingListaPrecios({ ...selectedListaPrecios })
+      setModoEdicionListaPrecios(true)
+    }
+  }
+
+  const agregarItemListaPrecios = () => {
+    const listaActual = editingListaPrecios || selectedListaPrecios
+    if (!listaActual || !nuevoItemListaPrecios.producto_id || !nuevoItemListaPrecios.precio_venta) return
+    
+    const precioBase = parseFloat(nuevoItemListaPrecios.precio_base.replace(/\./g, '').replace(',', '.')) || 0
+    const precioVenta = parseFloat(nuevoItemListaPrecios.precio_venta.replace(/\./g, '').replace(',', '.')) || 0
+    const descuento = parseFloat(nuevoItemListaPrecios.descuento) || 0
+    const cantidadMinima = parseInt(nuevoItemListaPrecios.cantidad_minima) || 1
+    const margen = precioBase > 0 ? ((precioVenta - precioBase) / precioBase) * 100 : 0
+    
+    const nuevoItem: ItemListaPrecios = {
+      id: Math.max(...listaActual.items.map(i => i.id), 0) + 1,
+      producto_id: nuevoItemListaPrecios.producto_id,
+      producto_nombre: nuevoItemListaPrecios.producto_nombre,
+      producto_sku: nuevoItemListaPrecios.producto_sku,
+      precio_base: precioBase,
+      precio_venta: precioVenta,
+      descuento: descuento,
+      margen: Math.round(margen * 10) / 10,
+      fecha_desde: new Date().toISOString().split("T")[0],
+      fecha_hasta: null,
+      cantidad_minima: cantidadMinima,
+      activo: true
+    }
+    
+    const listaActualizada = {
+      ...listaActual,
+      items: [...listaActual.items, nuevoItem]
+    }
+    
+    if (editingListaPrecios) {
+      setEditingListaPrecios(listaActualizada)
+    } else {
+      setListasPrecios(prev => prev.map(l => l.id === listaActual.id ? listaActualizada : l))
+      setSelectedListaPrecios(listaActualizada)
+    }
+    
+    setNuevoItemListaPrecios({
+      producto_id: null,
+      producto_nombre: "",
+      producto_sku: "",
+      precio_base: "",
+      precio_venta: "",
+      descuento: "0",
+      cantidad_minima: "1"
+    })
+  }
+
+  const eliminarItemListaPrecios = (itemId: number) => {
+    const listaActual = editingListaPrecios || selectedListaPrecios
+    if (!listaActual) return
+    
+    const listaActualizada = {
+      ...listaActual,
+      items: listaActual.items.filter(i => i.id !== itemId)
+    }
+    
+    if (editingListaPrecios) {
+      setEditingListaPrecios(listaActualizada)
+    } else {
+      setListasPrecios(prev => prev.map(l => l.id === listaActual.id ? listaActualizada : l))
+      setSelectedListaPrecios(listaActualizada)
+    }
+  }
+
+  const formatNumber = (num: number) => {
+    return num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
+
+  // Render Listas de Precios
+  const renderListasPrecios = () => {
+    if (selectedListaPrecios) {
+      return renderDetalleListaPrecios()
+    }
+    return renderListaListasPrecios()
+  }
+
+  // Lista de Listas de Precios
+  const renderListaListasPrecios = () => {
+    const filteredListas = listasPrecios.filter(l =>
+      l.nombre.toLowerCase().includes(listaPreciosSearchText.toLowerCase())
+    )
+
+    return (
+      <div>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4 bg-white border-b border-gray-200 py-3 px-4 -mx-6 -mt-6">
+          <button 
+            onClick={crearNuevaListaPrecios}
+            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 transition-colors text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            Crear
+          </button>
+          
+          <div className="flex-1 flex items-center justify-center gap-4">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar lista de precios..."
+                value={listaPreciosSearchText}
+                onChange={(e) => setListaPreciosSearchText(e.target.value)}
+                className="pl-9 pr-4 py-1.5 border border-gray-300 rounded text-sm w-64 focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
+              Filtros
+            </button>
+            <span className="text-sm text-gray-500 ml-4">
+              1-{filteredListas.length} de {filteredListas.length}
+            </span>
+          </div>
+        </div>
+
+        {/* Tabla */}
+        <div className="bg-white border border-gray-200 rounded overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                <th className="text-left py-3 px-4 font-medium">Nombre</th>
+                <th className="text-center py-3 px-4 font-medium">Moneda</th>
+                <th className="text-center py-3 px-4 font-medium">Es Base</th>
+                <th className="text-right py-3 px-4 font-medium">Descuento Global</th>
+                <th className="text-right py-3 px-4 font-medium">Margen Global</th>
+                <th className="text-center py-3 px-4 font-medium">Items</th>
+                <th className="text-center py-3 px-4 font-medium">Activa</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredListas.map((lista, idx) => (
+                <tr 
+                  key={lista.id} 
+                  className={`border-b border-gray-100 hover:bg-emerald-50 cursor-pointer transition-colors ${
+                    idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                  }`}
+                  onClick={() => {
+                    setSelectedListaPrecios(lista)
+                    setEditingListaPrecios(null)
+                    setModoEdicionListaPrecios(false)
+                    setCreandoListaPrecios(false)
+                    setListaPreciosTab("items")
+                  }}
+                >
+                  <td className="py-3 px-4 font-medium text-gray-900">{lista.nombre}</td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                      lista.moneda === 'USD' 
+                        ? 'bg-blue-100 text-blue-800' 
+                        : 'bg-green-100 text-green-800'
+                    }`}>
+                      {lista.moneda}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    {lista.es_base ? (
+                      <span className="text-emerald-600 font-medium">Sí</span>
+                    ) : (
+                      <span className="text-gray-400">No</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-4 text-right">{lista.descuento_global}%</td>
+                  <td className="py-3 px-4 text-right">{lista.margen_global}%</td>
+                  <td className="py-3 px-4 text-center">{lista.items.length}</td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                      lista.activa 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {lista.activa ? 'Sí' : 'No'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {filteredListas.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-gray-500">
+                    No se encontraron listas de precios
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
+  // Detalle de Lista de Precios
+  const renderDetalleListaPrecios = () => {
+    if (!selectedListaPrecios) return null
+
+    const currentLista = modoEdicionListaPrecios && editingListaPrecios 
+      ? editingListaPrecios 
+      : selectedListaPrecios
+
+    const isEditing = modoEdicionListaPrecios || creandoListaPrecios
+
+    // Navegación entre listas
+    const currentIndex = listasPrecios.findIndex(l => l.id === selectedListaPrecios.id)
+    const prevLista = currentIndex > 0 ? listasPrecios[currentIndex - 1] : null
+    const nextLista = currentIndex < listasPrecios.length - 1 ? listasPrecios[currentIndex + 1] : null
+
+    return (
+      <div>
+        {/* Breadcrumb */}
+        <div className="text-sm text-gray-500 mb-4">
+          <button 
+            onClick={() => {
+              setSelectedListaPrecios(null)
+              setEditingListaPrecios(null)
+              setCreandoListaPrecios(false)
+              setModoEdicionListaPrecios(false)
+            }} 
+            className="hover:text-emerald-600"
+          >
+            Listas de Precios
+          </button>
+          <span className="mx-2">/</span>
+          <span className="text-gray-900">{creandoListaPrecios ? 'Nueva' : currentLista.nombre}</span>
+        </div>
+
+        {/* Header con botones */}
+        <div className="flex items-center justify-between mb-6 bg-white border-b border-gray-200 py-3 px-4 -mx-6">
+          {isEditing ? (
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={guardarListaPrecios}
+                disabled={!currentLista.nombre.trim()}
+                className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className="w-4 h-4" />
+                Guardar
+              </button>
+              <button 
+                onClick={descartarListaPrecios}
+                className="flex items-center gap-2 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300"
+              >
+                <X className="w-4 h-4" />
+                Descartar
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <BotonVolver 
+                onClick={() => {
+                  setSelectedListaPrecios(null)
+                  setEditingListaPrecios(null)
+                  setCreandoListaPrecios(false)
+                  setModoEdicionListaPrecios(false)
+                }}
+              />
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            {!isEditing && !creandoListaPrecios && (
+              <button 
+                onClick={iniciarEdicionListaPrecios}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+              >
+                <Edit className="w-4 h-4" /> Editar
+              </button>
+            )}
+            
+            {!creandoListaPrecios && (
+              <>
+                <button
+                  onClick={() => {
+                    if (prevLista) {
+                      setSelectedListaPrecios(prevLista)
+                      setEditingListaPrecios(null)
+                      setModoEdicionListaPrecios(false)
+                    }
+                  }}
+                  disabled={!prevLista}
+                  className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="w-5 h-5 rotate-180" />
+                </button>
+                <button
+                  onClick={() => {
+                    if (nextLista) {
+                      setSelectedListaPrecios(nextLista)
+                      setEditingListaPrecios(null)
+                      setModoEdicionListaPrecios(false)
+                    }
+                  }}
+                  disabled={!nextLista}
+                  className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Formulario */}
+        <div className="bg-white border border-gray-200 rounded p-6">
+          {/* Campos principales */}
+          <div className="grid grid-cols-3 gap-6 mb-6">
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={currentLista.nombre}
+                  onChange={(e) => setEditingListaPrecios({ ...currentLista, nombre: e.target.value })}
+                  placeholder="Nombre de la lista de precios"
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                />
+              ) : (
+                <p className="text-gray-900 py-2 font-medium text-lg">{currentLista.nombre}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Moneda</label>
+              {isEditing ? (
+                <select
+                  value={currentLista.moneda}
+                  onChange={(e) => setEditingListaPrecios({ ...currentLista, moneda: e.target.value as "ARS" | "USD" })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                >
+                  <option value="ARS">ARS - Peso Argentino</option>
+                  <option value="USD">USD - Dólar Estadounidense</option>
+                </select>
+              ) : (
+                <p className="text-gray-900 py-2">{currentLista.moneda === "ARS" ? "Peso Argentino (ARS)" : "Dólar Estadounidense (USD)"}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="border-b border-gray-200 mb-4">
+            <nav className="flex gap-4">
+              <button
+                onClick={() => setListaPreciosTab("items")}
+                className={`py-2 px-1 border-b-2 text-sm font-medium transition-colors ${
+                  listaPreciosTab === "items"
+                    ? "border-emerald-500 text-emerald-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                Items ({currentLista.items.length})
+              </button>
+              <button
+                onClick={() => setListaPreciosTab("configuracion")}
+                className={`py-2 px-1 border-b-2 text-sm font-medium transition-colors ${
+                  listaPreciosTab === "configuracion"
+                    ? "border-emerald-500 text-emerald-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                Configuración
+              </button>
+            </nav>
+          </div>
+
+          {/* Contenido de Tabs */}
+          {listaPreciosTab === "items" ? (
+            <div>
+              {/* Tabla de items */}
+              <div className="border border-gray-200 rounded overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                      <th className="text-left py-2 px-3 font-medium">Producto</th>
+                      <th className="text-left py-2 px-3 font-medium">SKU</th>
+                      <th className="text-right py-2 px-3 font-medium">Precio Base</th>
+                      <th className="text-right py-2 px-3 font-medium">Precio Venta</th>
+                      <th className="text-right py-2 px-3 font-medium">Desc. %</th>
+                      <th className="text-right py-2 px-3 font-medium">Margen %</th>
+                      <th className="text-center py-2 px-3 font-medium">Cant. Mín.</th>
+                      <th className="w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Fila para agregar nuevo item */}
+                    <tr className="border-b border-gray-200 bg-emerald-50/50">
+                      <td className="py-2 px-3">
+                        <select
+                          value={nuevoItemListaPrecios.producto_id || ""}
+                          onChange={(e) => {
+                            const prod = mockProductosVenta.find(p => p.id === Number(e.target.value))
+                            if (prod) {
+                              setNuevoItemListaPrecios({
+                                ...nuevoItemListaPrecios,
+                                producto_id: prod.id,
+                                producto_nombre: prod.nombre,
+                                producto_sku: prod.sku,
+                                precio_base: prod.precio_venta.toString()
+                              })
+                            }
+                          }}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-emerald-500"
+                        >
+                          <option value="">Seleccionar producto...</option>
+                          {mockProductosVenta.map(prod => (
+                            <option key={prod.id} value={prod.id}>{prod.nombre}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-2 px-3 text-gray-500">{nuevoItemListaPrecios.producto_sku || "-"}</td>
+                      <td className="py-2 px-3">
+                        <input
+                          type="text"
+                          value={nuevoItemListaPrecios.precio_base}
+                          onChange={(e) => setNuevoItemListaPrecios({ ...nuevoItemListaPrecios, precio_base: e.target.value })}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-right focus:ring-1 focus:ring-emerald-500"
+                          placeholder="0,00"
+                        />
+                      </td>
+                      <td className="py-2 px-3">
+                        <input
+                          type="text"
+                          value={nuevoItemListaPrecios.precio_venta}
+                          onChange={(e) => setNuevoItemListaPrecios({ ...nuevoItemListaPrecios, precio_venta: e.target.value })}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-right focus:ring-1 focus:ring-emerald-500"
+                          placeholder="0,00"
+                        />
+                      </td>
+                      <td className="py-2 px-3">
+                        <input
+                          type="text"
+                          value={nuevoItemListaPrecios.descuento}
+                          onChange={(e) => setNuevoItemListaPrecios({ ...nuevoItemListaPrecios, descuento: e.target.value })}
+                          className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-right focus:ring-1 focus:ring-emerald-500"
+                          placeholder="0"
+                        />
+                      </td>
+                      <td className="py-2 px-3 text-right text-gray-500">-</td>
+                      <td className="py-2 px-3">
+                        <input
+                          type="text"
+                          value={nuevoItemListaPrecios.cantidad_minima}
+                          onChange={(e) => setNuevoItemListaPrecios({ ...nuevoItemListaPrecios, cantidad_minima: e.target.value })}
+                          className="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-center focus:ring-1 focus:ring-emerald-500"
+                          placeholder="1"
+                        />
+                      </td>
+                      <td className="py-2 px-3">
+                        <button
+                          onClick={agregarItemListaPrecios}
+                          disabled={!nuevoItemListaPrecios.producto_id || !nuevoItemListaPrecios.precio_venta}
+                          className="p-1 text-emerald-600 hover:bg-emerald-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="Agregar"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                    {/* Items existentes */}
+                    {currentLista.items.map((item, idx) => (
+                      <tr key={`${item.id}-${idx}`} className={`border-b border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                        <td className="py-2 px-3 font-medium text-gray-900">{item.producto_nombre}</td>
+                        <td className="py-2 px-3 text-gray-500">{item.producto_sku}</td>
+                        <td className="py-2 px-3 text-right">{currentLista.moneda === "USD" ? "$" : ""}{formatNumber(item.precio_base)}</td>
+                        <td className="py-2 px-3 text-right font-medium">{currentLista.moneda === "USD" ? "$" : ""}{formatNumber(item.precio_venta)}</td>
+                        <td className="py-2 px-3 text-right">{item.descuento}%</td>
+                        <td className="py-2 px-3 text-right text-emerald-600">{item.margen}%</td>
+                        <td className="py-2 px-3 text-center">{item.cantidad_minima}</td>
+                        <td className="py-2 px-3">
+                          <button
+                            onClick={() => eliminarItemListaPrecios(item.id)}
+                            className="p-1 text-red-500 hover:bg-red-50 rounded"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {currentLista.items.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="py-8 text-center text-gray-500">
+                          No hay items en esta lista de precios
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              
+              {/* Paginación */}
+              <div className="flex items-center justify-between mt-3 text-sm text-gray-500">
+                <span>1-{currentLista.items.length} de {currentLista.items.length}</span>
+                <div className="flex items-center gap-2">
+                  <span>Página 1 de 1</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Configuración general */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 mb-3">Configuración General</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Fecha Inicio</label>
+                    {isEditing ? (
+                      <input
+                        type="date"
+                        value={currentLista.fecha_inicio}
+                        onChange={(e) => setEditingListaPrecios({ ...currentLista, fecha_inicio: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500"
+                      />
+                    ) : (
+                      <p className="text-gray-900 py-2">{new Date(currentLista.fecha_inicio).toLocaleDateString("es-AR")}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Fecha Fin</label>
+                    {isEditing ? (
+                      <input
+                        type="date"
+                        value={currentLista.fecha_fin || ""}
+                        onChange={(e) => setEditingListaPrecios({ ...currentLista, fecha_fin: e.target.value || null })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500"
+                      />
+                    ) : (
+                      <p className="text-gray-900 py-2">{currentLista.fecha_fin ? new Date(currentLista.fecha_fin).toLocaleDateString("es-AR") : "Sin fecha fin"}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Márgenes y descuentos */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 mb-3">Márgenes y Descuentos</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Descuento Global (%)</label>
+                    {isEditing ? (
+                      <input
+                        type="number"
+                        value={currentLista.descuento_global}
+                        onChange={(e) => setEditingListaPrecios({ ...currentLista, descuento_global: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                      />
+                    ) : (
+                      <p className="text-gray-900 py-2">{currentLista.descuento_global}%</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Margen Global (%)</label>
+                    {isEditing ? (
+                      <input
+                        type="number"
+                        value={currentLista.margen_global}
+                        onChange={(e) => setEditingListaPrecios({ ...currentLista, margen_global: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500"
+                        min="0"
+                        step="0.1"
+                      />
+                    ) : (
+                      <p className="text-gray-900 py-2">{currentLista.margen_global}%</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Redondeo */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 mb-3">Redondeo de Precios</h4>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de Redondeo</label>
+                  {isEditing ? (
+                    <select
+                      value={currentLista.redondeo}
+                      onChange={(e) => setEditingListaPrecios({ ...currentLista, redondeo: e.target.value as ListaPrecios["redondeo"] })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="sin_redondeo">Sin redondeo</option>
+                      <option value="redondeo_arriba">Redondeo hacia arriba</option>
+                      <option value="redondeo_abajo">Redondeo hacia abajo</option>
+                      <option value="redondeo_comercial">Redondeo comercial</option>
+                    </select>
+                  ) : (
+                    <p className="text-gray-900 py-2 capitalize">{currentLista.redondeo.replace(/_/g, " ")}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Lista base */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 mb-3">Herencia</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-center gap-2">
+                    {isEditing ? (
+                      <>
+                        <input
+                          type="checkbox"
+                          id="es_base"
+                          checked={currentLista.es_base}
+                          onChange={(e) => setEditingListaPrecios({ ...currentLista, es_base: e.target.checked })}
+                          className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
+                        />
+                        <label htmlFor="es_base" className="text-sm text-gray-700">Es lista base</label>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-sm font-medium text-gray-700">Es lista base:</span>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                          currentLista.es_base 
+                            ? 'bg-emerald-100 text-emerald-800' 
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {currentLista.es_base ? 'Sí' : 'No'}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  {!currentLista.es_base && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Lista Base</label>
+                      {isEditing ? (
+                        <select
+                          value={currentLista.lista_base_id || ""}
+                          onChange={(e) => setEditingListaPrecios({ ...currentLista, lista_base_id: e.target.value ? Number(e.target.value) : null })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500"
+                        >
+                          <option value="">Sin lista base</option>
+                          {listasPrecios.filter(l => l.es_base && l.id !== currentLista.id).map(l => (
+                            <option key={l.id} value={l.id}>{l.nombre}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="text-gray-900 py-2">
+                          {currentLista.lista_base_id 
+                            ? listasPrecios.find(l => l.id === currentLista.lista_base_id)?.nombre 
+                            : "Sin lista base"}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Estado */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 mb-3">Estado</h4>
+                <div className="flex items-center gap-2">
+                  {isEditing ? (
+                    <>
+                      <input
+                        type="checkbox"
+                        id="activa"
+                        checked={currentLista.activa}
+                        onChange={(e) => setEditingListaPrecios({ ...currentLista, activa: e.target.checked })}
+                        className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
+                      />
+                      <label htmlFor="activa" className={`text-sm font-medium ${currentLista.activa ? 'text-green-600' : 'text-red-600'}`}>
+                        Activa
+                      </label>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-sm font-medium text-gray-700">Estado:</span>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                        currentLista.activa 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {currentLista.activa ? 'Activa' : 'Inactiva'}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Panel de Seguimiento */}
+          {!creandoListaPrecios && selectedListaPrecios.seguimiento && (
+            <SeguimientoPanel seguimiento={selectedListaPrecios.seguimiento} />
+          )}
+        </div>
+      </div>
+    )
+  }
+
   // Main content render
   const renderContent = () => {
     switch (activeView) {
@@ -7433,6 +8336,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         return renderNotasDebitoCredito("credito")
       case "recibos":
         return renderRecibos()
+      case "listas_precios":
+        return renderListasPrecios()
       default:
         return renderDashboard()
     }
