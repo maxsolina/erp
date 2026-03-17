@@ -8010,7 +8010,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         <select
                           value={nuevoItemListaPrecios.producto_id || ""}
                           onChange={(e) => {
-                            const prod = mockProductosVenta.find(p => p.id === Number(e.target.value))
+                            const prod = productosConSerie.find(p => p.id === Number(e.target.value))
                             if (prod) {
                               setNuevoItemListaPrecios({
                                 ...nuevoItemListaPrecios,
@@ -8024,7 +8024,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-emerald-500"
                         >
                           <option value="">Seleccionar producto...</option>
-                          {mockProductosVenta.map(prod => (
+                          {productosConSerie.map(prod => (
                             <option key={prod.id} value={prod.id}>{prod.nombre}</option>
                           ))}
                         </select>
