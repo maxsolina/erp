@@ -7908,7 +7908,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     }
   }
 
-  // ==================== RENDER LISTAS DE PRECIOS ====================
+  // ===================== RENDER LISTAS DE PRECIOS =====================
   const renderListasPrecios = () => {
     if (selectedListaPrecios) {
       return renderDetalleListaPrecios()
@@ -8601,12 +8601,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <th className="text-center py-2 px-2 font-medium">Forzar $</th>
                     <th className="text-right py-2 px-2 font-medium">Precio Venta</th>
                     <th className="text-center py-2 px-2 font-medium">IVA</th>
-                    {editandoLineas && <th className="w-8"></th>}
+                    {(editandoLineas || creandoVersion) && <th className="w-8"></th>}
                   </tr>
                 </thead>
                 <tbody>
                   {/* Fila para agregar nueva línea */}
-                  {editandoLineas && (
+                  {(editandoLineas || creandoVersion) && (
                     <tr className="border-b border-gray-200 bg-emerald-50/50">
                       <td className="py-1.5 px-2" colSpan={2}>
                         <select value={nuevaLineaVersion.producto_id || ""} onChange={(e) => {
@@ -8674,7 +8674,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       <td className="py-1.5 px-2 text-gray-600">{linea.producto_codigo}</td>
                       <td className="py-1.5 px-2 font-medium text-gray-900">{linea.producto_nombre}</td>
                       <td className="py-1.5 px-2 text-center">
-                        {editandoLineas ? (
+                        {(editandoLineas || creandoVersion) ? (
                           <select value={linea.costo_moneda} onChange={(e) => actualizarLineaVersion(linea.id, 'costo_moneda', e.target.value)}
                             className="w-14 px-1 py-0.5 border border-gray-300 rounded text-xs">
                             <option value="ARS">ARS</option>
@@ -8685,7 +8685,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         )}
                       </td>
                       <td className="py-1.5 px-2 text-right">
-                        {editandoLineas ? (
+                        {(editandoLineas || creandoVersion) ? (
                           <input type="number" value={linea.costo_importe} onChange={(e) => actualizarLineaVersion(linea.id, 'costo_importe', Number(e.target.value))}
                             className="w-20 px-1 py-0.5 border border-gray-300 rounded text-xs text-right" />
                         ) : (
@@ -8693,7 +8693,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         )}
                       </td>
                       <td className="py-1.5 px-2 text-right">
-                        {editandoLineas ? (
+                        {(editandoLineas || creandoVersion) ? (
                           <input type="number" value={linea.cotizacion_dolar} onChange={(e) => actualizarLineaVersion(linea.id, 'cotizacion_dolar', Number(e.target.value))}
                             className="w-20 px-1 py-0.5 border border-gray-300 rounded text-xs text-right" />
                         ) : (
@@ -8701,7 +8701,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         )}
                       </td>
                       <td className="py-1.5 px-2 text-right">
-                        {editandoLineas ? (
+                        {(editandoLineas || creandoVersion) ? (
                           <input type="number" value={linea.markup_porcentaje} onChange={(e) => actualizarLineaVersion(linea.id, 'markup_porcentaje', Number(e.target.value))}
                             className="w-14 px-1 py-0.5 border border-gray-300 rounded text-xs text-right" />
                         ) : (
@@ -8709,7 +8709,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         )}
                       </td>
                       <td className="py-1.5 px-2 text-right">
-                        {editandoLineas ? (
+                        {(editandoLineas || creandoVersion) ? (
                           <input type="number" value={linea.markup_nominal} onChange={(e) => actualizarLineaVersion(linea.id, 'markup_nominal', Number(e.target.value))}
                             className="w-14 px-1 py-0.5 border border-gray-300 rounded text-xs text-right" />
                         ) : (
@@ -8717,7 +8717,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         )}
                       </td>
                       <td className="py-1.5 px-2 text-center">
-                        {editandoLineas ? (
+                        {(editandoLineas || creandoVersion) ? (
                           <input type="checkbox" checked={linea.forzar_precio_pesos} onChange={(e) => actualizarLineaVersion(linea.id, 'forzar_precio_pesos', e.target.checked)}
                             className="w-3 h-3 text-emerald-600 border-gray-300 rounded" />
                         ) : (
@@ -8726,7 +8726,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       </td>
                       <td className="py-1.5 px-2 text-right font-medium text-emerald-700">
                         {linea.forzar_precio_pesos && linea.precio_forzado_ars ? (
-                          editandoLineas ? (
+                          (editandoLineas || creandoVersion) ? (
                             <input type="number" value={linea.precio_forzado_ars} onChange={(e) => actualizarLineaVersion(linea.id, 'precio_forzado_ars', Number(e.target.value))}
                               className="w-24 px-1 py-0.5 border border-amber-300 bg-amber-50 rounded text-xs text-right" />
                           ) : (
@@ -8737,7 +8737,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         )}
                       </td>
                       <td className="py-1.5 px-2 text-center">
-                        {editandoLineas ? (
+                        {(editandoLineas || creandoVersion) ? (
                           <select value={linea.iva} onChange={(e) => actualizarLineaVersion(linea.id, 'iva', Number(e.target.value))}
                             className="w-12 px-1 py-0.5 border border-gray-300 rounded text-xs">
                             <option value={21}>21%</option>
@@ -8748,7 +8748,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           `${linea.iva}%`
                         )}
                       </td>
-                      {editandoLineas && (
+                      {(editandoLineas || creandoVersion) && (
                         <td className="py-1.5 px-2">
                           <button onClick={() => eliminarLineaVersion(linea.id)} className="p-1 text-red-500 hover:bg-red-50 rounded">
                             <Trash2 className="w-3 h-3" />
@@ -8757,7 +8757,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       )}
                     </tr>
                   ))}
-                  {currentVersion.lineas.length === 0 && !editandoLineas && (
+                  {currentVersion.lineas.length === 0 && !editandoLineas && !creandoVersion && (
                     <tr><td colSpan={10} className="py-8 text-center text-gray-500">No hay líneas en esta versión</td></tr>
                   )}
                 </tbody>
