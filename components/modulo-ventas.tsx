@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor } from "lucide-react"
+import BotonVolver from "./ui/boton-volver"
 
 // Types para Ventas
 interface ClienteVenta {
@@ -1265,12 +1266,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           Clientes / {selectedOTData.cliente?.nombre} / Órdenes de Trabajo / <span className="text-gray-700">{selectedOTData.nro}</span>
         </div>
         <div className="flex items-center gap-4 mb-6">
-          <button 
-            onClick={() => setSelectedOTData(null)}
-            className="text-gray-500 hover:text-gray-700"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+<BotonVolver onClick={() => setSelectedCliente(null)} variant="minimal" texto="" />
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-emerald-900">{selectedOTData.nro}</h1>
             <p className="text-sm text-gray-500">{selectedOTData.fecha} | {selectedOTData.cliente?.nombre}</p>
@@ -1478,12 +1474,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           Clientes / <span className="text-gray-700">{editingItem ? "Editar Cliente" : "Nuevo Cliente"}</span>
         </div>
         <div className="flex items-center gap-4 mb-6">
-          <button 
-            onClick={() => { setCreandoCliente(false); setEditingItem(null) }}
-            className="text-gray-500 hover:text-gray-700"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+<BotonVolver onClick={() => setCreandoCliente(false)} variant="minimal" texto="" />
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-emerald-900">{editingItem ? "Editar Cliente" : "Nuevo Cliente"}</h1>
           </div>
@@ -2843,9 +2834,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           Notas de Venta / <span className="text-gray-700">Nueva Nota de Venta</span>
         </div>
         <div className="flex items-center gap-4 mb-6">
-          <button onClick={() => setNvPrevisualizando(false)} className="text-gray-500 hover:text-gray-700">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+<BotonVolver onClick={() => setNvPrevisualizando(false)} variant="minimal" texto="" />
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-emerald-900">Nueva Nota de Venta</h1>
             <p className="text-sm text-gray-500">{new Date().toLocaleDateString('es-AR')} | Puerto Norte</p>
@@ -3011,12 +3000,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       <div>
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">
-          <button
-            onClick={() => { setCreandoNV(false); setNvLineas([]); setNvClienteId(null); setNvDepositoId(1); setNvUbicacionId(1); setEditingNVId(null); setNvPrevisualizando(false) }}
-            className="p-2 hover:bg-gray-100 rounded-md"
-          >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
-          </button>
+<BotonVolver onClick={() => setCreandoNV(false)} variant="minimal" texto="" />
           <div>
             <h1 className="text-2xl font-bold text-emerald-900">{editingNVId ? "Editar Nota de Venta" : "Nueva Nota de Venta"}</h1>
             <p className="text-sm text-gray-500">{editingNVId ? "Modifique los datos de la nota de venta" : "Complete los datos para crear la nota de venta"}</p>
@@ -3456,9 +3440,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         {/* Header con botones */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <button onClick={() => setSelectedNV(null)} className="p-2 hover:bg-gray-100 rounded-md">
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
+<BotonVolver onClick={() => setSelectedNV(null)} variant="minimal" texto="" />
             <div>
               <h1 className="text-2xl font-bold text-emerald-900">{selectedNV.numero}</h1>
               <p className="text-sm text-gray-500">{formatDateTime(selectedNV.fecha)} | {selectedNV.sucursal}</p>
@@ -3688,9 +3670,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
-            <button onClick={() => setSelectedOE(null)} className="p-2 hover:bg-gray-100 rounded-md">
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
+            <BotonVolver onClick={() => setSelectedOE(null)} variant="minimal" texto="" />
             <div>
               <h1 className="text-2xl font-bold text-emerald-900">{selectedOE.numero}</h1>
               <p className="text-sm text-gray-500">Orden de Entrega</p>
@@ -3985,9 +3965,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     return (
       <div>
         <div className="flex items-center gap-4 mb-6">
-          <button onClick={() => { setCreandoOE(false); setOeNvId(null) }} className="p-2 hover:bg-gray-100 rounded-md">
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
-          </button>
+<BotonVolver onClick={() => { setCreandoOE(false); setOeNvId(null) }} variant="minimal" texto="" />
           <div>
             <h1 className="text-2xl font-bold text-emerald-900">Nueva Orden de Entrega</h1>
             <p className="text-sm text-gray-500">Seleccione una Nota de Venta para generar la OE</p>
@@ -4197,9 +4175,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">
-          <button onClick={resetForm} className="text-gray-500 hover:text-gray-700">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+<BotonVolver onClick={resetForm} variant="minimal" texto="" />
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-emerald-900">Nueva Toma de Equipo</h1>
             <p className="text-sm text-gray-500">Complete el wizard para registrar la toma</p>
@@ -4721,9 +4697,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <button onClick={() => setSelectedRemito(null)} className="p-2 hover:bg-gray-100 rounded-md">
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
+<BotonVolver onClick={() => setSelectedRemito(null)} variant="minimal" texto="" />
             <div>
               <h1 className="text-2xl font-bold text-emerald-900">{selectedRemito.numero}</h1>
               <p className="text-sm text-gray-500">{formatDateTime(selectedRemito.fecha)} | {selectedRemito.sucursal}</p>
@@ -5042,9 +5016,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           Facturas / <span className="text-gray-700">Nueva Factura</span>
         </div>
         <div className="flex items-center gap-4 mb-6">
-          <button onClick={() => setFacturaPrevisualizando(false)} className="text-gray-500 hover:text-gray-700">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+<BotonVolver onClick={() => setFacturaPrevisualizando(false)} variant="minimal" texto="" />
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-emerald-900">Nueva Factura Tipo {tipoFactura}</h1>
             <p className="text-sm text-gray-500">{new Date().toLocaleDateString('es-AR')} | Puerto Norte</p>
@@ -5198,9 +5170,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     return (
       <div>
         <div className="flex items-center gap-4 mb-6">
-          <button onClick={() => { setCreandoFactura(false); setFacturaClienteId(null); setFacturaLineas([]) }} className="p-2 hover:bg-gray-100 rounded-md">
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
-          </button>
+<BotonVolver onClick={() => { setCreandoFactura(false); setFacturaClienteId(null); setFacturaLineas([]) }} variant="minimal" texto="" />
           <div>
             <h1 className="text-2xl font-bold text-emerald-900">Nueva Factura</h1>
             <p className="text-sm text-gray-500">Complete los datos para crear la factura</p>
@@ -5426,9 +5396,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <button onClick={() => setSelectedFactura(null)} className="p-2 hover:bg-gray-100 rounded-md">
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
+<BotonVolver onClick={() => setSelectedFactura(null)} variant="minimal" texto="" />
             <div>
               <h1 className="text-2xl font-bold text-emerald-900">{selectedFactura.numero}</h1>
               <p className="text-sm text-gray-500">{formatDateTime(selectedFactura.fecha)} | Tipo {selectedFactura.tipo}</p>
@@ -5815,9 +5783,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           )}
         </div>
         <div className="flex items-center gap-4 mb-6">
-          <button onClick={() => setReciboPrevisualizando(false)} className="text-gray-500 hover:text-gray-700">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+<BotonVolver onClick={() => setReciboPrevisualizando(false)} variant="minimal" texto="" />
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-emerald-900">Nuevo Recibo</h1>
             <p className="text-sm text-gray-500">{new Date().toLocaleDateString('es-AR')} | Puerto Norte</p>
@@ -6132,9 +6098,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     return (
       <div>
         <div className="flex items-center gap-4 mb-6">
-          <button onClick={() => { setCreandoRecibo(false); setReciboClienteIdForm(null); setReciboPagosForm([]) }} className="p-2 hover:bg-gray-100 rounded-md">
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
-          </button>
+<BotonVolver onClick={() => { setCreandoRecibo(false); setReciboClienteIdForm(null); setReciboPagosForm([]) }} variant="minimal" texto="" />
           <div>
             <h1 className="text-2xl font-bold text-emerald-900">Nuevo Recibo</h1>
             <p className="text-sm text-gray-500">Registre el pago del cliente</p>
@@ -6323,9 +6287,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <button onClick={() => { setSelectedRecibo(null); setEditandoRecibo(false) }} className="p-2 hover:bg-gray-100 rounded-md">
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
+<BotonVolver onClick={() => { setSelectedRecibo(null); setEditandoRecibo(false) }} variant="minimal" texto="" />
             <div>
               <h1 className="text-2xl font-bold text-emerald-900">{selectedRecibo.numero}</h1>
               <p className="text-sm text-gray-500">{formatDateTime(selectedRecibo.fecha)} | {selectedRecibo.sucursal}</p>

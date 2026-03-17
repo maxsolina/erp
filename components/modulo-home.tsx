@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import BotonVolver from "./ui/boton-volver"
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -808,13 +809,12 @@ export default function ModuloHome() {
               ) : (
                 // Vista de archivos de una carpeta
                 <div>
-                  <button
-                    onClick={() => setCarpetaAbierta(null)}
-                    className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 mb-4"
-                  >
-                    <ArrowRight className="w-4 h-4 rotate-180" />
-                    Volver a carpetas
-                  </button>
+<BotonVolver 
+                onClick={() => setCarpetaAbierta(null)} 
+                texto="Volver a carpetas"
+                variant="ghost"
+                className="text-blue-600 hover:text-blue-700 mb-4"
+              />
                   <h4 className="font-semibold text-gray-900 mb-3">
                     {misDocumentos.carpetas.find(c => c.id === carpetaAbierta)?.nombre}
                   </h4>

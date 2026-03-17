@@ -18,6 +18,7 @@ import {
   Star,
   MessageSquare
 } from "lucide-react"
+import BotonVolver from "./ui/boton-volver"
 
 // Types
 interface SeguimientoEntry {
@@ -763,17 +764,14 @@ export default function ModuloContabilidad() {
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <button 
+              <BotonVolver 
                 onClick={() => {
                   setSelectedMoneda(null)
                   setEditingMoneda(null)
                   setCreatingMoneda(false)
                   setModoEdicionMoneda(false)
                 }}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
-              >
-                <ChevronLeft className="w-4 h-4" /> Volver
-              </button>
+              />
             </div>
           )}
 
@@ -1311,17 +1309,14 @@ export default function ModuloContabilidad() {
           ) : (
             // Modo vista: Botón Volver a la izquierda
             <div className="flex items-center gap-2">
-              <button 
+              <BotonVolver 
                 onClick={() => {
                   setSelectedTipoCotizacion(null)
                   setEditingTipoCotizacion(null)
                   setCreatingTipoCotizacion(false)
                   setModoEdicionTipoCotizacion(false)
                 }}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
-              >
-                <ChevronLeft className="w-4 h-4" /> Volver
-              </button>
+              />
             </div>
           )}
 
