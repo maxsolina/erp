@@ -7908,13 +7908,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     }
   }
 
-  const formatCurrency = (num: number, moneda: "ARS" | "USD" = "ARS") => {
-    if (moneda === "USD") {
-      return `US$ ${num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    }
-    return `$ ${num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  }
-
   // Render Lista de Listas de Precios
   const renderListasPrecios = () => {
     if (selectedListaPrecios) {
