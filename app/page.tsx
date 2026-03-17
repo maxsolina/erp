@@ -512,9 +512,7 @@ function CellHomeERPContent() {
   const [equipos, setEquipos] = useState<Equipo[]>(mockEquipos)
   const [fallas, setFallas] = useState<Falla[]>(mockFallas)
   
-  // Modal states
-  const [showNuevaOT, setShowNuevaOT] = useState(false)
-  const [showDetalleOT, setShowDetalleOT] = useState(false)
+  // OT navigation state
   const [selectedOT, setSelectedOT] = useState<OrdenTrabajo | null>(null)
   const [activeTab, setActiveTab] = useState("info")
   
@@ -1069,15 +1067,15 @@ function CellHomeERPContent() {
     }
 
     setOrdenes(prev => [...prev, nuevaOT])
-    setShowNuevaOT(false)
+    setActiveView("ordenes")
     resetForm()
   }, [formArea, formTipo, formCliente, formEquipo, formFalla, formIMEI, formSerial, formCodigo, formApagado, formMojado, formCargador, formPresupuesto, formDescripcion, formCelular, clientes, ordenes, resetForm])
 
-  // Open detail modal
+  // Open detail view
   const abrirDetalleOT = useCallback((ot: OrdenTrabajo) => {
     setSelectedOT(ot)
     setActiveTab("info")
-    setShowDetalleOT(true)
+    setActiveView("detalle_ot")
   }, [])
 
   // Change state
@@ -1245,6 +1243,10 @@ function CellHomeERPContent() {
         return renderDashboard()
       case "ordenes":
         return renderOrdenes()
+      case "nueva_ot":
+        return renderNuevaOT()
+      case "detalle_ot":
+        return renderDetalleOT()
       
       case "tecnicos":
         return renderTecnicos()
@@ -1265,6 +1267,419 @@ function CellHomeERPContent() {
       default:
         return renderDashboard()
     }
+  }
+
+  // Nueva OT view (full page)
+  const renderNuevaOT = () => (
+    <div>
+      <div className="flex items-center gap-4 mb-6">
+        <button
+          onClick={() => { resetForm(); setActiveView("ordenes") }}
+          className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          Volver a Órdenes
+        </button>
+        <h1 className="text-2xl font-bold text-indigo-900">Nueva Orden de Trabajo</h1>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm p-6">
+        <div className="grid grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Área *</label>
+              <select
+                value={formArea}
+                onChange={(e) => { setFormArea(e.target.value); setFormTipo(""); setFormEquipo(""); setFormFalla("") }}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">Seleccionar área...</option>
+                {mockAreas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de OT *</label>
+              <select
+                value={formTipo}
+                onChange={(e) => setFormTipo(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                disabled={!formArea}
+              >
+                <option value="">Seleccionar tipo...</option>
+                {tiposOTFiltrados.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
+              <select
+                value={formCliente}
+                onChange={(e) => setFormCliente(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">Seleccionar cliente...</option>
+                {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Celular de Contacto</label>
+              <input
+                type="text"
+                value={formCelular}
+                onChange={(e) => setFormCelular(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Equipo *</label>
+              <select
+                value={formEquipo}
+                onChange={(e) => { setFormEquipo(e.target.value); setFormFalla("") }}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                disabled={!formArea}
+              >
+                <option value="">Seleccionar equipo...</option>
+                {equiposFiltrados.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Falla Principal *</label>
+              <select
+                value={formFalla}
+                onChange={(e) => setFormFalla(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                disabled={!formEquipo}
+              >
+                <option value="">Seleccionar falla...</option>
+                {fallasFiltradas.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Categoría de Reparación</label>
+              <input
+                type="text"
+                value={categoriaReparacion}
+                readOnly
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-100 cursor-not-allowed"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-6 mt-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">IMEI</label>
+            <input
+              type="text"
+              value={formIMEI}
+              onChange={(e) => setFormIMEI(e.target.value)}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Serial Number</label>
+            <input
+              type="text"
+              value={formSerial}
+              onChange={(e) => setFormSerial(e.target.value)}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Código de Desbloqueo</label>
+          <input
+            type="text"
+            value={formCodigo}
+            onChange={(e) => setFormCodigo(e.target.value)}
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+
+        <div className="flex gap-6 mt-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={formApagado} onChange={(e) => setFormApagado(e.target.checked)} className="w-4 h-4" />
+            <span className="text-sm">Ingresa Apagado</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={formMojado} onChange={(e) => setFormMojado(e.target.checked)} className="w-4 h-4" />
+            <span className="text-sm">Ingresa Mojado</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={formCargador} onChange={(e) => setFormCargador(e.target.checked)} className="w-4 h-4" />
+            <span className="text-sm">Deja Cargador</span>
+          </label>
+        </div>
+
+        <div className="mt-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Presupuesto Estimado ($)</label>
+          <input
+            type="number"
+            value={formPresupuesto}
+            onChange={(e) => setFormPresupuesto(e.target.value)}
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            step="0.01"
+          />
+        </div>
+
+        <div className="mt-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Descripción / Observaciones</label>
+          <textarea
+            value={formDescripcion}
+            onChange={(e) => setFormDescripcion(e.target.value)}
+            rows={3}
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
+          />
+        </div>
+
+        <div className="flex justify-end gap-3 mt-6 pt-5 border-t">
+          <button
+            onClick={() => { resetForm(); setActiveView("ordenes") }}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={crearOT}
+            className="px-4 py-2 text-sm font-medium text-white bg-indigo-900 rounded-md hover:bg-indigo-800 transition-colors"
+          >
+            Crear Orden
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
+  // Detalle OT view (full page)
+  const renderDetalleOT = () => {
+    if (!selectedOT) return null
+    return (
+      <div>
+        <div className="flex items-center gap-4 mb-6">
+          <button
+            onClick={() => setActiveView("ordenes")}
+            className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Volver a Órdenes
+          </button>
+          <h1 className="text-2xl font-bold text-indigo-900">Orden de Trabajo {selectedOT.numero}</h1>
+          <span className={`ml-auto px-3 py-1 rounded-full text-xs font-semibold ${getBadgeClass(selectedOT.estado)}`}>
+            {getEstadoLabel(selectedOT.estado)}
+          </span>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm p-6">
+          {/* Progress Bar */}
+          <div className="flex gap-1 mb-6 p-4 bg-gray-100 rounded-lg">
+            {getProgressSteps(selectedOT.estado).map((step) => (
+              <div
+                key={step.state}
+                className={`flex-1 text-center py-2 text-xs font-semibold rounded ${
+                  step.status === "completed" ? "bg-green-500 text-white" :
+                  step.status === "active" ? "bg-indigo-900 text-white" :
+                  "bg-gray-300 text-gray-600"
+                }`}
+              >
+                {step.label}
+              </div>
+            ))}
+          </div>
+
+          {/* Tabs */}
+          <div className="flex border-b-2 border-gray-200 mb-5">
+            {["info", "repuestos", "control", "etapas"].map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-5 py-3 text-sm font-medium relative transition-colors ${
+                  activeTab === tab ? "text-indigo-900" : "text-gray-500 hover:text-indigo-700"
+                }`}
+              >
+                {tab === "info" && "Información"}
+                {tab === "repuestos" && "Repuestos"}
+                {tab === "control" && "Control"}
+                {tab === "etapas" && "Etapas"}
+                {activeTab === tab && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-900" />
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab Content */}
+          {activeTab === "info" && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-3 bg-gray-50 rounded">
+                <div className="text-xs text-gray-500 uppercase mb-1">Cliente</div>
+                <div className="font-medium">{selectedOT.cliente_nombre}</div>
+              </div>
+              <div className="p-3 bg-gray-50 rounded">
+                <div className="text-xs text-gray-500 uppercase mb-1">Celular</div>
+                <div className="font-medium">{selectedOT.celular_contacto || "-"}</div>
+              </div>
+              <div className="p-3 bg-gray-50 rounded">
+                <div className="text-xs text-gray-500 uppercase mb-1">Equipo</div>
+                <div className="font-medium">{selectedOT.equipo_nombre}</div>
+              </div>
+              <div className="p-3 bg-gray-50 rounded">
+                <div className="text-xs text-gray-500 uppercase mb-1">Falla Principal</div>
+                <div className="font-medium">{selectedOT.falla_principal_nombre}</div>
+              </div>
+              <div className="p-3 bg-gray-50 rounded">
+                <div className="text-xs text-gray-500 uppercase mb-1">IMEI</div>
+                <div className="font-medium">{selectedOT.imei || "-"}</div>
+              </div>
+              <div className="p-3 bg-gray-50 rounded">
+                <div className="text-xs text-gray-500 uppercase mb-1">Serial</div>
+                <div className="font-medium">{selectedOT.serial || "-"}</div>
+              </div>
+              <div className="p-3 bg-gray-50 rounded">
+                <div className="text-xs text-gray-500 uppercase mb-1">Presupuesto</div>
+                <div className="font-medium">${selectedOT.presupuesto.toFixed(2)}</div>
+              </div>
+              <div className="p-3 bg-gray-50 rounded">
+                <div className="text-xs text-gray-500 uppercase mb-1">Técnico Asignado</div>
+                <div className="font-medium">{selectedOT.tecnico_nombre || "Sin asignar"}</div>
+              </div>
+              <div className="p-3 bg-gray-50 rounded col-span-2">
+                <div className="text-xs text-gray-500 uppercase mb-1">Descripción</div>
+                <div className="font-medium">{selectedOT.descripcion || "-"}</div>
+              </div>
+              <div className="flex gap-2 mt-2">
+                {selectedOT.ingresa_apagado && <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded text-xs font-medium">Ingresa Apagado</span>}
+                {selectedOT.ingresa_mojado && <span className="px-3 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">Ingresa Mojado</span>}
+                {selectedOT.deja_cargador && <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded text-xs font-medium">Deja Cargador</span>}
+              </div>
+
+              {/* Asignar Técnico */}
+              {!selectedOT.tecnico_id && (
+                <div className="col-span-2 mt-4 p-4 bg-indigo-50 rounded-lg">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Asignar Técnico</label>
+                  <div className="flex gap-3">
+                    <select
+                      className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      onChange={(e) => e.target.value && asignarTecnico(Number(e.target.value))}
+                      defaultValue=""
+                    >
+                      <option value="">Seleccionar técnico...</option>
+                      {tecnicos.filter(t => t.activo).map(t => (
+                        <option key={t.id} value={t.id}>{t.nombre} - {t.especialidad}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === "repuestos" && (
+            <div className="text-center py-8 text-gray-500">
+              No hay repuestos registrados para esta orden
+            </div>
+          )}
+
+          {activeTab === "control" && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-4">
+                <label className="flex items-center gap-2 p-3 bg-gray-50 rounded cursor-pointer">
+                  <input type="checkbox" className="w-5 h-5" />
+                  <span className="text-sm">Funcionalidad OK</span>
+                </label>
+                <label className="flex items-center gap-2 p-3 bg-gray-50 rounded cursor-pointer">
+                  <input type="checkbox" className="w-5 h-5" />
+                  <span className="text-sm">Pantalla OK</span>
+                </label>
+                <label className="flex items-center gap-2 p-3 bg-gray-50 rounded cursor-pointer">
+                  <input type="checkbox" className="w-5 h-5" />
+                  <span className="text-sm">Batería OK</span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "etapas" && (
+            <div className="space-y-3">
+              <div className="flex gap-4 p-3 bg-gray-50 rounded items-center">
+                <div className="text-sm text-gray-500 w-24">{selectedOT.fecha_creacion}</div>
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getBadgeClass("borrador")}`}>Borrador</span>
+                <div className="text-sm">Orden creada</div>
+              </div>
+              {selectedOT.estado !== "borrador" && (
+                <div className="flex gap-4 p-3 bg-gray-50 rounded items-center">
+                  <div className="text-sm text-gray-500 w-24">{selectedOT.fecha_actualizacion}</div>
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getBadgeClass(selectedOT.estado)}`}>{getEstadoLabel(selectedOT.estado)}</span>
+                  <div className="text-sm">Estado actualizado</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex gap-3 flex-wrap mt-6 pt-5 border-t">
+            {selectedOT.estado === "borrador" && selectedOT.tecnico_id && (
+              <button onClick={() => cambiarEstado("asignada_sin_resolucion")} className="px-4 py-2 text-sm font-medium text-white bg-orange-500 rounded-md hover:bg-orange-600 transition-colors">
+                Confirmar Asignación
+              </button>
+            )}
+            {selectedOT.estado === "asignada_sin_resolucion" && (
+              <button onClick={() => cambiarEstado("asignada_en_proceso")} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors">
+                Iniciar Trabajo
+              </button>
+            )}
+            {selectedOT.estado === "asignada_en_proceso" && (
+              <>
+                <button onClick={() => cambiarEstado("control_calidad")} className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md hover:bg-purple-700 transition-colors">
+                  Enviar a Control
+                </button>
+                <button onClick={() => cambiarEstado("falta_repuestos")} className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors">
+                  Falta Repuestos
+                </button>
+                <button onClick={() => cambiarEstado("re_presupuestacion")} className="px-4 py-2 text-sm font-medium text-white bg-pink-500 rounded-md hover:bg-pink-600 transition-colors">
+                  Re-presupuestar
+                </button>
+              </>
+            )}
+            {selectedOT.estado === "control_calidad" && (
+              <>
+                <button onClick={() => cambiarEstado("facturado")} className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors">
+                  Aprobar y Facturar
+                </button>
+                <button onClick={() => cambiarEstado("asignada_en_proceso")} className="px-4 py-2 text-sm font-medium text-white bg-gray-500 rounded-md hover:bg-gray-600 transition-colors">
+                  Devolver a Proceso
+                </button>
+              </>
+            )}
+            {selectedOT.estado === "facturado" && (
+              <button onClick={() => cambiarEstado("a_entregar")} className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700 transition-colors">
+                Listo para Entregar
+              </button>
+            )}
+            {selectedOT.estado === "a_entregar" && (
+              <button onClick={() => cambiarEstado("entregado")} className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 transition-colors">
+                Marcar como Entregado
+              </button>
+            )}
+            {selectedOT.estado === "falta_repuestos" && (
+              <button onClick={() => cambiarEstado("asignada_en_proceso")} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors">
+                Repuestos Disponibles
+              </button>
+            )}
+            {selectedOT.estado === "re_presupuestacion" && (
+              <button onClick={() => cambiarEstado("asignada_en_proceso")} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors">
+                Presupuesto Aprobado
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // Dashboard view
@@ -1343,7 +1758,7 @@ function CellHomeERPContent() {
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-indigo-900">Órdenes de Trabajo</h1>
         <button 
-          onClick={() => setShowNuevaOT(true)}
+          onClick={() => { resetForm(); setActiveView("nueva_ot") }}
           className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 transition-colors flex items-center gap-2"
         >
           <span>+</span> Nueva OT
@@ -2139,392 +2554,6 @@ function CellHomeERPContent() {
           <main className="ml-52 flex-1 p-6 min-h-[calc(100vh-44px)]">
             {renderContent()}
           </main>
-        </div>
-      )}
-
-      {/* Modal Nueva OT */}
-      {showNuevaOT && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]" onClick={() => setShowNuevaOT(false)}>
-          <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="bg-indigo-900 text-white px-5 py-4 flex justify-between items-center">
-              <h3 className="text-lg font-semibold">Nueva Orden de Trabajo</h3>
-              <button onClick={() => setShowNuevaOT(false)} className="text-2xl leading-none hover:text-white/80">&times;</button>
-            </div>
-            <div className="p-5 overflow-y-auto flex-1">
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Área *</label>
-                    <select 
-                      value={formArea} 
-                      onChange={(e) => { setFormArea(e.target.value); setFormTipo(""); setFormEquipo(""); setFormFalla("") }}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    >
-                      <option value="">Seleccionar área...</option>
-                      {mockAreas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de OT *</label>
-                    <select 
-                      value={formTipo} 
-                      onChange={(e) => setFormTipo(e.target.value)}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      disabled={!formArea}
-                    >
-                      <option value="">Seleccionar tipo...</option>
-                      {tiposOTFiltrados.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
-                    <select 
-                      value={formCliente} 
-                      onChange={(e) => setFormCliente(e.target.value)}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    >
-                      <option value="">Seleccionar cliente...</option>
-                      {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Celular de Contacto</label>
-                    <input 
-                      type="text" 
-                      value={formCelular}
-                      onChange={(e) => setFormCelular(e.target.value)}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Equipo *</label>
-                    <select 
-                      value={formEquipo} 
-                      onChange={(e) => { setFormEquipo(e.target.value); setFormFalla("") }}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      disabled={!formArea}
-                    >
-                      <option value="">Seleccionar equipo...</option>
-                      {equiposFiltrados.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Falla Principal *</label>
-                    <select 
-                      value={formFalla} 
-                      onChange={(e) => setFormFalla(e.target.value)}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      disabled={!formEquipo}
-                    >
-                      <option value="">Seleccionar falla...</option>
-                      {fallasFiltradas.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Categoría de Reparación</label>
-                    <input 
-                      type="text" 
-                      value={categoriaReparacion}
-                      readOnly
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-100 cursor-not-allowed"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-6 mt-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">IMEI</label>
-                  <input 
-                    type="text" 
-                    value={formIMEI}
-                    onChange={(e) => setFormIMEI(e.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Serial Number</label>
-                  <input 
-                    type="text" 
-                    value={formSerial}
-                    onChange={(e) => setFormSerial(e.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Código de Desbloqueo</label>
-                <input 
-                  type="text" 
-                  value={formCodigo}
-                  onChange={(e) => setFormCodigo(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div className="flex gap-6 mt-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={formApagado} onChange={(e) => setFormApagado(e.target.checked)} className="w-4 h-4" />
-                  <span className="text-sm">Ingresa Apagado</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={formMojado} onChange={(e) => setFormMojado(e.target.checked)} className="w-4 h-4" />
-                  <span className="text-sm">Ingresa Mojado</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={formCargador} onChange={(e) => setFormCargador(e.target.checked)} className="w-4 h-4" />
-                  <span className="text-sm">Deja Cargador</span>
-                </label>
-              </div>
-
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Presupuesto Estimado ($)</label>
-                <input 
-                  type="number" 
-                  value={formPresupuesto}
-                  onChange={(e) => setFormPresupuesto(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  step="0.01"
-                />
-              </div>
-
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción / Observaciones</label>
-                <textarea 
-                  value={formDescripcion}
-                  onChange={(e) => setFormDescripcion(e.target.value)}
-                  rows={3}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
-                />
-              </div>
-            </div>
-            <div className="bg-gray-50 px-5 py-4 flex justify-end gap-3 border-t">
-              <button onClick={() => setShowNuevaOT(false)} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 transition-colors">
-                Cancelar
-              </button>
-              <button onClick={crearOT} className="px-4 py-2 text-sm font-medium text-white bg-indigo-900 rounded-md hover:bg-indigo-800 transition-colors">
-                Crear Orden
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Detalle OT */}
-      {showDetalleOT && selectedOT && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]" onClick={() => setShowDetalleOT(false)}>
-          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="bg-indigo-900 text-white px-5 py-4 flex justify-between items-center">
-              <h3 className="text-lg font-semibold">Orden de Trabajo {selectedOT.numero}</h3>
-              <button onClick={() => setShowDetalleOT(false)} className="text-2xl leading-none hover:text-white/80">&times;</button>
-            </div>
-            <div className="p-5 overflow-y-auto flex-1">
-              {/* Progress Bar */}
-              <div className="flex gap-1 mb-6 p-4 bg-gray-100 rounded-lg">
-                {getProgressSteps(selectedOT.estado).map((step, i) => (
-                  <div 
-                    key={step.state}
-                    className={`flex-1 text-center py-2 text-xs font-semibold rounded ${
-                      step.status === "completed" ? "bg-green-500 text-white" :
-                      step.status === "active" ? "bg-indigo-900 text-white" :
-                      "bg-gray-300 text-gray-600"
-                    }`}
-                  >
-                    {step.label}
-                  </div>
-                ))}
-              </div>
-
-              {/* Tabs */}
-              <div className="flex border-b-2 border-gray-200 mb-5">
-                {["info", "repuestos", "control", "etapas"].map(tab => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-5 py-3 text-sm font-medium relative transition-colors ${
-                      activeTab === tab ? "text-indigo-900" : "text-gray-500 hover:text-indigo-700"
-                    }`}
-                  >
-                    {tab === "info" && "Información"}
-                    {tab === "repuestos" && "Repuestos"}
-                    {tab === "control" && "Control"}
-                    {tab === "etapas" && "Etapas"}
-                    {activeTab === tab && (
-                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-900" />
-                    )}
-                  </button>
-                ))}
-              </div>
-
-              {/* Tab Content */}
-              {activeTab === "info" && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-3 bg-gray-50 rounded">
-                    <div className="text-xs text-gray-500 uppercase mb-1">Cliente</div>
-                    <div className="font-medium">{selectedOT.cliente_nombre}</div>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded">
-                    <div className="text-xs text-gray-500 uppercase mb-1">Celular</div>
-                    <div className="font-medium">{selectedOT.celular_contacto || "-"}</div>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded">
-                    <div className="text-xs text-gray-500 uppercase mb-1">Equipo</div>
-                    <div className="font-medium">{selectedOT.equipo_nombre}</div>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded">
-                    <div className="text-xs text-gray-500 uppercase mb-1">Falla Principal</div>
-                    <div className="font-medium">{selectedOT.falla_principal_nombre}</div>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded">
-                    <div className="text-xs text-gray-500 uppercase mb-1">IMEI</div>
-                    <div className="font-medium">{selectedOT.imei || "-"}</div>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded">
-                    <div className="text-xs text-gray-500 uppercase mb-1">Serial</div>
-                    <div className="font-medium">{selectedOT.serial || "-"}</div>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded">
-                    <div className="text-xs text-gray-500 uppercase mb-1">Presupuesto</div>
-                    <div className="font-medium">${selectedOT.presupuesto.toFixed(2)}</div>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded">
-                    <div className="text-xs text-gray-500 uppercase mb-1">Técnico Asignado</div>
-                    <div className="font-medium">{selectedOT.tecnico_nombre || "Sin asignar"}</div>
-                  </div>
-                  <div className="p-3 bg-gray-50 rounded col-span-2">
-                    <div className="text-xs text-gray-500 uppercase mb-1">Descripción</div>
-                    <div className="font-medium">{selectedOT.descripcion || "-"}</div>
-                  </div>
-                  <div className="flex gap-2 mt-2">
-                    {selectedOT.ingresa_apagado && <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded text-xs font-medium">Ingresa Apagado</span>}
-                    {selectedOT.ingresa_mojado && <span className="px-3 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">Ingresa Mojado</span>}
-                    {selectedOT.deja_cargador && <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded text-xs font-medium">Deja Cargador</span>}
-                  </div>
-
-                  {/* Asignar Técnico */}
-                  {!selectedOT.tecnico_id && (
-                    <div className="col-span-2 mt-4 p-4 bg-indigo-50 rounded-lg">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Asignar Técnico</label>
-                      <div className="flex gap-3">
-                        <select 
-                          className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          onChange={(e) => e.target.value && asignarTecnico(Number(e.target.value))}
-                          defaultValue=""
-                        >
-                          <option value="">Seleccionar técnico...</option>
-                          {tecnicos.filter(t => t.activo).map(t => (
-                            <option key={t.id} value={t.id}>{t.nombre} - {t.especialidad}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeTab === "repuestos" && (
-                <div className="text-center py-8 text-gray-500">
-                  No hay repuestos registrados para esta orden
-                </div>
-              )}
-
-              {activeTab === "control" && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-3 gap-4">
-                    <label className="flex items-center gap-2 p-3 bg-gray-50 rounded cursor-pointer">
-                      <input type="checkbox" className="w-5 h-5" />
-                      <span className="text-sm">Funcionalidad OK</span>
-                    </label>
-                    <label className="flex items-center gap-2 p-3 bg-gray-50 rounded cursor-pointer">
-                      <input type="checkbox" className="w-5 h-5" />
-                      <span className="text-sm">Pantalla OK</span>
-                    </label>
-                    <label className="flex items-center gap-2 p-3 bg-gray-50 rounded cursor-pointer">
-                      <input type="checkbox" className="w-5 h-5" />
-                      <span className="text-sm">Batería OK</span>
-                    </label>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === "etapas" && (
-                <div className="space-y-3">
-                  <div className="flex gap-4 p-3 bg-gray-50 rounded items-center">
-                    <div className="text-sm text-gray-500 w-24">{selectedOT.fecha_creacion}</div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getBadgeClass("borrador")}`}>Borrador</span>
-                    <div className="text-sm">Orden creada</div>
-                  </div>
-                  {selectedOT.estado !== "borrador" && (
-                    <div className="flex gap-4 p-3 bg-gray-50 rounded items-center">
-                      <div className="text-sm text-gray-500 w-24">{selectedOT.fecha_actualizacion}</div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getBadgeClass(selectedOT.estado)}`}>{getEstadoLabel(selectedOT.estado)}</span>
-                      <div className="text-sm">Estado actualizado</div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex gap-3 flex-wrap mt-6 pt-5 border-t">
-                {selectedOT.estado === "borrador" && selectedOT.tecnico_id && (
-                  <button onClick={() => cambiarEstado("asignada_sin_resolucion")} className="px-4 py-2 text-sm font-medium text-white bg-orange-500 rounded-md hover:bg-orange-600 transition-colors">
-                    Confirmar Asignación
-                  </button>
-                )}
-                {selectedOT.estado === "asignada_sin_resolucion" && (
-                  <button onClick={() => cambiarEstado("asignada_en_proceso")} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors">
-                    Iniciar Trabajo
-                  </button>
-                )}
-                {selectedOT.estado === "asignada_en_proceso" && (
-                  <>
-                    <button onClick={() => cambiarEstado("control_calidad")} className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md hover:bg-purple-700 transition-colors">
-                      Enviar a Control
-                    </button>
-                    <button onClick={() => cambiarEstado("falta_repuestos")} className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors">
-                      Falta Repuestos
-                    </button>
-                    <button onClick={() => cambiarEstado("re_presupuestacion")} className="px-4 py-2 text-sm font-medium text-white bg-pink-500 rounded-md hover:bg-pink-600 transition-colors">
-                      Re-presupuestar
-                    </button>
-                  </>
-                )}
-                {selectedOT.estado === "control_calidad" && (
-                  <>
-                    <button onClick={() => cambiarEstado("facturado")} className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors">
-                      Aprobar y Facturar
-                    </button>
-                    <button onClick={() => cambiarEstado("asignada_en_proceso")} className="px-4 py-2 text-sm font-medium text-white bg-gray-500 rounded-md hover:bg-gray-600 transition-colors">
-                      Devolver a Proceso
-                    </button>
-                  </>
-                )}
-                {selectedOT.estado === "facturado" && (
-                  <button onClick={() => cambiarEstado("a_entregar")} className="px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700 transition-colors">
-                    Listo para Entregar
-                  </button>
-                )}
-                {selectedOT.estado === "a_entregar" && (
-                  <button onClick={() => cambiarEstado("entregado")} className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 transition-colors">
-                    Marcar como Entregado
-                  </button>
-                )}
-                {selectedOT.estado === "falta_repuestos" && (
-                  <button onClick={() => cambiarEstado("asignada_en_proceso")} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors">
-                    Repuestos Disponibles
-                  </button>
-                )}
-                {selectedOT.estado === "re_presupuestacion" && (
-                  <button onClick={() => cambiarEstado("asignada_en_proceso")} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors">
-                    Presupuesto Aprobado
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
