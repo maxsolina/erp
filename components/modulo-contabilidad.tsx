@@ -181,6 +181,8 @@ export default function ModuloContabilidad() {
   const [monedaTab, setMonedaTab] = useState<"cotizaciones" | "configuracion">("cotizaciones")
   const [cotizacionPage, setCotizacionPage] = useState(1)
   const cotizacionesPerPage = 6
+  const [creatingMoneda, setCreatingMoneda] = useState(false)
+  const [modoEdicionMoneda, setModoEdicionMoneda] = useState(false)
 
   // Nueva cotización en edición
   const [nuevaCotizacion, setNuevaCotizacion] = useState<{
@@ -275,6 +277,73 @@ export default function ModuloContabilidad() {
       ...editingMoneda,
       cotizaciones: editingMoneda.cotizaciones.filter(c => c.id !== cotizacionId)
     })
+  }
+
+  // Monedas - CRUD
+  const crearNuevaMoneda = () => {
+    const nuevaMoneda: Moneda = {
+      id: 0,
+      nombre: "",
+      simbolo: "",
+      cotizacion_actual: 1,
+      cotizacion_automatica: false,
+      tipo_cotizacion_defecto: tiposCotizacion.length > 0 ? tiposCotizacion[0].nombre : "Oficial",
+      factor_redondeo: 0.01,
+      precision_calculo: 0.000001,
+      posicion_simbolo: "antes",
+      moneda_afip: "",
+      es_base: false,
+      activo: true,
+      fecha_tasa: new Date().toISOString().split("T")[0],
+      cotizaciones: []
+    }
+    setSelectedMoneda(nuevaMoneda)
+    setEditingMoneda(nuevaMoneda)
+    setCreatingMoneda(true)
+    setModoEdicionMoneda(true)
+  }
+
+  const guardarMoneda = () => {
+    if (!editingMoneda) return
+    
+    if (creatingMoneda) {
+      const nuevoId = Math.max(...monedas.map(m => m.id), 0) + 1
+      const monedaNueva: Moneda = {
+        ...editingMoneda,
+        id: nuevoId
+      }
+      setMonedas(prev => [...prev, monedaNueva])
+      setSelectedMoneda(monedaNueva)
+      setEditingMoneda(null)
+      setCreatingMoneda(false)
+      setModoEdicionMoneda(false)
+    } else {
+      setMonedas(prev => prev.map(m => 
+        m.id === editingMoneda.id ? editingMoneda : m
+      ))
+      setSelectedMoneda(editingMoneda)
+      setEditingMoneda(null)
+      setModoEdicionMoneda(false)
+    }
+  }
+
+  const descartarMoneda = () => {
+    if (creatingMoneda) {
+      setSelectedMoneda(null)
+      setEditingMoneda(null)
+      setCreatingMoneda(false)
+      setModoEdicionMoneda(false)
+    } else {
+      setEditingMoneda(null)
+      setModoEdicionMoneda(false)
+    }
+  }
+
+  const iniciarEdicionMoneda = () => {
+    if (selectedMoneda) {
+      setEditingMoneda({ ...selectedMoneda })
+      setModoEdicionMoneda(true)
+    }
   }
 
   // Tipos de Cotización - CRUD
@@ -533,6 +602,8 @@ export default function ModuloContabilidad() {
                                       // Limpiar estados al cambiar de vista
                                       setSelectedMoneda(null)
                                       setEditingMoneda(null)
+                                      setCreatingMoneda(false)
+                                      setModoEdicionMoneda(false)
                                       setSelectedTipoCotizacion(null)
                                       setEditingTipoCotizacion(null)
                                       setCreatingTipoCotizacion(false)
@@ -567,6 +638,7 @@ export default function ModuloContabilidad() {
         {/* Barra superior */}
         <div className="flex items-center justify-between mb-4 bg-white border-b border-gray-200 py-2 px-4 -mx-6 -mt-6">
           <button 
+            onClick={crearNuevaMoneda}
             className="flex items-center gap-2 bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 transition-colors text-sm font-medium"
           >
             Crear
@@ -623,7 +695,9 @@ export default function ModuloContabilidad() {
                   }`}
                   onClick={() => {
                     setSelectedMoneda(moneda)
-                    setEditingMoneda({ ...moneda })
+                    setEditingMoneda(null)
+                    setModoEdicionMoneda(false)
+                    setCreatingMoneda(false)
                     setCotizacionPage(1)
                   }}
                 >
@@ -646,9 +720,11 @@ export default function ModuloContabilidad() {
 
   // Vista de detalle/edición de moneda
   const renderDetalleMoneda = () => {
-    if (!selectedMoneda || !editingMoneda) return null
+    if (!selectedMoneda) return null
 
-    const currentMoneda = editingMoneda
+    const currentMoneda = modoEdicionMoneda && editingMoneda 
+      ? editingMoneda 
+      : selectedMoneda
     const totalCotizaciones = currentMoneda.cotizaciones.length
     const startIdx = (cotizacionPage - 1) * cotizacionesPerPage
     const endIdx = startIdx + cotizacionesPerPage
@@ -660,6 +736,8 @@ export default function ModuloContabilidad() {
     const prevMoneda = currentIndex > 0 ? monedas[currentIndex - 1] : null
     const nextMoneda = currentIndex < monedas.length - 1 ? monedas[currentIndex + 1] : null
 
+    const isEditing = modoEdicionMoneda || creatingMoneda
+
     return (
       <div>
         {/* Breadcrumb */}
@@ -668,61 +746,83 @@ export default function ModuloContabilidad() {
             onClick={() => {
               setSelectedMoneda(null)
               setEditingMoneda(null)
+              setCreatingMoneda(false)
+              setModoEdicionMoneda(false)
             }} 
             className="hover:text-blue-600"
           >
             Monedas
           </button>
           <span className="mx-2">/</span>
-          <span className="text-gray-900">{currentMoneda.nombre}</span>
+          <span className="text-gray-900">{creatingMoneda ? 'Nueva' : currentMoneda.nombre}</span>
         </div>
 
         {/* Header con botones */}
         <div className="flex items-center justify-between mb-6 bg-white border-b border-gray-200 py-3 px-4 -mx-6">
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={guardarMoneda}
-              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 transition-colors text-sm font-medium"
-            >
-              <Save className="w-4 h-4" />
-              Guardar
-            </button>
-            <button 
-              onClick={descartarCambios}
-              className="flex items-center gap-2 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300"
-            >
-              <X className="w-4 h-4" />
-              Descartar
-            </button>
-          </div>
+          {isEditing ? (
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={guardarMoneda}
+                disabled={!currentMoneda.nombre.trim()}
+                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className="w-4 h-4" />
+                Guardar
+              </button>
+              <button 
+                onClick={descartarMoneda}
+                className="flex items-center gap-2 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300"
+              >
+                <X className="w-4 h-4" />
+                Descartar
+              </button>
+            </div>
+          ) : (
+            <div></div>
+          )}
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                if (prevMoneda) {
-                  setSelectedMoneda(prevMoneda)
-                  setEditingMoneda({ ...prevMoneda })
-                  setCotizacionPage(1)
-                }
-              }}
-              disabled={!prevMoneda}
-              className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => {
-                if (nextMoneda) {
-                  setSelectedMoneda(nextMoneda)
-                  setEditingMoneda({ ...nextMoneda })
-                  setCotizacionPage(1)
-                }
-              }}
-              disabled={!nextMoneda}
-              className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
+            {!isEditing && !creatingMoneda && (
+              <button 
+                onClick={iniciarEdicionMoneda}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+              >
+                <Edit className="w-4 h-4" /> Editar
+              </button>
+            )}
+            
+            {!creatingMoneda && (
+              <>
+                <button
+                  onClick={() => {
+                    if (prevMoneda) {
+                      setSelectedMoneda(prevMoneda)
+                      setEditingMoneda(null)
+                      setModoEdicionMoneda(false)
+                      setCotizacionPage(1)
+                    }
+                  }}
+                  disabled={!prevMoneda}
+                  className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => {
+                    if (nextMoneda) {
+                      setSelectedMoneda(nextMoneda)
+                      setEditingMoneda(null)
+                      setModoEdicionMoneda(false)
+                      setCotizacionPage(1)
+                    }
+                  }}
+                  disabled={!nextMoneda}
+                  className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -732,49 +832,76 @@ export default function ModuloContabilidad() {
           <div className="grid grid-cols-2 gap-6 mb-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
-              <input
-                type="text"
-                value={currentMoneda.nombre}
-                onChange={(e) => setEditingMoneda({ ...currentMoneda, nombre: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              />
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={currentMoneda.nombre}
+                  onChange={(e) => setEditingMoneda({ ...currentMoneda, nombre: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                />
+              ) : (
+                <p className="text-gray-900 py-2">{currentMoneda.nombre}</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Cotización Actual</label>
-              <input
-                type="text"
-                value={formatNumber(currentMoneda.cotizacion_actual)}
-                onChange={(e) => {
-                  const value = parseFloat(e.target.value.replace(/\./g, '').replace(',', '.')) || 0
-                  setEditingMoneda({ ...currentMoneda, cotizacion_actual: value })
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              />
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={formatNumber(currentMoneda.cotizacion_actual)}
+                  onChange={(e) => {
+                    const value = parseFloat(e.target.value.replace(/\./g, '').replace(',', '.')) || 0
+                    setEditingMoneda({ ...currentMoneda, cotizacion_actual: value })
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                />
+              ) : (
+                <p className="text-gray-900 py-2">{formatNumber(currentMoneda.cotizacion_actual)}</p>
+              )}
             </div>
             <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="cotizacion_automatica"
-                checked={currentMoneda.cotizacion_automatica}
-                onChange={(e) => setEditingMoneda({ ...currentMoneda, cotizacion_automatica: e.target.checked })}
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-              />
-              <label htmlFor="cotizacion_automatica" className="text-sm text-gray-700">Cotización Automática</label>
+              {isEditing ? (
+                <>
+                  <input
+                    type="checkbox"
+                    id="cotizacion_automatica"
+                    checked={currentMoneda.cotizacion_automatica}
+                    onChange={(e) => setEditingMoneda({ ...currentMoneda, cotizacion_automatica: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="cotizacion_automatica" className="text-sm text-gray-700">Cotización Automática</label>
+                </>
+              ) : (
+                <>
+                  <span className="text-sm font-medium text-gray-700">Cotización Automática:</span>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                    currentMoneda.cotizacion_automatica 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {currentMoneda.cotizacion_automatica ? 'Sí' : 'No'}
+                  </span>
+                </>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Cotización por Defecto</label>
-              <select
-                value={currentMoneda.tipo_cotizacion_defecto}
-                onChange={(e) => setEditingMoneda({ 
-                  ...currentMoneda, 
-                  tipo_cotizacion_defecto: e.target.value
-                })}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {tiposCotizacion.filter(t => t.activo).map(tipo => (
-                  <option key={tipo.id} value={tipo.nombre}>{tipo.nombre}</option>
-                ))}
-              </select>
+              {isEditing ? (
+                <select
+                  value={currentMoneda.tipo_cotizacion_defecto}
+                  onChange={(e) => setEditingMoneda({ 
+                    ...currentMoneda, 
+                    tipo_cotizacion_defecto: e.target.value
+                  })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  {tiposCotizacion.filter(t => t.activo).map(tipo => (
+                    <option key={tipo.id} value={tipo.nombre}>{tipo.nombre}</option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-gray-900 py-2">{currentMoneda.tipo_cotizacion_defecto}</p>
+              )}
             </div>
           </div>
 
