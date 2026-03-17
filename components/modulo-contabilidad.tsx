@@ -228,22 +228,6 @@ export default function ModuloContabilidad() {
     )
   }
 
-  // Guardar cambios de moneda
-  const guardarMoneda = () => {
-    if (!editingMoneda) return
-    
-    setMonedas(prev => prev.map(m => 
-      m.id === editingMoneda.id ? editingMoneda : m
-    ))
-    setSelectedMoneda(editingMoneda)
-    setEditingMoneda(null)
-  }
-
-  // Descartar cambios
-  const descartarCambios = () => {
-    setEditingMoneda(null)
-  }
-
   // Agregar nueva cotización
   const agregarCotizacion = () => {
     if (!editingMoneda || !nuevaCotizacion.tasa) return
