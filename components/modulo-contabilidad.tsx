@@ -289,14 +289,6 @@ export default function ModuloContabilidad() {
     setCreatingTipoCotizacion(true)
   }
 
-  const eliminarTipoCotizacion = (id: number) => {
-    setTiposCotizacion(prev => prev.filter(t => t.id !== id))
-    if (selectedTipoCotizacion?.id === id) {
-      setSelectedTipoCotizacion(null)
-      setEditingTipoCotizacion(null)
-    }
-  }
-
   // Sidebar
   const renderSidebar = () => (
     <div className="w-56 bg-white border-r border-gray-200 min-h-screen">
@@ -883,7 +875,6 @@ export default function ModuloContabilidad() {
                 <th className="text-left py-3 px-4 font-medium">Nombre</th>
                 <th className="text-left py-3 px-4 font-medium">Descripción</th>
                 <th className="text-center py-3 px-4 font-medium">Activo</th>
-                <th className="w-12"></th>
               </tr>
             </thead>
             <tbody>
@@ -910,23 +901,11 @@ export default function ModuloContabilidad() {
                       {tipo.activo ? 'Sí' : 'No'}
                     </span>
                   </td>
-                  <td className="py-3 px-4">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        eliminarTipoCotizacion(tipo.id)
-                      }}
-                      className="p-1 text-red-500 hover:bg-red-50 rounded"
-                      title="Eliminar"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
                 </tr>
               ))}
               {filteredTipos.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="py-8 text-center text-gray-500">
+                  <td colSpan={3} className="py-8 text-center text-gray-500">
                     No se encontraron tipos de cotización
                   </td>
                 </tr>
