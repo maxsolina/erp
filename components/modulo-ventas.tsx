@@ -1,0 +1,8605 @@
+"use client"
+
+import React, { useState, useMemo } from "react"
+import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor } from "lucide-react"
+
+// Types para Ventas
+interface ClienteVenta {
+  id: number
+  codigo: string
+  nombre: string
+  nombre_fantasia: string
+  tipo_documento: "DNI" | "CUIT" | "CUIL"
+  numero_documento: string
+  posicion_fiscal: "consumidor_final" | "responsable_inscripto" | "monotributista" | "exento"
+  direccion: string
+  ciudad: string
+  provincia: string
+  codigo_postal: string
+  zona: string
+  telefono: string
+  celular: string
+  email: string
+  categoria: "publico" | "mercadolibre" | "mayorista"
+  vendedor_id: number | null
+  cobrador_id: number | null
+  lista_precios_id: number
+  descuento_default: number
+  moneda_cuenta_corriente: "ARS" | "USD"
+  termino_pago_id: number
+  activo: boolean
+  es_confidencial: boolean
+  sucursal_origen: string
+  fecha_alta: string
+  saldo_cuenta_corriente: number
+  total_facturado: number
+  seguimiento?: SeguimientoEntry[]
+}
+
+interface Vendedor {
+  id: number
+  nombre: string
+  activo: boolean
+}
+
+interface ListaPrecios {
+  id: number
+  nombre: string
+  moneda: "ARS" | "USD"
+  activa: boolean
+}
+
+interface TerminoPago {
+  id: number
+  nombre: string
+  dias: number
+}
+
+interface ProductoVenta {
+  id: number
+  sku: string
+  nombre: string
+  descripcion: string
+  precio_venta: number
+  stock: number
+  categoria: string
+  requiere_serie: boolean // Si requiere selección de IMEI/Serie
+}
+
+// Tipo para el sistema de seguimiento (tracking de cambios estilo Odoo)
+interface SeguimientoEntry {
+  id: number
+  fecha: string
+  usuario: string
+  usuario_avatar?: string
+  tipo: "creacion" | "cambio_estado" | "cambio_campo" | "nota" | "mensaje"
+  campo?: string
+  valor_anterior?: string
+  valor_nuevo?: string
+  descripcion?: string
+}
+
+interface SerieDisponible {
+  id: number
+  producto_id: number
+  serie: string // IMEI o número de serie
+  lote: string | null
+  estado: "disponible" | "reservado" | "vendido"
+  ubicacion_id: number
+  ubicacion_nombre: string
+  detalles: string // Ej: "128GB Space Gray - Batería 92%"
+  fecha_ingreso: string
+}
+
+interface LineaNV {
+  id: number
+  producto_id: number
+  producto_nombre: string
+  producto_sku: string
+  cantidad: number
+  precio_unitario: number
+  descuento: number
+  subtotal: number
+  fecha_entrega: string
+  requiere_serie?: boolean
+  series_seleccionadas?: { id: number; serie: string; detalles: string }[]
+}
+
+interface NotaVenta {
+  id: number
+  numero: string
+  cliente_id: number
+  cliente_nombre: string
+  cliente_codigo: string
+  vendedor_id: number
+  vendedor_nombre: string
+  fecha: string
+  estado: "borrador" | "a_facturar" | "verificacion_factura" | "verificacion_oe" | "finalizada" | "cancelada"
+  moneda: "ARS" | "USD"
+  tipo_cotizacion: "blue" | "oficial"
+  cotizacion: number
+  lista_precios_id: number
+  termino_pago_id: number
+  termino_pago_nombre: string
+  deposito: string
+  tipo_venta: "inmediata" | "pedido"
+  lineas: LineaNV[]
+  subtotal: number
+  descuento_global: number
+  impuestos: number
+  total: number
+  sucursal: string
+  punto_venta: string
+  seguimiento?: SeguimientoEntry[]
+}
+
+interface OrdenEntrega {
+  id: number
+  numero: string
+  nota_venta_id: number
+  nota_venta_numero: string
+  cliente_id: number
+  cliente_nombre: string
+  estado: "borrador" | "esperando" | "parcial" | "disponible" | "confirmada"
+  fecha_creacion: string
+  fecha_entrega: string
+  domicilio_envio: string
+  deposito: string
+  sucursal: string
+  remito_numero: string | null
+  productos: {
+    producto_id: number
+    producto_nombre: string
+    cantidad: number
+    reserva: number
+    estado: "pendiente" | "confirmado"
+  }[]
+  seguimiento?: SeguimientoEntry[]
+}
+
+interface Remito {
+  id: number
+  numero: string
+  orden_entrega_id: number
+  orden_entrega_numero: string
+  cliente_id: number
+  cliente_nombre: string
+  estado: "en_ejecucion" | "aprobado"
+  fecha: string
+  fecha_entrega: string
+  domicilio_envio: string
+  transporte: string
+  chofer: string
+  factura_numero: string | null
+  nota_venta_numero: string
+  sucursal: string
+  deposito: string
+  peso_kg: number
+  peso_neto_kg: number
+  bultos: number
+  valor_declarado: number
+  control_factura: "facturado" | "pendiente"
+  seguimiento?: SeguimientoEntry[]
+}
+
+interface Factura {
+  id: number
+  numero: string
+  tipo: "A" | "B" | "C"
+  nota_venta_id: number
+  nota_venta_numero: string
+  cliente_id: number
+  cliente_nombre: string
+  cliente_documento: string
+  estado: "borrador" | "abierta" | "conciliada"
+  fecha: string
+  vendedor_nombre: string
+  domicilio_facturacion: string
+  moneda: "ARS" | "USD"
+  tipo_cotizacion: "blue" | "oficial"
+  cotizacion: number
+  termino_pago: string
+  condicion_pago?: string
+  fecha_vencimiento?: string
+  subtotal: number
+  descuento: number
+  impuestos: number
+  total: number
+  saldo: number
+  sucursal: string
+  lineas: {
+    producto_nombre: string
+    descripcion: string
+    cantidad: number
+    precio_unitario: number
+    descuento: number
+    subtotal: number
+  }[]
+  vencimientos: {
+    descripcion: string
+    fecha: string
+    total: number
+  }[]
+  seguimiento?: SeguimientoEntry[]
+}
+
+interface Recibo {
+  id: number
+  numero: string
+  cliente_id: number
+  cliente_nombre: string
+  estado: "borrador" | "publicado" | "cancelado"
+  fecha: string
+  importe: number
+  importe_no_conciliado: number
+  moneda: "ARS" | "USD"
+  sucursal: string
+  caja: string
+  cobrador_nombre: string
+  nota_venta_numero: string | null
+  factura_id?: number
+  concepto: string
+  pagos: {
+    forma_pago: string
+    importe: number
+    moneda: "ARS" | "USD"
+  }[]
+  cancelacion?: {
+    motivo: string
+    descripcion: string
+    fecha: string
+    usuario: string
+  }
+  seguimiento?: SeguimientoEntry[]
+}
+
+interface AjusteCliente {
+  id: number
+  numero: string
+  cliente_id: number
+  cliente_nombre: string
+  estado: "borrador" | "publicado"
+  fecha: string
+  concepto: string
+  moneda: "ARS" | "USD"
+  nota_venta_numero: string | null
+  sucursal: string
+  lineas: {
+    descripcion: string
+    fecha_vencimiento: string
+    importe: number
+  }[]
+  total: number
+}
+
+interface MovimientoCuentaCorriente {
+  id: number
+  cliente_id: number
+  fecha: string
+  tipo: "debito" | "credito"
+  concepto: string
+  documento_tipo: "factura" | "nota_credito" | "nota_debito" | "recibo" | "ajuste"
+  documento_numero: string
+  documento_id: number
+  moneda: "ARS" | "USD"
+  importe: number
+  saldo_posterior: number
+}
+
+// Mock data
+const mockVendedores: Vendedor[] = [
+  { id: 1, nombre: "Max Solina", activo: true },
+  { id: 2, nombre: "Laura García", activo: true },
+  { id: 3, nombre: "Carlos Pérez", activo: true },
+]
+
+const mockListasPrecios: ListaPrecios[] = [
+  { id: 1, nombre: "Minorista (ARS)", moneda: "ARS", activa: true },
+  { id: 2, nombre: "Mayorista (ARS)", moneda: "ARS", activa: true },
+  { id: 3, nombre: "Minorista (USD)", moneda: "USD", activa: true },
+]
+
+const mockTerminosPago: TerminoPago[] = [
+  { id: 1, nombre: "Contado Efectivo", dias: 0 },
+  { id: 2, nombre: "Cuenta Corriente 30 días", dias: 30 },
+  { id: 3, nombre: "Cuenta Corriente 60 días", dias: 60 },
+]
+
+// Depósitos y ubicaciones para selector en NV
+const depositosVenta = [
+  { id: 1, codigo: "CC", nombre: "Casa Central" },
+  { id: 2, codigo: "PN", nombre: "Puerto Norte" },
+  { id: 3, codigo: "CS", nombre: "Casilda" },
+]
+
+const ubicacionesVenta = [
+  // Casa Central - disponibles para venta
+  { id: 1, deposito_id: 1, codigo: "CC/Stock", nombre: "Stock", disponible_venta: true },
+  { id: 2, deposito_id: 1, codigo: "CC/Usados", nombre: "Usados", disponible_venta: true },
+  { id: 3, deposito_id: 1, codigo: "CC/Deposito B", nombre: "Depósito B", disponible_venta: true },
+  // Puerto Norte
+  { id: 8, deposito_id: 2, codigo: "PN/Stock", nombre: "Stock", disponible_venta: true },
+  { id: 9, deposito_id: 2, codigo: "PN/Outlet", nombre: "Outlet", disponible_venta: true },
+  // Casilda
+  { id: 12, deposito_id: 3, codigo: "CS/Stock", nombre: "Stock", disponible_venta: true },
+]
+
+// Motivos de cancelación de recibo (configurable en módulo)
+const motivosCancelacionRecibo = [
+  { id: 1, codigo: "ERROR_MONTO", nombre: "Error en el monto" },
+  { id: 2, codigo: "ERROR_CLIENTE", nombre: "Error de cliente" },
+  { id: 3, codigo: "DUPLICADO", nombre: "Recibo duplicado" },
+  { id: 4, codigo: "DEVOLUCION", nombre: "Devolución de pago" },
+  { id: 5, codigo: "OTRO", nombre: "Otro motivo" },
+]
+
+// Productos con info de si requieren serie
+const productosConSerie: ProductoVenta[] = [
+  { id: 1, sku: "IPH12U", nombre: "iPhone 12 Usado", descripcion: "iPhone 12 reacondicionado", precio_venta: 450000, stock: 5, categoria: "Usados", requiere_serie: true },
+  { id: 2, sku: "IPH13U", nombre: "iPhone 13 Usado", descripcion: "iPhone 13 reacondicionado", precio_venta: 580000, stock: 3, categoria: "Usados", requiere_serie: true },
+  { id: 3, sku: "IPH15PM", nombre: "iPhone 15 Pro Max 256GB", descripcion: "iPhone 15 Pro Max nuevo", precio_venta: 1850000, stock: 8, categoria: "Nuevos", requiere_serie: true },
+  { id: 4, sku: "SGS24U", nombre: "Samsung Galaxy S24 Ultra", descripcion: "Samsung Galaxy S24 Ultra nuevo", precio_venta: 1500000, stock: 4, categoria: "Nuevos", requiere_serie: true },
+  { id: 5, sku: "FUNDAIPH", nombre: "Funda iPhone Silicona", descripcion: "Funda de silicona para iPhone", precio_venta: 15000, stock: 50, categoria: "Accesorios", requiere_serie: false },
+  { id: 6, sku: "CARGUSB", nombre: "Cargador USB-C 20W", descripcion: "Cargador rápido USB-C", precio_venta: 25000, stock: 30, categoria: "Accesorios", requiere_serie: false },
+  { id: 7, sku: "APP2", nombre: "AirPods Pro 2", descripcion: "AirPods Pro 2da generación", precio_venta: 450000, stock: 10, categoria: "Audio", requiere_serie: true },
+]
+
+// Series/IMEI disponibles por producto y ubicación
+const seriesDisponibles: SerieDisponible[] = [
+  // iPhone 12 Usado - Casa Central/Usados
+  { id: 1, producto_id: 1, serie: "353912108456721", lote: null, estado: "disponible", ubicacion_id: 2, ubicacion_nombre: "CC/Usados", detalles: "64GB Negro - Batería 89%", fecha_ingreso: "2024-01-10" },
+  { id: 2, producto_id: 1, serie: "353912108456722", lote: null, estado: "disponible", ubicacion_id: 2, ubicacion_nombre: "CC/Usados", detalles: "128GB Blanco - Batería 92%", fecha_ingreso: "2024-01-12" },
+  { id: 3, producto_id: 1, serie: "353912108456723", lote: null, estado: "disponible", ubicacion_id: 2, ubicacion_nombre: "CC/Usados", detalles: "64GB Azul - Batería 85%", fecha_ingreso: "2024-01-15" },
+  { id: 4, producto_id: 1, serie: "353912108456724", lote: null, estado: "reservado", ubicacion_id: 2, ubicacion_nombre: "CC/Usados", detalles: "128GB Negro - Batería 95%", fecha_ingreso: "2024-01-08" },
+  // iPhone 12 Usado - Puerto Norte/Stock
+  { id: 5, producto_id: 1, serie: "353912108456725", lote: null, estado: "disponible", ubicacion_id: 8, ubicacion_nombre: "PN/Stock", detalles: "64GB Rojo - Batería 88%", fecha_ingreso: "2024-01-05" },
+  // iPhone 13 Usado
+  { id: 6, producto_id: 2, serie: "354789123456001", lote: null, estado: "disponible", ubicacion_id: 2, ubicacion_nombre: "CC/Usados", detalles: "128GB Midnight - Batería 94%", fecha_ingreso: "2024-01-18" },
+  { id: 7, producto_id: 2, serie: "354789123456002", lote: null, estado: "disponible", ubicacion_id: 2, ubicacion_nombre: "CC/Usados", detalles: "256GB Starlight - Batería 91%", fecha_ingreso: "2024-01-20" },
+  { id: 8, producto_id: 2, serie: "354789123456003", lote: null, estado: "disponible", ubicacion_id: 8, ubicacion_nombre: "PN/Stock", detalles: "128GB Blue - Batería 96%", fecha_ingreso: "2024-01-22" },
+  // iPhone 15 Pro Max
+  { id: 9, producto_id: 3, serie: "356123789012001", lote: "LOTE2024A", estado: "disponible", ubicacion_id: 1, ubicacion_nombre: "CC/Stock", detalles: "256GB Natural Titanium", fecha_ingreso: "2024-02-01" },
+  { id: 10, producto_id: 3, serie: "356123789012002", lote: "LOTE2024A", estado: "disponible", ubicacion_id: 1, ubicacion_nombre: "CC/Stock", detalles: "256GB Blue Titanium", fecha_ingreso: "2024-02-01" },
+  { id: 11, producto_id: 3, serie: "356123789012003", lote: "LOTE2024A", estado: "disponible", ubicacion_id: 8, ubicacion_nombre: "PN/Stock", detalles: "256GB Black Titanium", fecha_ingreso: "2024-02-01" },
+  // Samsung Galaxy S24 Ultra
+  { id: 12, producto_id: 4, serie: "R58T12345678", lote: null, estado: "disponible", ubicacion_id: 1, ubicacion_nombre: "CC/Stock", detalles: "256GB Titanium Gray", fecha_ingreso: "2024-02-05" },
+  { id: 13, producto_id: 4, serie: "R58T12345679", lote: null, estado: "disponible", ubicacion_id: 1, ubicacion_nombre: "CC/Stock", detalles: "512GB Titanium Violet", fecha_ingreso: "2024-02-05" },
+  // AirPods Pro 2
+  { id: 14, producto_id: 7, serie: "FVFXN123456A", lote: "LOTE2024B", estado: "disponible", ubicacion_id: 1, ubicacion_nombre: "CC/Stock", detalles: "Con estuche MagSafe", fecha_ingreso: "2024-01-25" },
+  { id: 15, producto_id: 7, serie: "FVFXN123456B", lote: "LOTE2024B", estado: "disponible", ubicacion_id: 1, ubicacion_nombre: "CC/Stock", detalles: "Con estuche MagSafe", fecha_ingreso: "2024-01-25" },
+  { id: 16, producto_id: 7, serie: "FVFXN123456C", lote: "LOTE2024B", estado: "disponible", ubicacion_id: 8, ubicacion_nombre: "PN/Stock", detalles: "Con estuche Lightning", fecha_ingreso: "2024-01-20" },
+]
+
+const mockClientesVenta: ClienteVenta[] = [
+  { 
+    id: 1, codigo: "C015517", nombre: "Alejandra Gallo", nombre_fantasia: "", 
+    tipo_documento: "DNI", numero_documento: "32456789", posicion_fiscal: "consumidor_final",
+    direccion: "Av. Rivadavia 1234", ciudad: "Rosario", provincia: "Santa Fe", codigo_postal: "2000",
+    zona: "Centro", telefono: "0341-4561234", celular: "341-5551234", email: "agallo@email.com",
+    categoria: "publico", vendedor_id: 1, cobrador_id: 1, lista_precios_id: 1, descuento_default: 0,
+    moneda_cuenta_corriente: "ARS", termino_pago_id: 1, activo: true, es_confidencial: false,
+    sucursal_origen: "Puerto Norte", fecha_alta: "2023-01-15", saldo_cuenta_corriente: 0, total_facturado: 125000
+  },
+  { 
+    id: 2, codigo: "C015518", nombre: "TechStore SRL", nombre_fantasia: "TechStore", 
+    tipo_documento: "CUIT", numero_documento: "30-71234567-8", posicion_fiscal: "responsable_inscripto",
+    direccion: "San Martín 567", ciudad: "Rosario", provincia: "Santa Fe", codigo_postal: "2000",
+    zona: "Microcentro", telefono: "0341-4567890", celular: "341-5557890", email: "ventas@techstore.com",
+    categoria: "mayorista", vendedor_id: 2, cobrador_id: 1, lista_precios_id: 2, descuento_default: 10,
+    moneda_cuenta_corriente: "USD", termino_pago_id: 2, activo: true, es_confidencial: false,
+    sucursal_origen: "Puerto Norte", fecha_alta: "2022-06-20", saldo_cuenta_corriente: 1500, total_facturado: 2850000
+  },
+  { 
+    id: 3, codigo: "C015519", nombre: "Juan Carlos Méndez", nombre_fantasia: "", 
+    tipo_documento: "DNI", numero_documento: "28765432", posicion_fiscal: "monotributista",
+    direccion: "Córdoba 890", ciudad: "Rosario", provincia: "Santa Fe", codigo_postal: "2000",
+    zona: "Centro", telefono: "", celular: "341-5559999", email: "jcmendez@gmail.com",
+    categoria: "mercadolibre", vendedor_id: 1, cobrador_id: null, lista_precios_id: 1, descuento_default: 5,
+    moneda_cuenta_corriente: "ARS", termino_pago_id: 1, activo: true, es_confidencial: false,
+    sucursal_origen: "Puerto Norte", fecha_alta: "2024-01-10", saldo_cuenta_corriente: 45000, total_facturado: 320000
+  },
+]
+
+const mockNotasVenta: NotaVenta[] = [
+  {
+    id: 1, numero: "NV X 10000-00010735", cliente_id: 1, cliente_nombre: "Alejandra Gallo", cliente_codigo: "C015517",
+    vendedor_id: 1, vendedor_nombre: "Max Solina", fecha: "2024-01-20T10:30:00", estado: "a_facturar",
+    moneda: "ARS", tipo_cotizacion: "blue", cotizacion: 1150, lista_precios_id: 1, termino_pago_id: 1,
+    termino_pago_nombre: "Contado Efectivo", deposito: "Puerto Norte", tipo_venta: "inmediata",
+    lineas: [
+      { id: 1, producto_id: 1, producto_nombre: "iPhone 15 Pro Max 256GB", producto_sku: "IPH15PM256", cantidad: 1, precio_unitario: 1850000, descuento: 0, subtotal: 1850000, fecha_entrega: "2024-01-20" }
+    ],
+    subtotal: 1850000, descuento_global: 0, impuestos: 388500, total: 2238500, sucursal: "Puerto Norte", punto_venta: "10000"
+  },
+  {
+    id: 2, numero: "NV X 10000-00010736", cliente_id: 2, cliente_nombre: "TechStore SRL", cliente_codigo: "C015518",
+    vendedor_id: 2, vendedor_nombre: "Laura García", fecha: "2024-01-20T14:15:00", estado: "borrador",
+    moneda: "USD", tipo_cotizacion: "blue", cotizacion: 1150, lista_precios_id: 3, termino_pago_id: 2,
+    termino_pago_nombre: "Cuenta Corriente 30 días", deposito: "Puerto Norte", tipo_venta: "pedido",
+    lineas: [
+      { id: 1, producto_id: 2, producto_nombre: "Samsung Galaxy S24 Ultra", producto_sku: "SGS24U", cantidad: 5, precio_unitario: 1200, descuento: 10, subtotal: 5400, fecha_entrega: "2024-01-25" },
+      { id: 2, producto_id: 3, producto_nombre: "Funda Silicona Galaxy S24", producto_sku: "FUNDGS24", cantidad: 10, precio_unitario: 15, descuento: 0, subtotal: 150, fecha_entrega: "2024-01-25" }
+    ],
+    subtotal: 5550, descuento_global: 5, impuestos: 1108.73, total: 6381.23, sucursal: "Puerto Norte", punto_venta: "10000"
+  },
+  {
+    id: 3, numero: "NV X 10000-00010734", cliente_id: 3, cliente_nombre: "Juan Carlos Méndez", cliente_codigo: "C015519",
+    vendedor_id: 1, vendedor_nombre: "Max Solina", fecha: "2024-01-19T16:45:00", estado: "finalizada",
+    moneda: "ARS", tipo_cotizacion: "blue", cotizacion: 1145, lista_precios_id: 1, termino_pago_id: 1,
+    termino_pago_nombre: "Contado Efectivo", deposito: "Puerto Norte", tipo_venta: "inmediata",
+    lineas: [
+      { id: 1, producto_id: 4, producto_nombre: "AirPods Pro 2", producto_sku: "APP2", cantidad: 1, precio_unitario: 450000, descuento: 5, subtotal: 427500, fecha_entrega: "2024-01-19" }
+    ],
+    subtotal: 427500, descuento_global: 0, impuestos: 89775, total: 517275, sucursal: "Puerto Norte", punto_venta: "10000"
+  },
+]
+
+const mockOrdenesEntrega: OrdenEntrega[] = [
+  {
+    id: 1, numero: "OE X 10000-00011502", nota_venta_id: 1, nota_venta_numero: "NV X 10000-00010735",
+    cliente_id: 1, cliente_nombre: "Alejandra Gallo", estado: "disponible",
+    fecha_creacion: "2024-01-20T10:35:00", fecha_entrega: "2024-01-20", domicilio_envio: "Av. Rivadavia 1234, Rosario",
+    deposito: "Puerto Norte", sucursal: "Puerto Norte", remito_numero: null,
+    productos: [
+      { producto_id: 1, producto_nombre: "iPhone 15 Pro Max 256GB", cantidad: 1, reserva: 1, estado: "confirmado" }
+    ]
+  },
+]
+
+const mockRemitos: Remito[] = [
+  {
+    id: 1, numero: "RE R 10000-00011196", orden_entrega_id: 2, orden_entrega_numero: "OE X 10000-00011500",
+    cliente_id: 3, cliente_nombre: "Juan Carlos Méndez", estado: "aprobado",
+    fecha: "2024-01-19T17:00:00", fecha_entrega: "2024-01-19", domicilio_envio: "Córdoba 890, Rosario",
+    transporte: "Retira en local", chofer: "", factura_numero: "FC C 10000-00012375",
+    nota_venta_numero: "NV X 10000-00010734", sucursal: "Puerto Norte", deposito: "Puerto Norte",
+    peso_kg: 0.5, peso_neto_kg: 0.3, bultos: 1, valor_declarado: 517275, control_factura: "facturado"
+  },
+]
+
+const mockFacturas: Factura[] = [
+  {
+    id: 1, numero: "FC C 10000-00012375", tipo: "C", nota_venta_id: 3, nota_venta_numero: "NV X 10000-00010734",
+    cliente_id: 3, cliente_nombre: "Juan Carlos Méndez", cliente_documento: "DNI 28765432",
+    estado: "conciliada", fecha: "2024-01-19T17:15:00", vendedor_nombre: "Max Solina",
+    domicilio_facturacion: "Córdoba 890, Rosario", moneda: "ARS", tipo_cotizacion: "blue", cotizacion: 1145,
+    termino_pago: "Contado Efectivo", condicion_pago: "Contado", fecha_vencimiento: "2024-01-19",
+    subtotal: 427500, descuento: 0, impuestos: 89775, total: 517275, saldo: 0,
+    sucursal: "Puerto Norte",
+    lineas: [
+      { producto_nombre: "AirPods Pro 2", descripcion: "", cantidad: 1, precio_unitario: 450000, descuento: 5, subtotal: 427500 }
+    ],
+    vencimientos: [
+      { descripcion: "Contado", fecha: "2024-01-19", total: 517275 }
+    ]
+  },
+  {
+    id: 2, numero: "FC C 20000-00023950", tipo: "C", nota_venta_id: 1, nota_venta_numero: "NV X 20000-00023950",
+    cliente_id: 1, cliente_nombre: "Alejandra Gallo", cliente_documento: "DNI 32456789",
+    estado: "abierta", fecha: "2024-03-08T10:00:00", vendedor_nombre: "Max Solina",
+    domicilio_facturacion: "Av. Libertador 1234, CABA", moneda: "ARS", tipo_cotizacion: "blue", cotizacion: 1145,
+    termino_pago: "Contado", condicion_pago: "Contado", fecha_vencimiento: "2024-03-08",
+    subtotal: 14462.81, descuento: 0, impuestos: 3037.19, total: 17500, saldo: 17500,
+    sucursal: "Puerto Norte",
+    lineas: [
+      { producto_nombre: "iPhone 15 Pro Max", descripcion: "", cantidad: 1, precio_unitario: 14462.81, descuento: 0, subtotal: 14462.81 }
+    ],
+    vencimientos: [
+      { descripcion: "Contado", fecha: "2024-03-08", total: 17500 }
+    ]
+  },
+  {
+    id: 3, numero: "FC C 20000-00029837", tipo: "C", nota_venta_id: 1, nota_venta_numero: "NV X 20000-00029111",
+    cliente_id: 1, cliente_nombre: "Alejandra Gallo", cliente_documento: "DNI 32456789",
+    estado: "abierta", fecha: "2024-09-12T14:30:00", vendedor_nombre: "Max Solina",
+    domicilio_facturacion: "Av. Libertador 1234, CABA", moneda: "USD", tipo_cotizacion: "blue", cotizacion: 1145,
+    termino_pago: "Contado", condicion_pago: "Contado", fecha_vencimiento: "2024-09-12",
+    subtotal: 0.83, descuento: 0, impuestos: 0.17, total: 1, saldo: 1,
+    sucursal: "Puerto Norte",
+    lineas: [
+      { producto_nombre: "Servicio Tech", descripcion: "", cantidad: 1, precio_unitario: 0.83, descuento: 0, subtotal: 0.83 }
+    ],
+    vencimientos: [
+      { descripcion: "Contado", fecha: "2024-09-12", total: 1 }
+    ]
+  },
+  {
+    id: 4, numero: "FC C 20000-00029808", tipo: "C", nota_venta_id: 1, nota_venta_numero: "NV X 20000-00029111",
+    cliente_id: 1, cliente_nombre: "Alejandra Gallo", cliente_documento: "DNI 32456789",
+    estado: "abierta", fecha: "2024-09-12T14:35:00", vendedor_nombre: "Max Solina",
+    domicilio_facturacion: "Av. Libertador 1234, CABA", moneda: "USD", tipo_cotizacion: "blue", cotizacion: 1145,
+    termino_pago: "Contado", condicion_pago: "Contado", fecha_vencimiento: "2024-09-12",
+    subtotal: 0.83, descuento: 0, impuestos: 0.17, total: 1, saldo: 1,
+    sucursal: "Puerto Norte",
+    lineas: [
+      { producto_nombre: "Servicio Tech", descripcion: "", cantidad: 1, precio_unitario: 0.83, descuento: 0, subtotal: 0.83 }
+    ],
+    vencimientos: [
+      { descripcion: "Contado", fecha: "2024-09-12", total: 1 }
+    ]
+  },
+  {
+    id: 5, numero: "FC C 20000-00038235", tipo: "C", nota_venta_id: 1, nota_venta_numero: "NV X 20000-00038791",
+    cliente_id: 1, cliente_nombre: "Alejandra Gallo", cliente_documento: "DNI 32456789",
+    estado: "abierta", fecha: "2025-06-02T11:00:00", vendedor_nombre: "Max Solina",
+    domicilio_facturacion: "Av. Libertador 1234, CABA", moneda: "ARS", tipo_cotizacion: "blue", cotizacion: 1145,
+    termino_pago: "Contado", condicion_pago: "Contado", fecha_vencimiento: "2025-06-02",
+    subtotal: 30247.93, descuento: 0, impuestos: 6352.07, total: 36600, saldo: 36600,
+    sucursal: "Puerto Norte",
+    lineas: [
+      { producto_nombre: "MacBook Air M3", descripcion: "", cantidad: 1, precio_unitario: 30247.93, descuento: 0, subtotal: 30247.93 }
+    ],
+    vencimientos: [
+      { descripcion: "Contado", fecha: "2025-06-02", total: 36600 }
+    ]
+  },
+]
+
+const mockRecibos: Recibo[] = [
+  {
+    id: 1, numero: "RC X Norte-00011734", cliente_id: 3, cliente_nombre: "Juan Carlos Méndez",
+    estado: "publicado", fecha: "2024-01-19T17:20:00", importe: 517275, importe_no_conciliado: 0,
+    moneda: "ARS", sucursal: "Puerto Norte", caja: "Caja Principal", cobrador_nombre: "Max Solina",
+    nota_venta_numero: "NV X 10000-00010734", concepto: "Cobro de venta",
+    pagos: [
+      { forma_pago: "Efectivo", importe: 517275, moneda: "ARS" }
+    ]
+  },
+  {
+    id: 2, numero: "RC X Norte-00023456", cliente_id: 1, cliente_nombre: "Alejandra Gallo",
+    estado: "publicado", fecha: "2024-03-15T10:00:00", importe: 10000, importe_no_conciliado: 10000,
+    moneda: "ARS", sucursal: "Puerto Norte", caja: "Caja Principal", cobrador_nombre: "Max Solina",
+    nota_venta_numero: null, concepto: "Seña de pedido",
+    pagos: [
+      { forma_pago: "Transferencia", importe: 10000, moneda: "ARS" }
+    ]
+  },
+  {
+    id: 3, numero: "RC X Norte-00029555", cliente_id: 1, cliente_nombre: "Alejandra Gallo",
+    estado: "publicado", fecha: "2024-09-20T15:30:00", importe: 25000, importe_no_conciliado: 25000,
+    moneda: "ARS", sucursal: "Puerto Norte", caja: "Caja Principal", cobrador_nombre: "Max Solina",
+    nota_venta_numero: null, concepto: "Pago a cuenta",
+    pagos: [
+      { forma_pago: "Efectivo", importe: 25000, moneda: "ARS" }
+    ]
+  },
+]
+
+const mockAjustes: AjusteCliente[] = [
+  {
+    id: 1, numero: "AJ X 10000-00000123", cliente_id: 2, cliente_nombre: "TechStore SRL",
+    estado: "publicado", fecha: "2024-01-15", concepto: "Bonificación especial",
+    moneda: "USD", nota_venta_numero: null, sucursal: "Puerto Norte",
+    lineas: [
+      { descripcion: "Bonificación por volumen de compras Q4 2023", fecha_vencimiento: "2024-01-15", importe: -500 }
+    ],
+    total: -500
+  },
+]
+
+const mockMovimientosCC: MovimientoCuentaCorriente[] = [
+  // Cliente 3 - Juan Carlos Méndez: Factura pagada
+  {
+    id: 1, cliente_id: 3, fecha: "2024-01-19T17:15:00", tipo: "debito",
+    concepto: "Factura de venta", documento_tipo: "factura", documento_numero: "FC C 10000-00012375",
+    documento_id: 1, moneda: "ARS", importe: 517275, saldo_posterior: 517275
+  },
+  {
+    id: 2, cliente_id: 3, fecha: "2024-01-19T17:20:00", tipo: "credito",
+    concepto: "Pago recibido", documento_tipo: "recibo", documento_numero: "RC X Norte-00011734",
+    documento_id: 1, moneda: "ARS", importe: 517275, saldo_posterior: 0
+  },
+  // Cliente 2 - TechStore: Saldo pendiente USD
+  {
+    id: 3, cliente_id: 2, fecha: "2024-01-10T10:00:00", tipo: "debito",
+    concepto: "Factura de venta", documento_tipo: "factura", documento_numero: "FC A 10000-00012370",
+    documento_id: 2, moneda: "USD", importe: 2000, saldo_posterior: 2000
+  },
+  {
+    id: 4, cliente_id: 2, fecha: "2024-01-15T09:00:00", tipo: "credito",
+    concepto: "Ajuste - Bonificación especial", documento_tipo: "ajuste", documento_numero: "AJ X 10000-00000123",
+    documento_id: 1, moneda: "USD", importe: 500, saldo_posterior: 1500
+  },
+  // Cliente 3 - Deuda actual de 45000
+  {
+    id: 5, cliente_id: 3, fecha: "2024-01-25T11:00:00", tipo: "debito",
+    concepto: "Factura de venta", documento_tipo: "factura", documento_numero: "FC C 10000-00012380",
+    documento_id: 3, moneda: "ARS", importe: 45000, saldo_posterior: 45000
+  },
+]
+
+// Componente principal
+export default function ModuloVentas() {
+  // Navigation state
+  const [activeSection, setActiveSection] = useState<string>("clientes")
+  const [activeView, setActiveView] = useState<string>("listado")
+  const [menuExpandido, setMenuExpandido] = useState<{ [key: string]: boolean }>({
+    clientes: true,
+    ventas: true,
+    logistica: true,
+    comprobantes: true,
+    cobranzas: true
+  })
+  
+  // Data states
+  const [clientes, setClientes] = useState<ClienteVenta[]>(mockClientesVenta)
+  const [notasVenta, setNotasVenta] = useState<NotaVenta[]>(mockNotasVenta)
+  const [ordenesEntrega, setOrdenesEntrega] = useState<OrdenEntrega[]>(mockOrdenesEntrega)
+  const [remitos, setRemitos] = useState<Remito[]>(mockRemitos)
+  const [facturas, setFacturas] = useState<Factura[]>(mockFacturas)
+  const [recibos, setRecibos] = useState<Recibo[]>(mockRecibos)
+  const [ajustes, setAjustes] = useState<AjusteCliente[]>(mockAjustes)
+  const [movimientosCC, setMovimientosCC] = useState<MovimientoCuentaCorriente[]>(mockMovimientosCC)
+  
+  // UI states
+  const [searchQuery, setSearchQuery] = useState("")
+  const [showModal, setShowModal] = useState(false)
+  const [modalType, setModalType] = useState<string>("")
+  const [editingItem, setEditingItem] = useState<any>(null)
+  const [selectedCliente, setSelectedCliente] = useState<ClienteVenta | null>(null)
+  const [selectedNV, setSelectedNV] = useState<NotaVenta | null>(null)
+  const [selectedOE, setSelectedOE] = useState<OrdenEntrega | null>(null)
+  const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null)
+  const [selectedRemito, setSelectedRemito] = useState<Remito | null>(null)
+  const [selectedRecibo, setSelectedRecibo] = useState<Recibo | null>(null)
+  const [creandoCliente, setCreandoCliente] = useState(false)
+  const [editandoCliente, setEditandoCliente] = useState(false)
+  const [creandoNV, setCreandoNV] = useState(false)
+  const [editingNVId, setEditingNVId] = useState<number | null>(null)
+  const [creandoOE, setCreandoOE] = useState(false)
+  const [creandoFactura, setCreandoFactura] = useState(false)
+  const [facturaPrevisualizando, setFacturaPrevisualizando] = useState(false)
+  const [creandoRecibo, setCreandoRecibo] = useState(false)
+  const [editandoRecibo, setEditandoRecibo] = useState(false)
+  const [showCancelarReciboModal, setShowCancelarReciboModal] = useState(false)
+  const [cancelarReciboMotivo, setCancelarReciboMotivo] = useState("")
+  const [cancelarReciboDescripcion, setCancelarReciboDescripcion] = useState("")
+  
+  // Estados para cancelar factura
+  const [showCancelarFacturaModal, setShowCancelarFacturaModal] = useState(false)
+  const [cancelarFacturaMotivo, setCancelarFacturaMotivo] = useState("")
+  const [cancelarFacturaDescripcion, setCancelarFacturaDescripcion] = useState("")
+  const [activeTab, setActiveTab] = useState<string>("general")
+  const [clientePanel, setClientePanel] = useState<"ficha" | "historial" | "facturado" | "ot" | "ventas" | "reingresos">("ficha")
+  const [popupDocumento, setPopupDocumento] = useState<{tipo: "factura" | "nv" | "recibo" | null; codigo: string}>({tipo: null, codigo: ""})
+  const [selectedOTData, setSelectedOTData] = useState<{nro: string; fecha: string; equipo: string; imei: string; problema: string; estado: string; tecnico: string; cliente: ClienteVenta | null} | null>(null)
+  const [conciliacionClienteId, setConciliacionClienteId] = useState<number | null>(null)
+  const [conciliacionMetodo, setConciliacionMetodo] = useState<"manual" | "automatico" | "mixto">("mixto")
+  const [conciliacionSeleccionDebitos, setConciliacionSeleccionDebitos] = useState<{id: number; tipo: "factura" | "nd"; montoAplicar: number}[]>([])
+  const [conciliacionSeleccionCreditos, setConciliacionSeleccionCreditos] = useState<{id: number; tipo: "recibo" | "nc"; montoAplicar: number}[]>([])
+  const [conciliacionHistorial, setConciliacionHistorial] = useState<{
+    id: number
+    fecha: string
+    cliente_id: number
+    cliente_nombre: string
+    aplicaciones: {
+      debito_tipo: string
+      debito_numero: string
+      credito_tipo: string
+      credito_numero: string
+      monto: number
+    }[]
+    total_conciliado: number
+    usuario: string
+  }[]>([])
+  const [conciliacionTab, setConciliacionTab] = useState<"conciliar" | "historial">("conciliar")
+  const [conciliacionFiltroNV, setConciliacionFiltroNV] = useState<string>("")
+  const [conciliacionFiltroConciliado, setConciliacionFiltroConciliado] = useState<"no" | "si" | "todos">("no")
+  const [conciliacionMostrarTodosDebitos, setConciliacionMostrarTodosDebitos] = useState(false)
+  const [conciliacionMostrarTodosCreditos, setConciliacionMostrarTodosCreditos] = useState(false)
+  const [conciliacionFiltroTextoDebitos, setConciliacionFiltroTextoDebitos] = useState("")
+  const [conciliacionFiltroTextoCreditos, setConciliacionFiltroTextoCreditos] = useState("")
+  
+  // Estados para formularios de creacion
+  const [oeNvId, setOeNvId] = useState<number | null>(null)
+  const [oeProductos, setOeProductos] = useState<{producto_id: number; producto_nombre: string; cantidad: number; reserva: number; estado: "pendiente" | "confirmado"}[]>([])
+  const [facturaClienteId, setFacturaClienteId] = useState<number | null>(null)
+  const [facturaListaPreciosId, setFacturaListaPreciosId] = useState<number>(1)
+  const [facturaLineas, setFacturaLineas] = useState<{producto_nombre: string; descripcion: string; cantidad: number; precio_unitario: number; descuento: number; subtotal: number; producto_id?: number}[]>([])
+  const [reciboClienteIdForm, setReciboClienteIdForm] = useState<number | null>(null)
+  const [reciboPagosForm, setReciboPagosForm] = useState<{forma_pago: string; importe: number; moneda: "ARS" | "USD"}[]>([])
+  const [reciboFacturaIdForm, setReciboFacturaIdForm] = useState<number | null>(null)
+  const [reciboMontoForm, setReciboMontoForm] = useState<number>(0)
+  const [reciboPrevisualizando, setReciboPrevisualizando] = useState(false)
+  
+  // Estados para ubicación de stock en NV
+  const [nvDepositoId, setNvDepositoId] = useState<number>(1) // Casa Central por defecto
+  const [nvUbicacionId, setNvUbicacionId] = useState<number>(1) // Stock por defecto
+  const [nvPrevisualizando, setNvPrevisualizando] = useState(false) // Para mostrar vista previa antes de confirmar
+  
+  // Estados para modal de selección de series/IMEI
+  const [showSerieModal, setShowSerieModal] = useState(false)
+  const [serieModalLineaIndex, setSerieModalLineaIndex] = useState<number | null>(null)
+  const [seriesSeleccionadasTemp, setSeriesSeleccionadasTemp] = useState<number[]>([])
+  
+  // Estados para búsqueda de productos en líneas
+  const [productoSearchIndex, setProductoSearchIndex] = useState<number | null>(null)
+  const [productoSearchText, setProductoSearchText] = useState("")
+  
+  // Estados para búsqueda de productos en facturas
+  const [facturaProductoSearchIndex, setFacturaProductoSearchIndex] = useState<number | null>(null)
+  const [facturaProductoSearchText, setFacturaProductoSearchText] = useState("")
+  
+  // Estados para Toma de Equipo en Parte de Pago
+  const [tomaEquipoPaso, setTomaEquipoPaso] = useState(1)
+  const [tomaEquipoClienteId, setTomaEquipoClienteId] = useState<number | null>(null)
+  const [tomaEquipoModeloId, setTomaEquipoModeloId] = useState<number | null>(null)
+  const [tomaEquipoPrecioBase, setTomaEquipoPrecioBase] = useState(0)
+  const [tomaEquipoPrecioFinal, setTomaEquipoPrecioFinal] = useState(0)
+  const [tomaEquipoComponentes, setTomaEquipoComponentes] = useState<{id: number; nombre: string; estado: string; descuento: number}[]>([])
+  const [tomaEquipoCreando, setTomaEquipoCreando] = useState(false)
+  const [tomasEquipo, setTomasEquipo] = useState<{
+    id: number
+    numero: string
+    fecha: string
+    cliente_id: number
+    cliente_nombre: string
+    modelo_equipo: string
+    precio_base: number
+    descuentos: number
+    precio_final: number
+    estado: "borrador" | "confirmado" | "cancelado"
+    recepcion_numero?: string
+    nota_credito_numero?: string
+    evaluacion: {componente: string; estado: string; descuento: number}[]
+  }[]>([
+    {
+      id: 1,
+      numero: "TE-00001",
+      fecha: "2026-03-10T14:30:00",
+      cliente_id: 1,
+      cliente_nombre: "Alejandra Gallo",
+      modelo_equipo: "iPhone 13 Pro 128GB",
+      precio_base: 350000,
+      descuentos: 45000,
+      precio_final: 305000,
+      estado: "confirmado",
+      recepcion_numero: "REC-00125",
+      nota_credito_numero: "NC-A-00045",
+      evaluacion: [
+        { componente: "Pantalla", estado: "Buena", descuento: 0 },
+        { componente: "Batería", estado: "Desgastada", descuento: 25000 },
+        { componente: "Cámara", estado: "Buena", descuento: 0 },
+        { componente: "Carcasa", estado: "Rayada", descuento: 20000 },
+      ]
+    }
+  ])
+  
+  // Filters
+  const [estadoFilter, setEstadoFilter] = useState<string>("todos")
+  const [vendedorFilter, setVendedorFilter] = useState<number | null>(null)
+  const [categoriaFilter, setCategoriaFilter] = useState<string>("todos")
+
+  // Helper functions
+  const formatCurrency = (amount: number, currency: "ARS" | "USD" = "ARS") => {
+    return new Intl.NumberFormat('es-AR', { 
+      style: 'currency', 
+      currency: currency,
+      minimumFractionDigits: 2 
+    }).format(amount)
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('es-AR', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric' 
+    })
+  }
+
+  const formatDateTime = (dateString: string) => {
+    return new Date(dateString).toLocaleString('es-AR', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  const getEstadoNVColor = (estado: string) => {
+    const colors: Record<string, string> = {
+      borrador: "bg-gray-100 text-gray-700",
+      a_facturar: "bg-blue-100 text-blue-700",
+      verificacion_factura: "bg-yellow-100 text-yellow-700",
+      verificacion_oe: "bg-orange-100 text-orange-700",
+      finalizada: "bg-green-100 text-green-700",
+      cancelada: "bg-red-100 text-red-700"
+    }
+    return colors[estado] || "bg-gray-100 text-gray-700"
+  }
+
+  const getEstadoNVLabel = (estado: string) => {
+    const labels: Record<string, string> = {
+      borrador: "Borrador",
+      a_facturar: "A Facturar",
+      verificacion_factura: "Verif. Factura",
+      verificacion_oe: "Verif. OE",
+      finalizada: "Finalizada",
+      cancelada: "Cancelada"
+    }
+    return labels[estado] || estado
+  }
+
+  const getEstadoOEColor = (estado: string) => {
+    const colors: Record<string, string> = {
+      borrador: "bg-gray-100 text-gray-700",
+      esperando: "bg-yellow-100 text-yellow-700",
+      parcial: "bg-orange-100 text-orange-700",
+      disponible: "bg-blue-100 text-blue-700",
+      confirmada: "bg-green-100 text-green-700"
+    }
+    return colors[estado] || "bg-gray-100 text-gray-700"
+  }
+
+  const getEstadoOELabel = (estado: string) => {
+    const labels: Record<string, string> = {
+      borrador: "Borrador",
+      esperando: "Esperando Disponibilidad",
+      parcial: "Parcialmente Disponible",
+      disponible: "Disponible",
+      confirmada: "Confirmada"
+    }
+    return labels[estado] || estado
+  }
+
+  const getEstadoRemitoColor = (estado: string) => {
+    const colors: Record<string, string> = {
+      en_ejecucion: "bg-yellow-100 text-yellow-700",
+      aprobado: "bg-green-100 text-green-700"
+    }
+    return colors[estado] || "bg-gray-100 text-gray-700"
+  }
+
+  const getEstadoFacturaColor = (estado: string) => {
+    const colors: Record<string, string> = {
+      borrador: "bg-gray-100 text-gray-700",
+      abierta: "bg-blue-100 text-blue-700",
+      conciliada: "bg-green-100 text-green-700"
+    }
+    return colors[estado] || "bg-gray-100 text-gray-700"
+  }
+
+  const getPosicionFiscalLabel = (posicion: string) => {
+    const labels: Record<string, string> = {
+      consumidor_final: "Consumidor Final",
+      responsable_inscripto: "Responsable Inscripto",
+      monotributista: "Monotributista",
+      exento: "Exento"
+    }
+    return labels[posicion] || posicion
+  }
+
+  const getCategoriaColor = (categoria: string) => {
+    const colors: Record<string, string> = {
+      publico: "bg-gray-100 text-gray-700",
+      mercadolibre: "bg-yellow-100 text-yellow-700",
+      mayorista: "bg-purple-100 text-purple-700"
+    }
+    return colors[categoria] || "bg-gray-100 text-gray-700"
+  }
+
+  // Filtered data
+  const clientesFiltrados = useMemo(() => {
+    return clientes.filter(c => {
+      const matchSearch = searchQuery === "" || 
+        c.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.codigo.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.email.toLowerCase().includes(searchQuery.toLowerCase())
+      const matchCategoria = categoriaFilter === "todos" || c.categoria === categoriaFilter
+      return matchSearch && matchCategoria && c.activo
+    })
+  }, [clientes, searchQuery, categoriaFilter])
+
+  const notasVentaFiltradas = useMemo(() => {
+    return notasVenta.filter(nv => {
+      const matchSearch = searchQuery === "" || 
+        nv.numero.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        nv.cliente_nombre.toLowerCase().includes(searchQuery.toLowerCase())
+      const matchEstado = estadoFilter === "todos" || nv.estado === estadoFilter
+      const matchVendedor = vendedorFilter === null || nv.vendedor_id === vendedorFilter
+      return matchSearch && matchEstado && matchVendedor
+    })
+  }, [notasVenta, searchQuery, estadoFilter, vendedorFilter])
+
+  // Menu structure
+  const menuSections = [
+    {
+      id: "clientes",
+      label: "Clientes",
+      icon: Users,
+      items: [
+        { id: "listado", label: "Clientes", icon: Users },
+        { id: "conciliacion", label: "Conciliación de Deuda", icon: RefreshCw },
+        { id: "ajustes", label: "Ajustes de Cliente", icon: Edit },
+      ]
+    },
+    {
+      id: "ventas",
+      label: "Ventas",
+      icon: FileText,
+      items: [
+        { id: "notas_venta", label: "Notas de Venta", icon: FileText },
+        { id: "toma_equipo", label: "Toma de Equipo", icon: Repeat },
+      ]
+    },
+    {
+      id: "logistica",
+      label: "Logística",
+      icon: Truck,
+      items: [
+        { id: "ordenes_entrega", label: "Órdenes de Entrega", icon: Truck },
+        { id: "remitos", label: "Remitos", icon: Package },
+      ]
+    },
+    {
+      id: "comprobantes",
+      label: "Comprobantes",
+      icon: Receipt,
+      items: [
+        { id: "facturas", label: "Facturas", icon: Receipt },
+        { id: "notas_debito", label: "Notas de Débito", icon: ArrowRight },
+        { id: "notas_credito", label: "Notas de Crédito", icon: ArrowLeft },
+      ]
+    },
+    {
+      id: "cobranzas",
+      label: "Cobranzas",
+      icon: CreditCard,
+      items: [
+        { id: "recibos", label: "Recibos", icon: CreditCard },
+      ]
+    },
+  ]
+
+  // Componente de Seguimiento (tracking de cambios estilo Odoo)
+  const SeguimientoPanel = ({ 
+    seguimiento, 
+    collapsed = true 
+  }: { 
+    seguimiento: SeguimientoEntry[]
+    collapsed?: boolean
+  }) => {
+    const [isExpanded, setIsExpanded] = useState(!collapsed)
+    
+    const formatFechaRelativa = (fecha: string) => {
+      const now = new Date()
+      const date = new Date(fecha)
+      const diffMs = now.getTime() - date.getTime()
+      const diffMins = Math.floor(diffMs / 60000)
+      const diffHours = Math.floor(diffMs / 3600000)
+      const diffDays = Math.floor(diffMs / 86400000)
+      
+      if (diffMins < 1) return "hace un momento"
+      if (diffMins < 60) return `hace ${diffMins} minutos`
+      if (diffHours < 24) return `hace ${diffHours} horas`
+      if (diffDays < 7) return `hace ${diffDays} días`
+      return date.toLocaleDateString("es-AR")
+    }
+    
+    const renderEntryContent = (entry: SeguimientoEntry) => {
+      switch (entry.tipo) {
+        case "creacion":
+          return (
+            <div>
+              <span className="font-medium text-gray-900">Documento creado</span>
+              {entry.descripcion && <p className="text-gray-600 text-sm mt-1">{entry.descripcion}</p>}
+            </div>
+          )
+        case "cambio_estado":
+          return (
+            <div className="flex items-center gap-1">
+              <span className="text-gray-600">Estado:</span>
+              <span className="text-gray-900">{entry.valor_anterior}</span>
+              <ArrowRight className="w-3 h-3 text-gray-400" />
+              <span className="font-medium text-gray-900">{entry.valor_nuevo}</span>
+            </div>
+          )
+        case "cambio_campo":
+          return (
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="text-gray-600">{entry.campo}:</span>
+              {entry.valor_anterior && (
+                <>
+                  <span className="text-gray-500 line-through">{entry.valor_anterior}</span>
+                  <ArrowRight className="w-3 h-3 text-gray-400" />
+                </>
+              )}
+              <span className="font-medium text-gray-900">{entry.valor_nuevo}</span>
+            </div>
+          )
+        case "nota":
+          return (
+            <div className="bg-amber-50 border-l-2 border-amber-400 pl-3 py-1">
+              <span className="text-gray-800">{entry.descripcion}</span>
+            </div>
+          )
+        case "mensaje":
+          return (
+            <div>
+              <span className="text-gray-800">{entry.descripcion}</span>
+            </div>
+          )
+        default:
+          return <span>{entry.descripcion}</span>
+      }
+    }
+    
+    return (
+      <div className="mt-6 border-t border-gray-200 pt-4">
+        {/* Botón Ver seguimiento */}
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="w-full py-2 px-4 text-sm text-purple-700 hover:text-purple-800 border border-gray-200 rounded bg-gray-50 hover:bg-gray-100 transition-colors"
+        >
+          {isExpanded ? "Ocultar seguimiento" : "Ver seguimiento"}
+        </button>
+        
+        {isExpanded && (
+          <div className="mt-4 bg-white border border-gray-200 rounded-lg overflow-hidden">
+            {/* Lista de entradas */}
+            <div className="divide-y divide-gray-100">
+              {seguimiento.length === 0 ? (
+                <div className="p-4 text-center text-gray-500 text-sm">
+                  No hay actividad registrada
+                </div>
+              ) : (
+                seguimiento.map((entry) => (
+                  <div key={entry.id} className="flex gap-3 p-4 hover:bg-gray-50">
+                    {/* Avatar */}
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
+                        <User className="w-4 h-4 text-purple-600" />
+                      </div>
+                    </div>
+                    
+                    {/* Contenido */}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm">
+                        {renderEntryContent(entry)}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                        <span className="font-medium text-purple-700">{entry.usuario}</span>
+                        <span>·</span>
+                        <span>{formatFechaRelativa(entry.fecha)}</span>
+                        <span>·</span>
+                        <button className="hover:text-purple-700">Me gusta</button>
+                      </div>
+                    </div>
+                    
+                    {/* Acciones */}
+                    <div className="flex items-start gap-1">
+                      <button className="p-1 text-gray-400 hover:text-amber-500">
+                        <Star className="w-4 h-4" />
+                      </button>
+                      <button className="p-1 text-gray-400 hover:text-purple-600">
+                        <MessageSquare className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Render functions
+  const renderSidebar = () => (
+    <div className="w-56 bg-white border-r border-gray-200 flex flex-col h-full">
+      <div className="p-4 border-b border-gray-200">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center">
+            <DollarSign className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h2 className="font-bold text-gray-900">Ventas</h2>
+            <p className="text-xs text-gray-500">Puerto Norte</p>
+          </div>
+        </div>
+      </div>
+      
+      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+        {menuSections.map(section => (
+          <div key={section.id} className="mb-2">
+            <button
+              onClick={() => setMenuExpandido(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
+              className="w-full text-left px-2 py-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1 hover:bg-gray-50 rounded"
+            >
+              <ChevronRight className={`w-3 h-3 transition-transform ${menuExpandido[section.id] ? "rotate-90" : ""}`} />
+              <section.icon className="w-3.5 h-3.5" />
+              {section.label}
+            </button>
+            {menuExpandido[section.id] && (
+              <div className="ml-2">
+                {section.items.map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveSection(section.id)
+                      setActiveView(item.id)
+                      setSearchQuery("")
+                      setSelectedCliente(null)
+                      setSelectedNV(null)
+                      setClientePanel("ficha")
+                    }}
+                    className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-2 ${
+                      activeView === item.id 
+                        ? "bg-emerald-100 text-emerald-800 font-medium" 
+                        : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    <item.icon className="w-4 h-4" />
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </nav>
+    </div>
+  )
+
+  // Dashboard de Ventas
+  const renderDashboard = () => {
+    const totalVentasMes = notasVenta.filter(nv => nv.estado !== "cancelada").reduce((acc, nv) => acc + nv.total, 0)
+    const ventasPendientes = notasVenta.filter(nv => nv.estado === "borrador" || nv.estado === "a_facturar").length
+    const facturasPendientes = facturas.filter(f => f.estado === "abierta").length
+    const totalPorCobrar = facturas.filter(f => f.estado === "abierta").reduce((acc, f) => acc + f.saldo, 0)
+
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-emerald-900">Dashboard de Ventas</h1>
+        
+        {/* KPIs */}
+        <div className="grid grid-cols-4 gap-4">
+          <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-emerald-500">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Ventas del Mes</p>
+                <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalVentasMes)}</p>
+              </div>
+              <TrendingUp className="w-8 h-8 text-emerald-500" />
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-blue-500">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">NV Pendientes</p>
+                <p className="text-2xl font-bold text-gray-900">{ventasPendientes}</p>
+              </div>
+              <FileText className="w-8 h-8 text-blue-500" />
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-orange-500">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Facturas por Cobrar</p>
+                <p className="text-2xl font-bold text-gray-900">{facturasPendientes}</p>
+              </div>
+              <Receipt className="w-8 h-8 text-orange-500" />
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-red-500">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Total por Cobrar</p>
+                <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalPorCobrar)}</p>
+              </div>
+              <DollarSign className="w-8 h-8 text-red-500" />
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="grid grid-cols-2 gap-6">
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <h3 className="font-semibold text-gray-900 mb-4">Últimas Notas de Venta</h3>
+            <div className="space-y-3">
+              {notasVenta.slice(0, 5).map(nv => (
+                <div key={nv.id} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-md">
+                  <div>
+                    <p className="font-medium text-sm">{nv.numero}</p>
+                    <p className="text-xs text-gray-500">{nv.cliente_nombre}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-medium text-sm">{formatCurrency(nv.total, nv.moneda)}</p>
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${getEstadoNVColor(nv.estado)}`}>
+                      {getEstadoNVLabel(nv.estado)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <h3 className="font-semibold text-gray-900 mb-4">Facturas Pendientes de Cobro</h3>
+            <div className="space-y-3">
+              {facturas.filter(f => f.estado === "abierta").slice(0, 5).map(f => (
+                <div key={f.id} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-md">
+                  <div>
+                    <p className="font-medium text-sm">{f.numero}</p>
+                    <p className="text-xs text-gray-500">{f.cliente_nombre}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-medium text-sm text-red-600">{formatCurrency(f.saldo, f.moneda)}</p>
+                    <p className="text-xs text-gray-500">Vence: {formatDate(f.vencimientos[0]?.fecha || f.fecha)}</p>
+                  </div>
+                </div>
+              ))}
+              {facturas.filter(f => f.estado === "abierta").length === 0 && (
+                <p className="text-sm text-gray-500 text-center py-4">No hay facturas pendientes</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Ficha de Orden de Trabajo (vista completa)
+  const renderFichaOT = () => {
+    if (!selectedOTData) return null
+    
+    return (
+      <div>
+        {/* Header con breadcrumb */}
+        <div className="text-sm text-gray-500 mb-2">
+          Clientes / {selectedOTData.cliente?.nombre} / Órdenes de Trabajo / <span className="text-gray-700">{selectedOTData.nro}</span>
+        </div>
+        <div className="flex items-center gap-4 mb-6">
+          <button 
+            onClick={() => setSelectedOTData(null)}
+            className="text-gray-500 hover:text-gray-700"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold text-emerald-900">{selectedOTData.nro}</h1>
+            <p className="text-sm text-gray-500">{selectedOTData.fecha} | {selectedOTData.cliente?.nombre}</p>
+          </div>
+          <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
+            selectedOTData.estado === "Finalizada" ? "bg-green-100 text-green-700" : 
+            selectedOTData.estado === "Entregada" ? "bg-blue-100 text-blue-700" : 
+            "bg-amber-100 text-amber-700"
+          }`}>
+            {selectedOTData.estado}
+          </span>
+        </div>
+
+        {/* Barra de acciones */}
+        <div className="bg-gray-800 rounded-t-lg px-4 py-3 flex items-center justify-between mb-0">
+          <div className="flex items-center gap-2">
+            <button className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1">
+              <Download className="w-4 h-4" /> Descargar PDF
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <button className="px-3 py-1.5 text-sm border border-gray-300 text-white rounded-md hover:bg-gray-700 flex items-center gap-1">
+              <Edit className="w-4 h-4" /> Editar
+            </button>
+          </div>
+        </div>
+
+        {/* Contenido */}
+        <div className="bg-white rounded-b-lg shadow-sm p-6">
+          <div className="grid grid-cols-2 gap-8 mb-6">
+            {/* Datos del Equipo */}
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-4">Datos del Equipo</h3>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Equipo:</span>
+                  <span className="font-medium">{selectedOTData.equipo}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">IMEI:</span>
+                  <span className="font-medium font-mono">{selectedOTData.imei}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Problema:</span>
+                  <span className="font-medium">{selectedOTData.problema}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Técnico:</span>
+                  <span className="font-medium">{selectedOTData.tecnico}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Datos del Cliente */}
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-4">Cliente</h3>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Nombre:</span>
+                  <span className="font-medium">{selectedOTData.cliente?.nombre}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Documento:</span>
+                  <span className="font-medium">{selectedOTData.cliente?.tipo_documento}: {selectedOTData.cliente?.numero_documento}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Teléfono:</span>
+                  <span className="font-medium text-emerald-600">{selectedOTData.cliente?.telefono || selectedOTData.cliente?.celular}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Email:</span>
+                  <span className="font-medium text-emerald-600">{selectedOTData.cliente?.email}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Seguimiento - simulado */}
+          <SeguimientoPanel seguimiento={[
+            { id: 1, fecha: new Date().toISOString(), usuario: "Max Solina", tipo: "creacion" as const, descripcion: "Orden de trabajo creada" },
+            { id: 2, fecha: new Date().toISOString(), usuario: selectedOTData.tecnico, tipo: "cambio_estado" as const, valor_anterior: "Pendiente", valor_nuevo: selectedOTData.estado }
+          ]} />
+        </div>
+      </div>
+    )
+  }
+
+  // Listado de Clientes
+  const renderClientes = () => {
+    if (selectedOTData) {
+      return renderFichaOT()
+    }
+    
+    if (selectedCliente) {
+      return renderFichaCliente()
+    }
+
+    if (creandoCliente) {
+      return renderFormularioCliente()
+    }
+
+    return (
+      <div>
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-2xl font-bold text-emerald-900">Clientes</h1>
+          <button 
+            onClick={() => { setEditingItem(null); setCreandoCliente(true) }}
+            className="bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" /> Nuevo Cliente
+          </button>
+        </div>
+
+        {/* Filters */}
+        <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+          <div className="flex gap-4 items-center">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar por código, nombre o email..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <select
+              value={categoriaFilter}
+              onChange={(e) => setCategoriaFilter(e.target.value)}
+              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="todos">Todas las categorías</option>
+              <option value="publico">Público</option>
+              <option value="mercadolibre">Mercadolibre</option>
+              <option value="mayorista">Mayorista</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-gray-50 border-b-2 border-gray-200">
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Código</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Nombre</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Documento</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Ciudad</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Categoría</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Email</th>
+                <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Saldo CC</th>
+              </tr>
+            </thead>
+            <tbody>
+              {clientesFiltrados.map(cliente => (
+                <tr 
+                  key={cliente.id} 
+                  className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                  onClick={() => { setSelectedCliente(cliente); setClientePanel("ficha") }}
+                >
+                  <td className="py-3 px-4 font-mono text-sm text-emerald-700">{cliente.codigo}</td>
+                  <td className="py-3 px-4">
+                    <div>
+                      <p className="font-medium text-gray-900">{cliente.nombre}</p>
+                      {cliente.nombre_fantasia && (
+                        <p className="text-xs text-gray-500">{cliente.nombre_fantasia}</p>
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-600">
+                    {cliente.tipo_documento} {cliente.numero_documento}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{cliente.ciudad}</td>
+                  <td className="py-3 px-4">
+                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getCategoriaColor(cliente.categoria)}`}>
+                      {cliente.categoria === "publico" ? "Público" : cliente.categoria === "mercadolibre" ? "Mercadolibre" : "Mayorista"}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{cliente.email}</td>
+                  <td className="py-3 px-4 text-right">
+                    <span className={`font-medium ${cliente.saldo_cuenta_corriente > 0 ? "text-red-600" : "text-green-600"}`}>
+                      {formatCurrency(cliente.saldo_cuenta_corriente, cliente.moneda_cuenta_corriente)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {clientesFiltrados.length === 0 && (
+            <div className="text-center py-12 text-gray-500">
+              No se encontraron clientes
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // Formulario de Crear/Editar Cliente (página completa)
+  const renderFormularioCliente = () => {
+    return (
+      <div>
+        {/* Header con breadcrumb */}
+        <div className="text-sm text-gray-500 mb-2">
+          Clientes / <span className="text-gray-700">{editingItem ? "Editar Cliente" : "Nuevo Cliente"}</span>
+        </div>
+        <div className="flex items-center gap-4 mb-6">
+          <button 
+            onClick={() => { setCreandoCliente(false); setEditingItem(null) }}
+            className="text-gray-500 hover:text-gray-700"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold text-emerald-900">{editingItem ? "Editar Cliente" : "Nuevo Cliente"}</h1>
+          </div>
+        </div>
+
+        {/* Formulario */}
+        <div className="bg-white rounded-lg shadow-sm">
+          <form onSubmit={(e) => {
+            e.preventDefault()
+            const formData = new FormData(e.currentTarget)
+            const newCliente: ClienteVenta = {
+              id: editingItem?.id || clientes.length + 1,
+              codigo: editingItem?.codigo || `C0${15520 + clientes.length}`,
+              nombre: formData.get("nombre") as string,
+              nombre_fantasia: formData.get("nombre_fantasia") as string || "",
+              tipo_documento: formData.get("tipo_documento") as "DNI" | "CUIT" | "CUIL",
+              numero_documento: formData.get("numero_documento") as string,
+              posicion_fiscal: formData.get("posicion_fiscal") as ClienteVenta["posicion_fiscal"],
+              direccion: formData.get("direccion") as string,
+              ciudad: formData.get("ciudad") as string || "Rosario",
+              provincia: formData.get("provincia") as string || "Santa Fe",
+              codigo_postal: formData.get("codigo_postal") as string || "",
+              zona: formData.get("zona") as string || "",
+              telefono: formData.get("telefono") as string || "",
+              celular: formData.get("celular") as string || "",
+              email: formData.get("email") as string || "",
+              categoria: formData.get("categoria") as ClienteVenta["categoria"],
+              vendedor_id: parseInt(formData.get("vendedor_id") as string) || null,
+              cobrador_id: null,
+              lista_precios_id: parseInt(formData.get("lista_precios_id") as string) || 1,
+              descuento_default: parseFloat(formData.get("descuento_default") as string) || 0,
+              moneda_cuenta_corriente: formData.get("moneda_cuenta_corriente") as "ARS" | "USD",
+              termino_pago_id: parseInt(formData.get("termino_pago_id") as string) || 1,
+              activo: true,
+              es_confidencial: false,
+              sucursal_origen: "Puerto Norte",
+              fecha_alta: editingItem?.fecha_alta || new Date().toISOString().split('T')[0],
+              saldo_cuenta_corriente: editingItem?.saldo_cuenta_corriente || 0,
+              total_facturado: editingItem?.total_facturado || 0,
+              seguimiento: editingItem?.seguimiento || [{
+                id: Date.now(),
+                fecha: new Date().toISOString(),
+                usuario: "Max Solina",
+                tipo: "creacion" as const,
+                descripcion: "Cliente creado"
+              }]
+            }
+            if (editingItem) {
+              setClientes(prev => prev.map(c => c.id === editingItem.id ? newCliente : c))
+              setSelectedCliente(newCliente)
+            } else {
+              setClientes(prev => [...prev, newCliente])
+              setSelectedCliente(newCliente)
+            }
+            setCreandoCliente(false)
+            setEditingItem(null)
+          }} className="p-4">
+            {/* Sección Identificación */}
+            <div className="mb-4">
+              <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5" /> Identificación
+              </h3>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Nombre / Razón Social *</label>
+                  <input type="text" name="nombre" defaultValue={editingItem?.nombre || ""} required
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Nombre Fantasía</label>
+                  <input type="text" name="nombre_fantasia" defaultValue={editingItem?.nombre_fantasia || ""}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Tipo Documento *</label>
+                  <select name="tipo_documento" defaultValue={editingItem?.tipo_documento || "DNI"}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                    <option value="DNI">DNI</option>
+                    <option value="CUIT">CUIT</option>
+                    <option value="CUIL">CUIL</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Número Documento *</label>
+                  <input type="text" name="numero_documento" defaultValue={editingItem?.numero_documento || ""} required
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Posición Fiscal *</label>
+                  <select name="posicion_fiscal" defaultValue={editingItem?.posicion_fiscal || "consumidor_final"}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                    <option value="consumidor_final">Consumidor Final</option>
+                    <option value="responsable_inscripto">Responsable Inscripto</option>
+                    <option value="monotributista">Monotributista</option>
+                    <option value="exento">Exento</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Sección Dirección */}
+            <div className="mb-4">
+              <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5" /> Dirección
+              </h3>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Dirección</label>
+                  <input type="text" name="direccion" defaultValue={editingItem?.direccion || ""}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Ciudad</label>
+                  <input type="text" name="ciudad" defaultValue={editingItem?.ciudad || "Rosario"}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Provincia</label>
+                  <input type="text" name="provincia" defaultValue={editingItem?.provincia || "Santa Fe"}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Código Postal</label>
+                  <input type="text" name="codigo_postal" defaultValue={editingItem?.codigo_postal || ""}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Zona</label>
+                  <input type="text" name="zona" defaultValue={editingItem?.zona || ""}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                </div>
+              </div>
+            </div>
+
+            {/* Sección Contacto */}
+            <div className="mb-4">
+              <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5" /> Contacto
+              </h3>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Teléfono</label>
+                  <input type="text" name="telefono" defaultValue={editingItem?.telefono || ""}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Celular</label>
+                  <input type="text" name="celular" defaultValue={editingItem?.celular || ""}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Email</label>
+                  <input type="email" name="email" defaultValue={editingItem?.email || ""}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                </div>
+              </div>
+            </div>
+
+            {/* Sección Comercial */}
+            <div className="mb-4">
+              <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
+                <DollarSign className="w-3.5 h-3.5" /> Información Comercial
+              </h3>
+              <div className="grid grid-cols-3 gap-3 mb-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Categoría *</label>
+                  <select name="categoria" defaultValue={editingItem?.categoria || "publico"}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                    <option value="publico">Público General</option>
+                    <option value="mercadolibre">MercadoLibre</option>
+                    <option value="mayorista">Mayorista</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Vendedor</label>
+                  <select name="vendedor_id" defaultValue={editingItem?.vendedor_id || ""}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                    <option value="">Sin asignar</option>
+                    {mockVendedores.map(v => (
+                      <option key={v.id} value={v.id}>{v.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Lista de Precios</label>
+                  <select name="lista_precios_id" defaultValue={editingItem?.lista_precios_id || 1}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                    {mockListasPrecios.map(lp => (
+                      <option key={lp.id} value={lp.id}>{lp.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Descuento Default (%)</label>
+                  <input type="number" name="descuento_default" defaultValue={editingItem?.descuento_default || 0} min="0" max="100" step="0.5"
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Moneda CC</label>
+                  <select name="moneda_cuenta_corriente" defaultValue={editingItem?.moneda_cuenta_corriente || "ARS"}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                    <option value="ARS">ARS</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Término de Pago</label>
+                  <select name="termino_pago_id" defaultValue={editingItem?.termino_pago_id || 1}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                    {mockTerminosPago.map(tp => (
+                      <option key={tp.id} value={tp.id}>{tp.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Botones */}
+            <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
+              <button
+                type="button"
+                onClick={() => { setCreandoCliente(false); setEditingItem(null) }}
+                className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-3 py-1.5 text-sm bg-emerald-700 text-white rounded hover:bg-emerald-800 flex items-center gap-1.5"
+              >
+                <CheckCircle className="w-3.5 h-3.5" /> {editingItem ? "Guardar Cambios" : "Crear Cliente"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
+  // Ficha de Cliente
+  const renderFichaCliente = () => {
+    if (!selectedCliente) return null
+
+    return (
+      <div>
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-6">
+          <button 
+            onClick={() => { setSelectedCliente(null); setClientePanel("ficha") }}
+            className="text-gray-500 hover:text-gray-700"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <div className="flex-1">
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-emerald-900">{selectedCliente.nombre}</h1>
+              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoriaColor(selectedCliente.categoria)}`}>
+                {selectedCliente.categoria === "publico" ? "Público" : selectedCliente.categoria === "mercadolibre" ? "Mercadolibre" : "Mayorista"}
+              </span>
+            </div>
+            <p className="text-sm text-gray-500">{selectedCliente.codigo} | {getPosicionFiscalLabel(selectedCliente.posicion_fiscal)}</p>
+          </div>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => { setEditingItem(selectedCliente); setCreandoCliente(true) }}
+              className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 flex items-center gap-1"
+            >
+              <Edit className="w-4 h-4" /> Editar
+            </button>
+          </div>
+        </div>
+
+        {/* Metrics - Clickeables (toggle: click de nuevo para volver a ficha) */}
+        {(() => {
+          const facturasCliente = facturas.filter(f => f.cliente_id === selectedCliente.id)
+          const nvCliente = notasVenta.filter(nv => nv.cliente_id === selectedCliente.id)
+          const recibosCliente = recibos.filter(r => r.cliente_id === selectedCliente.id)
+          const totalFacturado = facturasCliente.reduce((sum, f) => sum + f.total, 0)
+          const historialCount = facturasCliente.length + nvCliente.length + recibosCliente.length
+          return (
+        <div className="grid grid-cols-5 gap-4 mb-6">
+          <button 
+            onClick={() => setClientePanel(clientePanel === "facturado" ? "ficha" : "facturado")}
+            className={`bg-white rounded-lg shadow-sm p-4 text-center hover:shadow-md transition-shadow cursor-pointer border-2 ${clientePanel === "facturado" ? "border-emerald-500" : "border-transparent"}`}
+          >
+            <p className="text-2xl font-bold text-emerald-700">{formatCurrency(totalFacturado)}</p>
+            <p className="text-xs text-gray-500">Facturado</p>
+          </button>
+          <button 
+            onClick={() => setClientePanel(clientePanel === "historial" ? "ficha" : "historial")}
+            className={`bg-white rounded-lg shadow-sm p-4 text-center hover:shadow-md transition-shadow cursor-pointer border-2 ${clientePanel === "historial" ? "border-emerald-500" : "border-transparent"}`}
+          >
+            <p className="text-2xl font-bold text-gray-900">{historialCount}</p>
+            <p className="text-xs text-gray-500">Historial</p>
+          </button>
+          <button 
+            onClick={() => setClientePanel(clientePanel === "ot" ? "ficha" : "ot")}
+            className={`bg-white rounded-lg shadow-sm p-4 text-center hover:shadow-md transition-shadow cursor-pointer border-2 ${clientePanel === "ot" ? "border-emerald-500" : "border-transparent"}`}
+          >
+            <p className="text-2xl font-bold text-gray-900">0</p>
+            <p className="text-xs text-gray-500">Órdenes de Trabajo</p>
+          </button>
+          <button 
+            onClick={() => setClientePanel(clientePanel === "ventas" ? "ficha" : "ventas")}
+            className={`bg-white rounded-lg shadow-sm p-4 text-center hover:shadow-md transition-shadow cursor-pointer border-2 ${clientePanel === "ventas" ? "border-emerald-500" : "border-transparent"}`}
+          >
+            <p className="text-2xl font-bold text-gray-900">{nvCliente.length}</p>
+            <p className="text-xs text-gray-500">Ventas</p>
+          </button>
+          <button 
+            onClick={() => setClientePanel(clientePanel === "reingresos" ? "ficha" : "reingresos")}
+            className={`bg-white rounded-lg shadow-sm p-4 text-center hover:shadow-md transition-shadow cursor-pointer border-2 ${clientePanel === "reingresos" ? "border-emerald-500" : "border-transparent"}`}
+          >
+            <p className="text-2xl font-bold text-gray-900">0</p>
+            <p className="text-xs text-gray-500">Re Ingresos</p>
+          </button>
+        </div>
+          )
+        })()}
+
+        {/* Panel de Historial/Facturado/OT/Ventas/Re Ingresos */}
+        {clientePanel !== "ficha" && (
+          <div className="bg-white rounded-lg shadow-sm">
+            {/* Breadcrumb */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <div className="flex items-center gap-2 text-sm">
+                <button onClick={() => setClientePanel("ficha")} className="text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1">
+                  <ArrowLeft className="w-4 h-4" />
+                  {selectedCliente.nombre}
+                </button>
+                <span className="text-gray-400">/</span>
+                <span className="font-medium text-gray-900">
+                  {clientePanel === "historial" && "Historial de Clientes"}
+                  {clientePanel === "facturado" && "Facturas"}
+                  {clientePanel === "ot" && "Órdenes de Trabajo"}
+                  {clientePanel === "ventas" && "Notas de Venta"}
+                  {clientePanel === "reingresos" && "Re Ingresos"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input type="text" placeholder="Buscar..." className="pl-9 pr-4 py-1.5 border border-gray-200 rounded-lg text-sm w-64" />
+                </div>
+                <button className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-1">
+                  <Filter className="w-4 h-4" /> Filtros
+                </button>
+              </div>
+            </div>
+
+            {/* Tabla de Historial (Cuenta Corriente) */}
+            {clientePanel === "historial" && (() => {
+              // Combinar facturas, notas de venta y recibos del cliente
+              const facturasCliente = facturas.filter(f => f.cliente_id === selectedCliente.id)
+              const nvCliente = notasVenta.filter(nv => nv.cliente_id === selectedCliente.id)
+              const recibosCliente = recibos.filter(r => r.cliente_id === selectedCliente.id)
+              
+              // Crear historial combinado
+              type HistorialItem = { tipo: string; fecha: string; nv: string; comp: string; importe: number; tipoDoc: "factura" | "nv" | "recibo" }
+              const historial: HistorialItem[] = [
+                ...nvCliente.map(nv => ({ tipo: "NV", fecha: nv.fecha, nv: nv.numero, comp: "", importe: nv.total, tipoDoc: "nv" as const })),
+                ...facturasCliente.map(f => ({ tipo: "FC", fecha: f.fecha, nv: f.nota_venta || "", comp: f.numero, importe: f.total, tipoDoc: "factura" as const })),
+                ...recibosCliente.map(r => ({ tipo: "RC", fecha: r.fecha, nv: "", comp: r.numero, importe: r.total, tipoDoc: "recibo" as const })),
+              ].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+              
+              let saldoAcum = 0
+              const historialConSaldo = historial.map(h => {
+                const debe = h.tipoDoc === "factura" ? h.importe : 0
+                const haber = h.tipoDoc === "recibo" ? h.importe : 0
+                saldoAcum += debe - haber
+                return { ...h, debe, haber, saldo: saldoAcum }
+              })
+              
+              return (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="w-8 py-2 px-3"><input type="checkbox" className="rounded border-gray-300" /></th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Tipo</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Fecha y Hora</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Cliente</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Sucursal</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Nota de Venta</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Comprobante</th>
+                      <th className="text-right py-2 px-3 text-xs font-medium text-gray-600">Importe</th>
+                      <th className="text-right py-2 px-3 text-xs font-medium text-gray-600">Debe</th>
+                      <th className="text-right py-2 px-3 text-xs font-medium text-gray-600">Haber</th>
+                      <th className="text-right py-2 px-3 text-xs font-medium text-gray-600">Saldo</th>
+                      <th className="w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historialConSaldo.length === 0 ? (
+                      <tr><td colSpan={12} className="py-8 text-center text-sm text-gray-500">No hay movimientos para este cliente</td></tr>
+                    ) : historialConSaldo.map((row, idx) => (
+                      <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-2 px-3"><input type="checkbox" className="rounded border-gray-300" /></td>
+                        <td className="py-2 px-3 text-sm text-gray-600">{row.tipo}</td>
+                        <td className="py-2 px-3 text-sm text-gray-600">{row.fecha}</td>
+                        <td className="py-2 px-3 text-sm text-gray-900">{selectedCliente.codigo} - {selectedCliente.nombre}</td>
+                        <td className="py-2 px-3 text-sm text-gray-600">{selectedCliente.sucursal_origen}</td>
+                        <td className="py-2 px-3 text-sm text-blue-600 cursor-pointer hover:underline" onClick={() => row.nv && setPopupDocumento({tipo: "nv", codigo: row.nv})}>{row.nv || "-"}</td>
+                        <td className="py-2 px-3 text-sm text-blue-600 cursor-pointer hover:underline" onClick={() => row.comp && setPopupDocumento({tipo: row.tipoDoc, codigo: row.comp})}>{row.comp || "-"}</td>
+                        <td className="py-2 px-3 text-sm text-right text-gray-900">{formatCurrency(row.importe)}</td>
+                        <td className="py-2 px-3 text-sm text-right text-gray-900">{row.debe > 0 ? formatCurrency(row.debe) : "0,00"}</td>
+                        <td className="py-2 px-3 text-sm text-right text-gray-900">{row.haber > 0 ? formatCurrency(row.haber) : "0,00"}</td>
+                        <td className="py-2 px-3 text-sm text-right font-medium text-gray-900">{formatCurrency(row.saldo)}</td>
+                        <td className="py-2 px-3"><Eye className="w-4 h-4 text-gray-400 cursor-pointer hover:text-gray-600" onClick={() => setPopupDocumento({tipo: row.tipoDoc, codigo: row.comp || row.nv})} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="px-4 py-2 text-xs text-gray-500 text-right border-t">1-{historialConSaldo.length} de {historialConSaldo.length}</div>
+              </div>
+              )
+            })()}
+
+            {/* Tabla de Facturado */}
+            {clientePanel === "facturado" && (() => {
+              const facturasCliente = facturas.filter(f => f.cliente_id === selectedCliente.id)
+              return (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="w-8 py-2 px-3"><input type="checkbox" className="rounded border-gray-300" /></th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Fecha</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Comprobante</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Nota de Venta</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Sucursal</th>
+                      <th className="text-right py-2 px-3 text-xs font-medium text-gray-600">Importe</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Estado</th>
+                      <th className="w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {facturasCliente.length === 0 ? (
+                      <tr><td colSpan={8} className="py-8 text-center text-sm text-gray-500">No hay facturas para este cliente</td></tr>
+                    ) : facturasCliente.map((fac) => (
+                      <tr key={fac.id} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-2 px-3"><input type="checkbox" className="rounded border-gray-300" /></td>
+                        <td className="py-2 px-3 text-sm text-gray-600">{fac.fecha}</td>
+                        <td className="py-2 px-3 text-sm text-blue-600 cursor-pointer hover:underline" onClick={() => setPopupDocumento({tipo: "factura", codigo: fac.numero})}>{fac.numero}</td>
+                        <td className="py-2 px-3 text-sm text-blue-600 cursor-pointer hover:underline" onClick={() => fac.nota_venta && setPopupDocumento({tipo: "nv", codigo: fac.nota_venta})}>{fac.nota_venta || "-"}</td>
+                        <td className="py-2 px-3 text-sm text-gray-600">{selectedCliente.sucursal_origen}</td>
+                        <td className="py-2 px-3 text-sm text-right font-medium text-gray-900">{formatCurrency(fac.total)}</td>
+                        <td className="py-2 px-3">
+                          <span className={`px-2 py-1 text-xs rounded-full ${fac.estado === "Conciliada" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                            {fac.estado}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3"><Eye className="w-4 h-4 text-gray-400 cursor-pointer hover:text-gray-600" onClick={() => setPopupDocumento({tipo: "factura", codigo: fac.numero})} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="px-4 py-2 text-xs text-gray-500 text-right border-t">1-{facturasCliente.length} de {facturasCliente.length}</div>
+              </div>
+              )
+            })()}
+
+            {/* Tabla de Órdenes de Trabajo */}
+            {clientePanel === "ot" && (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="w-8 py-2 px-3"><input type="checkbox" className="rounded border-gray-300" /></th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Nro OT</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Fecha Ingreso</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Equipo</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">IMEI/Serie</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Problema</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Estado</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Técnico</th>
+                      <th className="w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { nro: "OT-2026-00145", fecha: "10/01/2026", equipo: "iPhone 14 Pro", imei: "354832109876543", problema: "Pantalla rota", estado: "En Reparación", tecnico: "Carlos M." },
+                      { nro: "OT-2026-00098", fecha: "05/01/2026", equipo: "Samsung S23", imei: "356789012345678", problema: "No enciende", estado: "Finalizada", tecnico: "Juan P." },
+                      { nro: "OT-2026-00052", fecha: "02/01/2026", equipo: "Motorola Edge", imei: "358901234567890", problema: "Batería", estado: "Entregada", tecnico: "María L." },
+                    ].map((row, idx) => (
+                      <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-2 px-3"><input type="checkbox" className="rounded border-gray-300" /></td>
+                        <td className="py-2 px-3 text-sm text-blue-600 cursor-pointer hover:underline font-medium" onClick={() => setSelectedOTData({...row, cliente: selectedCliente})}>{row.nro}</td>
+                        <td className="py-2 px-3 text-sm text-gray-600">{row.fecha}</td>
+                        <td className="py-2 px-3 text-sm text-gray-900">{row.equipo}</td>
+                        <td className="py-2 px-3 text-sm text-gray-600 font-mono">{row.imei}</td>
+                        <td className="py-2 px-3 text-sm text-gray-600">{row.problema}</td>
+                        <td className="py-2 px-3">
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            row.estado === "Finalizada" ? "bg-green-100 text-green-700" : 
+                            row.estado === "Entregada" ? "bg-blue-100 text-blue-700" : 
+                            "bg-amber-100 text-amber-700"
+                          }`}>
+                            {row.estado}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-sm text-gray-600">{row.tecnico}</td>
+                        <td className="py-2 px-3"><Eye className="w-4 h-4 text-gray-400 cursor-pointer hover:text-gray-600" /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="px-4 py-2 text-xs text-gray-500 text-right border-t">1-3 de 3</div>
+              </div>
+            )}
+
+            {/* Tabla de Ventas (Notas de Venta) */}
+            {clientePanel === "ventas" && (() => {
+              const nvCliente = notasVenta.filter(nv => nv.cliente_id === selectedCliente.id)
+              return (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="w-8 py-2 px-3"><input type="checkbox" className="rounded border-gray-300" /></th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Nota de Venta</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Fecha</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Sucursal</th>
+                      <th className="text-right py-2 px-3 text-xs font-medium text-gray-600">Total</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Estado</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Facturación</th>
+                      <th className="w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {nvCliente.length === 0 ? (
+                      <tr><td colSpan={8} className="py-8 text-center text-sm text-gray-500">No hay notas de venta para este cliente</td></tr>
+                    ) : nvCliente.map((nv) => (
+                      <tr key={nv.id} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-2 px-3"><input type="checkbox" className="rounded border-gray-300" /></td>
+                        <td className="py-2 px-3 text-sm text-blue-600 cursor-pointer hover:underline font-medium" onClick={() => setPopupDocumento({tipo: "nv", codigo: nv.numero})}>{nv.numero}</td>
+                        <td className="py-2 px-3 text-sm text-gray-600">{nv.fecha}</td>
+                        <td className="py-2 px-3 text-sm text-gray-600">{selectedCliente.sucursal_origen}</td>
+                        <td className="py-2 px-3 text-sm text-right font-medium text-gray-900">{formatCurrency(nv.total)}</td>
+                        <td className="py-2 px-3">
+                          <span className={`px-2 py-1 text-xs rounded-full ${nv.estado === "Confirmada" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+                            {nv.estado}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3">
+                          {(() => {
+                            // Buscar si hay factura asociada a esta NV
+                            const facturaAsociada = facturas.find(f => f.nota_venta === nv.numero)
+                            if (facturaAsociada) {
+                              return <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">Facturado</span>
+                            } else if (nv.estado === "a_facturar") {
+                              return <span className="px-2 py-1 text-xs rounded-full bg-amber-100 text-amber-700">Factura Abierta</span>
+                            } else {
+                              return <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600">Sin Facturar</span>
+                            }
+                          })()}
+                        </td>
+                        <td className="py-2 px-3"><Eye className="w-4 h-4 text-gray-400 cursor-pointer hover:text-gray-600" onClick={() => setPopupDocumento({tipo: "nv", codigo: nv.numero})} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="px-4 py-2 text-xs text-gray-500 text-right border-t">1-{nvCliente.length} de {nvCliente.length}</div>
+              </div>
+              )
+            })()}
+
+            {/* Tabla de Re Ingresos (OT con garantía) */}
+            {clientePanel === "reingresos" && (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="w-8 py-2 px-3"><input type="checkbox" className="rounded border-gray-300" /></th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Nro OT</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">OT Original</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Fecha Ingreso</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Equipo</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Categoría</th>
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Estado</th>
+                      <th className="w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-gray-100">
+                      <td colSpan={8} className="py-8 text-center text-sm text-gray-500">
+                        No hay re ingresos registrados para este cliente
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Popup Modal para ver documentos */}
+            {popupDocumento.tipo && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setPopupDocumento({tipo: null, codigo: ""})}>
+                <div className="bg-white rounded-lg shadow-xl w-[800px] max-h-[80vh] overflow-auto" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      {popupDocumento.tipo === "factura" && "Factura"}
+                      {popupDocumento.tipo === "nv" && "Nota de Venta"}
+                      {popupDocumento.tipo === "recibo" && "Recibo"}
+                      {" "}{popupDocumento.codigo}
+                    </h3>
+                    <button onClick={() => setPopupDocumento({tipo: null, codigo: ""})} className="text-gray-400 hover:text-gray-600">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <div className="p-6">
+                    {popupDocumento.tipo === "factura" && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div><span className="text-sm text-gray-500">Cliente:</span> <span className="font-medium">{selectedCliente?.nombre}</span></div>
+                          <div><span className="text-sm text-gray-500">CUIT:</span> <span className="font-medium">{selectedCliente?.documento}</span></div>
+                          <div><span className="text-sm text-gray-500">Fecha:</span> <span className="font-medium">15/01/2026</span></div>
+                          <div><span className="text-sm text-gray-500">Condición:</span> <span className="font-medium">Contado</span></div>
+                        </div>
+                        <table className="w-full mt-4">
+                          <thead><tr className="bg-gray-50 border-b"><th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Producto</th><th className="text-right py-2 px-3 text-xs font-medium text-gray-600">Cant.</th><th className="text-right py-2 px-3 text-xs font-medium text-gray-600">Precio</th><th className="text-right py-2 px-3 text-xs font-medium text-gray-600">Subtotal</th></tr></thead>
+                          <tbody>
+                            <tr className="border-b"><td className="py-2 px-3 text-sm">iPhone 14 Pro 128GB</td><td className="py-2 px-3 text-sm text-right">1</td><td className="py-2 px-3 text-sm text-right">$1.220.000</td><td className="py-2 px-3 text-sm text-right font-medium">$1.220.000</td></tr>
+                          </tbody>
+                          <tfoot><tr className="bg-gray-50"><td colSpan={3} className="py-2 px-3 text-sm font-medium text-right">Total:</td><td className="py-2 px-3 text-sm font-bold text-right">$1.220.000,00</td></tr></tfoot>
+                        </table>
+                      </div>
+                    )}
+                    {popupDocumento.tipo === "nv" && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div><span className="text-sm text-gray-500">Cliente:</span> <span className="font-medium">{selectedCliente?.nombre}</span></div>
+                          <div><span className="text-sm text-gray-500">Fecha:</span> <span className="font-medium">15/01/2026</span></div>
+                          <div><span className="text-sm text-gray-500">Sucursal:</span> <span className="font-medium">{selectedCliente?.sucursal_origen}</span></div>
+                          <div><span className="text-sm text-gray-500">Estado:</span> <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">Confirmada</span></div>
+                        </div>
+                        <table className="w-full mt-4">
+                          <thead><tr className="bg-gray-50 border-b"><th className="text-left py-2 px-3 text-xs font-medium text-gray-600">Producto</th><th className="text-right py-2 px-3 text-xs font-medium text-gray-600">Cant.</th><th className="text-right py-2 px-3 text-xs font-medium text-gray-600">Precio</th><th className="text-right py-2 px-3 text-xs font-medium text-gray-600">Subtotal</th></tr></thead>
+                          <tbody>
+                            <tr className="border-b"><td className="py-2 px-3 text-sm">iPhone 14 Pro 128GB</td><td className="py-2 px-3 text-sm text-right">1</td><td className="py-2 px-3 text-sm text-right">$1.220.000</td><td className="py-2 px-3 text-sm text-right font-medium">$1.220.000</td></tr>
+                          </tbody>
+                          <tfoot><tr className="bg-gray-50"><td colSpan={3} className="py-2 px-3 text-sm font-medium text-right">Total:</td><td className="py-2 px-3 text-sm font-bold text-right">$1.220.000,00</td></tr></tfoot>
+                        </table>
+                      </div>
+                    )}
+                    {popupDocumento.tipo === "recibo" && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div><span className="text-sm text-gray-500">Cliente:</span> <span className="font-medium">{selectedCliente?.nombre}</span></div>
+                          <div><span className="text-sm text-gray-500">Fecha:</span> <span className="font-medium">15/01/2026</span></div>
+                          <div><span className="text-sm text-gray-500">Importe:</span> <span className="font-medium text-emerald-600">$1.220.000,00</span></div>
+                          <div><span className="text-sm text-gray-500">Forma de Pago:</span> <span className="font-medium">Efectivo</span></div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-200 bg-gray-50">
+                    <button onClick={() => setPopupDocumento({tipo: null, codigo: ""})} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg">Cerrar</button>
+                    <button 
+                      onClick={() => {
+                        const codigo = popupDocumento.codigo
+                        const tipo = popupDocumento.tipo
+                        // Primero cerramos el popup y limpiamos selección de cliente
+                        setPopupDocumento({tipo: null, codigo: ""})
+                        setSelectedCliente(null)
+                        setClientePanel("ficha")
+                        
+                        // Navegar al comprobante específico según el tipo
+                        if (tipo === "factura") {
+                          const factura = facturas.find(f => f.numero === codigo)
+                          if (factura) {
+                            setSelectedFactura(factura)
+                          }
+                          setActiveView("facturas")
+                        } else if (tipo === "nv") {
+                          const nv = notasVenta.find(n => n.numero === codigo)
+                          if (nv) {
+                            setSelectedNV(nv)
+                          }
+                          setActiveView("notas_venta")
+                        } else if (tipo === "recibo") {
+                          const recibo = recibos.find(r => r.numero === codigo)
+                          if (recibo) {
+                            setSelectedRecibo(recibo)
+                            if (recibo.estado === "borrador") {
+                              setReciboPagosForm(recibo.pagos.map(p => ({ forma_pago: p.forma_pago, importe: p.importe, moneda: p.moneda })))
+                            }
+                          }
+                          setActiveView("recibos")
+                        }
+                        // OT está en módulo Taller, solo cerramos el popup
+                      }}
+                      className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2"
+                    >
+                      <ArrowRight className="w-4 h-4" />
+                      Ir al Comprobante
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tabs - Solo visible cuando está en ficha */}
+        {clientePanel === "ficha" && (
+        <div className="bg-white rounded-lg shadow-sm">
+          <div className="border-b border-gray-200">
+            <nav className="flex gap-4 px-4">
+              {["general", "ventas_compras", "cuenta_corriente"].map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`py-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === tab 
+                      ? "border-emerald-600 text-emerald-600" 
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {tab === "general" ? "Datos Generales" : tab === "ventas_compras" ? "Ventas & Compras" : "Cuenta Corriente"}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          <div className="p-6">
+            {activeTab === "general" && (
+              <div className="grid grid-cols-2 gap-8">
+                {/* Columna izquierda */}
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                      <Building2 className="w-4 h-4" /> Identificación
+                    </h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Nombre/Razón Social:</span>
+                        <span className="font-medium">{selectedCliente.nombre}</span>
+                      </div>
+                      {selectedCliente.nombre_fantasia && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Nombre de Fantasía:</span>
+                          <span>{selectedCliente.nombre_fantasia}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Tipo Documento:</span>
+                        <span>{selectedCliente.tipo_documento}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">N����mero:</span>
+                        <span>{selectedCliente.numero_documento}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Posición Fiscal:</span>
+                        <span>{getPosicionFiscalLabel(selectedCliente.posicion_fiscal)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                      <MapPin className="w-4 h-4" /> Dirección
+                    </h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Dirección:</span>
+                        <span>{selectedCliente.direccion}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Ciudad:</span>
+                        <span>{selectedCliente.ciudad}, {selectedCliente.provincia}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Código Postal:</span>
+                        <span>{selectedCliente.codigo_postal}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Zona:</span>
+                        <span>{selectedCliente.zona}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Columna derecha */}
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                      <Phone className="w-4 h-4" /> Contacto
+                    </h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Teléfono:</span>
+                        <span>{selectedCliente.telefono || "-"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Celular:</span>
+                        <span>{selectedCliente.celular}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Email:</span>
+                        <span className="text-emerald-600">{selectedCliente.email}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                      <Calendar className="w-4 h-4" /> Información Adicional
+                    </h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Fecha de Alta:</span>
+                        <span>{formatDate(selectedCliente.fecha_alta)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Sucursal Origen:</span>
+                        <span>{selectedCliente.sucursal_origen}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Estado:</span>
+                        <span className={selectedCliente.activo ? "text-green-600" : "text-red-600"}>
+                          {selectedCliente.activo ? "Activo" : "Inactivo"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "ventas_compras" && (
+              <div className="space-y-8">
+                {/* Sección General */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-4 pb-2 border-b">Configuración General</h3>
+                  <div className="grid grid-cols-3 gap-6 text-sm">
+                    <div>
+                      <span className="text-gray-500 block">Vendedor Asignado:</span>
+                      <span className="font-medium">{mockVendedores.find(v => v.id === selectedCliente.vendedor_id)?.nombre || "-"}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block">Lista de Precios:</span>
+                      <span className="font-medium">{mockListasPrecios.find(l => l.id === selectedCliente.lista_precios_id)?.nombre}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block">Descuento Default:</span>
+                      <span className="font-medium">{selectedCliente.descuento_default}%</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block">Moneda Cuenta Corriente:</span>
+                      <span className="font-medium">{selectedCliente.moneda_cuenta_corriente}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sección Ventas */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-4 pb-2 border-b">Configuración de Ventas</h3>
+                  <div className="grid grid-cols-3 gap-6 text-sm">
+                    <div>
+                      <span className="text-gray-500 block">Término de Pago:</span>
+                      <span className="font-medium">{mockTerminosPago.find(t => t.id === selectedCliente.termino_pago_id)?.nombre}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block">Saldo Cuenta Corriente:</span>
+                      <span className={`font-medium ${selectedCliente.saldo_cuenta_corriente > 0 ? "text-red-600" : "text-green-600"}`}>
+                        {formatCurrency(selectedCliente.saldo_cuenta_corriente, selectedCliente.moneda_cuenta_corriente)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "cuenta_corriente" && (
+              <div className="space-y-6">
+                {/* Resumen de saldo */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <p className="text-sm text-red-600 mb-1">Total Débitos (Deuda)</p>
+                    <p className="text-2xl font-bold text-red-700">
+                      {formatCurrency(
+                        movimientosCC
+                          .filter(m => m.cliente_id === selectedCliente.id && m.tipo === "debito")
+                          .reduce((sum, m) => sum + m.importe, 0),
+                        selectedCliente.moneda_cuenta_corriente
+                      )}
+                    </p>
+                  </div>
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <p className="text-sm text-green-600 mb-1">Total Créditos (Pagos)</p>
+                    <p className="text-2xl font-bold text-green-700">
+                      {formatCurrency(
+                        movimientosCC
+                          .filter(m => m.cliente_id === selectedCliente.id && m.tipo === "credito")
+                          .reduce((sum, m) => sum + m.importe, 0),
+                        selectedCliente.moneda_cuenta_corriente
+                      )}
+                    </p>
+                  </div>
+                  <div className={`border rounded-lg p-4 ${selectedCliente.saldo_cuenta_corriente > 0 ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"}`}>
+                    <p className={`text-sm mb-1 ${selectedCliente.saldo_cuenta_corriente > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                      Saldo Actual
+                    </p>
+                    <p className={`text-2xl font-bold ${selectedCliente.saldo_cuenta_corriente > 0 ? "text-amber-700" : "text-emerald-700"}`}>
+                      {formatCurrency(selectedCliente.saldo_cuenta_corriente, selectedCliente.moneda_cuenta_corriente)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Tabla de movimientos */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-4 pb-2 border-b">Historial de Movimientos</h3>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                          <th className="text-left py-3 px-4">Fecha</th>
+                          <th className="text-left py-3 px-4">Tipo</th>
+                          <th className="text-left py-3 px-4">Documento</th>
+                          <th className="text-left py-3 px-4">Concepto</th>
+                          <th className="text-right py-3 px-4">Débito</th>
+                          <th className="text-right py-3 px-4">Crédito</th>
+                          <th className="text-right py-3 px-4">Saldo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {movimientosCC
+                          .filter(m => m.cliente_id === selectedCliente.id)
+                          .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
+                          .map((mov) => (
+                            <tr key={mov.id} className="border-b hover:bg-gray-50">
+                              <td className="py-3 px-4 text-sm">{formatDateTime(mov.fecha)}</td>
+                              <td className="py-3 px-4">
+                                <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
+                                  mov.tipo === "debito" ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
+                                }`}>
+                                  {mov.tipo === "debito" ? "Débito" : "Crédito"}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className="text-sm font-medium text-emerald-700">{mov.documento_numero}</span>
+                                <span className="block text-xs text-gray-500 capitalize">{mov.documento_tipo.replace('_', ' ')}</span>
+                              </td>
+                              <td className="py-3 px-4 text-sm text-gray-600">{mov.concepto}</td>
+                              <td className="py-3 px-4 text-sm text-right font-medium text-red-600">
+                                {mov.tipo === "debito" ? formatCurrency(mov.importe, mov.moneda) : "-"}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-right font-medium text-green-600">
+                                {mov.tipo === "credito" ? formatCurrency(mov.importe, mov.moneda) : "-"}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-right font-bold">
+                                {formatCurrency(mov.saldo_posterior, mov.moneda)}
+                              </td>
+                            </tr>
+                          ))}
+                        {movimientosCC.filter(m => m.cliente_id === selectedCliente.id).length === 0 && (
+                          <tr>
+                            <td colSpan={7} className="text-center py-8 text-gray-400">
+                              No hay movimientos registrados para este cliente
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+          {/* Seguimiento */}
+          <SeguimientoPanel seguimiento={selectedCliente.seguimiento || []} />
+          </div>
+        </div>
+        )}
+      </div>
+    )
+  }
+
+// Notas de Venta
+  const renderNotasVenta = () => {
+  if (creandoNV) {
+    return renderCrearNV()
+  }
+  if (selectedNV) {
+  return renderFormularioNV()
+  }
+  
+  return (
+      <div>
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-2xl font-bold text-emerald-900">Notas de Venta</h1>
+          <button 
+            onClick={() => { 
+              setCreandoNV(true)
+              setNvLineas([])
+              setNvClienteId(null)
+            }}
+            className="bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" /> Nueva Nota de Venta
+          </button>
+        </div>
+
+        {/* Filters */}
+        <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+          <div className="flex gap-4 items-center">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar por número o cliente..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <select
+              value={estadoFilter}
+              onChange={(e) => setEstadoFilter(e.target.value)}
+              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="todos">Todos los estados</option>
+              <option value="borrador">Borrador</option>
+              <option value="a_facturar">A Facturar</option>
+              <option value="verificacion_factura">Verif. Factura</option>
+              <option value="verificacion_oe">Verif. OE</option>
+              <option value="finalizada">Finalizada</option>
+              <option value="cancelada">Cancelada</option>
+            </select>
+            <select
+              value={vendedorFilter || ""}
+              onChange={(e) => setVendedorFilter(e.target.value ? Number(e.target.value) : null)}
+              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="">Todos los vendedores</option>
+              {mockVendedores.map(v => (
+                <option key={v.id} value={v.id}>{v.nombre}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-gray-50 border-b-2 border-gray-200">
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Comprobante</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cliente</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Vendedor</th>
+                <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Estado</th>
+                <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Moneda</th>
+                <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {notasVentaFiltradas.map(nv => (
+                <tr 
+                  key={nv.id} 
+                  className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                  onClick={() => setSelectedNV(nv)}
+                >
+                  <td className="py-3 px-4 font-mono text-sm text-emerald-700 font-medium">{nv.numero}</td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{formatDateTime(nv.fecha)}</td>
+                  <td className="py-3 px-4">
+                    <div>
+                      <p className="font-medium text-sm">{nv.cliente_nombre}</p>
+                      <p className="text-xs text-gray-500">{nv.cliente_codigo}</p>
+                    </div>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{nv.vendedor_nombre}</td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getEstadoNVColor(nv.estado)}`}>
+                      {getEstadoNVLabel(nv.estado)}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-center text-sm font-medium">{nv.moneda}</td>
+                  <td className="py-3 px-4 text-right font-medium">{formatCurrency(nv.total, nv.moneda)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {notasVentaFiltradas.length === 0 && (
+            <div className="text-center py-12 text-gray-500">
+              No se encontraron notas de venta
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // Función para crear NV (usada desde previsualización)
+  const handleCrearNVFinal = (tipoVenta: "inmediata" | "pedido") => {
+    const cliente = clientes.find(c => c.id === nvClienteId)
+    const lineasValidas = nvLineas.filter(l => l.producto_id > 0 && l.producto_nombre.trim() !== "")
+    
+    if (!cliente || lineasValidas.length === 0) {
+      alert("Debe seleccionar un cliente y agregar al menos un producto válido")
+      return
+    }
+
+    const lineasSinSerie = lineasValidas.filter(l => 
+      l.requiere_serie && (!l.series_seleccionadas || l.series_seleccionadas.length < l.cantidad)
+    )
+    if (lineasSinSerie.length > 0) {
+      alert(`Debe seleccionar IMEI/Serie para: ${lineasSinSerie.map(l => l.producto_nombre).join(", ")}`)
+      return
+    }
+
+    const subtotalValido = lineasValidas.reduce((sum, l) => sum + l.subtotal, 0)
+    const totalValido = subtotalValido * 1.21
+
+    // Si estamos editando, usamos los datos existentes
+    const existingNV = editingNVId ? notasVenta.find(nv => nv.id === editingNVId) : null
+    const nvNumero = existingNV ? existingNV.numero : `NV X 10000-000${10737 + notasVenta.length}`
+    const nvId = existingNV ? existingNV.id : notasVenta.length + 1
+    const fechaHoy = existingNV ? existingNV.fecha : new Date().toISOString()
+    const vendedorId = 1
+    const vendedorNombre = mockVendedores[0]?.nombre || "Max Solina"
+    const terminoPagoId = cliente.termino_pago_id || 1
+    const terminoPagoNombre = mockTerminosPago.find(tp => tp.id === terminoPagoId)?.nombre || "Contado Efectivo"
+    const deposito = "Puerto Norte"
+    const moneda: "ARS" | "USD" = "ARS"
+
+    const newNV: NotaVenta = {
+      id: nvId,
+      numero: nvNumero,
+      cliente_id: cliente.id,
+      cliente_nombre: cliente.nombre,
+      cliente_codigo: cliente.codigo,
+      vendedor_id: vendedorId,
+      vendedor_nombre: vendedorNombre,
+      fecha: fechaHoy,
+      estado: tipoVenta === "inmediata" ? "finalizada" : "borrador",
+      moneda: moneda,
+      tipo_cotizacion: "blue",
+      cotizacion_usd: 1050,
+      termino_pago_id: terminoPagoId,
+      termino_pago_nombre: terminoPagoNombre,
+      deposito: deposito,
+      sucursal: "Puerto Norte",
+      lineas: lineasValidas.map(l => ({
+        producto_id: l.producto_id,
+        producto_nombre: l.producto_nombre,
+        descripcion: l.descripcion || l.producto_nombre,
+        cantidad: l.cantidad,
+        precio_unitario: l.precio_unitario,
+        descuento: l.descuento,
+        subtotal: l.subtotal,
+        series: l.series_seleccionadas || []
+      })),
+      total_neto: subtotalValido,
+      total_iva: subtotalValido * 0.21,
+      total: totalValido,
+      seguimiento: existingNV ? [
+        ...existingNV.seguimiento || [],
+        {
+          id: (existingNV.seguimiento?.length || 0) + 1,
+          fecha: new Date().toISOString(),
+          usuario: vendedorNombre,
+          tipo: "modificacion" as const,
+          descripcion: `Nota de Venta modificada`
+        }
+      ] : [{
+        id: 1,
+        fecha: fechaHoy,
+        usuario: vendedorNombre,
+        tipo: "creacion" as const,
+        descripcion: `Nota de Venta creada - ${tipoVenta === "inmediata" ? "Venta Inmediata" : "Pedido"}`
+      }]
+    }
+    
+    // Si estamos editando, actualizar; si no, agregar nueva
+    if (editingNVId) {
+      setNotasVenta(prev => prev.map(nv => nv.id === editingNVId ? newNV : nv))
+    } else {
+      setNotasVenta(prev => [...prev, newNV])
+    }
+
+    if (tipoVenta === "inmediata") {
+      // Crear OE
+      const oeNumero = `OE X 10000-000${100 + ordenesEntrega.length}`
+      const oeId = ordenesEntrega.length + 1
+      const newOE: OrdenEntrega = {
+        id: oeId,
+        numero: oeNumero,
+        nota_venta_id: nvId,
+        nota_venta_numero: nvNumero,
+        cliente_id: cliente.id,
+        cliente_nombre: cliente.nombre,
+        fecha: fechaHoy,
+        fecha_entrega_programada: fechaHoy,
+        estado: "confirmada",
+        tipo: "venta",
+        deposito_origen: deposito,
+        ubicacion_origen: "Stock",
+        total_productos: lineasValidas.reduce((sum, l) => sum + l.cantidad, 0),
+        productos_entregados: lineasValidas.reduce((sum, l) => sum + l.cantidad, 0),
+        productos: lineasValidas.map(l => ({
+          producto_id: l.producto_id,
+          producto_nombre: l.producto_nombre,
+          cantidad: l.cantidad,
+          entregado: l.cantidad,
+          ubicacion: "Stock",
+          series: l.series_seleccionadas || []
+        })),
+        seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "OE creada desde venta inmediata" }]
+      }
+      setOrdenesEntrega(prev => [...prev, newOE])
+
+      // Crear Remito
+      const remitoNumero = `REM X 10000-000${100 + remitos.length}`
+      const remitoId = remitos.length + 1
+      const newRemito: Remito = {
+        id: remitoId,
+        numero: remitoNumero,
+        orden_entrega_id: oeId,
+        orden_entrega_numero: oeNumero,
+        nota_venta_numero: nvNumero,
+        cliente_id: cliente.id,
+        cliente_nombre: cliente.nombre,
+        fecha: fechaHoy,
+        estado: "confirmado",
+        tipo: "salida",
+        deposito: deposito,
+        ubicacion: "Stock",
+        total_bultos: 1,
+        observaciones: "",
+        productos: lineasValidas.map(l => ({
+          producto_id: l.producto_id,
+          producto_nombre: l.producto_nombre,
+          cantidad: l.cantidad,
+          series: l.series_seleccionadas || []
+        })),
+        seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "Remito creado desde venta inmediata" }]
+      }
+      setRemitos(prev => [...prev, newRemito])
+
+      // Crear Factura
+      const facturaNumero = `FC X 10000-000${13460 + facturas.length}`
+      const facturaId = facturas.length + 1
+      const newFactura: Factura = {
+        id: facturaId,
+        numero: facturaNumero,
+        tipo: cliente.posicion_fiscal === "consumidor_final" ? "B" : "A",
+        nota_venta_id: nvId,
+        nota_venta_numero: nvNumero,
+        cliente_id: cliente.id,
+        cliente_nombre: cliente.nombre,
+        cliente_cuit: cliente.numero_documento,
+        fecha: fechaHoy,
+        fecha_vencimiento: fechaHoy,
+        estado: "pendiente",
+        moneda: moneda,
+        lineas: lineasValidas.map(l => ({
+          producto_nombre: l.producto_nombre,
+          descripcion: l.producto_nombre,
+          cantidad: l.cantidad,
+          precio_unitario: l.precio_unitario,
+          descuento: l.descuento,
+          subtotal: l.subtotal
+        })),
+        subtotal: subtotalValido,
+        iva: subtotalValido * 0.21,
+        total: totalValido,
+        saldo_pendiente: totalValido,
+        cae: null,
+        cae_vencimiento: null,
+        sucursal: "Puerto Norte",
+        seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "Factura creada desde venta inmediata" }]
+      }
+      setFacturas(prev => [...prev, newFactura])
+
+      // Actualizar cuenta corriente del cliente
+      const nuevoMovimiento: MovimientoCuentaCorriente = {
+        id: movimientosCC.length + 1,
+        cliente_id: cliente.id,
+        fecha: fechaHoy,
+        tipo: "debito",
+        concepto: "Factura de venta",
+        documento_tipo: "factura",
+        documento_numero: facturaNumero,
+        documento_id: facturaId,
+        moneda: moneda,
+        importe: totalValido,
+        saldo_posterior: cliente.saldo_cuenta_corriente + totalValido
+      }
+      setMovimientosCC(prev => [...prev, nuevoMovimiento])
+
+      setClientes(prev => prev.map(c =>
+        c.id === cliente.id ? {
+          ...c,
+          saldo_cuenta_corriente: c.saldo_cuenta_corriente + totalValido,
+          total_facturado: c.total_facturado + totalValido
+        } : c
+      ))
+
+      // Crear Recibo en borrador
+      const reciboNumero = `RC X Norte-000${11735 + recibos.length}`
+      const reciboId = recibos.length + 1
+      const newRecibo: Recibo = {
+        id: reciboId,
+        numero: reciboNumero,
+        cliente_id: cliente.id,
+        cliente_nombre: cliente.nombre,
+        estado: "borrador",
+        fecha: fechaHoy,
+        importe: totalValido,
+        importe_no_conciliado: totalValido,
+        moneda: moneda,
+        sucursal: "Puerto Norte",
+        caja: "Caja Principal",
+        cobrador_nombre: vendedorNombre,
+        nota_venta_numero: nvNumero,
+        concepto: `Cobro venta ${nvNumero}`,
+        pagos: []
+      }
+      setRecibos(prev => [...prev, newRecibo])
+    }
+
+    // Limpiar y abrir la NV creada
+    setCreandoNV(false)
+    setNvPrevisualizando(false)
+    setNvLineas([])
+    setNvClienteId(null)
+    setNvDepositoId(1)
+    setNvUbicacionId(1)
+    setEditingNVId(null)
+    setSelectedNV(newNV)
+  }
+
+  // Vista de previsualización de NV
+  const renderPrevisualizacionNV = () => {
+    const selectedCliente = clientes.find(c => c.id === nvClienteId)
+    const lineasValidas = nvLineas.filter(l => l.producto_id > 0 && l.producto_nombre.trim() !== "")
+    const subtotal = lineasValidas.reduce((sum, l) => sum + l.subtotal, 0)
+    const iva = subtotal * 0.21
+    const total = subtotal + iva
+    const deposito = depositosVenta.find(d => d.id === nvDepositoId)
+    const ubicacion = ubicacionesVenta.find(u => u.id === nvUbicacionId)
+
+    return (
+      <div>
+        {/* Header con breadcrumb */}
+        <div className="text-sm text-gray-500 mb-2">
+          Notas de Venta / <span className="text-gray-700">Nueva Nota de Venta</span>
+        </div>
+        <div className="flex items-center gap-4 mb-6">
+          <button onClick={() => setNvPrevisualizando(false)} className="text-gray-500 hover:text-gray-700">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold text-emerald-900">Nueva Nota de Venta</h1>
+            <p className="text-sm text-gray-500">{new Date().toLocaleDateString('es-AR')} | Puerto Norte</p>
+          </div>
+          <span className="px-4 py-2 rounded-full text-sm font-semibold bg-amber-100 text-amber-700">
+            Borrador
+          </span>
+        </div>
+
+        {/* Barra de acciones oscura */}
+        <div className="bg-gray-800 rounded-t-lg px-4 py-3 flex items-center justify-between mb-0">
+          <div className="flex items-center gap-2">
+            <button className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1">
+              <Download className="w-4 h-4" /> Descargar PDF
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setNvPrevisualizando(false)}
+              className="px-3 py-1.5 text-sm border border-gray-300 text-white rounded-md hover:bg-gray-700 flex items-center gap-1"
+            >
+              <Edit className="w-4 h-4" /> Editar
+            </button>
+            <button 
+              onClick={() => handleCrearNVFinal("pedido")}
+              className="px-3 py-1.5 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700 flex items-center gap-1"
+            >
+              <Save className="w-4 h-4" /> Guardar Pedido
+            </button>
+            <button 
+              onClick={() => handleCrearNVFinal("inmediata")}
+              className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 flex items-center gap-1"
+            >
+              <CheckCircle className="w-4 h-4" /> Confirmar Venta
+            </button>
+          </div>
+        </div>
+
+        {/* Contenido */}
+        <div className="bg-white rounded-b-lg shadow-sm p-6">
+          <div className="grid grid-cols-2 gap-8 mb-6">
+            {/* Datos del Cliente */}
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-4">Datos del Cliente</h3>
+              <div className="grid grid-cols-2 gap-y-3 text-sm">
+                <div>
+                  <span className="text-gray-500">Nombre:</span>
+                  <span className="ml-2 font-medium">{selectedCliente?.nombre}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Documento:</span>
+                  <span className="ml-2 font-medium">{selectedCliente?.tipo_documento}: {selectedCliente?.numero_documento}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Categoría:</span>
+                  <span className="ml-2 font-medium capitalize">{selectedCliente?.categoria}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Pos. Fiscal:</span>
+                  <span className="ml-2 font-medium capitalize">{selectedCliente?.posicion_fiscal?.replace("_", " ")}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Teléfono:</span>
+                  <span className="ml-2 font-medium text-emerald-600">{selectedCliente?.telefono || selectedCliente?.celular || "-"}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Email:</span>
+                  <span className="ml-2 font-medium text-emerald-600">{selectedCliente?.email || "-"}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Datos de la Venta */}
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-4">Datos de la Venta</h3>
+              <div className="grid grid-cols-2 gap-y-3 text-sm">
+                <div>
+                  <span className="text-gray-500">Depósito:</span>
+                  <span className="ml-2 font-medium">{deposito?.nombre}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Ubicación:</span>
+                  <span className="ml-2 font-medium">{ubicacion?.nombre}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Sucursal:</span>
+                  <span className="ml-2 font-medium">Puerto Norte</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Vendedor:</span>
+                  <span className="ml-2 font-medium">Max Solina</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Productos */}
+          <div className="mb-6">
+            <h3 className="font-semibold text-gray-900 mb-4">Productos ({lineasValidas.length})</h3>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-xs text-gray-500 uppercase">
+                  <th className="text-left py-2">Producto</th>
+                  <th className="text-center py-2 w-20">Cant.</th>
+                  <th className="text-right py-2 w-28">Precio</th>
+                  <th className="text-center py-2 w-16">Dto.%</th>
+                  <th className="text-right py-2 w-28">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lineasValidas.map((linea, index) => (
+                  <tr key={index} className="border-b">
+                    <td className="py-2">
+                      <div className="font-medium">{linea.producto_nombre}</div>
+                      {linea.series_seleccionadas && linea.series_seleccionadas.length > 0 && (
+                        <div className="text-xs text-gray-500">IMEI: {linea.series_seleccionadas.join(", ")}</div>
+                      )}
+                    </td>
+                    <td className="py-2 text-center">{linea.cantidad}</td>
+                    <td className="py-2 text-right">{formatCurrency(linea.precio_unitario)}</td>
+                    <td className="py-2 text-center">{linea.descuento}%</td>
+                    <td className="py-2 text-right font-medium">{formatCurrency(linea.subtotal)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Totales */}
+          <div className="flex justify-end">
+            <div className="w-64 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Subtotal:</span>
+                <span>{formatCurrency(subtotal)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">IVA (21%):</span>
+                <span>{formatCurrency(iva)}</span>
+              </div>
+              <div className="flex justify-between text-lg font-bold pt-2 border-t">
+                <span>Total:</span>
+                <span className="text-emerald-700">{formatCurrency(total)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Vista de Crear Nota de Venta (pantalla completa, no modal)
+  const renderCrearNV = () => {
+    const selectedCliente = clientes.find(c => c.id === nvClienteId)
+    const subtotal = nvLineas.reduce((sum, l) => sum + l.subtotal, 0)
+    const total = subtotal * 1.21
+
+    // Si estamos en previsualización, mostrar vista previa
+    if (nvPrevisualizando) {
+      return renderPrevisualizacionNV()
+    }
+
+    return (
+      <div>
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-6">
+          <button
+            onClick={() => { setCreandoNV(false); setNvLineas([]); setNvClienteId(null); setNvDepositoId(1); setNvUbicacionId(1); setEditingNVId(null); setNvPrevisualizando(false) }}
+            className="p-2 hover:bg-gray-100 rounded-md"
+          >
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-emerald-900">{editingNVId ? "Editar Nota de Venta" : "Nueva Nota de Venta"}</h1>
+            <p className="text-sm text-gray-500">{editingNVId ? "Modifique los datos de la nota de venta" : "Complete los datos para crear la nota de venta"}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-6">
+          {/* Columna izquierda - Datos principales */}
+          <div className="col-span-2 space-y-6">
+            {/* Datos del cliente */}
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <User className="w-4 h-4" /> Datos del Cliente
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
+                  <select
+                    value={nvClienteId || ""}
+                    onChange={(e) => setNvClienteId(parseInt(e.target.value))}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="">Seleccionar cliente...</option>
+                    {clientes.map(c => (
+                      <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                {selectedCliente && (
+                  <>
+                    <div>
+                      <span className="text-xs text-gray-500">Documento</span>
+                      <p className="font-medium">{selectedCliente.tipo_documento}: {selectedCliente.numero_documento}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-500">Posición Fiscal</span>
+                      <p className="font-medium capitalize">{selectedCliente.posicion_fiscal.replace('_', ' ')}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-500">Dirección</span>
+                      <p className="font-medium">{selectedCliente.direccion}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-500">Teléfono</span>
+                      <p className="font-medium">{selectedCliente.telefono || selectedCliente.celular || "-"}</p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Ubicación de Stock */}
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Warehouse className="w-4 h-4" /> Ubicación de Stock
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Depósito</label>
+                  <select
+                    value={nvDepositoId}
+                    onChange={(e) => {
+                      const newDepositoId = parseInt(e.target.value)
+                      setNvDepositoId(newDepositoId)
+                      // Seleccionar automáticamente la ubicación "Stock" del depósito
+                      const ubicacionStock = ubicacionesVenta.find(u => u.deposito_id === newDepositoId && u.nombre === "Stock")
+                      if (ubicacionStock) {
+                        setNvUbicacionId(ubicacionStock.id)
+                      }
+                    }}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    {depositosVenta.map(d => (
+                      <option key={d.id} value={d.id}>{d.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ubicación</label>
+                  <select
+                    value={nvUbicacionId}
+                    onChange={(e) => setNvUbicacionId(parseInt(e.target.value))}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    {ubicacionesVenta
+                      .filter(u => u.deposito_id === nvDepositoId && u.disponible_venta)
+                      .map(u => (
+                        <option key={u.id} value={u.id}>{u.nombre}</option>
+                      ))
+                    }
+                  </select>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                El stock se descontará de: <span className="font-medium">{ubicacionesVenta.find(u => u.id === nvUbicacionId)?.codigo || "-"}</span>
+              </p>
+            </div>
+
+            {/* Líneas de productos */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+              <div className="bg-gray-50 px-4 py-2 border-b">
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <Package className="w-4 h-4" /> Productos
+                </h3>
+              </div>
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                    <th className="text-left py-1.5 px-2">Producto</th>
+                    <th className="text-center py-1.5 px-2 w-20">Cant.</th>
+                    <th className="text-right py-1.5 px-2 w-24">Precio</th>
+                    <th className="text-center py-1.5 px-2 w-16">Dto.%</th>
+                    <th className="text-right py-1.5 px-2 w-24">Subtotal</th>
+                    <th className="w-8"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {nvLineas.map((linea, index) => (
+                    <tr key={linea.id} className="border-b">
+                      <td className="py-1 px-2">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 relative">
+                              <input
+                                type="text"
+                                value={productoSearchIndex === index ? productoSearchText : linea.producto_nombre}
+                                onChange={(e) => {
+                                  setProductoSearchIndex(index)
+                                  setProductoSearchText(e.target.value)
+                                  const updated = [...nvLineas]
+                                  updated[index].producto_nombre = e.target.value
+                                  setNvLineas(updated)
+                                }}
+                                onFocus={() => {
+                                  setProductoSearchIndex(index)
+                                  setProductoSearchText(linea.producto_nombre)
+                                }}
+                                onBlur={() => {
+                                  setTimeout(() => {
+                                    setProductoSearchIndex(null)
+                                    setProductoSearchText("")
+                                  }, 200)
+                                }}
+                                placeholder="Buscar producto..."
+                                className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                              />
+                              {/* Dropdown de sugerencias */}
+                              {productoSearchIndex === index && (
+                                <div className="absolute left-0 top-full z-50 w-full mt-1 bg-white border border-gray-300 shadow-lg max-h-48 overflow-y-auto">
+                                  {productosConSerie
+                                    .filter(p =>
+                                      p.nombre.toLowerCase().includes(productoSearchText.toLowerCase()) ||
+                                      p.sku.toLowerCase().includes(productoSearchText.toLowerCase())
+                                    )
+                                    .map(p => (
+                                      <div
+                                        key={p.id}
+                                        onMouseDown={(e) => {
+                                          e.preventDefault()
+                                          const updated = [...nvLineas]
+                                          updated[index].producto_id = p.id
+                                          updated[index].producto_nombre = p.nombre
+                                          updated[index].producto_sku = p.sku
+                                          updated[index].precio_unitario = p.precio_venta
+                                          updated[index].requiere_serie = p.requiere_serie
+                                          updated[index].series_seleccionadas = []
+                                          updated[index].subtotal = updated[index].cantidad * p.precio_venta * (1 - updated[index].descuento / 100)
+                                          setNvLineas(updated)
+                                          setProductoSearchIndex(null)
+                                          setProductoSearchText("")
+                                          if (p.requiere_serie) {
+                                            setTimeout(() => {
+                                              setSerieModalLineaIndex(index)
+                                              setSeriesSeleccionadasTemp([])
+                                              setShowSerieModal(true)
+                                            }, 100)
+                                          }
+                                        }}
+                                        className="px-2 py-1 hover:bg-blue-600 hover:text-white cursor-pointer text-sm"
+                                      >
+                                        <span className="font-medium">[{p.sku}]</span> {p.nombre}
+                                      </div>
+                                    ))
+                                  }
+                                  {productosConSerie.filter(p =>
+                                    p.nombre.toLowerCase().includes(productoSearchText.toLowerCase()) ||
+                                    p.sku.toLowerCase().includes(productoSearchText.toLowerCase())
+                                  ).length === 0 && (
+                                    <div className="px-2 py-1 text-sm text-gray-500">No se encontraron productos</div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            {linea.requiere_serie && linea.producto_id > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSerieModalLineaIndex(index)
+                                  setSeriesSeleccionadasTemp(linea.series_seleccionadas?.map(s => s.id) || [])
+                                  setShowSerieModal(true)
+                                }}
+                                className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${
+                                  (linea.series_seleccionadas?.length || 0) === linea.cantidad 
+                                    ? 'bg-emerald-100 text-emerald-700' 
+                                    : 'bg-amber-100 text-amber-700'
+                                }`}
+                              >
+                                {linea.series_seleccionadas?.length || 0}/{linea.cantidad} IMEI
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-1 px-2">
+                        <input
+                          type="number"
+                          value={linea.cantidad}
+                          min="1"
+                          onChange={(e) => {
+                            const updated = [...nvLineas]
+                            const newCantidad = parseInt(e.target.value) || 1
+                            updated[index].cantidad = newCantidad
+                            updated[index].subtotal = newCantidad * updated[index].precio_unitario * (1 - updated[index].descuento / 100)
+                            if (updated[index].series_seleccionadas && updated[index].series_seleccionadas.length > newCantidad) {
+                              updated[index].series_seleccionadas = updated[index].series_seleccionadas.slice(0, newCantidad)
+                            }
+                            setNvLineas(updated)
+                            if (updated[index].requiere_serie && (updated[index].series_seleccionadas?.length || 0) < newCantidad) {
+                              setSerieModalLineaIndex(index)
+                              setSeriesSeleccionadasTemp(updated[index].series_seleccionadas?.map(s => s.id) || [])
+                              setShowSerieModal(true)
+                            }
+                          }}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-center"
+                        />
+                      </td>
+                      <td className="py-1 px-2">
+                        <input
+                          type="number"
+                          value={linea.precio_unitario}
+                          min="0"
+                          step="0.01"
+                          onChange={(e) => {
+                            const updated = [...nvLineas]
+                            updated[index].precio_unitario = parseFloat(e.target.value) || 0
+                            updated[index].subtotal = updated[index].cantidad * updated[index].precio_unitario * (1 - updated[index].descuento / 100)
+                            setNvLineas(updated)
+                          }}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right"
+                        />
+                      </td>
+                      <td className="py-1 px-2">
+                        <input
+                          type="number"
+                          value={linea.descuento}
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          onChange={(e) => {
+                            const updated = [...nvLineas]
+                            updated[index].descuento = parseFloat(e.target.value) || 0
+                            updated[index].subtotal = updated[index].cantidad * updated[index].precio_unitario * (1 - updated[index].descuento / 100)
+                            setNvLineas(updated)
+                          }}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-center"
+                        />
+                      </td>
+                      <td className="py-1 px-2 text-right font-medium text-sm">
+                        {formatCurrency(linea.subtotal)}
+                      </td>
+                      <td className="py-1 px-1">
+                        <button
+                          type="button"
+                          onClick={() => setNvLineas(nvLineas.filter((_, i) => i !== index))}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {nvLineas.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="text-center py-4 text-gray-400 text-sm">
+                        No hay productos agregados
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+              {/* Boton agregar producto al final */}
+              <div className="px-2 py-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newLinea: LineaNV = {
+                      id: nvLineas.length + 1,
+                      producto_id: 0,
+                      producto_nombre: "",
+                      producto_sku: "",
+                      cantidad: 1,
+                      precio_unitario: 0,
+                      descuento: 0,
+                      subtotal: 0,
+                      fecha_entrega: new Date().toISOString().split('T')[0],
+                      ubicacion_id: nvUbicacionId
+                    }
+                    setNvLineas([...nvLineas, newLinea])
+                  }}
+                  className="text-sm text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1"
+                >
+                  <Plus className="w-4 h-4" /> Agregar producto
+                </button>
+              </div>
+            </div>
+
+            {/* Sección Lotes y Series - Solo aparece si hay productos con serie */}
+            {nvLineas.some(l => l.requiere_serie && l.series_seleccionadas && l.series_seleccionadas.length > 0) && (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 mt-4">
+                <div className="bg-gray-50 px-4 py-2 border-b">
+                  <h3 className="font-semibold text-gray-900 text-sm">Lotes y Series</h3>
+                </div>
+                <div className="p-3">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-xs text-gray-500 uppercase border-b">
+                        <th className="text-left py-1.5 px-2">Producto</th>
+                        <th className="text-left py-1.5 px-2">IMEI / Serie</th>
+                        <th className="text-left py-1.5 px-2">Detalle</th>
+                        <th className="w-8"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {nvLineas
+                        .filter(l => l.requiere_serie && l.series_seleccionadas && l.series_seleccionadas.length > 0)
+                        .flatMap((linea, lineaIdx) => 
+                          linea.series_seleccionadas!.map((serie, serieIdx) => (
+                            <tr key={`${lineaIdx}-${serie.id}`} className="border-b border-gray-100 last:border-0">
+                              <td className="py-1.5 px-2 text-gray-700">
+                                {serieIdx === 0 ? linea.producto_nombre : ""}
+                              </td>
+                              <td className="py-1.5 px-2 font-mono text-gray-900">{serie.serie}</td>
+                              <td className="py-1.5 px-2 text-gray-500">{serie.detalles}</td>
+                              <td className="py-1.5 px-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...nvLineas]
+                                    const idx = updated.findIndex(l => l.id === linea.id)
+                                    if (idx !== -1) {
+                                      updated[idx].series_seleccionadas = updated[idx].series_seleccionadas?.filter(s => s.id !== serie.id)
+                                      setNvLineas(updated)
+                                    }
+                                  }}
+                                  className="text-gray-400 hover:text-red-500"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Columna derecha - Resumen y acciones */}
+          <div className="space-y-6">
+            {/* Resumen */}
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4">Resumen</h3>
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Subtotal:</span>
+                  <span className="font-medium">{formatCurrency(subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">IVA (21%):</span>
+                  <span className="font-medium">{formatCurrency(subtotal * 0.21)}</span>
+                </div>
+                <div className="border-t pt-3">
+                  <div className="flex justify-between text-lg font-bold">
+                    <span>Total:</span>
+                    <span className="text-emerald-700">{formatCurrency(total)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Acciones */}
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <div className="space-y-3">
+                <button
+                  onClick={() => setNvPrevisualizando(true)}
+                  disabled={!nvClienteId || nvLineas.length === 0}
+                  className="w-full bg-emerald-700 text-white px-4 py-3 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  Continuar
+                </button>
+                <button
+                  onClick={() => { setCreandoNV(false); setNvLineas([]); setNvClienteId(null); setNvDepositoId(1); setNvUbicacionId(1); setEditingNVId(null); setNvPrevisualizando(false) }}
+                  className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Formulario de Nota de Venta
+  const renderFormularioNV = () => {
+    if (!selectedNV) return null
+
+    // Buscar documentos relacionados
+    const oesVinculadas = ordenesEntrega.filter(oe => oe.nota_venta_id === selectedNV.id)
+    const remitosVinculados = remitos.filter(r => r.nota_venta_numero === selectedNV.numero)
+    const facturasVinculadas = facturas.filter(f => f.nota_venta_id === selectedNV.id)
+    const recibosVinculados = recibos.filter(r => r.nota_venta_numero === selectedNV.numero)
+
+    return (
+      <div>
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+          <button onClick={() => setSelectedNV(null)} className="hover:text-emerald-700">Notas de Venta</button>
+          <span>/</span>
+          <span className="font-medium text-gray-900">{selectedNV.numero}</span>
+        </div>
+
+        {/* Header con botones */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setSelectedNV(null)} className="p-2 hover:bg-gray-100 rounded-md">
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-emerald-900">{selectedNV.numero}</h1>
+              <p className="text-sm text-gray-500">{formatDateTime(selectedNV.fecha)} | {selectedNV.sucursal}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+              <button 
+                onClick={() => {
+                  // Cargar datos de la NV en el formulario
+                  setNvClienteId(selectedNV.cliente_id)
+                  setNvLineas(selectedNV.lineas.map((l, idx) => ({
+                    id: idx + 1,
+                    producto_id: l.producto_id || 0,
+                    producto_nombre: l.producto_nombre,
+                    descripcion: l.descripcion || "",
+                    cantidad: l.cantidad,
+                    precio_unitario: l.precio_unitario,
+                    descuento: l.descuento,
+                    subtotal: l.subtotal,
+                    requiere_serie: false,
+                    series_disponibles: [],
+                    series_seleccionadas: l.series || []
+                  })))
+                  setNvDepositoId(1)
+                  setNvUbicacionId(1)
+                  setEditingNVId(selectedNV.id)
+                  setCreandoNV(true)
+                  setSelectedNV(null)
+                }}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 flex items-center gap-1"
+              >
+                <Edit className="w-4 h-4" /> Editar
+              </button>
+              <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
+                selectedNV.estado === "finalizada" ? "bg-green-100 text-green-700" : 
+                selectedNV.estado === "borrador" ? "bg-amber-100 text-amber-700" : 
+                "bg-gray-100 text-gray-700"
+              }`}>
+                {selectedNV.estado === "finalizada" ? "Finalizada" : selectedNV.estado === "borrador" ? "Borrador" : selectedNV.estado}
+              </span>
+            </div>
+        </div>
+
+        {/* Barra de acciones y estado */}
+        <div className="bg-gray-800 rounded-t-lg px-4 py-3 flex items-center justify-between mb-0">
+          <div className="flex gap-2">
+            <button className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1">
+              <Download className="w-4 h-4" /> Descargar PDF
+            </button>
+            {facturasVinculadas.length > 0 && (
+              <button 
+                onClick={() => { 
+                  setActiveView("facturas")
+                  setSelectedFactura(facturasVinculadas[0])
+                  setSelectedNV(null)
+                }}
+                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Ver factura ({facturasVinculadas.length})
+              </button>
+            )}
+            {remitosVinculados.length > 0 && (
+              <button 
+                onClick={() => { 
+                  setSelectedNV(null)
+                  setSelectedRemito(remitosVinculados[0])
+                  setActiveView("remitos") 
+                }}
+                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Ver remitos ({remitosVinculados.length})
+              </button>
+            )}
+            {oesVinculadas.length > 0 && (
+              <button 
+                onClick={() => { 
+                  setActiveView("ordenes_entrega")
+                  setSelectedOE(oesVinculadas[0])
+                  setSelectedNV(null)
+                }}
+                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Ver Ord. de Entrega ({oesVinculadas.length})
+              </button>
+            )}
+          </div>
+          
+        </div>
+
+        {/* Content */}
+        <div className="grid grid-cols-3 gap-6">
+          {/* Main content */}
+          <div className="col-span-2 space-y-6">
+            {/* Encabezado */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <h3 className="font-semibold text-gray-900 mb-4">Datos de la Venta</h3>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <label className="text-gray-500 block">Cliente</label>
+                  <p className="font-medium">{selectedNV.cliente_nombre}</p>
+                  <p className="text-xs text-gray-500">{selectedNV.cliente_codigo}</p>
+                </div>
+                <div>
+                  <label className="text-gray-500 block">Vendedor</label>
+                  <p className="font-medium">{selectedNV.vendedor_nombre}</p>
+                </div>
+                <div>
+                  <label className="text-gray-500 block">Tipo de Venta</label>
+                  <p className="font-medium capitalize">{selectedNV.tipo_venta}</p>
+                </div>
+                <div>
+                  <label className="text-gray-500 block">Lista de Precios</label>
+                  <p className="font-medium">{mockListasPrecios.find(l => l.id === selectedNV.lista_precios_id)?.nombre}</p>
+                </div>
+                <div>
+                  <label className="text-gray-500 block">Término de Pago</label>
+                  <p className="font-medium">{selectedNV.termino_pago_nombre}</p>
+                </div>
+                <div>
+                  <label className="text-gray-500 block">Depósito</label>
+                  <p className="font-medium">{selectedNV.deposito}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Líneas */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <h3 className="font-semibold text-gray-900 mb-4">Líneas de Productos</h3>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-2 text-xs font-semibold text-gray-500 uppercase">Producto</th>
+                    <th className="text-right py-2 text-xs font-semibold text-gray-500 uppercase">Cantidad</th>
+                    <th className="text-right py-2 text-xs font-semibold text-gray-500 uppercase">Precio Unit.</th>
+                    <th className="text-right py-2 text-xs font-semibold text-gray-500 uppercase">Dto.</th>
+                    <th className="text-right py-2 text-xs font-semibold text-gray-500 uppercase">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedNV.lineas.map(linea => (
+                    <tr key={linea.id} className="border-b border-gray-100">
+                      <td className="py-3">
+                        <p className="font-medium">{linea.producto_nombre}</p>
+                        <p className="text-xs text-gray-500">{linea.producto_sku}</p>
+                      </td>
+                      <td className="py-3 text-right">{linea.cantidad}</td>
+                      <td className="py-3 text-right">{formatCurrency(linea.precio_unitario, selectedNV.moneda)}</td>
+                      <td className="py-3 text-right">{linea.descuento}%</td>
+                      <td className="py-3 text-right font-medium">{formatCurrency(linea.subtotal, selectedNV.moneda)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Totales */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <h3 className="font-semibold text-gray-900 mb-4">Totales</h3>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Subtotal:</span>
+                  <span>{formatCurrency(selectedNV.subtotal, selectedNV.moneda)}</span>
+                </div>
+                {selectedNV.descuento_global > 0 && (
+                  <div className="flex justify-between text-red-600">
+                    <span>Descuento ({selectedNV.descuento_global}%):</span>
+                    <span>-{formatCurrency(selectedNV.subtotal * selectedNV.descuento_global / 100, selectedNV.moneda)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Impuestos:</span>
+                  <span>{formatCurrency(selectedNV.impuestos, selectedNV.moneda)}</span>
+                </div>
+                <div className="flex justify-between pt-3 border-t border-gray-200 text-lg font-bold">
+                  <span>Total:</span>
+                  <span className="text-emerald-700">{formatCurrency(selectedNV.total, selectedNV.moneda)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Moneda */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <h3 className="font-semibold text-gray-900 mb-4">Moneda</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Moneda:</span>
+                  <span className="font-medium">{selectedNV.moneda}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Tipo Cotización:</span>
+                  <span className="capitalize">{selectedNV.tipo_cotizacion}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Cotización:</span>
+                  <span>{formatCurrency(selectedNV.cotizacion)}</span>
+                </div>
+                {selectedNV.moneda === "USD" && (
+                  <div className="flex justify-between pt-2 border-t">
+                    <span className="text-gray-500">Equivalente ARS:</span>
+                    <span className="font-medium">{formatCurrency(selectedNV.total * selectedNV.cotizacion)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Seguimiento */}
+          <SeguimientoPanel seguimiento={selectedNV.seguimiento || []} />
+        </div>
+      </div>
+    )
+  }
+
+  // Ficha de Orden de Entrega (vista detallada)
+  const renderFichaOE = () => {
+    if (!selectedOE) return null
+
+    const nvVinculada = notasVenta.find(nv => nv.id === selectedOE.nota_venta_id)
+    const clienteOE = clientes.find(c => c.id === selectedOE.cliente_id)
+    const remitoVinculado = remitos.find(r => r.orden_entrega_id === selectedOE.id)
+
+    return (
+      <div>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setSelectedOE(null)} className="p-2 hover:bg-gray-100 rounded-md">
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-emerald-900">{selectedOE.numero}</h1>
+              <p className="text-sm text-gray-500">Orden de Entrega</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
+              remitoVinculado ? 'bg-green-100 text-green-700' : getEstadoOEColor(selectedOE.estado)
+            }`}>
+              {remitoVinculado ? 'Finalizada' : getEstadoOELabel(selectedOE.estado)}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-6">
+          {/* Columna principal */}
+          <div className="col-span-2 space-y-6">
+            {/* Documentos vinculados */}
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4">Documentos Vinculados</h3>
+              <div className="grid grid-cols-2 gap-4">
+                {/* Nota de Venta */}
+                <div className="border rounded-lg p-4 bg-blue-50 border-blue-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <FileText className="w-5 h-5 text-blue-600" />
+                    <span className="text-sm font-medium text-blue-800">Nota de Venta</span>
+                  </div>
+                  {nvVinculada ? (
+                    <>
+                      <p className="font-mono text-lg font-bold text-blue-700">{nvVinculada.numero}</p>
+                      <p className="text-xs text-blue-600 mt-1">
+                        {formatDate(nvVinculada.fecha)} - {formatCurrency(nvVinculada.total, nvVinculada.moneda)}
+                      </p>
+                      <button 
+                        onClick={() => { setSelectedOE(null); setSelectedNV(nvVinculada); setActiveView("notas_venta") }}
+                        className="mt-2 text-xs text-blue-700 hover:underline"
+                      >
+                        Ver Nota de Venta
+                      </button>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-500">-</p>
+                  )}
+                </div>
+
+                {/* Remito */}
+                <div className={`border rounded-lg p-4 ${remitoVinculado ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Truck className="w-5 h-5 text-green-600" />
+                    <span className={`text-sm font-medium ${remitoVinculado ? 'text-green-800' : 'text-gray-500'}`}>Remito</span>
+                  </div>
+                  {remitoVinculado ? (
+                    <>
+                      <p className="font-mono text-lg font-bold text-green-700">{remitoVinculado.numero}</p>
+                      <p className="text-xs text-green-600 mt-1">
+                        {formatDate(remitoVinculado.fecha)} - {remitoVinculado.estado}
+                      </p>
+                      <button 
+                        onClick={() => { setSelectedOE(null); setActiveView("remitos") }}
+                        className="mt-2 text-xs text-green-700 hover:underline"
+                      >
+                        Ver Remito
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-gray-400">Sin remito generado</p>
+                      <button 
+                        onClick={() => { /* TODO: Crear remito desde OE */ }}
+                        className="mt-2 text-xs text-emerald-700 hover:underline font-medium"
+                      >
+                        + Generar Remito
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Datos del cliente */}
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4">Cliente</h3>
+              {clienteOE && (
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500 block">Nombre</span>
+                    <span className="font-medium">{clienteOE.nombre}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block">Documento</span>
+                    <span className="font-medium">{clienteOE.tipo_documento}: {clienteOE.numero_documento}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block">Telefono</span>
+                    <span className="font-medium">{clienteOE.telefono || clienteOE.celular || "-"}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block">Email</span>
+                    <span className="font-medium">{clienteOE.email || "-"}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Productos a entregar */}
+            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+              <div className="bg-gray-50 px-4 py-3 border-b">
+                <h3 className="font-semibold text-gray-900">Productos a Entregar</h3>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                    <th className="text-left py-3 px-4">Producto</th>
+                    <th className="text-center py-3 px-4">Cantidad</th>
+                    <th className="text-center py-3 px-4">Reserva</th>
+                    <th className="text-center py-3 px-4">Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedOE.productos.map((prod, idx) => (
+                    <tr key={idx} className="border-b">
+                      <td className="py-3 px-4 font-medium">{prod.producto_nombre}</td>
+                      <td className="py-3 px-4 text-center">{prod.cantidad}</td>
+                      <td className="py-3 px-4 text-center">
+                        <span className={prod.reserva >= prod.cantidad ? 'text-green-600 font-medium' : 'text-amber-600'}>
+                          {prod.reserva}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          prod.estado === 'confirmado' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {prod.estado === 'confirmado' ? 'Confirmado' : 'Pendiente'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Columna lateral */}
+          <div className="space-y-6">
+            {/* Info de entrega */}
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4">Datos de Entrega</h3>
+              <div className="space-y-4 text-sm">
+                <div>
+                  <span className="text-gray-500 block">Fecha de Entrega</span>
+                  <span className="font-medium">{formatDate(selectedOE.fecha_entrega)}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500 block">Domicilio de Envio</span>
+                  <span className="font-medium">{selectedOE.domicilio_envio}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500 block">Deposito</span>
+                  <span className="font-medium">{selectedOE.deposito}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500 block">Sucursal</span>
+                  <span className="font-medium">{selectedOE.sucursal}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Acciones - solo mostrar si no hay remito vinculado */}
+            {!remitoVinculado ? (
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4">Acciones</h3>
+              <div className="space-y-2">
+                {selectedOE.estado === 'disponible' && (
+                  <button
+                    onClick={() => {
+                      setOrdenesEntrega(prev => prev.map(oe => 
+                        oe.id === selectedOE.id ? { ...oe, estado: 'confirmada' as const } : oe
+                      ))
+                      setSelectedOE({ ...selectedOE, estado: 'confirmada' })
+                    }}
+                    className="w-full bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-emerald-800"
+                  >
+                    Confirmar Reserva
+                  </button>
+                )}
+                {selectedOE.estado === 'confirmada' && (
+                  <button
+                    onClick={() => {
+                      // Generar remito automáticamente
+                      const remitoNumero = `R X 10000-000${5035 + remitos.length}`
+                      const newRemito: Remito = {
+                        id: remitos.length + 1,
+                        numero: remitoNumero,
+                        orden_entrega_id: selectedOE.id,
+                        orden_entrega_numero: selectedOE.numero,
+                        cliente_id: selectedOE.cliente_id,
+                        cliente_nombre: selectedOE.cliente_nombre,
+                        estado: "borrador",
+                        fecha: new Date().toISOString(),
+                        fecha_entrega: selectedOE.fecha_entrega,
+                        domicilio_envio: selectedOE.domicilio_envio,
+                        transporte: "",
+                        chofer: "",
+                        factura_numero: null,
+                        nota_venta_numero: selectedOE.nota_venta_numero,
+                        sucursal: selectedOE.sucursal,
+                        deposito: selectedOE.deposito,
+                        peso_kg: 0,
+                        peso_neto_kg: 0,
+                        bultos: 1,
+                        valor_declarado: 0,
+                        control_factura: "sin_facturar"
+                      }
+                      setRemitos(prev => [...prev, newRemito])
+                      setOrdenesEntrega(prev => prev.map(oe =>
+                        oe.id === selectedOE.id ? { ...oe, remito_numero: remitoNumero } : oe
+                      ))
+                      setSelectedOE({ ...selectedOE, remito_numero: remitoNumero })
+                    }}
+                    className="w-full bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700"
+                  >
+                    Generar Remito
+                  </button>
+                )}
+                <button className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-200">
+                  Imprimir OE
+                </button>
+              </div>
+            </div>
+            ) : (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 text-green-700">
+                <CheckCircle className="w-5 h-5" />
+                <span className="font-medium">Orden de Entrega Finalizada</span>
+              </div>
+              <p className="text-sm text-green-600 mt-1">Esta OE ya tiene remito generado.</p>
+            </div>
+            )}
+
+            {/* Seguimiento */}
+            <SeguimientoPanel 
+              seguimiento={selectedOE.seguimiento || []}
+            />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Vista de Crear Orden de Entrega
+  const renderCrearOE = () => {
+    const nvSeleccionada = notasVenta.find(nv => nv.id === oeNvId)
+    const clienteNV = nvSeleccionada ? clientes.find(c => c.id === nvSeleccionada.cliente_id) : null
+
+    const handleCrearOE = () => {
+      if (!nvSeleccionada || !clienteNV) {
+        alert("Debe seleccionar una Nota de Venta")
+        return
+      }
+
+      const oeNumero = `OE X 10000-000${1050 + ordenesEntrega.length}`
+      const oeId = ordenesEntrega.length + 1
+      const fechaHoy = new Date().toISOString()
+
+      const newOE: OrdenEntrega = {
+        id: oeId,
+        numero: oeNumero,
+        nota_venta_id: nvSeleccionada.id,
+        nota_venta_numero: nvSeleccionada.numero,
+        cliente_id: clienteNV.id,
+        cliente_nombre: clienteNV.nombre,
+        estado: "disponible",
+        fecha_creacion: fechaHoy,
+        fecha_entrega: fechaHoy,
+        domicilio_envio: clienteNV.direccion,
+        deposito: nvSeleccionada.deposito,
+        sucursal: "Puerto Norte",
+        remito_numero: null,
+        productos: nvSeleccionada.lineas.map(l => ({
+          producto_id: l.producto_id,
+          producto_nombre: l.producto_nombre,
+          cantidad: l.cantidad,
+          reserva: l.cantidad,
+          estado: "confirmado" as const
+        }))
+      }
+      setOrdenesEntrega(prev => [...prev, newOE])
+      setCreandoOE(false)
+      setOeNvId(null)
+    }
+
+    return (
+      <div>
+        <div className="flex items-center gap-4 mb-6">
+          <button onClick={() => { setCreandoOE(false); setOeNvId(null) }} className="p-2 hover:bg-gray-100 rounded-md">
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-emerald-900">Nueva Orden de Entrega</h1>
+            <p className="text-sm text-gray-500">Seleccione una Nota de Venta para generar la OE</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-6">
+          <div className="col-span-2 space-y-6">
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4">Seleccionar Nota de Venta</h3>
+              <select
+                value={oeNvId || ""}
+                onChange={(e) => setOeNvId(e.target.value ? parseInt(e.target.value) : null)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="">Seleccionar NV...</option>
+                {notasVenta.filter(nv => nv.estado !== "cancelada" && nv.estado !== "finalizada").map(nv => (
+                  <option key={nv.id} value={nv.id}>{nv.numero} - {nv.cliente_nombre}</option>
+                ))}
+              </select>
+            </div>
+
+            {nvSeleccionada && clienteNV && (
+              <>
+                <div className="bg-white rounded-lg shadow-sm p-4">
+                  <h3 className="font-semibold text-gray-900 mb-4">Datos del Cliente</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div><span className="text-gray-500">Cliente:</span> <span className="font-medium">{clienteNV.nombre}</span></div>
+                    <div><span className="text-gray-500">Documento:</span> <span className="font-medium">{clienteNV.tipo_documento}: {clienteNV.numero_documento}</span></div>
+                    <div><span className="text-gray-500">Direccion:</span> <span className="font-medium">{clienteNV.direccion}</span></div>
+                    <div><span className="text-gray-500">Telefono:</span> <span className="font-medium">{clienteNV.telefono || clienteNV.celular || "-"}</span></div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-3 border-b">
+                    <h3 className="font-semibold text-gray-900">Productos a Entregar</h3>
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                        <th className="text-left py-2 px-4">Producto</th>
+                        <th className="text-center py-2 px-4">Cantidad</th>
+                        <th className="text-center py-2 px-4">Reserva</th>
+                        <th className="text-center py-2 px-4">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {nvSeleccionada.lineas.map((linea, idx) => (
+                        <tr key={idx} className="border-b">
+                          <td className="py-3 px-4 font-medium">{linea.producto_nombre}</td>
+                          <td className="py-3 px-4 text-center">{linea.cantidad}</td>
+                          <td className="py-3 px-4 text-center text-green-600">{linea.cantidad}</td>
+                          <td className="py-3 px-4 text-center">
+                            <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">Disponible</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4">Acciones</h3>
+              <div className="space-y-3">
+                <button
+                  onClick={handleCrearOE}
+                  disabled={!oeNvId}
+                  className="w-full bg-emerald-700 text-white px-4 py-3 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  Crear Orden de Entrega
+                </button>
+                <button
+                  onClick={() => { setCreandoOE(false); setOeNvId(null) }}
+                  className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-200"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Toma de Equipo en Parte de Pago
+  const modelosEquipo = [
+    { id: 1, nombre: "iPhone 13 Pro 128GB", precioBase: 350000 },
+    { id: 2, nombre: "iPhone 13 128GB", precioBase: 280000 },
+    { id: 3, nombre: "iPhone 12 64GB", precioBase: 200000 },
+    { id: 4, nombre: "Samsung Galaxy S22 128GB", precioBase: 320000 },
+    { id: 5, nombre: "Samsung Galaxy A54 128GB", precioBase: 180000 },
+    { id: 6, nombre: "Motorola Edge 40 256GB", precioBase: 220000 },
+  ]
+
+  const componentesEvaluacion = [
+    { id: 1, nombre: "Pantalla", tipo: "dropdown", estados: [
+      { estado: "Buena", descuento: 0 },
+      { estado: "Rayada leve", descuento: 15000 },
+      { estado: "Rayada grave", descuento: 40000 },
+      { estado: "Rota", descuento: 80000 },
+    ]},
+    { id: 2, nombre: "Batería", tipo: "dropdown", estados: [
+      { estado: "Buena (80%+)", descuento: 0 },
+      { estado: "Desgastada (60-80%)", descuento: 25000 },
+      { estado: "Mala (<60%)", descuento: 45000 },
+    ]},
+    { id: 3, nombre: "Cámara Trasera", tipo: "dropdown", estados: [
+      { estado: "Funciona correctamente", descuento: 0 },
+      { estado: "Falla menor", descuento: 20000 },
+      { estado: "No funciona", descuento: 50000 },
+    ]},
+    { id: 4, nombre: "Cámara Frontal", tipo: "dropdown", estados: [
+      { estado: "Funciona correctamente", descuento: 0 },
+      { estado: "No funciona", descuento: 30000 },
+    ]},
+    { id: 5, nombre: "Carcasa", tipo: "dropdown", estados: [
+      { estado: "Buena", descuento: 0 },
+      { estado: "Rayada", descuento: 20000 },
+      { estado: "Golpeada", descuento: 35000 },
+    ]},
+    { id: 6, nombre: "Botones", tipo: "checkbox", estados: [
+      { estado: "Funcionan", descuento: 0 },
+      { estado: "Alguno falla", descuento: 15000 },
+    ]},
+    { id: 7, nombre: "Altavoz", tipo: "checkbox", estados: [
+      { estado: "Funciona", descuento: 0 },
+      { estado: "Falla", descuento: 20000 },
+    ]},
+    { id: 8, nombre: "Micrófono", tipo: "checkbox", estados: [
+      { estado: "Funciona", descuento: 0 },
+      { estado: "Falla", descuento: 20000 },
+    ]},
+  ]
+
+  const calcularDescuentosCombinados = (descuentos: number[]) => {
+    // Lógica decreciente: a más daños, menor descuento proporcional por item
+    const total = descuentos.reduce((sum, d) => sum + d, 0)
+    const cantidadDanos = descuentos.filter(d => d > 0).length
+    if (cantidadDanos <= 1) return total
+    if (cantidadDanos === 2) return Math.round(total * 0.9) // 10% menos
+    if (cantidadDanos === 3) return Math.round(total * 0.8) // 20% menos
+    return Math.round(total * 0.7) // 30% menos para 4+ daños
+  }
+
+  const renderCrearTomaEquipo = () => {
+    const clienteSeleccionado = clientes.find(c => c.id === tomaEquipoClienteId)
+    const modeloSeleccionado = modelosEquipo.find(m => m.id === tomaEquipoModeloId)
+    const totalDescuentos = calcularDescuentosCombinados(tomaEquipoComponentes.map(c => c.descuento))
+    const precioSugerido = tomaEquipoPrecioBase - totalDescuentos
+    
+    // Rango permitido para el rol (simulado: vendedor puede +/- 10%)
+    const rangoMin = Math.round(precioSugerido * 0.9)
+    const rangoMax = Math.round(precioSugerido * 1.1)
+
+    const resetForm = () => {
+      setTomaEquipoPaso(1)
+      setTomaEquipoClienteId(null)
+      setTomaEquipoModeloId(null)
+      setTomaEquipoPrecioBase(0)
+      setTomaEquipoPrecioFinal(0)
+      setTomaEquipoComponentes([])
+      setTomaEquipoCreando(false)
+    }
+
+    const handleConfirmar = () => {
+      if (!clienteSeleccionado || !modeloSeleccionado) return
+
+      const nuevoId = tomasEquipo.length + 1
+      const nuevaToma = {
+        id: nuevoId,
+        numero: `TE-${String(nuevoId).padStart(5, '0')}`,
+        fecha: new Date().toISOString(),
+        cliente_id: clienteSeleccionado.id,
+        cliente_nombre: clienteSeleccionado.nombre,
+        modelo_equipo: modeloSeleccionado.nombre,
+        precio_base: tomaEquipoPrecioBase,
+        descuentos: totalDescuentos,
+        precio_final: tomaEquipoPrecioFinal || precioSugerido,
+        estado: "confirmado" as const,
+        recepcion_numero: `REC-${String(125 + nuevoId).padStart(5, '0')}`,
+        nota_credito_numero: `NC-A-${String(45 + nuevoId).padStart(5, '0')}`,
+        evaluacion: tomaEquipoComponentes.map(c => ({
+          componente: c.nombre,
+          estado: c.estado,
+          descuento: c.descuento
+        }))
+      }
+
+      // Actualizar saldo del cliente (la nota de crédito reduce el saldo deudor)
+      setClientes(prev => prev.map(c => 
+        c.id === clienteSeleccionado.id 
+          ? { ...c, saldo: c.saldo - nuevaToma.precio_final }
+          : c
+      ))
+
+      setTomasEquipo(prev => [...prev, nuevaToma])
+      resetForm()
+    }
+
+    return (
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-6">
+          <button onClick={resetForm} className="text-gray-500 hover:text-gray-700">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold text-emerald-900">Nueva Toma de Equipo</h1>
+            <p className="text-sm text-gray-500">Complete el wizard para registrar la toma</p>
+          </div>
+        </div>
+
+        {/* Progress Steps */}
+        <div className="flex items-center justify-between mb-8 px-4">
+          {[
+            { num: 1, label: "Cliente" },
+            { num: 2, label: "Equipo" },
+            { num: 3, label: "Evaluación" },
+            { num: 4, label: "Confirmación" },
+          ].map((step, idx) => (
+            <div key={step.num} className="flex items-center">
+              <div className={`flex items-center justify-center w-10 h-10 rounded-full font-semibold ${
+                tomaEquipoPaso >= step.num 
+                  ? 'bg-emerald-600 text-white' 
+                  : 'bg-gray-200 text-gray-500'
+              }`}>
+                {tomaEquipoPaso > step.num ? <CheckCircle className="w-5 h-5" /> : step.num}
+              </div>
+              <span className={`ml-2 text-sm font-medium ${
+                tomaEquipoPaso >= step.num ? 'text-emerald-700' : 'text-gray-500'
+              }`}>{step.label}</span>
+              {idx < 3 && (
+                <div className={`w-16 h-1 mx-4 rounded ${
+                  tomaEquipoPaso > step.num ? 'bg-emerald-600' : 'bg-gray-200'
+                }`} />
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          {/* Paso 1: Selección de Cliente */}
+          {tomaEquipoPaso === 1 && (
+            <div>
+              <h2 className="text-lg font-semibold mb-4">Seleccione el Cliente</h2>
+              <p className="text-sm text-gray-500 mb-6">El cliente seleccionado recibirá una nota de crédito en su cuenta corriente.</p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Cliente</label>
+                  <select
+                    value={tomaEquipoClienteId || ""}
+                    onChange={(e) => setTomaEquipoClienteId(Number(e.target.value))}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="">Seleccionar cliente...</option>
+                    {clientes.map(c => (
+                      <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {clienteSeleccionado && (
+                  <div className="bg-gray-50 rounded-lg p-4 mt-4">
+                    <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-500">Documento:</span>
+                        <span className="ml-2 font-medium">{clienteSeleccionado.tipo_documento}: {clienteSeleccionado.numero_documento}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Teléfono:</span>
+                        <span className="ml-2 font-medium">{clienteSeleccionado.telefono}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Saldo Actual:</span>
+                        <span className={`ml-2 font-semibold ${clienteSeleccionado.saldo > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                          {formatCurrency(Math.abs(clienteSeleccionado.saldo))} {clienteSeleccionado.saldo > 0 ? '(Debe)' : '(A favor)'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end mt-8">
+                <button
+                  onClick={() => tomaEquipoClienteId && setTomaEquipoPaso(2)}
+                  disabled={!tomaEquipoClienteId}
+                  className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  Siguiente <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Paso 2: Selección de Equipo */}
+          {tomaEquipoPaso === 2 && (
+            <div>
+              <h2 className="text-lg font-semibold mb-4">Seleccione el Modelo de Equipo</h2>
+              <p className="text-sm text-gray-500 mb-6">Elija el modelo desde la lista de equipos disponibles para toma.</p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Modelo de Equipo</label>
+                  <select
+                    value={tomaEquipoModeloId || ""}
+                    onChange={(e) => {
+                      const modelo = modelosEquipo.find(m => m.id === Number(e.target.value))
+                      setTomaEquipoModeloId(Number(e.target.value))
+                      setTomaEquipoPrecioBase(modelo?.precioBase || 0)
+                      setTomaEquipoPrecioFinal(modelo?.precioBase || 0)
+                      // Inicializar componentes con estado "Buena" por defecto
+                      setTomaEquipoComponentes(componentesEvaluacion.map(c => ({
+                        id: c.id,
+                        nombre: c.nombre,
+                        estado: c.estados[0].estado,
+                        descuento: 0
+                      })))
+                    }}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="">Seleccionar modelo...</option>
+                    {modelosEquipo.map(m => (
+                      <option key={m.id} value={m.id}>{m.nombre} - Precio base: {formatCurrency(m.precioBase)}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {modeloSeleccionado && (
+                  <div className="bg-emerald-50 rounded-lg p-4 mt-4">
+                    <div className="flex items-center gap-3">
+                      <Smartphone className="w-10 h-10 text-emerald-600" />
+                      <div>
+                        <p className="font-semibold text-emerald-900">{modeloSeleccionado.nombre}</p>
+                        <p className="text-sm text-emerald-700">Precio base de toma: <span className="font-bold">{formatCurrency(modeloSeleccionado.precioBase)}</span></p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-between mt-8">
+                <button
+                  onClick={() => setTomaEquipoPaso(1)}
+                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <ArrowLeft className="w-4 h-4" /> Anterior
+                </button>
+                <button
+                  onClick={() => tomaEquipoModeloId && setTomaEquipoPaso(3)}
+                  disabled={!tomaEquipoModeloId}
+                  className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  Siguiente <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Paso 3: Evaluación del Estado */}
+          {tomaEquipoPaso === 3 && (
+            <div>
+              <h2 className="text-lg font-semibold mb-4">Evaluación del Estado del Equipo</h2>
+              <p className="text-sm text-gray-500 mb-6">Evalúe cada componente del equipo. Los descuentos se calculan automáticamente.</p>
+              
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                {componentesEvaluacion.map(comp => {
+                  const compState = tomaEquipoComponentes.find(c => c.id === comp.id)
+                  return (
+                    <div key={comp.id} className="border rounded-lg p-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">{comp.nombre}</label>
+                      <select
+                        value={compState?.estado || comp.estados[0].estado}
+                        onChange={(e) => {
+                          const estadoSel = comp.estados.find(es => es.estado === e.target.value)
+                          setTomaEquipoComponentes(prev => prev.map(c => 
+                            c.id === comp.id 
+                              ? { ...c, estado: e.target.value, descuento: estadoSel?.descuento || 0 }
+                              : c
+                          ))
+                        }}
+                        className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
+                      >
+                        {comp.estados.map(es => (
+                          <option key={es.estado} value={es.estado}>
+                            {es.estado} {es.descuento > 0 ? `(-${formatCurrency(es.descuento)})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Panel de Resumen de Precio */}
+              <div className="bg-gray-50 rounded-lg p-4 border">
+                <h3 className="font-semibold text-gray-900 mb-3">Resumen de Valorización</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span>Precio base:</span>
+                    <span className="font-medium">{formatCurrency(tomaEquipoPrecioBase)}</span>
+                  </div>
+                  {tomaEquipoComponentes.filter(c => c.descuento > 0).map(c => (
+                    <div key={c.id} className="flex justify-between text-red-600">
+                      <span>- {c.nombre} ({c.estado}):</span>
+                      <span>-{formatCurrency(c.descuento)}</span>
+                    </div>
+                  ))}
+                  {tomaEquipoComponentes.filter(c => c.descuento > 0).length > 1 && (
+                    <div className="flex justify-between text-emerald-600 text-xs">
+                      <span>Bonificación por múltiples daños:</span>
+                      <span>+{formatCurrency(tomaEquipoComponentes.reduce((s, c) => s + c.descuento, 0) - totalDescuentos)}</span>
+                    </div>
+                  )}
+                  <div className="border-t pt-2 mt-2 flex justify-between font-bold text-lg">
+                    <span>Precio sugerido:</span>
+                    <span className="text-emerald-600">{formatCurrency(precioSugerido)}</span>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Precio Final (Rango: {formatCurrency(rangoMin)} - {formatCurrency(rangoMax)})
+                  </label>
+                  <input
+                    type="number"
+                    value={tomaEquipoPrecioFinal || precioSugerido}
+                    onChange={(e) => setTomaEquipoPrecioFinal(Number(e.target.value))}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 ${
+                      (tomaEquipoPrecioFinal || precioSugerido) < rangoMin || (tomaEquipoPrecioFinal || precioSugerido) > rangoMax
+                        ? 'border-red-500 focus:ring-red-500'
+                        : 'focus:ring-emerald-500'
+                    }`}
+                  />
+                  {((tomaEquipoPrecioFinal || precioSugerido) < rangoMin || (tomaEquipoPrecioFinal || precioSugerido) > rangoMax) && (
+                    <p className="text-red-500 text-xs mt-1">Precio fuera del rango permitido. Requiere aprobación del supervisor.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex justify-between mt-8">
+                <button
+                  onClick={() => setTomaEquipoPaso(2)}
+                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <ArrowLeft className="w-4 h-4" /> Anterior
+                </button>
+                <button
+                  onClick={() => setTomaEquipoPaso(4)}
+                  className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2"
+                >
+                  Siguiente <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Paso 4: Confirmación */}
+          {tomaEquipoPaso === 4 && (
+            <div>
+              <h2 className="text-lg font-semibold mb-4">Confirmación de la Operación</h2>
+              <p className="text-sm text-gray-500 mb-6">Revise los datos antes de confirmar. Se generará una recepción de compra y una nota de crédito.</p>
+              
+              <div className="space-y-4">
+                {/* Resumen Cliente */}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h3 className="font-semibold text-gray-900 mb-2">Cliente</h3>
+                  <p className="text-sm">{clienteSeleccionado?.codigo} - {clienteSeleccionado?.nombre}</p>
+                  <p className="text-sm text-gray-500">{clienteSeleccionado?.tipo_documento}: {clienteSeleccionado?.numero_documento}</p>
+                </div>
+
+                {/* Resumen Equipo */}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h3 className="font-semibold text-gray-900 mb-2">Equipo</h3>
+                  <p className="text-sm font-medium">{modeloSeleccionado?.nombre}</p>
+                  <div className="mt-2 space-y-1">
+                    {tomaEquipoComponentes.map(c => (
+                      <div key={c.id} className="flex justify-between text-xs">
+                        <span className="text-gray-500">{c.nombre}:</span>
+                        <span className={c.descuento > 0 ? 'text-red-600' : 'text-emerald-600'}>
+                          {c.estado} {c.descuento > 0 && `(-${formatCurrency(c.descuento)})`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Resumen Financiero */}
+                <div className="bg-emerald-50 rounded-lg p-4">
+                  <h3 className="font-semibold text-emerald-900 mb-2">Resumen Financiero</h3>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span>Precio base:</span>
+                      <span>{formatCurrency(tomaEquipoPrecioBase)}</span>
+                    </div>
+                    <div className="flex justify-between text-red-600">
+                      <span>Descuentos aplicados:</span>
+                      <span>-{formatCurrency(totalDescuentos)}</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-lg pt-2 border-t border-emerald-200">
+                      <span>Precio Final Acordado:</span>
+                      <span className="text-emerald-700">{formatCurrency(tomaEquipoPrecioFinal || precioSugerido)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Comprobantes a Generar */}
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <h3 className="font-semibold text-blue-900 mb-2">Comprobantes a Generar</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Package className="w-4 h-4 text-blue-600" />
+                      <span>Recepción de Compra (Módulo Compras)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-blue-600" />
+                      <span>Nota de Crédito por {formatCurrency(tomaEquipoPrecioFinal || precioSugerido)} (Cuenta Corriente)</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-between mt-8">
+                <button
+                  onClick={() => setTomaEquipoPaso(3)}
+                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <ArrowLeft className="w-4 h-4" /> Anterior
+                </button>
+                <button
+                  onClick={handleConfirmar}
+                  className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2"
+                >
+                  <CheckCircle className="w-4 h-4" /> Confirmar Operación
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const renderTomaEquipo = () => {
+    if (tomaEquipoCreando) return renderCrearTomaEquipo()
+
+    return (
+      <div>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-emerald-900">Toma de Equipo en Parte de Pago</h1>
+            <p className="text-gray-500 mt-1">Gestione las tomas de equipos usados como parte de pago</p>
+          </div>
+          <button 
+            onClick={() => setTomaEquipoCreando(true)}
+            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Nueva Toma
+          </button>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="bg-white rounded-lg border p-4">
+            <p className="text-sm text-gray-500">Total Operaciones</p>
+            <p className="text-2xl font-bold text-gray-900">{tomasEquipo.length}</p>
+          </div>
+          <div className="bg-white rounded-lg border p-4">
+            <p className="text-sm text-gray-500">Confirmadas</p>
+            <p className="text-2xl font-bold text-emerald-600">{tomasEquipo.filter(t => t.estado === 'confirmado').length}</p>
+          </div>
+          <div className="bg-white rounded-lg border p-4">
+            <p className="text-sm text-gray-500">Valor Total Tomado</p>
+            <p className="text-2xl font-bold text-blue-600">{formatCurrency(tomasEquipo.reduce((s, t) => s + t.precio_final, 0))}</p>
+          </div>
+          <div className="bg-white rounded-lg border p-4">
+            <p className="text-sm text-gray-500">Promedio Descuento</p>
+            <p className="text-2xl font-bold text-orange-600">
+              {tomasEquipo.length > 0 
+                ? Math.round(tomasEquipo.reduce((s, t) => s + (t.descuentos / t.precio_base * 100), 0) / tomasEquipo.length)
+                : 0}%
+            </p>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="bg-white rounded-lg border overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b">
+              <tr className="text-xs text-gray-500 uppercase">
+                <th className="text-left py-3 px-4">Número</th>
+                <th className="text-left py-3 px-4">Fecha</th>
+                <th className="text-left py-3 px-4">Cliente</th>
+                <th className="text-left py-3 px-4">Equipo</th>
+                <th className="text-right py-3 px-4">Precio Base</th>
+                <th className="text-right py-3 px-4">Descuentos</th>
+                <th className="text-right py-3 px-4">Precio Final</th>
+                <th className="text-center py-3 px-4">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tomasEquipo.map(toma => (
+                <tr key={toma.id} className="border-b hover:bg-gray-50 cursor-pointer">
+                  <td className="py-3 px-4 font-medium text-emerald-700">{toma.numero}</td>
+                  <td className="py-3 px-4 text-sm">{new Date(toma.fecha).toLocaleDateString('es-AR')}</td>
+                  <td className="py-3 px-4 text-sm">{toma.cliente_nombre}</td>
+                  <td className="py-3 px-4 text-sm">{toma.modelo_equipo}</td>
+                  <td className="py-3 px-4 text-sm text-right">{formatCurrency(toma.precio_base)}</td>
+                  <td className="py-3 px-4 text-sm text-right text-red-600">-{formatCurrency(toma.descuentos)}</td>
+                  <td className="py-3 px-4 text-sm text-right font-semibold text-emerald-600">{formatCurrency(toma.precio_final)}</td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      toma.estado === 'confirmado' ? 'bg-green-100 text-green-700' :
+                      toma.estado === 'borrador' ? 'bg-amber-100 text-amber-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {toma.estado.charAt(0).toUpperCase() + toma.estado.slice(1)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
+  // Ordenes de Entrega
+  const renderOrdenesEntrega = () => {
+    if (selectedOE) return renderFichaOE()
+    if (creandoOE) return renderCrearOE()
+    
+    return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold text-emerald-900">Ordenes de Entrega</h1>
+        <button
+          onClick={() => { setCreandoOE(true); setOeNvId(null) }}
+          className="bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors flex items-center gap-2"
+        >
+          <Plus className="w-4 h-4" /> Nueva Orden de Entrega
+        </button>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+        <div className="flex gap-4 items-center">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar por número o cliente..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="bg-gray-50 border-b-2 border-gray-200">
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Nota de Venta</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cliente</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Fecha Entrega</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Domicilio</th>
+              <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Estado</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Remito</th>
+            </tr>
+          </thead>
+          <tbody>
+              {ordenesEntrega.map(oe => (
+                <tr 
+                  key={oe.id} 
+                  onClick={() => setSelectedOE(oe)}
+                  className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                >
+                  <td className="py-3 px-4 font-mono text-sm text-emerald-700 font-medium">{oe.numero}</td>
+                  <td className="py-3 px-4 text-sm text-blue-600">{oe.nota_venta_numero}</td>
+                  <td className="py-3 px-4 text-sm">{oe.cliente_nombre}</td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{formatDate(oe.fecha_entrega)}</td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{oe.domicilio_envio}</td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getEstadoOEColor(oe.estado)}`}>
+                      {getEstadoOELabel(oe.estado)}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-emerald-600 font-medium">{oe.remito_numero || "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+        </table>
+        {ordenesEntrega.length === 0 && (
+          <div className="text-center py-12 text-gray-500">
+            No se encontraron ordenes de entrega
+          </div>
+        )}
+      </div>
+    </div>
+    )
+  }
+
+  // Ficha de Remito
+  const renderFichaRemito = () => {
+    if (!selectedRemito) return null
+    const clienteRemito = clientes.find(c => c.id === selectedRemito.cliente_id)
+    const oeVinculada = ordenesEntrega.find(oe => oe.id === selectedRemito.orden_entrega_id)
+    const facturaVinculada = facturas.find(f => f.numero === selectedRemito.factura_numero)
+    const nvVinculada = notasVenta.find(nv => nv.numero === selectedRemito.nota_venta_numero)
+
+    return (
+      <div>
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+          <button onClick={() => setSelectedRemito(null)} className="hover:text-emerald-700">Remitos</button>
+          <span>/</span>
+          <span className="font-medium text-gray-900">{selectedRemito.numero}</span>
+        </div>
+
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setSelectedRemito(null)} className="p-2 hover:bg-gray-100 rounded-md">
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-emerald-900">{selectedRemito.numero}</h1>
+              <p className="text-sm text-gray-500">{formatDateTime(selectedRemito.fecha)} | {selectedRemito.sucursal}</p>
+            </div>
+          </div>
+          <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
+            selectedRemito.estado === 'entregado' ? 'bg-green-100 text-green-700' :
+            selectedRemito.estado === 'en_transito' ? 'bg-blue-100 text-blue-700' :
+            'bg-amber-100 text-amber-700'
+          }`}>
+            {selectedRemito.estado === 'entregado' ? 'Entregado' : selectedRemito.estado === 'en_transito' ? 'En Transito' : 'Borrador'}
+          </span>
+        </div>
+
+        <div className="bg-gray-800 rounded-t-lg px-4 py-3 flex items-center gap-2 mb-0">
+          <button className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1">
+            <Download className="w-4 h-4" /> Descargar PDF
+          </button>
+          {nvVinculada && (
+            <button 
+              onClick={() => { setSelectedRemito(null); setSelectedNV(nvVinculada); setActiveView("notas_venta") }}
+              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Ver Nota de Venta
+            </button>
+          )}
+          {oeVinculada && (
+            <button 
+              onClick={() => { setSelectedRemito(null); setSelectedOE(oeVinculada); setActiveView("ordenes_entrega") }}
+              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Ver Orden de Entrega
+            </button>
+          )}
+          {facturaVinculada && (
+            <button 
+              onClick={() => { setSelectedRemito(null); setSelectedFactura(facturaVinculada); setActiveView("facturas") }}
+              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Ver Factura
+            </button>
+          )}
+        </div>
+
+        <div className="bg-white rounded-b-lg shadow-sm p-6">
+          <div className="grid grid-cols-2 gap-8 mb-6">
+            <div className="space-y-4">
+              <h3 className="font-semibold text-gray-900 border-b pb-2">Datos del Remito</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><span className="text-gray-500">Numero:</span> <span className="font-medium">{selectedRemito.numero}</span></div>
+                <div><span className="text-gray-500">OE:</span> <span className="font-medium text-emerald-700">{selectedRemito.orden_entrega_numero}</span></div>
+                <div><span className="text-gray-500">NV:</span> <span className="font-medium text-emerald-700">{selectedRemito.nota_venta_numero || "-"}</span></div>
+                <div><span className="text-gray-500">Factura:</span> <span className="font-medium text-emerald-700">{selectedRemito.factura_numero || "-"}</span></div>
+                <div><span className="text-gray-500">Deposito:</span> <span className="font-medium">{selectedRemito.deposito}</span></div>
+                <div><span className="text-gray-500">Sucursal:</span> <span className="font-medium">{selectedRemito.sucursal}</span></div>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <h3 className="font-semibold text-gray-900 border-b pb-2">Entrega</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><span className="text-gray-500">Fecha Entrega:</span> <span className="font-medium">{formatDate(selectedRemito.fecha_entrega)}</span></div>
+                <div><span className="text-gray-500">Transporte:</span> <span className="font-medium">{selectedRemito.transporte || "-"}</span></div>
+                <div><span className="text-gray-500">Chofer:</span> <span className="font-medium">{selectedRemito.chofer || "-"}</span></div>
+                <div><span className="text-gray-500">Bultos:</span> <span className="font-medium">{selectedRemito.bultos}</span></div>
+                <div className="col-span-2"><span className="text-gray-500">Domicilio:</span> <span className="font-medium">{selectedRemito.domicilio_envio}</span></div>
+              </div>
+            </div>
+          </div>
+
+          <h3 className="font-semibold text-gray-900 border-b pb-2 mb-4">Cliente</h3>
+          {clienteRemito && (
+            <div className="grid grid-cols-4 gap-4 text-sm mb-6">
+              <div><span className="text-gray-500">Nombre:</span> <span className="font-medium">{clienteRemito.nombre}</span></div>
+              <div><span className="text-gray-500">Documento:</span> <span className="font-medium">{clienteRemito.tipo_documento}: {clienteRemito.numero_documento}</span></div>
+              <div><span className="text-gray-500">Telefono:</span> <span className="font-medium">{clienteRemito.telefono || clienteRemito.celular || "-"}</span></div>
+              <div><span className="text-gray-500">Email:</span> <span className="font-medium">{clienteRemito.email || "-"}</span></div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-4 gap-4 text-sm bg-gray-50 p-4 rounded-lg">
+            <div><span className="text-gray-500">Peso Bruto:</span> <span className="font-medium">{selectedRemito.peso_kg} kg</span></div>
+            <div><span className="text-gray-500">Peso Neto:</span> <span className="font-medium">{selectedRemito.peso_neto_kg} kg</span></div>
+            <div><span className="text-gray-500">Bultos:</span> <span className="font-medium">{selectedRemito.bultos}</span></div>
+            <div><span className="text-gray-500">Valor Declarado:</span> <span className="font-medium">{formatCurrency(selectedRemito.valor_declarado)}</span></div>
+          </div>
+
+          {/* Seguimiento */}
+          <SeguimientoPanel seguimiento={selectedRemito.seguimiento || []} />
+        </div>
+      </div>
+    )
+  }
+
+  // Remitos
+  const renderRemitos = () => {
+    if (selectedRemito) return renderFichaRemito()
+    
+    return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold text-emerald-900">Remitos</h1>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+        <div className="flex gap-4 items-center">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar por número o cliente..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="bg-gray-50 border-b-2 border-gray-200">
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cliente</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Domicilio Envío</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Factura</th>
+              <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Estado</th>
+              <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Control Factura</th>
+            </tr>
+          </thead>
+          <tbody>
+            {remitos.map(remito => (
+              <tr 
+                key={remito.id} 
+                onClick={() => setSelectedRemito(remito)}
+                className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+              >
+                <td className="py-3 px-4 font-mono text-sm text-emerald-700 font-medium">{remito.numero}</td>
+                <td className="py-3 px-4 text-sm">{remito.cliente_nombre}</td>
+                <td className="py-3 px-4 text-sm text-gray-600">{formatDate(remito.fecha)}</td>
+                <td className="py-3 px-4 text-sm text-gray-600">{remito.domicilio_envio}</td>
+                <td className="py-3 px-4 text-sm text-blue-600">{remito.factura_numero || "-"}</td>
+                <td className="py-3 px-4 text-center">
+                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getEstadoRemitoColor(remito.estado)}`}>
+                    {remito.estado === "en_ejecucion" ? "En Ejecución" : "Aprobado"}
+                  </span>
+                </td>
+                <td className="py-3 px-4 text-center">
+                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${remito.control_factura === "facturado" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
+                    {remito.control_factura === "facturado" ? "Facturado" : "Pendiente"}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {remitos.length === 0 && (
+          <div className="text-center py-12 text-gray-500">
+            No se encontraron remitos
+          </div>
+)}
+      </div>
+    </div>
+    )
+  }
+  
+  // Vista de Crear Factura
+  // Función para guardar factura como borrador
+  const handleGuardarFacturaBorrador = () => {
+    const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
+    const lineasValidas = facturaLineas.filter(l => l.producto_nombre.trim() !== "")
+    const subtotal = lineasValidas.reduce((sum, l) => sum + l.subtotal, 0)
+    const total = subtotal * 1.21
+    
+    if (!clienteSeleccionado || lineasValidas.length === 0) {
+      alert("Debe seleccionar un cliente y agregar al menos un producto")
+      return
+    }
+
+    const tipoFactura = clienteSeleccionado.posicion_fiscal === "responsable_inscripto" ? "A" :
+      clienteSeleccionado.posicion_fiscal === "monotributista" ? "C" : "B"
+    const facturaNumero = `FC-${tipoFactura} X 10000-000${20050 + facturas.length}`
+    const facturaId = facturas.length + 1
+    const fechaHoy = new Date().toISOString()
+
+    const newFactura: Factura = {
+      id: facturaId,
+      numero: facturaNumero,
+      tipo: tipoFactura as "A" | "B" | "C",
+      nota_venta_id: 0,
+      nota_venta_numero: "-",
+      cliente_id: clienteSeleccionado.id,
+      cliente_nombre: clienteSeleccionado.nombre,
+      cliente_documento: `${clienteSeleccionado.tipo_documento} ${clienteSeleccionado.numero_documento}`,
+      estado: "borrador",
+      fecha: fechaHoy,
+      vendedor_nombre: mockVendedores[0]?.nombre || "Max Solina",
+      domicilio_facturacion: clienteSeleccionado.direccion,
+      moneda: "ARS",
+      tipo_cotizacion: "blue",
+      cotizacion: 1150,
+      termino_pago: mockTerminosPago.find(tp => tp.id === clienteSeleccionado.termino_pago_id)?.nombre || "Contado",
+      subtotal: subtotal,
+      descuento: 0,
+      impuestos: subtotal * 0.21,
+      total: total,
+      saldo: total,
+      sucursal: "Puerto Norte",
+      lineas: lineasValidas,
+      vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: total }]
+    }
+    setFacturas(prev => [...prev, newFactura])
+
+    setCreandoFactura(false)
+    setFacturaPrevisualizando(false)
+    setFacturaClienteId(null)
+    setFacturaLineas([])
+    setFacturaListaPreciosId(1)
+    setSelectedFactura(newFactura)
+  }
+
+  // Función para crear factura (usada desde previsualización)
+  const handleCrearFacturaFinal = () => {
+    const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
+    const subtotal = facturaLineas.reduce((sum, l) => sum + l.subtotal, 0)
+    const total = subtotal * 1.21
+    
+    if (!clienteSeleccionado || facturaLineas.length === 0) {
+      alert("Debe seleccionar un cliente y agregar al menos un producto")
+      return
+    }
+
+    const tipoFactura = clienteSeleccionado.posicion_fiscal === "responsable_inscripto" ? "A" :
+      clienteSeleccionado.posicion_fiscal === "monotributista" ? "C" : "B"
+    const facturaNumero = `FC-${tipoFactura} X 10000-000${20050 + facturas.length}`
+    const facturaId = facturas.length + 1
+    const fechaHoy = new Date().toISOString()
+
+    const newFactura: Factura = {
+      id: facturaId,
+      numero: facturaNumero,
+      tipo: tipoFactura as "A" | "B" | "C",
+      nota_venta_id: 0,
+      nota_venta_numero: "-",
+      cliente_id: clienteSeleccionado.id,
+      cliente_nombre: clienteSeleccionado.nombre,
+      cliente_documento: `${clienteSeleccionado.tipo_documento} ${clienteSeleccionado.numero_documento}`,
+      estado: "abierta",
+      fecha: fechaHoy,
+      vendedor_nombre: mockVendedores[0]?.nombre || "Max Solina",
+      domicilio_facturacion: clienteSeleccionado.direccion,
+      moneda: "ARS",
+      tipo_cotizacion: "blue",
+      cotizacion: 1150,
+      termino_pago: mockTerminosPago.find(tp => tp.id === clienteSeleccionado.termino_pago_id)?.nombre || "Contado",
+      subtotal: subtotal,
+      descuento: 0,
+      impuestos: subtotal * 0.21,
+      total: total,
+      saldo: total,
+      sucursal: "Puerto Norte",
+      lineas: facturaLineas,
+      vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: total }]
+    }
+    setFacturas(prev => [...prev, newFactura])
+
+    // Crear movimiento de debito
+    const saldoAnterior = clienteSeleccionado.saldo_cuenta_corriente
+    const nuevoMovimiento: MovimientoCuentaCorriente = {
+      id: movimientosCC.length + 1,
+      cliente_id: clienteSeleccionado.id,
+      fecha: fechaHoy,
+      tipo: "debito",
+      concepto: `Factura de venta`,
+      documento_tipo: "factura",
+      documento_numero: facturaNumero,
+      documento_id: facturaId,
+      moneda: "ARS",
+      importe: total,
+      saldo_posterior: saldoAnterior + total
+    }
+    setMovimientosCC(prev => [...prev, nuevoMovimiento])
+
+    // Actualizar saldo del cliente
+    setClientes(prev => prev.map(c =>
+      c.id === clienteSeleccionado.id ? {
+        ...c,
+        saldo_cuenta_corriente: c.saldo_cuenta_corriente + total,
+        total_facturado: c.total_facturado + total
+      } : c
+    ))
+
+    setCreandoFactura(false)
+    setFacturaPrevisualizando(false)
+    setFacturaClienteId(null)
+    setFacturaLineas([])
+    setFacturaListaPreciosId(1)
+    setSelectedFactura(newFactura)
+  }
+
+  // Vista de previsualización de Factura
+  const renderPrevisualizacionFactura = () => {
+    const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
+    const lineasValidas = facturaLineas.filter(l => l.producto_nombre.trim() !== "")
+    const subtotal = lineasValidas.reduce((sum, l) => sum + l.subtotal, 0)
+    const iva = subtotal * 0.21
+    const total = subtotal + iva
+    const tipoFactura = clienteSeleccionado?.posicion_fiscal === "responsable_inscripto" ? "A" :
+      clienteSeleccionado?.posicion_fiscal === "monotributista" ? "C" : "B"
+
+    return (
+      <div>
+        {/* Header con breadcrumb */}
+        <div className="text-sm text-gray-500 mb-2">
+          Facturas / <span className="text-gray-700">Nueva Factura</span>
+        </div>
+        <div className="flex items-center gap-4 mb-6">
+          <button onClick={() => setFacturaPrevisualizando(false)} className="text-gray-500 hover:text-gray-700">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold text-emerald-900">Nueva Factura Tipo {tipoFactura}</h1>
+            <p className="text-sm text-gray-500">{new Date().toLocaleDateString('es-AR')} | Puerto Norte</p>
+          </div>
+          <button className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1">
+            <Download className="w-4 h-4" /> Descargar PDF
+          </button>
+          <span className="px-4 py-2 rounded-full text-sm font-semibold bg-amber-100 text-amber-700">
+            Borrador
+          </span>
+        </div>
+
+        {/* Barra de acciones oscura */}
+        <div className="bg-gray-800 rounded-t-lg px-4 py-3 flex items-center mb-0">
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleGuardarFacturaBorrador}
+              className="px-3 py-1.5 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700 flex items-center gap-1"
+            >
+              <Save className="w-4 h-4" /> Guardar Cambios
+            </button>
+            <button 
+              onClick={handleCrearFacturaFinal}
+              className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 flex items-center gap-1"
+            >
+              <CheckCircle className="w-4 h-4" /> Confirmar Factura
+            </button>
+          </div>
+        </div>
+
+        {/* Contenido */}
+        <div className="bg-white rounded-b-lg shadow-sm p-6">
+          <div className="grid grid-cols-2 gap-8 mb-6">
+            {/* Datos del Cliente */}
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-4">Datos del Cliente</h3>
+              <div className="grid grid-cols-2 gap-y-3 text-sm">
+                <div>
+                  <span className="text-gray-500">Nombre:</span>
+                  <span className="ml-2 font-medium">{clienteSeleccionado?.nombre}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Documento:</span>
+                  <span className="ml-2 font-medium">{clienteSeleccionado?.tipo_documento}: {clienteSeleccionado?.numero_documento}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Pos. Fiscal:</span>
+                  <span className="ml-2 font-medium capitalize">{clienteSeleccionado?.posicion_fiscal?.replace("_", " ")}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Tipo Factura:</span>
+                  <span className="ml-2 font-medium">{tipoFactura}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Teléfono:</span>
+                  <span className="ml-2 font-medium text-emerald-600">{clienteSeleccionado?.telefono || clienteSeleccionado?.celular || "-"}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Email:</span>
+                  <span className="ml-2 font-medium text-emerald-600">{clienteSeleccionado?.email || "-"}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Datos de la Factura */}
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-4">Datos de la Factura</h3>
+              <div className="grid grid-cols-2 gap-y-3 text-sm">
+                <div>
+                  <span className="text-gray-500">Sucursal:</span>
+                  <span className="ml-2 font-medium">Puerto Norte</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Vendedor:</span>
+                  <span className="ml-2 font-medium">Max Solina</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Moneda:</span>
+                  <span className="ml-2 font-medium">ARS</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Condición:</span>
+                  <span className="ml-2 font-medium">{mockTerminosPago.find(tp => tp.id === clienteSeleccionado?.termino_pago_id)?.nombre || "Contado"}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Productos */}
+          <div className="mb-6">
+            <h3 className="font-semibold text-gray-900 mb-4">Lineas de Factura ({lineasValidas.length})</h3>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-xs text-gray-500 uppercase">
+                  <th className="text-left py-2">Producto</th>
+                  <th className="text-center py-2 w-20">Cant.</th>
+                  <th className="text-right py-2 w-28">Precio</th>
+                  <th className="text-center py-2 w-16">Dto.%</th>
+                  <th className="text-right py-2 w-28">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lineasValidas.map((linea, index) => (
+                  <tr key={index} className="border-b">
+                    <td className="py-2">
+                      <div className="font-medium">{linea.producto_nombre}</div>
+                      {linea.descripcion && <div className="text-xs text-gray-500">{linea.descripcion}</div>}
+                    </td>
+                    <td className="py-2 text-center">{linea.cantidad}</td>
+                    <td className="py-2 text-right">{formatCurrency(linea.precio_unitario)}</td>
+                    <td className="py-2 text-center">{linea.descuento}%</td>
+                    <td className="py-2 text-right font-medium">{formatCurrency(linea.subtotal)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Totales */}
+          <div className="flex justify-end">
+            <div className="w-64 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Subtotal:</span>
+                <span>{formatCurrency(subtotal)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">IVA (21%):</span>
+                <span>{formatCurrency(iva)}</span>
+              </div>
+              <div className="flex justify-between text-lg font-bold pt-2 border-t">
+                <span>Total:</span>
+                <span className="text-emerald-700">{formatCurrency(total)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderCrearFactura = () => {
+    const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
+    const subtotal = facturaLineas.reduce((sum, l) => sum + l.subtotal, 0)
+    const total = subtotal * 1.21
+
+    // Si estamos en previsualización, mostrar vista previa
+    if (facturaPrevisualizando) {
+      return renderPrevisualizacionFactura()
+    }
+
+    return (
+      <div>
+        <div className="flex items-center gap-4 mb-6">
+          <button onClick={() => { setCreandoFactura(false); setFacturaClienteId(null); setFacturaLineas([]) }} className="p-2 hover:bg-gray-100 rounded-md">
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-emerald-900">Nueva Factura</h1>
+            <p className="text-sm text-gray-500">Complete los datos para crear la factura</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-6">
+          <div className="col-span-2 space-y-6">
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4">Cliente</h3>
+              <select
+                value={facturaClienteId || ""}
+                onChange={(e) => setFacturaClienteId(e.target.value ? parseInt(e.target.value) : null)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="">Seleccionar cliente...</option>
+                {clientes.map(c => (
+                  <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
+                ))}
+              </select>
+              {clienteSeleccionado && (
+                <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                  <div><span className="text-gray-500">Documento:</span> <span className="font-medium">{clienteSeleccionado.tipo_documento}: {clienteSeleccionado.numero_documento}</span></div>
+                  <div><span className="text-gray-500">Posicion Fiscal:</span> <span className="font-medium capitalize">{clienteSeleccionado.posicion_fiscal.replace('_', ' ')}</span></div>
+                  <div><span className="text-gray-500">Tipo Factura:</span> <span className="font-medium">
+                    {clienteSeleccionado.posicion_fiscal === "responsable_inscripto" ? "A" : clienteSeleccionado.posicion_fiscal === "monotributista" ? "C" : "B"}
+                  </span></div>
+                  <div>
+                    <span className="text-gray-500">Lista de Precios:</span>
+                    <select
+                      value={facturaListaPreciosId}
+                      onChange={(e) => setFacturaListaPreciosId(Number(e.target.value))}
+                      className="ml-2 border border-gray-300 rounded px-2 py-1 text-sm font-medium"
+                    >
+                      {mockListasPrecios.filter(lp => lp.activa).map(lp => (
+                        <option key={lp.id} value={lp.id}>{lp.nombre}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+              <div className="bg-gray-50 px-4 py-3 border-b">
+                <h3 className="font-semibold text-gray-900">Lineas de Factura</h3>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                    <th className="text-left py-2 px-3">Producto</th>
+                    <th className="text-center py-2 px-3 w-24">Cantidad</th>
+                    <th className="text-right py-2 px-3 w-32">Precio Unit.</th>
+                    <th className="text-center py-2 px-3 w-24">Dto. %</th>
+                    <th className="text-right py-2 px-3 w-32">Subtotal</th>
+                    <th className="w-10"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {facturaLineas.map((linea, index) => (
+                    <tr key={index} className="border-b">
+                      <td className="py-2 px-3">
+                        <div className="relative">
+                          <input type="text" value={linea.producto_nombre}
+                            onChange={(e) => {
+                              const updated = [...facturaLineas]
+                              updated[index].producto_nombre = e.target.value
+                              setFacturaLineas(updated)
+                              setFacturaProductoSearchText(e.target.value)
+                            }}
+                            onFocus={() => {
+                              setFacturaProductoSearchIndex(index)
+                              setFacturaProductoSearchText(linea.producto_nombre)
+                            }}
+                            onBlur={() => {
+                              setTimeout(() => {
+                                setFacturaProductoSearchIndex(null)
+                                setFacturaProductoSearchText("")
+                              }, 200)
+                            }}
+                            placeholder="Buscar producto..."
+                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm" />
+                          {/* Dropdown de sugerencias */}
+                          {facturaProductoSearchIndex === index && (
+                            <div className="absolute left-0 top-full z-50 w-full mt-1 bg-white border border-gray-300 shadow-lg rounded-md max-h-48 overflow-y-auto">
+                              {productosConSerie
+                                .filter(p =>
+                                  p.nombre.toLowerCase().includes(facturaProductoSearchText.toLowerCase()) ||
+                                  p.sku.toLowerCase().includes(facturaProductoSearchText.toLowerCase())
+                                )
+                                .map(p => {
+                                  // Obtener precio según lista de precios seleccionada
+                                  const precioLista = p.precios?.find(pr => pr.lista_id === facturaListaPreciosId)?.precio || p.precio_venta
+                                  return (
+                                    <div
+                                      key={p.id}
+                                      onMouseDown={(e) => {
+                                        e.preventDefault()
+                                        const updated = [...facturaLineas]
+                                        updated[index].producto_nombre = p.nombre
+                                        updated[index].producto_id = p.id
+                                        updated[index].precio_unitario = precioLista
+                                        updated[index].subtotal = updated[index].cantidad * precioLista * (1 - updated[index].descuento / 100)
+                                        setFacturaLineas(updated)
+                                        setFacturaProductoSearchIndex(null)
+                                        setFacturaProductoSearchText("")
+                                      }}
+                                      className="px-3 py-2 hover:bg-emerald-600 hover:text-white cursor-pointer text-sm"
+                                    >
+                                      <span className="font-medium">[{p.sku}]</span> {p.nombre}
+                                    </div>
+                                  )
+                                })
+                              }
+                              {productosConSerie.filter(p =>
+                                p.nombre.toLowerCase().includes(facturaProductoSearchText.toLowerCase()) ||
+                                p.sku.toLowerCase().includes(facturaProductoSearchText.toLowerCase())
+                              ).length === 0 && (
+                                <div className="px-3 py-2 text-sm text-gray-500">No se encontraron productos</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-2 px-3">
+                        <input type="number" value={linea.cantidad} min="1"
+                          onChange={(e) => {
+                            const updated = [...facturaLineas]
+                            updated[index].cantidad = parseInt(e.target.value) || 1
+                            updated[index].subtotal = updated[index].cantidad * updated[index].precio_unitario * (1 - updated[index].descuento / 100)
+                            setFacturaLineas(updated)
+                          }}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-center" />
+                      </td>
+                      <td className="py-2 px-3">
+                        <input type="number" value={linea.precio_unitario} min="0" step="0.01"
+                          onChange={(e) => {
+                            const updated = [...facturaLineas]
+                            updated[index].precio_unitario = parseFloat(e.target.value) || 0
+                            updated[index].subtotal = updated[index].cantidad * updated[index].precio_unitario * (1 - updated[index].descuento / 100)
+                            setFacturaLineas(updated)
+                          }}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right" />
+                      </td>
+                      <td className="py-2 px-3">
+                        <input type="number" value={linea.descuento} min="0" max="100"
+                          onChange={(e) => {
+                            const updated = [...facturaLineas]
+                            updated[index].descuento = parseFloat(e.target.value) || 0
+                            updated[index].subtotal = updated[index].cantidad * updated[index].precio_unitario * (1 - updated[index].descuento / 100)
+                            setFacturaLineas(updated)
+                          }}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-center" />
+                      </td>
+                      <td className="py-2 px-3 text-right font-medium">{formatCurrency(linea.subtotal)}</td>
+                      <td className="py-2 px-3">
+                        <button onClick={() => setFacturaLineas(facturaLineas.filter((_, i) => i !== index))} className="text-red-500 hover:text-red-700">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {facturaLineas.length === 0 && (
+                    <tr><td colSpan={6} className="text-center py-3 text-gray-400 text-sm">No hay lineas agregadas</td></tr>
+                  )}
+                </tbody>
+              </table>
+              <div className="px-4 py-3 border-t">
+                <button
+                  onClick={() => setFacturaLineas([...facturaLineas, { producto_nombre: "", descripcion: "", cantidad: 1, precio_unitario: 0, descuento: 0, subtotal: 0 }])}
+                  className="text-sm text-emerald-700 hover:text-emerald-800 font-medium flex items-center gap-1"
+                >
+                  <Plus className="w-4 h-4" /> Agregar linea
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4">Resumen</h3>
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm"><span className="text-gray-600">Subtotal:</span><span className="font-medium">{formatCurrency(subtotal)}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-gray-600">IVA (21%):</span><span className="font-medium">{formatCurrency(subtotal * 0.21)}</span></div>
+                <div className="border-t pt-3">
+                  <div className="flex justify-between text-lg font-bold"><span>Total:</span><span className="text-emerald-700">{formatCurrency(total)}</span></div>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <div className="space-y-3">
+                <button onClick={() => setFacturaPrevisualizando(true)} disabled={!facturaClienteId || facturaLineas.filter(l => l.producto_nombre.trim() !== "").length === 0}
+                  className="w-full bg-emerald-700 text-white px-4 py-3 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">
+                  Continuar
+                </button>
+                <button onClick={() => { setCreandoFactura(false); setFacturaClienteId(null); setFacturaLineas([]); setFacturaPrevisualizando(false); setFacturaListaPreciosId(1) }}
+                  className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-200">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Ficha de Factura
+  const renderFichaFactura = () => {
+    if (!selectedFactura) return null
+    const clienteFactura = clientes.find(c => c.id === selectedFactura.cliente_id)
+    const nvVinculada = notasVenta.find(nv => nv.id === selectedFactura.nota_venta_id)
+    const recibosVinculados = recibos.filter(r => r.nota_venta_numero === selectedFactura.nota_venta_numero)
+
+    return (
+      <>
+      <div>
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+          <button onClick={() => setSelectedFactura(null)} className="hover:text-emerald-700">Facturas</button>
+          <span>/</span>
+          <span className="font-medium text-gray-900">{selectedFactura.numero}</span>
+        </div>
+
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setSelectedFactura(null)} className="p-2 hover:bg-gray-100 rounded-md">
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-emerald-900">{selectedFactura.numero}</h1>
+              <p className="text-sm text-gray-500">{formatDateTime(selectedFactura.fecha)} | Tipo {selectedFactura.tipo}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {selectedFactura.estado === 'borrador' && (
+              <button 
+                onClick={() => {
+                  // Cargar datos de la factura en el formulario para editar
+                  setFacturaClienteId(selectedFactura.cliente_id)
+                  setFacturaLineas(selectedFactura.lineas.map(l => ({
+                    producto_nombre: l.producto_nombre,
+                    descripcion: l.descripcion || "",
+                    cantidad: l.cantidad,
+                    precio_unitario: l.precio_unitario,
+                    descuento: l.descuento,
+                    subtotal: l.subtotal
+                  })))
+                  setCreandoFactura(true)
+                  setFacturaPrevisualizando(true)
+                  setSelectedFactura(null)
+                }}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 flex items-center gap-1"
+              >
+                <Edit className="w-4 h-4" /> Editar
+              </button>
+            )}
+            <button className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1">
+              <Download className="w-4 h-4" /> Descargar PDF
+            </button>
+            <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
+              selectedFactura.estado === 'pagada' ? 'bg-green-100 text-green-700' :
+              selectedFactura.estado === 'abierta' ? 'bg-blue-100 text-blue-700' :
+              selectedFactura.estado === 'vencida' ? 'bg-red-100 text-red-700' :
+              selectedFactura.estado === 'cancelada' ? 'bg-gray-100 text-gray-700' :
+              selectedFactura.estado === 'borrador' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-700'
+            }`}>
+              {selectedFactura.estado.charAt(0).toUpperCase() + selectedFactura.estado.slice(1)}
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-gray-800 rounded-t-lg px-4 py-3 flex items-center justify-between mb-0">
+          <div className="flex items-center gap-2">
+            {(selectedFactura.estado === 'abierta' || selectedFactura.estado === 'vencida') && (
+              <>
+                <button 
+                  onClick={() => setShowCancelarFacturaModal(true)}
+                  className="px-3 py-1.5 text-sm border border-gray-400 text-white rounded-md hover:bg-gray-700 flex items-center gap-1"
+                >
+                  <X className="w-4 h-4" /> Cancelar
+                </button>
+                <button 
+                  onClick={() => {
+                    // Precargar datos del cliente y factura en el recibo
+                    setReciboClienteIdForm(selectedFactura.cliente_id)
+                    setReciboFacturaIdForm(selectedFactura.id)
+                    setReciboMontoForm(selectedFactura.saldo)
+                    setReciboPagosForm([{ forma_pago: "Efectivo", importe: selectedFactura.saldo, moneda: "ARS" }])
+                    setCreandoRecibo(true)
+                    setReciboPrevisualizando(true)
+                    setSelectedFactura(null)
+                    setActiveView("recibos")
+                  }}
+                  className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 flex items-center gap-1"
+                >
+                  <DollarSign className="w-4 h-4" /> Registrar Cobro
+                </button>
+              </>
+            )}
+            {nvVinculada && (
+              <button 
+                onClick={() => { setSelectedFactura(null); setSelectedNV(nvVinculada); setActiveView("notas_venta") }}
+                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Ver Nota de Venta
+              </button>
+            )}
+            {recibosVinculados.length > 0 && (
+              <button 
+                onClick={() => { setSelectedFactura(null); setSelectedRecibo(recibosVinculados[0]); setActiveView("recibos") }}
+                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Ver Recibos ({recibosVinculados.length})
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-b-lg shadow-sm p-6">
+          <div className="grid grid-cols-2 gap-8 mb-6">
+            <div className="space-y-4">
+              <h3 className="font-semibold text-gray-900 border-b pb-2">Datos de Factura</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><span className="text-gray-500">Numero:</span> <span className="font-medium">{selectedFactura.numero}</span></div>
+                <div><span className="text-gray-500">Tipo:</span> <span className="font-medium">Factura {selectedFactura.tipo}</span></div>
+                <div><span className="text-gray-500">Fecha:</span> <span className="font-medium">{formatDate(selectedFactura.fecha)}</span></div>
+                <div><span className="text-gray-500">NV:</span> <span className="font-medium text-emerald-700">{selectedFactura.nota_venta_numero}</span></div>
+                <div><span className="text-gray-500">Vendedor:</span> <span className="font-medium">{selectedFactura.vendedor_nombre}</span></div>
+                <div><span className="text-gray-500">Sucursal:</span> <span className="font-medium">{selectedFactura.sucursal}</span></div>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <h3 className="font-semibold text-gray-900 border-b pb-2">Cliente</h3>
+              {clienteFactura && (
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div><span className="text-gray-500">Nombre:</span> <span className="font-medium">{clienteFactura.nombre}</span></div>
+                  <div><span className="text-gray-500">Documento:</span> <span className="font-medium">{selectedFactura.cliente_documento}</span></div>
+                  <div className="col-span-2"><span className="text-gray-500">Direccion:</span> <span className="font-medium">{selectedFactura.domicilio_facturacion}</span></div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <h3 className="font-semibold text-gray-900 border-b pb-2 mb-4">Lineas</h3>
+          <table className="w-full text-sm mb-6">
+            <thead>
+              <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                <th className="text-left py-2 px-3">Producto</th>
+                <th className="text-center py-2 px-3">Cantidad</th>
+                <th className="text-right py-2 px-3">Precio Unit.</th>
+                <th className="text-center py-2 px-3">Dto. %</th>
+                <th className="text-right py-2 px-3">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectedFactura.lineas.map((l, idx) => (
+                <tr key={idx} className="border-b">
+                  <td className="py-2 px-3">{l.producto_nombre}</td>
+                  <td className="py-2 px-3 text-center">{l.cantidad}</td>
+                  <td className="py-2 px-3 text-right">{formatCurrency(l.precio_unitario, selectedFactura.moneda)}</td>
+                  <td className="py-2 px-3 text-center">{l.descuento}%</td>
+                  <td className="py-2 px-3 text-right font-medium">{formatCurrency(l.subtotal, selectedFactura.moneda)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="flex justify-end">
+            <div className="w-64 space-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-gray-500">Subtotal:</span><span>{formatCurrency(selectedFactura.subtotal, selectedFactura.moneda)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Descuento:</span><span>{formatCurrency(selectedFactura.descuento, selectedFactura.moneda)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Impuestos:</span><span>{formatCurrency(selectedFactura.impuestos, selectedFactura.moneda)}</span></div>
+              <div className="flex justify-between font-bold text-lg border-t pt-2"><span>Total:</span><span>{formatCurrency(selectedFactura.total, selectedFactura.moneda)}</span></div>
+              <div className="flex justify-between text-red-600 font-medium"><span>Saldo:</span><span>{formatCurrency(selectedFactura.saldo, selectedFactura.moneda)}</span></div>
+            </div>
+          </div>
+
+          {/* Seguimiento */}
+          <SeguimientoPanel seguimiento={selectedFactura.seguimiento || []} />
+        </div>
+      </div>
+      {/* Modal Cancelar Factura */}
+      {showCancelarFacturaModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="px-6 py-4 border-b flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-900">Cancelar Factura</h3>
+              <button onClick={() => setShowCancelarFacturaModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Motivo de Cancelación <span className="text-red-500">*</span></label>
+                <select 
+                  value={cancelarFacturaMotivo}
+                  onChange={(e) => setCancelarFacturaMotivo(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                >
+                  <option value="">Seleccionar motivo...</option>
+                  <option value="Error en datos">Error en datos</option>
+                  <option value="Cliente solicitó cancelación">Cliente solicitó cancelación</option>
+                  <option value="Duplicada">Duplicada</option>
+                  <option value="Producto no disponible">Producto no disponible</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción <span className="text-red-500">*</span></label>
+                <textarea 
+                  value={cancelarFacturaDescripcion}
+                  onChange={(e) => setCancelarFacturaDescripcion(e.target.value)}
+                  placeholder="Describa el motivo de la cancelación..."
+                  rows={4}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none"
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3 rounded-b-lg">
+              <button 
+                onClick={() => setShowCancelarFacturaModal(false)}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-100"
+              >
+                Volver
+              </button>
+              <button 
+                onClick={() => {
+                  if (!cancelarFacturaMotivo || !cancelarFacturaDescripcion.trim()) {
+                    alert("Debe completar el motivo y la descripción para cancelar la factura")
+                    return
+                  }
+                  const fechaHoy = new Date().toISOString()
+                  const clienteFactura = clientes.find(c => c.id === selectedFactura.cliente_id)
+                  
+                  // Revertir movimiento de cuenta corriente si la factura estaba abierta
+                  if (selectedFactura.estado === 'abierta' && clienteFactura) {
+                    const saldoAnterior = clienteFactura.saldo_cuenta_corriente
+                    const nuevoMovimiento: MovimientoCuentaCorriente = {
+                      id: movimientosCC.length + 1,
+                      cliente_id: clienteFactura.id,
+                      fecha: fechaHoy,
+                      tipo: "credito",
+                      concepto: `Cancelación de factura`,
+                      documento_tipo: "factura",
+                      documento_numero: selectedFactura.numero,
+                      documento_id: selectedFactura.id,
+                      moneda: selectedFactura.moneda,
+                      importe: selectedFactura.total,
+                      saldo_posterior: saldoAnterior - selectedFactura.total
+                    }
+                    setMovimientosCC(prev => [...prev, nuevoMovimiento])
+                    
+                    // Actualizar saldo del cliente
+                    setClientes(prev => prev.map(c =>
+                      c.id === clienteFactura.id ? {
+                        ...c,
+                        saldo_cuenta_corriente: c.saldo_cuenta_corriente - selectedFactura.total
+                      } : c
+                    ))
+                  }
+                  
+                  const updatedFactura = {
+                    ...selectedFactura,
+                    estado: "cancelada" as const,
+                    saldo: 0,
+                    seguimiento: [
+                      ...(selectedFactura.seguimiento || []),
+                      {
+                        id: (selectedFactura.seguimiento?.length || 0) + 1,
+                        fecha: fechaHoy,
+                        usuario: "Max Solina",
+                        tipo: "cancelacion" as const,
+                        descripcion: `Factura cancelada. Motivo: ${cancelarFacturaMotivo}. ${cancelarFacturaDescripcion.trim()}`
+                      }
+                    ]
+                  }
+                  setFacturas(prev => prev.map(f => f.id === selectedFactura.id ? updatedFactura : f))
+                  setSelectedFactura(updatedFactura)
+                  setShowCancelarFacturaModal(false)
+                  setCancelarFacturaMotivo("")
+                  setCancelarFacturaDescripcion("")
+                }}
+                disabled={!cancelarFacturaMotivo || !cancelarFacturaDescripcion.trim()}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                Confirmar Cancelación
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      </>
+    )
+  }
+
+  // Facturas
+  const renderFacturas = () => {
+    if (selectedFactura) return renderFichaFactura()
+    if (creandoFactura) return renderCrearFactura()
+    
+    return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold text-emerald-900">Facturas</h1>
+        <button
+          onClick={() => { setCreandoFactura(true); setFacturaClienteId(null); setFacturaLineas([]) }}
+          className="bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors flex items-center gap-2"
+        >
+          <Plus className="w-4 h-4" /> Nueva Factura
+        </button>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+        <div className="flex gap-4 items-center">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar por número o cliente..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="bg-gray-50 border-b-2 border-gray-200">
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cliente</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Nota de Venta</th>
+              <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Estado</th>
+              <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Moneda</th>
+              <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Total</th>
+              <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Saldo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {facturas.map(factura => (
+              <tr 
+                key={factura.id} 
+                onClick={() => setSelectedFactura(factura)}
+                className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+              >
+                <td className="py-3 px-4 font-mono text-sm text-emerald-700 font-medium">{factura.numero}</td>
+                <td className="py-3 px-4">
+                  <p className="text-sm font-medium">{factura.cliente_nombre}</p>
+                  <p className="text-xs text-gray-500">{factura.cliente_documento}</p>
+                </td>
+                <td className="py-3 px-4 text-sm text-gray-600">{formatDate(factura.fecha)}</td>
+                <td className="py-3 px-4 text-sm text-blue-600">{factura.nota_venta_numero}</td>
+                <td className="py-3 px-4 text-center">
+                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getEstadoFacturaColor(factura.estado)}`}>
+                    {factura.estado === "borrador" ? "Borrador" : factura.estado === "abierta" ? "Abierta" : "Conciliada"}
+                  </span>
+                </td>
+                <td className="py-3 px-4 text-center text-sm font-medium">{factura.moneda}</td>
+                <td className="py-3 px-4 text-right font-medium">{formatCurrency(factura.total, factura.moneda)}</td>
+                <td className="py-3 px-4 text-right">
+                  <span className={factura.saldo > 0 ? "text-red-600 font-medium" : "text-green-600"}>
+                    {formatCurrency(factura.saldo, factura.moneda)}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {facturas.length === 0 && (
+          <div className="text-center py-12 text-gray-500">
+            No se encontraron facturas
+          </div>
+        )}
+      </div>
+    </div>
+    )
+  }
+
+  // Vista de previsualización de Recibo
+  const renderPrevisualizacionRecibo = () => {
+    const clienteSeleccionado = clientes.find(c => c.id === reciboClienteIdForm)
+    const facturaVinculada = reciboFacturaIdForm ? facturas.find(f => f.id === reciboFacturaIdForm) : null
+    const totalPagos = reciboPagosForm.reduce((sum, p) => sum + p.importe, 0)
+
+    return (
+      <div>
+        {/* Header con breadcrumb - muestra documento origen si existe */}
+        <div className="text-sm text-gray-500 mb-2">
+          {facturaVinculada ? (
+            <>
+              <button 
+                onClick={() => { setReciboPrevisualizando(false); setCreandoRecibo(false); setSelectedFactura(facturaVinculada); setActiveView("facturas") }}
+                className="hover:text-emerald-700"
+              >
+                Facturas
+              </button>
+              <span> / </span>
+              <button 
+                onClick={() => { setReciboPrevisualizando(false); setCreandoRecibo(false); setSelectedFactura(facturaVinculada); setActiveView("facturas") }}
+                className="hover:text-emerald-700 text-emerald-600"
+              >
+                {facturaVinculada.numero}
+              </button>
+              <span> / </span>
+              <span className="text-gray-700">Nuevo Recibo</span>
+            </>
+          ) : (
+            <>Recibos / <span className="text-gray-700">Nuevo Recibo</span></>
+          )}
+        </div>
+        <div className="flex items-center gap-4 mb-6">
+          <button onClick={() => setReciboPrevisualizando(false)} className="text-gray-500 hover:text-gray-700">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold text-emerald-900">Nuevo Recibo</h1>
+            <p className="text-sm text-gray-500">{new Date().toLocaleDateString('es-AR')} | Puerto Norte</p>
+          </div>
+          <button className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1">
+            <Download className="w-4 h-4" /> Descargar PDF
+          </button>
+          <span className="px-4 py-2 rounded-full text-sm font-semibold bg-amber-100 text-amber-700">
+            Borrador
+          </span>
+        </div>
+
+        {/* Barra de acciones oscura */}
+        <div className="bg-gray-800 rounded-t-lg px-4 py-3 flex items-center mb-0">
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => {
+                // Guardar recibo como borrador
+                if (!clienteSeleccionado || reciboPagosForm.length === 0) {
+                  alert("Debe seleccionar un cliente y agregar al menos un pago")
+                  return
+                }
+
+                const reciboNumero = `RC X Norte-000${11735 + recibos.length}`
+                const reciboId = recibos.length + 1
+                const fechaHoy = new Date().toISOString()
+
+                const newRecibo: Recibo = {
+                  id: reciboId,
+                  numero: reciboNumero,
+                  cliente_id: clienteSeleccionado.id,
+                  cliente_nombre: clienteSeleccionado.nombre,
+                  estado: "borrador",
+                  fecha: fechaHoy,
+                  importe: totalPagos,
+                  importe_no_conciliado: totalPagos,
+                  moneda: "ARS",
+                  sucursal: "Puerto Norte",
+                  caja: "Caja Principal",
+                  cobrador_nombre: mockVendedores[0]?.nombre || "Max Solina",
+                  nota_venta_numero: facturaVinculada?.nota_venta_numero || null,
+                  concepto: facturaVinculada ? `Cobro Factura ${facturaVinculada.numero}` : "Cobro de venta",
+                  pagos: reciboPagosForm,
+                  factura_id: facturaVinculada?.id
+                }
+                setRecibos(prev => [...prev, newRecibo])
+
+                setCreandoRecibo(false)
+                setReciboPrevisualizando(false)
+                setReciboClienteIdForm(null)
+                // Mantener los pagos para que se muestren en la ficha del borrador
+                setReciboPagosForm(reciboPagosForm)
+                setReciboFacturaIdForm(null)
+                setReciboMontoForm(0)
+                setSelectedRecibo(newRecibo)
+              }}
+              className="px-3 py-1.5 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700 flex items-center gap-1"
+            >
+              <Save className="w-4 h-4" /> Guardar Cambios
+            </button>
+            <button 
+              onClick={() => {
+                // Crear recibo confirmado
+                if (!clienteSeleccionado || reciboPagosForm.length === 0) {
+                  alert("Debe seleccionar un cliente y agregar al menos un pago")
+                  return
+                }
+
+                const reciboNumero = `RC X Norte-000${11735 + recibos.length}`
+                const reciboId = recibos.length + 1
+                const fechaHoy = new Date().toISOString()
+
+                const newRecibo: Recibo = {
+                  id: reciboId,
+                  numero: reciboNumero,
+                  cliente_id: clienteSeleccionado.id,
+                  cliente_nombre: clienteSeleccionado.nombre,
+                  estado: "confirmado",
+                  fecha: fechaHoy,
+                  importe: totalPagos,
+                  importe_no_conciliado: totalPagos,
+                  moneda: "ARS",
+                  sucursal: "Puerto Norte",
+                  caja: "Caja Principal",
+                  cobrador_nombre: mockVendedores[0]?.nombre || "Max Solina",
+                  nota_venta_numero: facturaVinculada?.nota_venta_numero || null,
+                  concepto: facturaVinculada ? `Cobro Factura ${facturaVinculada.numero}` : "Cobro de venta",
+                  pagos: reciboPagosForm,
+                  factura_id: facturaVinculada?.id
+                }
+                setRecibos(prev => [...prev, newRecibo])
+
+                // Crear movimiento de credito
+                const saldoAnterior = clienteSeleccionado.saldo_cuenta_corriente
+                const nuevoMovimiento: MovimientoCuentaCorriente = {
+                  id: movimientosCC.length + 1,
+                  cliente_id: clienteSeleccionado.id,
+                  fecha: fechaHoy,
+                  tipo: "credito",
+                  concepto: facturaVinculada ? `Pago Factura ${facturaVinculada.numero}` : "Pago recibido",
+                  documento_tipo: "recibo",
+                  documento_numero: reciboNumero,
+                  documento_id: reciboId,
+                  moneda: "ARS",
+                  importe: totalPagos,
+                  saldo_posterior: saldoAnterior - totalPagos
+                }
+                setMovimientosCC(prev => [...prev, nuevoMovimiento])
+
+                // Actualizar saldo del cliente
+                setClientes(prev => prev.map(c =>
+                  c.id === clienteSeleccionado.id ? {
+                    ...c,
+                    saldo_cuenta_corriente: c.saldo_cuenta_corriente - totalPagos
+                  } : c
+                ))
+
+                // Actualizar factura si está vinculada
+                if (facturaVinculada) {
+                  setFacturas(prev => prev.map(f =>
+                    f.id === facturaVinculada.id ? {
+                      ...f,
+                      saldo: f.saldo - totalPagos,
+                      estado: f.saldo - totalPagos <= 0 ? "pagada" : f.estado
+                    } : f
+                  ))
+                }
+
+                setCreandoRecibo(false)
+                setReciboPrevisualizando(false)
+                setReciboClienteIdForm(null)
+                setReciboPagosForm([])
+                setReciboFacturaIdForm(null)
+                setReciboMontoForm(0)
+                setSelectedRecibo(newRecibo)
+              }}
+              className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 flex items-center gap-1"
+            >
+              <CheckCircle className="w-4 h-4" /> Confirmar Recibo
+            </button>
+          </div>
+        </div>
+
+        {/* Contenido */}
+        <div className="bg-white rounded-b-lg shadow-sm p-6">
+          <div className="grid grid-cols-2 gap-8 mb-6">
+            {/* Datos del Cliente */}
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-4">Datos del Cliente</h3>
+              <div className="grid grid-cols-2 gap-y-3 text-sm">
+                <div>
+                  <span className="text-gray-500">Nombre:</span>
+                  <span className="ml-2 font-medium">{clienteSeleccionado?.nombre}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Documento:</span>
+                  <span className="ml-2 font-medium">{clienteSeleccionado?.tipo_documento}: {clienteSeleccionado?.numero_documento}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Teléfono:</span>
+                  <span className="ml-2 font-medium text-emerald-600">{clienteSeleccionado?.telefono || clienteSeleccionado?.celular || "-"}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Email:</span>
+                  <span className="ml-2 font-medium text-emerald-600">{clienteSeleccionado?.email || "-"}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Datos del Recibo */}
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-4">Datos del Recibo</h3>
+              <div className="grid grid-cols-2 gap-y-3 text-sm">
+                <div>
+                  <span className="text-gray-500">Sucursal:</span>
+                  <span className="ml-2 font-medium">Puerto Norte</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Cobrador:</span>
+                  <span className="ml-2 font-medium">Max Solina</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Caja:</span>
+                  <span className="ml-2 font-medium">Caja Principal</span>
+                </div>
+                {facturaVinculada && (
+                  <div>
+                    <span className="text-gray-500">Factura:</span>
+                    <span className="ml-2 font-medium text-emerald-600">{facturaVinculada.numero}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Pagos */}
+          <div className="mb-6">
+            <h3 className="font-semibold text-gray-900 mb-4">Pagos ({reciboPagosForm.length})</h3>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-xs text-gray-500 uppercase">
+                  <th className="text-left py-2">Forma de Pago</th>
+                  <th className="text-center py-2 w-24">Moneda</th>
+                  <th className="text-right py-2 w-32">Importe</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reciboPagosForm.map((pago, index) => (
+                  <tr key={index} className="border-b">
+                    <td className="py-2 font-medium">{pago.forma_pago}</td>
+                    <td className="py-2 text-center">{pago.moneda}</td>
+                    <td className="py-2 text-right font-medium">{formatCurrency(pago.importe)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Totales */}
+          <div className="flex justify-end">
+            <div className="w-64 space-y-2 text-sm">
+              {facturaVinculada && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Saldo Factura:</span>
+                  <span>{formatCurrency(facturaVinculada.saldo)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-lg font-bold pt-2 border-t">
+                <span>Total Recibo:</span>
+                <span className="text-emerald-700">{formatCurrency(totalPagos)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Vista de Crear Recibo
+  const renderCrearRecibo = () => {
+    const clienteSeleccionado = clientes.find(c => c.id === reciboClienteIdForm)
+    const totalPagos = reciboPagosForm.reduce((sum, p) => sum + p.importe, 0)
+
+    // Si estamos en previsualización, mostrar vista previa
+    if (reciboPrevisualizando) {
+      return renderPrevisualizacionRecibo()
+    }
+
+    const handleCrearRecibo = () => {
+      if (!clienteSeleccionado || reciboPagosForm.length === 0) {
+        alert("Debe seleccionar un cliente y agregar al menos un pago")
+        return
+      }
+
+      const reciboNumero = `RC X Norte-000${11735 + recibos.length}`
+      const reciboId = recibos.length + 1
+      const fechaHoy = new Date().toISOString()
+
+      const newRecibo: Recibo = {
+        id: reciboId,
+        numero: reciboNumero,
+        cliente_id: clienteSeleccionado.id,
+        cliente_nombre: clienteSeleccionado.nombre,
+        estado: "borrador",
+        fecha: fechaHoy,
+        importe: totalPagos,
+        importe_no_conciliado: totalPagos,
+        moneda: "ARS",
+        sucursal: "Puerto Norte",
+        caja: "Caja Principal",
+        cobrador_nombre: mockVendedores[0]?.nombre || "Max Solina",
+        nota_venta_numero: null,
+        concepto: "Cobro de venta",
+        pagos: reciboPagosForm
+      }
+      setRecibos(prev => [...prev, newRecibo])
+
+      // Crear movimiento de credito
+      const saldoAnterior = clienteSeleccionado.saldo_cuenta_corriente
+      const nuevoMovimiento: MovimientoCuentaCorriente = {
+        id: movimientosCC.length + 1,
+        cliente_id: clienteSeleccionado.id,
+        fecha: fechaHoy,
+        tipo: "credito",
+        concepto: "Pago recibido",
+        documento_tipo: "recibo",
+        documento_numero: reciboNumero,
+        documento_id: reciboId,
+        moneda: "ARS",
+        importe: totalPagos,
+        saldo_posterior: saldoAnterior - totalPagos
+      }
+      setMovimientosCC(prev => [...prev, nuevoMovimiento])
+
+      // Actualizar saldo del cliente
+      setClientes(prev => prev.map(c =>
+        c.id === clienteSeleccionado.id ? {
+          ...c,
+          saldo_cuenta_corriente: c.saldo_cuenta_corriente - totalPagos
+        } : c
+      ))
+
+      // Abrir el recibo creado en modo edición
+      setCreandoRecibo(false)
+      setReciboClienteIdForm(null)
+      // Mantener los pagos en el form ya que el recibo está en borrador
+      setReciboPagosForm(reciboPagosForm.map(p => ({ forma_pago: p.forma_pago, importe: p.importe, moneda: p.moneda })))
+      setSelectedRecibo(newRecibo)
+      setEditandoRecibo(true)
+    }
+
+    return (
+      <div>
+        <div className="flex items-center gap-4 mb-6">
+          <button onClick={() => { setCreandoRecibo(false); setReciboClienteIdForm(null); setReciboPagosForm([]) }} className="p-2 hover:bg-gray-100 rounded-md">
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-emerald-900">Nuevo Recibo</h1>
+            <p className="text-sm text-gray-500">Registre el pago del cliente</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-6">
+          <div className="col-span-2 space-y-6">
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4">Cliente</h3>
+              <select
+                value={reciboClienteIdForm || ""}
+                onChange={(e) => setReciboClienteIdForm(e.target.value ? parseInt(e.target.value) : null)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="">Seleccionar cliente...</option>
+                {clientes.map(c => (
+                  <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
+                ))}
+              </select>
+              {clienteSeleccionado && (
+                <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div><span className="text-gray-500">Documento:</span> <span className="font-medium">{clienteSeleccionado.tipo_documento}: {clienteSeleccionado.numero_documento}</span></div>
+                    <div><span className="text-gray-500">Saldo Actual:</span> <span className={`font-bold ${clienteSeleccionado.saldo_cuenta_corriente > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(clienteSeleccionado.saldo_cuenta_corriente)}</span></div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+              <div className="bg-gray-50 px-4 py-3 border-b">
+                <h3 className="font-semibold text-gray-900">Formas de Pago</h3>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                    <th className="text-left py-2 px-3">Forma de Pago</th>
+                    <th className="text-left py-2 px-3 w-32">Moneda</th>
+                    <th className="text-right py-2 px-3 w-40">Importe</th>
+                    <th className="w-10"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reciboPagosForm.map((pago, index) => (
+                    <tr key={index} className="border-b">
+                      <td className="py-2 px-3">
+                        <select value={pago.forma_pago} onChange={(e) => {
+                          const updated = [...reciboPagosForm]
+                          updated[index].forma_pago = e.target.value
+                          setReciboPagosForm(updated)
+                        }} className="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                          <option value="Efectivo">Efectivo</option>
+                          <option value="Transferencia">Transferencia Bancaria</option>
+                          <option value="Tarjeta Debito">Tarjeta Debito</option>
+                          <option value="Tarjeta Credito">Tarjeta Credito</option>
+                          <option value="Cheque">Cheque</option>
+                          <option value="MercadoPago">MercadoPago</option>
+                        </select>
+                      </td>
+                      <td className="py-2 px-3">
+                        <select value={pago.moneda} onChange={(e) => {
+                          const updated = [...reciboPagosForm]
+                          updated[index].moneda = e.target.value as "ARS" | "USD"
+                          setReciboPagosForm(updated)
+                        }} className="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                          <option value="ARS">ARS</option>
+                          <option value="USD">USD</option>
+                        </select>
+                      </td>
+                      <td className="py-2 px-3">
+                        <input type="number" value={pago.importe} min="0" step="0.01"
+                          onChange={(e) => {
+                            const updated = [...reciboPagosForm]
+                            updated[index].importe = parseFloat(e.target.value) || 0
+                            setReciboPagosForm(updated)
+                          }}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right" />
+                      </td>
+                      <td className="py-2 px-3">
+                        <button onClick={() => setReciboPagosForm(reciboPagosForm.filter((_, i) => i !== index))} className="text-red-500 hover:text-red-700">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {/* Botón agregar pago siempre al final */}
+                  <tr>
+                    <td colSpan={4} className="py-3 px-3">
+                      <button
+                        onClick={() => setReciboPagosForm([...reciboPagosForm, { forma_pago: "Efectivo", importe: 0, moneda: "ARS" }])}
+                        className="text-sm text-emerald-700 hover:text-emerald-800 font-medium flex items-center gap-1"
+                      >
+                        <Plus className="w-4 h-4" /> Agregar Pago
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4">Total a Cobrar</h3>
+              <p className="text-3xl font-bold text-emerald-700">{formatCurrency(totalPagos)}</p>
+            </div>
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <div className="space-y-3">
+                <button onClick={handleCrearRecibo} disabled={!reciboClienteIdForm || reciboPagosForm.length === 0 || totalPagos <= 0}
+                  className="w-full bg-emerald-700 text-white px-4 py-3 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">
+                  Continuar
+                </button>
+                <button onClick={() => { setCreandoRecibo(false); setReciboClienteIdForm(null); setReciboPagosForm([]) }}
+                  className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-200">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Ficha de Recibo
+  const renderFichaRecibo = () => {
+    if (!selectedRecibo) return null
+    const clienteRecibo = clientes.find(c => c.id === selectedRecibo.cliente_id)
+    const nvVinculada = notasVenta.find(nv => nv.numero === selectedRecibo.nota_venta_numero)
+    const facturaVinculada = selectedRecibo.factura_id ? facturas.find(f => f.id === selectedRecibo.factura_id) : null
+    
+    // Construir cadena de documentos vinculados
+    const documentosVinculados: {tipo: string; numero: string; onClick: () => void}[] = []
+    if (nvVinculada) {
+      documentosVinculados.push({
+        tipo: "NV",
+        numero: nvVinculada.numero,
+        onClick: () => { setSelectedRecibo(null); setSelectedNV(nvVinculada); setActiveView("notas_venta") }
+      })
+      // Buscar OE vinculada
+      const oeVinculada = ordenesEntrega.find(oe => oe.nota_venta_id === nvVinculada.id)
+      if (oeVinculada) {
+        documentosVinculados.push({
+          tipo: "OE",
+          numero: oeVinculada.numero,
+          onClick: () => { setSelectedRecibo(null); setSelectedOE(oeVinculada); setActiveView("ordenes_entrega") }
+        })
+        // Buscar Remito vinculado
+        const remitoVinculado = remitos.find(r => r.orden_entrega_id === oeVinculada.id)
+        if (remitoVinculado) {
+          documentosVinculados.push({
+            tipo: "REM",
+            numero: remitoVinculado.numero,
+            onClick: () => { setSelectedRecibo(null); setSelectedRemito(remitoVinculado); setActiveView("remitos") }
+          })
+        }
+      }
+    }
+    if (facturaVinculada) {
+      documentosVinculados.push({
+        tipo: "FAC",
+        numero: facturaVinculada.numero,
+        onClick: () => { setSelectedRecibo(null); setSelectedFactura(facturaVinculada); setActiveView("facturas") }
+      })
+    }
+
+    return (
+      <div>
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+          <button onClick={() => { setSelectedRecibo(null); setEditandoRecibo(false) }} className="hover:text-emerald-700">Recibos</button>
+          {documentosVinculados.length > 0 && (
+            <>
+              <span>/</span>
+              {documentosVinculados.map((doc, idx) => (
+                <span key={idx} className="flex items-center gap-2">
+                  <button onClick={doc.onClick} className="hover:text-emerald-700 text-emerald-600">{doc.tipo}</button>
+                  {idx < documentosVinculados.length - 1 && <span>/</span>}
+                </span>
+              ))}
+            </>
+          )}
+          <span>/</span>
+          <span className="font-medium text-gray-900">{selectedRecibo.numero}</span>
+        </div>
+
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <button onClick={() => { setSelectedRecibo(null); setEditandoRecibo(false) }} className="p-2 hover:bg-gray-100 rounded-md">
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-emerald-900">{selectedRecibo.numero}</h1>
+              <p className="text-sm text-gray-500">{formatDateTime(selectedRecibo.fecha)} | {selectedRecibo.sucursal}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {selectedRecibo.estado === "borrador" && !editandoRecibo && (
+              <button 
+                onClick={() => {
+                  setEditandoRecibo(true)
+                  setReciboPagosForm(selectedRecibo.pagos.map(p => ({ forma_pago: p.forma_pago, importe: p.importe, moneda: p.moneda })))
+                }}
+                className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 flex items-center gap-1"
+              >
+                <Edit className="w-4 h-4" /> Editar
+              </button>
+            )}
+            <button className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1">
+              <Download className="w-4 h-4" /> Descargar PDF
+            </button>
+            <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
+              selectedRecibo.estado === 'publicado' ? 'bg-green-100 text-green-700' : 
+              selectedRecibo.estado === 'cancelado' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+            }`}>
+              {selectedRecibo.estado === 'publicado' ? 'Publicado' : selectedRecibo.estado === 'cancelado' ? 'Cancelado' : 'Borrador'}
+            </span>
+          </div>
+        </div>
+
+        {(editandoRecibo || selectedRecibo.estado === "publicado" || selectedRecibo.estado === "cancelado") && (
+        <div className="bg-gray-800 rounded-t-lg px-4 py-3 flex items-center justify-between mb-0">
+          <div className="flex items-center gap-2">
+            {selectedRecibo.estado === "publicado" && (
+              <button 
+                onClick={() => {
+                  setCancelarReciboMotivo("")
+                  setCancelarReciboDescripcion("")
+                  setShowCancelarReciboModal(true)
+                }}
+                className="px-3 py-1.5 text-sm border border-gray-400 text-white rounded-md hover:bg-gray-700 flex items-center gap-1"
+              >
+                <XCircle className="w-4 h-4" /> Cancelar Recibo
+              </button>
+            )}
+          </div>
+          {selectedRecibo.estado === "borrador" && (
+            <div className="flex items-center gap-2">
+              <button 
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const totalPagos = reciboPagosForm.reduce((sum, p) => sum + p.importe, 0)
+                  const updatedRecibo = { 
+                    ...selectedRecibo, 
+                    pagos: [...reciboPagosForm], 
+                    importe: totalPagos,
+                    total: totalPagos,
+                    importe_no_conciliado: totalPagos
+                  }
+                  setRecibos(prev => prev.map(r => r.id === selectedRecibo.id ? updatedRecibo : r))
+                  setSelectedRecibo(updatedRecibo)
+                  setEditandoRecibo(false)
+                }}
+                className="px-3 py-1.5 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700 flex items-center gap-1"
+              >
+                <Save className="w-4 h-4" /> Guardar Cambios
+              </button>
+              <button 
+                onClick={() => {
+                  if (reciboPagosForm.length === 0) {
+                    alert("Debe agregar al menos una forma de pago antes de confirmar")
+                    return
+                  }
+                  const totalPagos = reciboPagosForm.reduce((sum, p) => sum + p.importe, 0)
+                  const updatedRecibo = { 
+                    ...selectedRecibo, 
+                    pagos: reciboPagosForm, 
+                    importe: totalPagos,
+                    total: totalPagos,
+                    importe_no_conciliado: totalPagos,
+                    estado: "publicado" as const
+                  }
+                  setRecibos(recibos.map(r => r.id === selectedRecibo.id ? updatedRecibo : r))
+                  setSelectedRecibo(updatedRecibo)
+                }}
+                disabled={reciboPagosForm.length === 0}
+                className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 flex items-center gap-1 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                <CheckCircle className="w-4 h-4" /> Confirmar
+              </button>
+            </div>
+          )}
+        </div>
+        )}
+
+        <div className={`bg-white ${editandoRecibo || selectedRecibo.estado === "publicado" || selectedRecibo.estado === "cancelado" ? "rounded-b-lg" : "rounded-lg"} shadow-sm p-6`}>
+          <div className="grid grid-cols-2 gap-8 mb-6">
+            <div className="space-y-4">
+              <h3 className="font-semibold text-gray-900 border-b pb-2">Datos del Recibo</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><span className="text-gray-500">Numero:</span> <span className="font-medium">{selectedRecibo.numero}</span></div>
+                <div><span className="text-gray-500">Fecha:</span> <span className="font-medium">{formatDate(selectedRecibo.fecha)}</span></div>
+                <div><span className="text-gray-500">NV:</span> <span className="font-medium text-emerald-700">{selectedRecibo.nota_venta_numero || "-"}</span></div>
+                <div><span className="text-gray-500">Cobrador:</span> <span className="font-medium">{selectedRecibo.cobrador_nombre}</span></div>
+                <div><span className="text-gray-500">Caja:</span> <span className="font-medium">{selectedRecibo.caja}</span></div>
+                <div><span className="text-gray-500">Sucursal:</span> <span className="font-medium">{selectedRecibo.sucursal}</span></div>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <h3 className="font-semibold text-gray-900 border-b pb-2">Cliente</h3>
+              {clienteRecibo && (
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div><span className="text-gray-500">Nombre:</span> <span className="font-medium">{clienteRecibo.nombre}</span></div>
+                  <div><span className="text-gray-500">Documento:</span> <span className="font-medium">{clienteRecibo.tipo_documento}: {clienteRecibo.numero_documento}</span></div>
+                  <div><span className="text-gray-500">Telefono:</span> <span className="font-medium">{clienteRecibo.telefono || clienteRecibo.celular || "-"}</span></div>
+                  <div><span className="text-gray-500">Email:</span> <span className="font-medium">{clienteRecibo.email || "-"}</span></div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="border-b pb-2 mb-4">
+            <h3 className="font-semibold text-gray-900">Formas de Pago</h3>
+          </div>
+          
+          {selectedRecibo.estado === "borrador" ? (
+            <>
+            <table className="w-full text-sm mb-6">
+              <thead>
+                <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                  <th className="text-left py-2 px-3">Forma de Pago</th>
+                  <th className="text-left py-2 px-3 w-32">Moneda</th>
+                  <th className="text-right py-2 px-3 w-40">Importe</th>
+                  <th className="w-10"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {reciboPagosForm.length === 0 ? (
+                  <tr><td colSpan={4} className="py-4 text-center text-gray-500 text-sm">Sin formas de pago. Agregue una.</td></tr>
+                ) : reciboPagosForm.map((pago, index) => (
+                  <tr key={index} className="border-b">
+                    <td className="py-2 px-3">
+                      <select value={pago.forma_pago} onChange={(e) => {
+                        const updated = [...reciboPagosForm]
+                        updated[index].forma_pago = e.target.value
+                        setReciboPagosForm(updated)
+                      }} className="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                        <option value="Efectivo">Efectivo</option>
+                        <option value="Transferencia">Transferencia Bancaria</option>
+                        <option value="Tarjeta Debito">Tarjeta Debito</option>
+                        <option value="Tarjeta Credito">Tarjeta Credito</option>
+                        <option value="Cheque">Cheque</option>
+                        <option value="MercadoPago">MercadoPago</option>
+                      </select>
+                    </td>
+                    <td className="py-2 px-3">
+                      <select value={pago.moneda} onChange={(e) => {
+                        const updated = [...reciboPagosForm]
+                        updated[index].moneda = e.target.value as "ARS" | "USD"
+                        setReciboPagosForm(updated)
+                      }} className="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                        <option value="ARS">ARS</option>
+                        <option value="USD">USD</option>
+                      </select>
+                    </td>
+                    <td className="py-2 px-3">
+                      <input type="number" value={pago.importe} min="0" step="0.01"
+                        onChange={(e) => {
+                          const updated = [...reciboPagosForm]
+                          updated[index].importe = parseFloat(e.target.value) || 0
+                          setReciboPagosForm(updated)
+                        }}
+                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right" />
+                    </td>
+                    <td className="py-2 px-3">
+                      <button onClick={() => setReciboPagosForm(reciboPagosForm.filter((_, i) => i !== index))} className="text-red-500 hover:text-red-700">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button
+              onClick={() => setReciboPagosForm([...reciboPagosForm, { forma_pago: "Efectivo", importe: 0, moneda: "ARS" }])}
+              className="text-sm text-emerald-700 hover:text-emerald-800 font-medium flex items-center gap-1 mb-4"
+            >
+              <Plus className="w-4 h-4" /> Agregar Pago
+            </button>
+          </>
+          ) : (
+            <table className="w-full text-sm mb-6">
+              <thead>
+                <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                  <th className="text-left py-2 px-3">Forma de Pago</th>
+                  <th className="text-center py-2 px-3">Moneda</th>
+                  <th className="text-right py-2 px-3">Importe</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedRecibo.pagos.length === 0 ? (
+                  <tr><td colSpan={3} className="py-4 text-center text-gray-500 text-sm">Sin formas de pago registradas</td></tr>
+                ) : selectedRecibo.pagos.map((p, idx) => (
+                  <tr key={idx} className="border-b">
+                    <td className="py-2 px-3">{p.forma_pago}</td>
+                    <td className="py-2 px-3 text-center">{p.moneda}</td>
+                    <td className="py-2 px-3 text-right font-medium">{formatCurrency(p.importe, p.moneda)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          <div className="flex justify-end">
+            <div className="w-64 space-y-2 text-sm">
+              <div className="flex justify-between font-bold text-lg border-t pt-2"><span>Total:</span><span className="text-green-600">{formatCurrency(selectedRecibo.importe, selectedRecibo.moneda)}</span></div>
+              <div className="flex justify-between text-gray-500"><span>No Conciliado:</span><span>{formatCurrency(selectedRecibo.importe_no_conciliado, selectedRecibo.moneda)}</span></div>
+            </div>
+          </div>
+
+          {/* Cancelación si existe */}
+          {selectedRecibo.cancelacion && (
+            <div className="mt-6 bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <XCircle className="w-5 h-5 text-red-600 mt-0.5" />
+                <div className="flex-1">
+                  <div className="flex justify-between items-start">
+                    <span className="font-medium text-red-800">Recibo Cancelado</span>
+                    <span className="text-xs text-red-600">{selectedRecibo.cancelacion.fecha}</span>
+                  </div>
+                  <p className="text-sm text-red-700 mt-1">
+                    <span className="font-medium">Motivo:</span> {selectedRecibo.cancelacion.motivo}
+                  </p>
+                  <p className="text-sm text-red-700 mt-1">
+                    <span className="font-medium">Descripción:</span> {selectedRecibo.cancelacion.descripcion}
+                  </p>
+                  <p className="text-xs text-red-500 mt-2">Por: {selectedRecibo.cancelacion.usuario}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Seguimiento */}
+          <SeguimientoPanel seguimiento={selectedRecibo.seguimiento || []} />
+        </div>
+
+        {/* Modal Cancelar Recibo */}
+        {showCancelarReciboModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="px-6 py-4 border-b flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-900">Cancelar Recibo</h3>
+              <button onClick={() => setShowCancelarReciboModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Motivo de Cancelación <span className="text-red-500">*</span></label>
+                <select 
+                  value={cancelarReciboMotivo}
+                  onChange={(e) => setCancelarReciboMotivo(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                >
+                  <option value="">Seleccionar motivo...</option>
+                  {motivosCancelacionRecibo.map(m => (
+                    <option key={m.id} value={m.nombre}>{m.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción <span className="text-red-500">*</span></label>
+                <textarea 
+                  value={cancelarReciboDescripcion}
+                  onChange={(e) => setCancelarReciboDescripcion(e.target.value)}
+                  placeholder="Describa el motivo de la cancelación..."
+                  rows={4}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none"
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3 rounded-b-lg">
+              <button 
+                onClick={() => setShowCancelarReciboModal(false)}
+                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-100"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={() => {
+                  if (!cancelarReciboMotivo || !cancelarReciboDescripcion.trim()) {
+                    alert("Debe completar el motivo y la descripción para cancelar el recibo")
+                    return
+                  }
+                  const fechaHoy = new Date().toLocaleDateString('es-AR')
+                  const updatedRecibo = {
+                    ...selectedRecibo,
+                    estado: "cancelado" as const,
+                    cancelacion: {
+                      motivo: cancelarReciboMotivo,
+                      descripcion: cancelarReciboDescripcion.trim(),
+                      fecha: fechaHoy,
+                      usuario: "Max Solina"
+                    },
+                    seguimiento: [
+                      ...(selectedRecibo.seguimiento || []),
+                      {
+                        fecha: fechaHoy,
+                        usuario: "Max Solina",
+                        accion: "Recibo cancelado",
+                        detalle: `Motivo: ${cancelarReciboMotivo}. ${cancelarReciboDescripcion.trim()}`
+                      }
+                    ]
+                  }
+                  setRecibos(prev => prev.map(r => r.id === selectedRecibo.id ? updatedRecibo : r))
+                  setSelectedRecibo(updatedRecibo)
+                  setShowCancelarReciboModal(false)
+                  setCancelarReciboMotivo("")
+                  setCancelarReciboDescripcion("")
+                }}
+                disabled={!cancelarReciboMotivo || !cancelarReciboDescripcion.trim()}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                Confirmar Cancelación
+              </button>
+            </div>
+          </div>
+        </div>
+        )}
+      </div>
+    )
+  }
+
+  // Recibos
+  const renderRecibos = () => {
+    if (selectedRecibo) return renderFichaRecibo()
+    if (creandoRecibo) return renderCrearRecibo()
+    
+    return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold text-emerald-900">Recibos</h1>
+        <button 
+          onClick={() => { setCreandoRecibo(true); setReciboClienteIdForm(null); setReciboPagosForm([]) }}
+          className="bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors flex items-center gap-2"
+        >
+          <Plus className="w-4 h-4" /> Nuevo Recibo
+        </button>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+        <div className="flex gap-4 items-center">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar por número o cliente..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="bg-gray-50 border-b-2 border-gray-200">
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cliente</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Nota de Venta</th>
+              <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Estado</th>
+              <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Moneda</th>
+              <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Importe</th>
+            </tr>
+          </thead>
+          <tbody>
+            {recibos.map(recibo => (
+              <tr 
+                key={recibo.id} 
+                onClick={() => {
+                  setSelectedRecibo(recibo)
+                  if (recibo.estado === "borrador") {
+                    setReciboPagosForm(recibo.pagos.map(p => ({ forma_pago: p.forma_pago, importe: p.importe, moneda: p.moneda })))
+                  }
+                }}
+                className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+              >
+                <td className="py-3 px-4 font-mono text-sm text-emerald-700 font-medium">{recibo.numero}</td>
+                <td className="py-3 px-4 text-sm">{recibo.cliente_nombre}</td>
+                <td className="py-3 px-4 text-sm text-gray-600">{formatDate(recibo.fecha)}</td>
+                <td className="py-3 px-4 text-sm text-blue-600">{recibo.nota_venta_numero || "-"}</td>
+                <td className="py-3 px-4 text-center">
+                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${recibo.estado === "publicado" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"}`}>
+                    {recibo.estado === "publicado" ? "Publicado" : "Borrador"}
+                  </span>
+                </td>
+                <td className="py-3 px-4 text-center text-sm font-medium">{recibo.moneda}</td>
+                <td className="py-3 px-4 text-right font-medium">{formatCurrency(recibo.importe, recibo.moneda)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+{recibos.length === 0 && (
+          <div className="text-center py-12 text-gray-500">
+            No se encontraron recibos
+          </div>
+        )}
+      </div>
+    </div>
+    )
+  }
+  
+  // Conciliacion de Deuda - Estilo Odoo
+  const renderConciliacion = () => {
+    const clienteSeleccionado = clientes.find(c => c.id === conciliacionClienteId)
+
+    // Filtrar facturas segun configuracion
+    const todasFacturasCliente = conciliacionClienteId 
+      ? facturas.filter(f => f.cliente_id === conciliacionClienteId).sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
+      : []
+    
+    const facturasFiltradas = todasFacturasCliente.filter(f => {
+      // Filtro por conciliado
+      if (conciliacionFiltroConciliado === "no" && f.saldo <= 0) return false
+      if (conciliacionFiltroConciliado === "si" && f.saldo > 0) return false
+      // Filtro por checkbox "Todos"
+      if (!conciliacionMostrarTodosDebitos && f.saldo <= 0) return false
+      // Filtro por texto
+      if (conciliacionFiltroTextoDebitos && !f.numero.toLowerCase().includes(conciliacionFiltroTextoDebitos.toLowerCase()) && 
+          !f.nota_venta_numero.toLowerCase().includes(conciliacionFiltroTextoDebitos.toLowerCase())) return false
+      // Filtro por NV
+      if (conciliacionFiltroNV && f.nota_venta_numero !== conciliacionFiltroNV) return false
+      return true
+    })
+    
+    // Filtrar recibos segun configuracion
+    const todosRecibosCliente = conciliacionClienteId
+      ? recibos.filter(r => r.cliente_id === conciliacionClienteId && r.estado === "publicado").sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
+      : []
+
+    const recibosFiltrados = todosRecibosCliente.filter(r => {
+      // Filtro por conciliado
+      if (conciliacionFiltroConciliado === "no" && r.importe_no_conciliado <= 0) return false
+      if (conciliacionFiltroConciliado === "si" && r.importe_no_conciliado > 0) return false
+      // Filtro por checkbox "Todos"
+      if (!conciliacionMostrarTodosCreditos && r.importe_no_conciliado <= 0) return false
+      // Filtro por texto
+      if (conciliacionFiltroTextoCreditos && !r.numero.toLowerCase().includes(conciliacionFiltroTextoCreditos.toLowerCase())) return false
+      return true
+    })
+    
+    // Calcular totales (solo pendientes)
+    const totalDebitos = todasFacturasCliente.filter(f => f.saldo > 0).reduce((sum, f) => sum + f.saldo, 0)
+    const totalCreditos = todosRecibosCliente.filter(r => r.importe_no_conciliado > 0).reduce((sum, r) => sum + r.importe_no_conciliado, 0)
+    const balance = totalDebitos - totalCreditos
+
+    // Calcular totales seleccionados
+    const totalDebitosSeleccionados = conciliacionSeleccionDebitos.reduce((sum, d) => sum + d.montoAplicar, 0)
+    const totalCreditosSeleccionados = conciliacionSeleccionCreditos.reduce((sum, c) => sum + c.montoAplicar, 0)
+    const montoAConciliar = Math.min(totalDebitosSeleccionados, totalCreditosSeleccionados)
+
+    // Funciones de conciliacion
+    const toggleDebitoSeleccion = (factura: Factura) => {
+      const existe = conciliacionSeleccionDebitos.find(d => d.id === factura.id && d.tipo === "factura")
+      if (existe) {
+        setConciliacionSeleccionDebitos(prev => prev.filter(d => !(d.id === factura.id && d.tipo === "factura")))
+      } else {
+        setConciliacionSeleccionDebitos(prev => [...prev, { id: factura.id, tipo: "factura", montoAplicar: factura.saldo }])
+      }
+    }
+
+    const toggleCreditoSeleccion = (recibo: Recibo) => {
+      const existe = conciliacionSeleccionCreditos.find(c => c.id === recibo.id && c.tipo === "recibo")
+      if (existe) {
+        setConciliacionSeleccionCreditos(prev => prev.filter(c => !(c.id === recibo.id && c.tipo === "recibo")))
+      } else {
+        setConciliacionSeleccionCreditos(prev => [...prev, { id: recibo.id, tipo: "recibo", montoAplicar: recibo.importe_no_conciliado }])
+      }
+    }
+
+    const actualizarMontoDebito = (id: number, monto: number) => {
+      setConciliacionSeleccionDebitos(prev => prev.map(d => 
+        d.id === id && d.tipo === "factura" ? { ...d, montoAplicar: monto } : d
+      ))
+    }
+
+    const actualizarMontoCredito = (id: number, monto: number) => {
+      setConciliacionSeleccionCreditos(prev => prev.map(c => 
+        c.id === id && c.tipo === "recibo" ? { ...c, montoAplicar: monto } : c
+      ))
+    }
+
+    const seleccionarTodoDebitos = () => {
+      const pendientes = facturasFiltradas.filter(f => f.saldo > 0)
+      setConciliacionSeleccionDebitos(pendientes.map(f => ({ id: f.id, tipo: "factura" as const, montoAplicar: f.saldo })))
+    }
+
+    const seleccionarTodoCreditos = () => {
+      const pendientes = recibosFiltrados.filter(r => r.importe_no_conciliado > 0)
+      setConciliacionSeleccionCreditos(pendientes.map(r => ({ id: r.id, tipo: "recibo" as const, montoAplicar: r.importe_no_conciliado })))
+    }
+
+    const marcarAutomatico = () => {
+      // Selecciona automaticamente FIFO
+      const debitosPendientes = facturasFiltradas.filter(f => f.saldo > 0)
+      const creditosPendientes = recibosFiltrados.filter(r => r.importe_no_conciliado > 0)
+      if (debitosPendientes.length === 0 || creditosPendientes.length === 0) return
+
+      const nuevosDebitos: typeof conciliacionSeleccionDebitos = []
+      const nuevosCreditos: typeof conciliacionSeleccionCreditos = []
+
+      let creditoIdx = 0
+      let creditoRestante = creditosPendientes[0]?.importe_no_conciliado || 0
+
+      for (const factura of debitosPendientes) {
+        if (creditoIdx >= creditosPendientes.length) break
+        let saldoFactura = factura.saldo
+
+        while (saldoFactura > 0 && creditoIdx < creditosPendientes.length) {
+          const montoAAplicar = Math.min(saldoFactura, creditoRestante)
+          if (montoAAplicar > 0) {
+            const debitoExistente = nuevosDebitos.find(d => d.id === factura.id)
+            if (debitoExistente) {
+              debitoExistente.montoAplicar += montoAAplicar
+            } else {
+              nuevosDebitos.push({ id: factura.id, tipo: "factura", montoAplicar: montoAAplicar })
+            }
+            const creditoExistente = nuevosCreditos.find(c => c.id === creditosPendientes[creditoIdx].id)
+            if (creditoExistente) {
+              creditoExistente.montoAplicar += montoAAplicar
+            } else {
+              nuevosCreditos.push({ id: creditosPendientes[creditoIdx].id, tipo: "recibo", montoAplicar: montoAAplicar })
+            }
+            saldoFactura -= montoAAplicar
+            creditoRestante -= montoAAplicar
+          }
+          if (creditoRestante <= 0) {
+            creditoIdx++
+            creditoRestante = creditosPendientes[creditoIdx]?.importe_no_conciliado || 0
+          }
+        }
+      }
+      setConciliacionSeleccionDebitos(nuevosDebitos)
+      setConciliacionSeleccionCreditos(nuevosCreditos)
+    }
+
+    const limpiarSeleccion = () => {
+      setConciliacionSeleccionDebitos([])
+      setConciliacionSeleccionCreditos([])
+    }
+
+    // Ejecutar conciliacion
+    const ejecutarConciliacion = () => {
+      if (montoAConciliar <= 0) return
+
+      const aplicaciones: typeof conciliacionHistorial[0]["aplicaciones"] = []
+
+      // Crear copias de las selecciones para ir descontando
+      const debitosRestantes = conciliacionSeleccionDebitos.map(d => ({ ...d }))
+      const creditosRestantes = conciliacionSeleccionCreditos.map(c => ({ ...c }))
+
+      // Aplicar creditos a debitos
+      for (const credito of creditosRestantes) {
+        const reciboInfo = recibos.find(r => r.id === credito.id)
+        if (!reciboInfo || credito.montoAplicar <= 0) continue
+
+        for (const debito of debitosRestantes) {
+          if (debito.montoAplicar <= 0) continue
+
+          const facturaInfo = facturas.find(f => f.id === debito.id)
+          if (!facturaInfo) continue
+
+          const montoAAplicar = Math.min(credito.montoAplicar, debito.montoAplicar)
+
+          if (montoAAplicar > 0) {
+            aplicaciones.push({
+              debito_tipo: "Factura",
+              debito_numero: facturaInfo.numero,
+              credito_tipo: "Recibo",
+              credito_numero: reciboInfo.numero,
+              monto: montoAAplicar
+            })
+
+            // Actualizar factura
+            setFacturas(prev => prev.map(f => 
+              f.id === debito.id ? { ...f, saldo: f.saldo - montoAAplicar } : f
+            ))
+
+            // Actualizar recibo
+            setRecibos(prev => prev.map(r => 
+              r.id === credito.id ? { ...r, importe_no_conciliado: r.importe_no_conciliado - montoAAplicar } : r
+            ))
+
+            debito.montoAplicar -= montoAAplicar
+            credito.montoAplicar -= montoAAplicar
+          }
+        }
+      }
+
+      // Agregar al historial
+      if (aplicaciones.length > 0 && clienteSeleccionado) {
+        setConciliacionHistorial(prev => [...prev, {
+          id: prev.length + 1,
+          fecha: new Date().toISOString(),
+          cliente_id: clienteSeleccionado.id,
+          cliente_nombre: clienteSeleccionado.nombre,
+          aplicaciones,
+          total_conciliado: aplicaciones.reduce((sum, a) => sum + a.monto, 0),
+          usuario: "Admin"
+        }])
+      }
+
+      // Limpiar seleccion
+      limpiarSeleccion()
+    }
+
+    // Historial de conciliaciones del cliente
+    const historialCliente = conciliacionClienteId 
+      ? conciliacionHistorial.filter(h => h.cliente_id === conciliacionClienteId)
+      : []
+
+    return (
+      <div>
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-2xl font-bold text-gray-800">Conciliacion de Deuda</h1>
+        </div>
+
+        {/* Tabs Conciliar / Historial */}
+        <div className="flex gap-4 mb-4">
+          <button 
+            onClick={() => setConciliacionTab("conciliar")}
+            className={`px-4 py-2 text-sm font-medium rounded ${conciliacionTab === "conciliar" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
+          >
+            Conciliar
+          </button>
+          <button 
+            onClick={() => setConciliacionTab("historial")}
+            className={`px-4 py-2 text-sm font-medium rounded ${conciliacionTab === "historial" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
+          >
+            Historial
+          </button>
+        </div>
+
+        {conciliacionTab === "conciliar" ? (
+        <div className="bg-white rounded-lg shadow-sm border">
+          {/* Header estilo Odoo */}
+          <div className="p-4 border-b bg-gray-50">
+            <div className="flex items-end gap-4">
+              {/* Cliente */}
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1">Cliente</label>
+                <div className="flex items-center gap-2">
+                  <select 
+                    value={conciliacionClienteId || ""}
+                    onChange={(e) => {
+                      setConciliacionClienteId(e.target.value ? parseInt(e.target.value) : null)
+                      limpiarSeleccion()
+                    }}
+                    className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Seleccionar cliente...</option>
+                    {clientes.map(c => (
+                      <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
+                    ))}
+                  </select>
+                  {clienteSeleccionado && (
+                    <button 
+                      onClick={() => {
+                        setClienteSeleccionadoId(clienteSeleccionado.id)
+                        setActiveSubmenu("ficha_cliente")
+                      }}
+                      className="p-1.5 text-gray-400 hover:text-blue-600"
+                      title="Abrir ficha cliente"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              {/* Nota de Venta */}
+              <div className="w-48">
+                <label className="block text-xs text-gray-500 mb-1">Nota de Venta</label>
+                <select 
+                  value={conciliacionFiltroNV}
+                  onChange={(e) => setConciliacionFiltroNV(e.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="">Todas</option>
+                  {conciliacionClienteId && notasVenta.filter(nv => nv.cliente_id === conciliacionClienteId).map(nv => (
+                    <option key={nv.id} value={nv.numero}>{nv.numero}</option>
+                  ))}
+                </select>
+              </div>
+              {/* Conciliado */}
+              <div className="w-32">
+                <label className="block text-xs text-gray-500 mb-1">Conciliado</label>
+                <select 
+                  value={conciliacionFiltroConciliado}
+                  onChange={(e) => setConciliacionFiltroConciliado(e.target.value as typeof conciliacionFiltroConciliado)}
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="no">No</option>
+                  <option value="si">Si</option>
+                  <option value="todos">Todos</option>
+                </select>
+              </div>
+              {/* Balance central */}
+              <div className="px-4 py-1 bg-white border rounded text-center min-w-24">
+                <span className={`text-lg font-bold ${balance === 0 ? 'text-gray-800' : balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  {formatCurrency(Math.abs(balance))}
+                </span>
+              </div>
+              {/* Opciones de marcado */}
+              <div className="flex items-center gap-4 text-xs">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={conciliacionSeleccionDebitos.length === 0 && conciliacionSeleccionCreditos.length === 0}
+                    onChange={limpiarSeleccion}
+                    className="w-3.5 h-3.5 rounded border-gray-300"
+                  />
+                  <span className="text-gray-600">Desmarcar</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={facturasFiltradas.filter(f => f.saldo > 0).length > 0 && 
+                             conciliacionSeleccionDebitos.length === facturasFiltradas.filter(f => f.saldo > 0).length}
+                    onChange={() => {
+                      seleccionarTodoDebitos()
+                      seleccionarTodoCreditos()
+                    }}
+                    className="w-3.5 h-3.5 rounded border-gray-300"
+                  />
+                  <span className="text-gray-600">Marcar todo</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    onChange={marcarAutomatico}
+                    className="w-3.5 h-3.5 rounded border-gray-300"
+                  />
+                  <span className="text-gray-600">Marcar automatica</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Panel de dos columnas estilo Odoo */}
+          <div className="flex divide-x">
+            {/* DEBITOS */}
+            <div className="flex-1 flex flex-col">
+              {/* Header Debitos */}
+              <div className="px-3 py-2 bg-red-50 border-b flex items-center justify-between">
+                <span className="text-sm font-medium text-red-800">Debitos</span>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="text" 
+                    placeholder="Filtrar por texto..." 
+                    value={conciliacionFiltroTextoDebitos}
+                    onChange={(e) => setConciliacionFiltroTextoDebitos(e.target.value)}
+                    className="px-2 py-1 text-xs border rounded w-32"
+                  />
+                  <label className="flex items-center gap-1 text-xs text-gray-600">
+                    <input 
+                      type="checkbox" 
+                      checked={conciliacionMostrarTodosDebitos}
+                      onChange={(e) => setConciliacionMostrarTodosDebitos(e.target.checked)}
+                      className="w-3 h-3 rounded"
+                    />
+                    Todos
+                  </label>
+                  <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">
+                    {facturasFiltradas.filter(f => f.saldo > 0).length}
+                  </span>
+                </div>
+              </div>
+              {/* Tabla Debitos */}
+              <div className="flex-1 overflow-auto max-h-96">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-white border-b">
+                    <tr className="text-gray-500">
+                      <th className="text-left py-2 px-2 font-medium">Nota de Venta</th>
+                      <th className="text-left py-2 px-2 font-medium">Comprobante</th>
+                      <th className="text-left py-2 px-2 font-medium">Condicion</th>
+                      <th className="text-left py-2 px-2 font-medium">Venc.</th>
+                      <th className="text-left py-2 px-2 font-medium">Fecha</th>
+                      <th className="text-right py-2 px-2 font-medium">Importe Or.</th>
+                      <th className="text-center py-2 px-2 font-medium">Mon.</th>
+                      <th className="text-right py-2 px-2 font-medium">Importe</th>
+                      <th className="text-center py-2 px-2 font-medium">Conc.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {facturasFiltradas.length > 0 ? facturasFiltradas.map(f => {
+                      const seleccionado = conciliacionSeleccionDebitos.find(d => d.id === f.id && d.tipo === "factura")
+                      const esConciliada = f.saldo <= 0
+                      return (
+                        <tr 
+                          key={f.id} 
+                          className={`border-b hover:bg-gray-50 cursor-pointer ${seleccionado ? 'bg-red-50' : ''} ${esConciliada ? 'opacity-50' : ''}`}
+                          onClick={() => !esConciliada && toggleDebitoSeleccion(f)}
+                        >
+                          <td className="py-1.5 px-2">
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); /* navegar a NV */ }}
+                              className="text-orange-600 hover:underline"
+                            >
+                              {f.nota_venta_numero}
+                            </button>
+                          </td>
+                          <td className="py-1.5 px-2">
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); /* navegar a factura */ }}
+                              className="text-blue-600 hover:underline"
+                            >
+                              {f.numero}
+                            </button>
+                          </td>
+                          <td className="py-1.5 px-2 text-gray-600">{f.condicion_pago || "Contado"}</td>
+                          <td className="py-1.5 px-2 text-gray-600">{f.fecha_vencimiento ? formatDateTime(f.fecha_vencimiento).split(" ")[0] : "-"}</td>
+                          <td className="py-1.5 px-2 text-gray-600">{formatDateTime(f.fecha).split(" ")[0]}</td>
+                          <td className="py-1.5 px-2 text-right">{formatCurrency(f.total, f.moneda)}</td>
+                          <td className="py-1.5 px-2 text-center text-gray-500">{f.moneda === "USD" ? "U$D" : "$"}</td>
+                          <td className="py-1.5 px-2 text-right font-medium text-red-600">{formatCurrency(f.saldo, f.moneda)}</td>
+                          <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                            {!esConciliada && (
+                              <div className="flex items-center justify-center gap-1">
+                                <button className="p-0.5 text-gray-400 hover:text-blue-600">
+                                  <Search className="w-3 h-3" />
+                                </button>
+                                <input 
+                                  type="checkbox" 
+                                  checked={!!seleccionado}
+                                  onChange={() => toggleDebitoSeleccion(f)}
+                                  className="w-3.5 h-3.5 rounded border-gray-300"
+                                />
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    }) : (
+                      <tr>
+                        <td colSpan={9} className="py-8 text-center text-gray-400">
+                          {conciliacionClienteId ? "No hay facturas pendientes" : "Seleccione un cliente"}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* CREDITOS */}
+            <div className="flex-1 flex flex-col">
+              {/* Header Creditos */}
+              <div className="px-3 py-2 bg-blue-50 border-b flex items-center justify-between">
+                <span className="text-sm font-medium text-blue-800">Creditos</span>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="text" 
+                    placeholder="Filtrar por texto..." 
+                    value={conciliacionFiltroTextoCreditos}
+                    onChange={(e) => setConciliacionFiltroTextoCreditos(e.target.value)}
+                    className="px-2 py-1 text-xs border rounded w-32"
+                  />
+                  <label className="flex items-center gap-1 text-xs text-gray-600">
+                    <input 
+                      type="checkbox" 
+                      checked={conciliacionMostrarTodosCreditos}
+                      onChange={(e) => setConciliacionMostrarTodosCreditos(e.target.checked)}
+                      className="w-3 h-3 rounded"
+                    />
+                    Todos
+                  </label>
+                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                    {recibosFiltrados.filter(r => r.importe_no_conciliado > 0).length}
+                  </span>
+                </div>
+              </div>
+              {/* Tabla Creditos */}
+              <div className="flex-1 overflow-auto max-h-96">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-white border-b">
+                    <tr className="text-gray-500">
+                      <th className="text-center py-2 px-2 font-medium">Conc.</th>
+                      <th className="text-right py-2 px-2 font-medium">Importe</th>
+                      <th className="text-center py-2 px-2 font-medium">Mon.</th>
+                      <th className="text-right py-2 px-2 font-medium">Importe Or.</th>
+                      <th className="text-left py-2 px-2 font-medium">Fecha</th>
+                      <th className="text-left py-2 px-2 font-medium">Venc.</th>
+                      <th className="text-left py-2 px-2 font-medium">Comprobante</th>
+                      <th className="text-left py-2 px-2 font-medium">Nota de Venta</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recibosFiltrados.length > 0 ? recibosFiltrados.map(r => {
+                      const seleccionado = conciliacionSeleccionCreditos.find(c => c.id === r.id && c.tipo === "recibo")
+                      const esConciliado = r.importe_no_conciliado <= 0
+                      return (
+                        <tr 
+                          key={r.id} 
+                          className={`border-b hover:bg-gray-50 cursor-pointer ${seleccionado ? 'bg-blue-50' : ''} ${esConciliado ? 'opacity-50' : ''}`}
+                          onClick={() => !esConciliado && toggleCreditoSeleccion(r)}
+                        >
+                          <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                            {!esConciliado && (
+                              <div className="flex items-center justify-center gap-1">
+                                <input 
+                                  type="checkbox" 
+                                  checked={!!seleccionado}
+                                  onChange={() => toggleCreditoSeleccion(r)}
+                                  className="w-3.5 h-3.5 rounded border-gray-300"
+                                />
+                                <button className="p-0.5 text-gray-400 hover:text-blue-600">
+                                  <Search className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-1.5 px-2 text-right font-medium text-green-600">{formatCurrency(r.importe_no_conciliado, r.moneda)}</td>
+                          <td className="py-1.5 px-2 text-center text-gray-500">{r.moneda === "USD" ? "U$D" : "$"}</td>
+                          <td className="py-1.5 px-2 text-right">{formatCurrency(r.importe, r.moneda)}</td>
+                          <td className="py-1.5 px-2 text-gray-600">{formatDateTime(r.fecha).split(" ")[0]}</td>
+                          <td className="py-1.5 px-2 text-gray-600">-</td>
+                          <td className="py-1.5 px-2">
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); /* navegar a recibo */ }}
+                              className="text-blue-600 hover:underline"
+                            >
+                              {r.numero}
+                            </button>
+                          </td>
+                          <td className="py-1.5 px-2 text-gray-600">-</td>
+                        </tr>
+                      )
+                    }) : (
+                      <tr>
+                        <td colSpan={8} className="py-8 text-center text-gray-400">
+                          {conciliacionClienteId ? "No hay creditos disponibles" : "Seleccione un cliente"}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Barra inferior de acciones */}
+          <div className="p-3 border-t bg-gray-50 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={marcarAutomatico}
+                disabled={!conciliacionClienteId || facturasFiltradas.filter(f => f.saldo > 0).length === 0}
+                className="px-3 py-1.5 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+              >
+                <RefreshCw className="w-3 h-3" /> Sugerir (FIFO)
+              </button>
+              <button 
+                onClick={limpiarSeleccion}
+                disabled={conciliacionSeleccionDebitos.length === 0 && conciliacionSeleccionCreditos.length === 0}
+                className="px-3 py-1.5 text-xs border border-gray-300 rounded hover:bg-white disabled:opacity-50"
+              >
+                Limpiar Seleccion
+              </button>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="text-gray-500">Debitos: <span className="text-red-600 font-medium">{formatCurrency(totalDebitosSeleccionados)}</span></span>
+              <span className="text-gray-500">Creditos: <span className="text-green-600 font-medium">{formatCurrency(totalCreditosSeleccionados)}</span></span>
+              {montoAConciliar > 0 && (
+                <span className="text-gray-700 font-medium">A conciliar: {formatCurrency(montoAConciliar)}</span>
+              )}
+            </div>
+            <button 
+              onClick={ejecutarConciliacion}
+              disabled={montoAConciliar <= 0}
+              className="px-4 py-1.5 text-sm bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+            >
+              <CheckCircle className="w-4 h-4" /> Ejecutar Conciliacion
+            </button>
+          </div>
+        </div>
+        ) : (
+          /* Tab Historial */
+          <div className="bg-white rounded-lg shadow-sm border p-6">
+            <h3 className="font-semibold text-gray-900 mb-4">Historial de Conciliaciones</h3>
+            {/* Selector de cliente para historial */}
+            <div className="mb-4">
+              <label className="block text-xs text-gray-500 mb-1">Cliente</label>
+              <select 
+                value={conciliacionClienteId || ""}
+                onChange={(e) => setConciliacionClienteId(e.target.value ? parseInt(e.target.value) : null)}
+                className="w-full max-w-md border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">Seleccionar cliente...</option>
+                {clientes.map(c => (
+                  <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
+                ))}
+              </select>
+            </div>
+            {historialCliente.length > 0 ? (
+              <div className="space-y-4">
+                {historialCliente.map(h => (
+                  <div key={h.id} className="border rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <p className="font-medium text-gray-900">Conciliacion #{h.id}</p>
+                        <p className="text-sm text-gray-500">{formatDateTime(h.fecha)} - {h.usuario}</p>
+                      </div>
+                      <p className="text-lg font-bold text-emerald-600">{formatCurrency(h.total_conciliado)}</p>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 border-y">
+                          <th className="text-left py-2 px-3">Debito</th>
+                          <th className="text-left py-2 px-3">Credito</th>
+                          <th className="text-right py-2 px-3">Monto</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {h.aplicaciones.map((a, idx) => (
+                          <tr key={idx} className="border-b">
+                            <td className="py-2 px-3 text-red-700">{a.debito_tipo} {a.debito_numero}</td>
+                            <td className="py-2 px-3 text-green-700">{a.credito_tipo} {a.credito_numero}</td>
+                            <td className="py-2 px-3 text-right font-medium">{formatCurrency(a.monto)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 text-gray-500">
+                {conciliacionClienteId ? "No hay conciliaciones registradas para este cliente" : "Seleccione un cliente para ver su historial"}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+  
+  // Ajustes de Cliente
+  const renderAjustes = () => (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold text-emerald-900">Ajustes de Cliente</h1>
+        <button 
+          onClick={() => { setEditingItem(null); setModalType("ajuste"); setShowModal(true) }}
+          className="bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors flex items-center gap-2"
+        >
+          <Plus className="w-4 h-4" /> Nuevo Ajuste
+        </button>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="bg-gray-50 border-b-2 border-gray-200">
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cliente</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Concepto</th>
+              <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Estado</th>
+              <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Moneda</th>
+              <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ajustes.map(ajuste => (
+              <tr key={ajuste.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
+                <td className="py-3 px-4 font-mono text-sm text-emerald-700 font-medium">{ajuste.numero}</td>
+                <td className="py-3 px-4 text-sm">{ajuste.cliente_nombre}</td>
+                <td className="py-3 px-4 text-sm text-gray-600">{formatDate(ajuste.fecha)}</td>
+                <td className="py-3 px-4 text-sm text-gray-600">{ajuste.concepto}</td>
+                <td className="py-3 px-4 text-center">
+                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${ajuste.estado === "publicado" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"}`}>
+                    {ajuste.estado === "publicado" ? "Publicado" : "Borrador"}
+                  </span>
+                </td>
+                <td className="py-3 px-4 text-center text-sm font-medium">{ajuste.moneda}</td>
+                <td className="py-3 px-4 text-right">
+                  <span className={`font-medium ${ajuste.total < 0 ? "text-green-600" : "text-red-600"}`}>
+                    {formatCurrency(ajuste.total, ajuste.moneda)}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {ajustes.length === 0 && (
+          <div className="text-center py-12 text-gray-500">
+            No se encontraron ajustes
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  // Notas de Débito / Crédito placeholder
+  const renderNotasDebitoCredito = (tipo: "debito" | "credito") => (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold text-emerald-900">Notas de {tipo === "debito" ? "Débito" : "Crédito"}</h1>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm p-12 text-center">
+        <Receipt className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+        <p className="text-gray-500">No hay notas de {tipo === "debito" ? "débito" : "crédito"} registradas</p>
+      </div>
+    </div>
+  )
+
+  // Main content render
+  const renderContent = () => {
+    switch (activeView) {
+      case "listado":
+        return renderClientes()
+      case "conciliacion":
+        return renderConciliacion()
+      case "ajustes":
+        return renderAjustes()
+      case "notas_venta":
+        return renderNotasVenta()
+      case "toma_equipo":
+        return renderTomaEquipo()
+      case "ordenes_entrega":
+        return renderOrdenesEntrega()
+      case "remitos":
+        return renderRemitos()
+      case "facturas":
+        return renderFacturas()
+      case "notas_debito":
+        return renderNotasDebitoCredito("debito")
+      case "notas_credito":
+        return renderNotasDebitoCredito("credito")
+      case "recibos":
+        return renderRecibos()
+      default:
+        return renderDashboard()
+    }
+  }
+
+  // Modal de Cliente
+  const renderClienteModal = () => (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h2 className="text-lg font-semibold text-emerald-900">
+            {editingItem ? "Editar Cliente" : "Nuevo Cliente"}
+          </h2>
+          <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <form onSubmit={(e) => {
+          e.preventDefault()
+          const formData = new FormData(e.currentTarget)
+          const newCliente: ClienteVenta = {
+            id: editingItem?.id || clientes.length + 1,
+            codigo: editingItem?.codigo || `C0${15520 + clientes.length}`,
+            nombre: formData.get("nombre") as string,
+            nombre_fantasia: formData.get("nombre_fantasia") as string || "",
+            tipo_documento: formData.get("tipo_documento") as "DNI" | "CUIT" | "CUIL",
+            numero_documento: formData.get("numero_documento") as string,
+            posicion_fiscal: formData.get("posicion_fiscal") as ClienteVenta["posicion_fiscal"],
+            direccion: formData.get("direccion") as string,
+            ciudad: formData.get("ciudad") as string || "Rosario",
+            provincia: formData.get("provincia") as string || "Santa Fe",
+            codigo_postal: formData.get("codigo_postal") as string || "",
+            zona: formData.get("zona") as string || "",
+            telefono: formData.get("telefono") as string || "",
+            celular: formData.get("celular") as string || "",
+            email: formData.get("email") as string || "",
+            categoria: formData.get("categoria") as ClienteVenta["categoria"],
+            vendedor_id: parseInt(formData.get("vendedor_id") as string) || null,
+            cobrador_id: null,
+            lista_precios_id: parseInt(formData.get("lista_precios_id") as string) || 1,
+            descuento_default: parseFloat(formData.get("descuento_default") as string) || 0,
+            moneda_cuenta_corriente: formData.get("moneda_cuenta_corriente") as "ARS" | "USD",
+            termino_pago_id: parseInt(formData.get("termino_pago_id") as string) || 1,
+            activo: true,
+            es_confidencial: false,
+            sucursal_origen: "Puerto Norte",
+            fecha_alta: editingItem?.fecha_alta || new Date().toISOString().split('T')[0],
+            saldo_cuenta_corriente: editingItem?.saldo_cuenta_corriente || 0,
+            total_facturado: editingItem?.total_facturado || 0
+          }
+          if (editingItem) {
+            setClientes(prev => prev.map(c => c.id === editingItem.id ? newCliente : c))
+          } else {
+            setClientes(prev => [...prev, newCliente])
+          }
+          setShowModal(false)
+          setEditingItem(null)
+        }} className="p-4 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre / Razón Social *</label>
+              <input type="text" name="nombre" defaultValue={editingItem?.nombre || ""} required
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Fantasía</label>
+              <input type="text" name="nombre_fantasia" defaultValue={editingItem?.nombre_fantasia || ""}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo Documento *</label>
+              <select name="tipo_documento" defaultValue={editingItem?.tipo_documento || "DNI"}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <option value="DNI">DNI</option>
+                <option value="CUIT">CUIT</option>
+                <option value="CUIL">CUIL</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Número Documento *</label>
+              <input type="text" name="numero_documento" defaultValue={editingItem?.numero_documento || ""} required
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Posición Fiscal *</label>
+              <select name="posicion_fiscal" defaultValue={editingItem?.posicion_fiscal || "consumidor_final"}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <option value="consumidor_final">Consumidor Final</option>
+                <option value="responsable_inscripto">Responsable Inscripto</option>
+                <option value="monotributista">Monotributista</option>
+                <option value="exento">Exento</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
+              <input type="text" name="direccion" defaultValue={editingItem?.direccion || ""}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Ciudad</label>
+              <input type="text" name="ciudad" defaultValue={editingItem?.ciudad || "Rosario"}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+              <input type="text" name="telefono" defaultValue={editingItem?.telefono || ""}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Celular</label>
+              <input type="text" name="celular" defaultValue={editingItem?.celular || ""}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input type="email" name="email" defaultValue={editingItem?.email || ""}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Categoría *</label>
+              <select name="categoria" defaultValue={editingItem?.categoria || "publico"}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <option value="publico">Público General</option>
+                <option value="mercadolibre">MercadoLibre</option>
+                <option value="mayorista">Mayorista</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Vendedor</label>
+              <select name="vendedor_id" defaultValue={editingItem?.vendedor_id || ""}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <option value="">Sin asignar</option>
+                {mockVendedores.map(v => (
+                  <option key={v.id} value={v.id}>{v.nombre}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Precios</label>
+              <select name="lista_precios_id" defaultValue={editingItem?.lista_precios_id || 1}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                {mockListasPrecios.map(lp => (
+                  <option key={lp.id} value={lp.id}>{lp.nombre}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Término de Pago</label>
+              <select name="termino_pago_id" defaultValue={editingItem?.termino_pago_id || 1}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                {mockTerminosPago.map(tp => (
+                  <option key={tp.id} value={tp.id}>{tp.nombre}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Descuento Default (%)</label>
+              <input type="number" name="descuento_default" step="0.01" min="0" max="100" 
+                defaultValue={editingItem?.descuento_default || 0}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Moneda Cta. Cte.</label>
+              <select name="moneda_cuenta_corriente" defaultValue={editingItem?.moneda_cuenta_corriente || "ARS"}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <option value="ARS">ARS - Pesos</option>
+                <option value="USD">USD - Dólares</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <button type="button" onClick={() => setShowModal(false)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+              Cancelar
+            </button>
+            <button type="submit"
+              className="px-4 py-2 text-sm font-medium text-white bg-emerald-700 rounded-md hover:bg-emerald-800">
+              {editingItem ? "Guardar Cambios" : "Crear Cliente"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+
+  // Modal de Nota de Venta
+  const [nvLineas, setNvLineas] = useState<LineaNV[]>([])
+  const [nvClienteId, setNvClienteId] = useState<number | null>(null)
+  
+  const renderNotaVentaModal = () => {
+    const selectedCliente = clientes.find(c => c.id === nvClienteId)
+    const subtotal = nvLineas.reduce((sum, l) => sum + l.subtotal, 0)
+    const total = subtotal * 1.21
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
+          <div className="flex items-center justify-between p-4 border-b">
+            <h2 className="text-lg font-semibold text-emerald-900">
+              {editingItem ? `Editar Nota de Venta ${editingItem.numero}` : "Nueva Nota de Venta"}
+            </h2>
+            <button onClick={() => { setShowModal(false); setNvLineas([]); setNvClienteId(null) }} className="text-gray-500 hover:text-gray-700">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <form onSubmit={(e) => {
+            e.preventDefault()
+            const formData = new FormData(e.currentTarget)
+            const cliente = clientes.find(c => c.id === nvClienteId)
+            if (!cliente || nvLineas.length === 0) {
+              alert("Debe seleccionar un cliente y agregar al menos un producto")
+              return
+            }
+            const tipoVenta = formData.get("tipo_venta") as "inmediata" | "pedido"
+            const moneda = formData.get("moneda") as "ARS" | "USD"
+            const deposito = formData.get("deposito") as string || "Puerto Norte"
+            const vendedorId = parseInt(formData.get("vendedor_id") as string) || 1
+            const vendedorNombre = mockVendedores.find(v => v.id === vendedorId)?.nombre || "Max Solina"
+            const terminoPagoId = parseInt(formData.get("termino_pago_id") as string) || 1
+            const terminoPagoNombre = mockTerminosPago.find(tp => tp.id === terminoPagoId)?.nombre || "Contado Efectivo"
+            const nvNumero = editingItem?.numero || `NV X 10000-000${10737 + notasVenta.length}`
+            const nvId = editingItem?.id || notasVenta.length + 1
+            const fechaHoy = new Date().toISOString()
+
+            const newNV: NotaVenta = {
+              id: nvId,
+              numero: nvNumero,
+              cliente_id: cliente.id,
+              cliente_nombre: cliente.nombre,
+              cliente_codigo: cliente.codigo,
+              vendedor_id: vendedorId,
+              vendedor_nombre: vendedorNombre,
+              fecha: fechaHoy,
+              estado: tipoVenta === "inmediata" ? "finalizada" : "borrador",
+              moneda: moneda,
+              tipo_cotizacion: "blue",
+              cotizacion: 1150,
+              lista_precios_id: parseInt(formData.get("lista_precios_id") as string) || 1,
+              termino_pago_id: terminoPagoId,
+              termino_pago_nombre: terminoPagoNombre,
+              deposito: deposito,
+              tipo_venta: tipoVenta,
+              lineas: nvLineas,
+              subtotal: subtotal,
+              descuento_global: 0,
+              impuestos: subtotal * 0.21,
+              total: total,
+              sucursal: "Puerto Norte",
+              punto_venta: "10000"
+            }
+
+            if (editingItem) {
+              setNotasVenta(prev => prev.map(nv => nv.id === editingItem.id ? newNV : nv))
+            } else {
+              setNotasVenta(prev => [...prev, newNV])
+            }
+
+            // Si es venta inmediata, generar automáticamente OE, Remito, Factura y Recibo
+            if (tipoVenta === "inmediata" && !editingItem) {
+              const oeNumero = `OE X 10000-000${1050 + ordenesEntrega.length}`
+              const oeId = ordenesEntrega.length + 1
+              
+              // 1. Crear Orden de Entrega (confirmada)
+              const newOE: OrdenEntrega = {
+                id: oeId,
+                numero: oeNumero,
+                nota_venta_id: nvId,
+                nota_venta_numero: nvNumero,
+                cliente_id: cliente.id,
+                cliente_nombre: cliente.nombre,
+                estado: "confirmada",
+                fecha_creacion: fechaHoy,
+                fecha_entrega: fechaHoy,
+                domicilio_envio: cliente.direccion,
+                deposito: deposito,
+                sucursal: "Puerto Norte",
+                remito_numero: null,
+                productos: nvLineas.map(l => ({
+                  producto_id: l.producto_id,
+                  producto_nombre: l.producto_nombre,
+                  cantidad: l.cantidad,
+                  reserva: l.cantidad,
+                  estado: "confirmado" as const
+                }))
+              }
+              setOrdenesEntrega(prev => [...prev, newOE])
+
+              const remitoNumero = `R X 10000-000${5035 + remitos.length}`
+              const remitoId = remitos.length + 1
+              
+              // 2. Crear Remito (aprobado - descuenta stock)
+              const newRemito: Remito = {
+                id: remitoId,
+                numero: remitoNumero,
+                orden_entrega_id: oeId,
+                orden_entrega_numero: oeNumero,
+                cliente_id: cliente.id,
+                cliente_nombre: cliente.nombre,
+                estado: "aprobado",
+                fecha: fechaHoy,
+                fecha_entrega: fechaHoy,
+                domicilio_envio: cliente.direccion,
+                transporte: "Retira en sucursal",
+                chofer: "",
+                factura_numero: null,
+                nota_venta_numero: nvNumero,
+                sucursal: "Puerto Norte",
+                deposito: deposito,
+                peso_kg: 0,
+                peso_neto_kg: 0,
+                bultos: 1,
+                valor_declarado: total,
+                control_factura: "facturado"
+              }
+              setRemitos(prev => [...prev, newRemito])
+
+              // Actualizar OE con número de remito
+              setOrdenesEntrega(prev => prev.map(oe => 
+                oe.id === oeId ? { ...oe, remito_numero: remitoNumero } : oe
+              ))
+
+              const facturaNumero = `FC-A X 10000-000${20050 + facturas.length}`
+              const facturaId = facturas.length + 1
+              
+              // 3. Crear Factura (abierta - genera deuda en cuenta corriente)
+              const tipoFactura = cliente.posicion_fiscal === "responsable_inscripto" ? "A" : 
+                                  cliente.posicion_fiscal === "monotributista" ? "C" : "B"
+              const newFactura: Factura = {
+                id: facturaId,
+                numero: facturaNumero,
+                tipo: tipoFactura as "A" | "B" | "C",
+                nota_venta_id: nvId,
+                nota_venta_numero: nvNumero,
+                cliente_id: cliente.id,
+                cliente_nombre: cliente.nombre,
+                cliente_documento: cliente.numero_documento,
+                estado: "abierta",
+                fecha: fechaHoy,
+                vendedor_nombre: vendedorNombre,
+                domicilio_facturacion: cliente.direccion,
+                moneda: moneda,
+                tipo_cotizacion: "blue",
+                cotizacion: 1150,
+                termino_pago: terminoPagoNombre,
+                subtotal: subtotal,
+                descuento: 0,
+                impuestos: subtotal * 0.21,
+                total: total,
+                saldo: total,
+                sucursal: "Puerto Norte",
+                lineas: nvLineas.map(l => ({
+                  producto_nombre: l.producto_nombre,
+                  descripcion: "",
+                  cantidad: l.cantidad,
+                  precio_unitario: l.precio_unitario,
+                  descuento: l.descuento,
+                  subtotal: l.subtotal
+                })),
+                vencimientos: [{
+                  descripcion: "Vencimiento 1",
+                  fecha: fechaHoy.split('T')[0],
+                  total: total
+                }]
+              }
+              setFacturas(prev => [...prev, newFactura])
+
+              // 3b. Crear movimiento de DEBITO en cuenta corriente
+              const saldoAnteriorCliente2 = cliente.saldo_cuenta_corriente
+              const nuevoMovimientoDebito2: MovimientoCuentaCorriente = {
+                id: movimientosCC.length + 1,
+                cliente_id: cliente.id,
+                fecha: fechaHoy,
+                tipo: "debito",
+                concepto: `Factura de venta - ${nvNumero}`,
+                documento_tipo: "factura",
+                documento_numero: facturaNumero,
+                documento_id: facturaId,
+                moneda: moneda,
+                importe: total,
+                saldo_posterior: saldoAnteriorCliente2 + total
+              }
+              setMovimientosCC(prev => [...prev, nuevoMovimientoDebito2])
+
+              // Actualizar Remito con número de factura
+              setRemitos(prev => prev.map(r => 
+                r.id === remitoId ? { ...r, factura_numero: facturaNumero } : r
+              ))
+
+              const reciboNumero = `RC X Norte-000${11735 + recibos.length}`
+              
+              // 4. Crear Recibo en borrador
+              const newRecibo: Recibo = {
+                id: recibos.length + 1,
+                numero: reciboNumero,
+                cliente_id: cliente.id,
+                cliente_nombre: cliente.nombre,
+                estado: "borrador",
+                fecha: fechaHoy,
+                importe: total,
+                importe_no_conciliado: total,
+                moneda: moneda,
+                sucursal: "Puerto Norte",
+                caja: "Caja Principal",
+                cobrador_nombre: vendedorNombre,
+                nota_venta_numero: nvNumero,
+                concepto: `Cobro ${nvNumero}`,
+                pagos: []
+              }
+              setRecibos(prev => [...prev, newRecibo])
+
+              // Actualizar saldo del cliente (la factura genera deuda = débito)
+              setClientes(prev => prev.map(c => 
+                c.id === cliente.id ? { 
+                  ...c, 
+                  saldo_cuenta_corriente: c.saldo_cuenta_corriente + total,
+                  total_facturado: c.total_facturado + total
+                } : c
+              ))
+            }
+
+            setShowModal(false)
+            setNvLineas([])
+            setNvClienteId(null)
+            setEditingItem(null)
+          }} className="p-4 space-y-4">
+            {/* Datos generales */}
+            <div className="grid grid-cols-4 gap-4">
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
+                <select value={nvClienteId || ""} onChange={(e) => setNvClienteId(parseInt(e.target.value))}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" required>
+                  <option value="">Seleccionar cliente...</option>
+                  {clientes.map(c => (
+                    <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Vendedor</label>
+                <select name="vendedor_id" defaultValue={editingItem?.vendedor_id || 1}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                  {mockVendedores.map(v => (
+                    <option key={v.id} value={v.id}>{v.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo Venta</label>
+                <select name="tipo_venta" defaultValue={editingItem?.tipo_venta || "inmediata"}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                  <option value="inmediata">Inmediata</option>
+                  <option value="pedido">Pedido</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Moneda</label>
+                <select name="moneda" defaultValue={editingItem?.moneda || "ARS"}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                  <option value="ARS">ARS - Pesos</option>
+                  <option value="USD">USD - Dólares</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Precios</label>
+                <select name="lista_precios_id" defaultValue={editingItem?.lista_precios_id || selectedCliente?.lista_precios_id || 1}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                  {mockListasPrecios.map(lp => (
+                    <option key={lp.id} value={lp.id}>{lp.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Término de Pago</label>
+                <select name="termino_pago_id" defaultValue={editingItem?.termino_pago_id || selectedCliente?.termino_pago_id || 1}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                  {mockTerminosPago.map(tp => (
+                    <option key={tp.id} value={tp.id}>{tp.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Depósito</label>
+                <select name="deposito" defaultValue={editingItem?.deposito || "Puerto Norte"}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                  <option value="Puerto Norte">Puerto Norte</option>
+                  <option value="Pichincha">Pichincha</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Líneas de productos */}
+            <div className="border rounded-lg overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 flex justify-between items-center border-b">
+                <span className="font-medium text-sm">Productos</span>
+                <button type="button" onClick={() => {
+                  const newLinea: LineaNV = {
+                    id: nvLineas.length + 1,
+                    producto_id: 0,
+                    producto_nombre: "",
+                    producto_sku: "",
+                    cantidad: 1,
+                    precio_unitario: 0,
+                    descuento: 0,
+                    subtotal: 0,
+                    fecha_entrega: new Date().toISOString().split('T')[0]
+                  }
+                  setNvLineas([...nvLineas, newLinea])
+                }} className="text-sm text-emerald-700 hover:text-emerald-800 font-medium flex items-center gap-1">
+                  <Plus className="w-4 h-4" /> Agregar Producto
+                </button>
+              </div>
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                    <th className="text-left py-2 px-3">Producto</th>
+                    <th className="text-center py-2 px-3 w-24">Cantidad</th>
+                    <th className="text-right py-2 px-3 w-32">Precio Unit.</th>
+                    <th className="text-center py-2 px-3 w-24">Dto. %</th>
+                    <th className="text-right py-2 px-3 w-32">Subtotal</th>
+                    <th className="w-10"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {nvLineas.map((linea, index) => (
+                    <tr key={linea.id} className="border-b">
+                      <td className="py-2 px-3">
+                        <input type="text" value={linea.producto_nombre} 
+                          onChange={(e) => {
+                            const updated = [...nvLineas]
+                            updated[index].producto_nombre = e.target.value
+                            setNvLineas(updated)
+                          }}
+                          placeholder="Nombre del producto"
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm" />
+                      </td>
+                      <td className="py-2 px-3">
+                        <input type="number" value={linea.cantidad} min="1"
+                          onChange={(e) => {
+                            const updated = [...nvLineas]
+                            updated[index].cantidad = parseInt(e.target.value) || 1
+                            updated[index].subtotal = updated[index].cantidad * updated[index].precio_unitario * (1 - updated[index].descuento / 100)
+                            setNvLineas(updated)
+                          }}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-center" />
+                      </td>
+                      <td className="py-2 px-3">
+                        <input type="number" value={linea.precio_unitario} min="0" step="0.01"
+                          onChange={(e) => {
+                            const updated = [...nvLineas]
+                            updated[index].precio_unitario = parseFloat(e.target.value) || 0
+                            updated[index].subtotal = updated[index].cantidad * updated[index].precio_unitario * (1 - updated[index].descuento / 100)
+                            setNvLineas(updated)
+                          }}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right" />
+                      </td>
+                      <td className="py-2 px-3">
+                        <input type="number" value={linea.descuento} min="0" max="100" step="0.01"
+                          onChange={(e) => {
+                            const updated = [...nvLineas]
+                            updated[index].descuento = parseFloat(e.target.value) || 0
+                            updated[index].subtotal = updated[index].cantidad * updated[index].precio_unitario * (1 - updated[index].descuento / 100)
+                            setNvLineas(updated)
+                          }}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-center" />
+                      </td>
+                      <td className="py-2 px-3 text-right font-medium">
+                        {formatCurrency(linea.subtotal)}
+                      </td>
+                      <td className="py-2 px-3">
+                        <button type="button" onClick={() => setNvLineas(nvLineas.filter((_, i) => i !== index))}
+                          className="text-red-500 hover:text-red-700">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {nvLineas.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="text-center py-8 text-gray-400">
+                        No hay productos agregados. Haga clic en "Agregar Producto" para comenzar.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Totales */}
+            <div className="flex justify-end">
+              <div className="w-64 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Subtotal:</span>
+                  <span className="font-medium">{formatCurrency(subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">IVA (21%):</span>
+                  <span className="font-medium">{formatCurrency(subtotal * 0.21)}</span>
+                </div>
+                <div className="flex justify-between text-base font-bold border-t pt-2">
+                  <span>Total:</span>
+                  <span className="text-emerald-700">{formatCurrency(total)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <button type="button" onClick={() => { setShowModal(false); setNvLineas([]); setNvClienteId(null) }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                Cancelar
+              </button>
+              <button type="submit"
+                className="px-4 py-2 text-sm font-medium text-white bg-emerald-700 rounded-md hover:bg-emerald-800">
+                {editingItem ? "Guardar Cambios" : "Crear Nota de Venta"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
+  // Modal de Recibo
+  const [reciboPagos, setReciboPagos] = useState<{forma_pago: string; importe: number; moneda: "ARS" | "USD"}[]>([])
+  const [reciboClienteId, setReciboClienteId] = useState<number | null>(null)
+
+  const renderReciboModal = () => {
+    const totalPagos = reciboPagos.reduce((sum, p) => sum + p.importe, 0)
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="flex items-center justify-between p-4 border-b">
+            <h2 className="text-lg font-semibold text-emerald-900">Nuevo Recibo</h2>
+            <button onClick={() => { setShowModal(false); setReciboPagos([]); setReciboClienteId(null) }} className="text-gray-500 hover:text-gray-700">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <form onSubmit={(e) => {
+            e.preventDefault()
+            const formData = new FormData(e.currentTarget)
+            const cliente = clientes.find(c => c.id === reciboClienteId)
+            if (!cliente || reciboPagos.length === 0) {
+              alert("Debe seleccionar un cliente y agregar al menos un pago")
+              return
+            }
+            const reciboNumero = `RC X Norte-000${11735 + recibos.length}`
+            const reciboId = recibos.length + 1
+            const fechaHoy = new Date().toISOString()
+
+            const newRecibo: Recibo = {
+              id: reciboId,
+              numero: reciboNumero,
+              cliente_id: cliente.id,
+              cliente_nombre: cliente.nombre,
+              estado: "publicado", // Publicado porque tiene pagos
+              fecha: fechaHoy,
+              importe: totalPagos,
+              importe_no_conciliado: 0, // Ya se aplicó
+              moneda: "ARS",
+              sucursal: "Puerto Norte",
+              caja: formData.get("caja") as string || "Caja Principal",
+              cobrador_nombre: mockVendedores.find(v => v.id === parseInt(formData.get("cobrador_id") as string))?.nombre || "Max Solina",
+              nota_venta_numero: null,
+              concepto: formData.get("concepto") as string || "Cobro de venta",
+              pagos: reciboPagos
+            }
+            setRecibos(prev => [...prev, newRecibo])
+
+            // Crear movimiento de CREDITO en cuenta corriente
+            const saldoAnteriorCliente = cliente.saldo_cuenta_corriente
+            const nuevoMovimientoCredito: MovimientoCuentaCorriente = {
+              id: movimientosCC.length + 1,
+              cliente_id: cliente.id,
+              fecha: fechaHoy,
+              tipo: "credito",
+              concepto: formData.get("concepto") as string || "Pago recibido",
+              documento_tipo: "recibo",
+              documento_numero: reciboNumero,
+              documento_id: reciboId,
+              moneda: "ARS",
+              importe: totalPagos,
+              saldo_posterior: saldoAnteriorCliente - totalPagos
+            }
+            setMovimientosCC(prev => [...prev, nuevoMovimientoCredito])
+
+            // Actualizar saldo del cliente (el recibo reduce la deuda = crédito)
+            setClientes(prev => prev.map(c =>
+              c.id === cliente.id ? {
+                ...c,
+                saldo_cuenta_corriente: c.saldo_cuenta_corriente - totalPagos
+              } : c
+            ))
+
+            setShowModal(false)
+            setReciboPagos([])
+            setReciboClienteId(null)
+          }} className="p-4 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
+                <select value={reciboClienteId || ""} onChange={(e) => setReciboClienteId(parseInt(e.target.value))}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" required>
+                  <option value="">Seleccionar cliente...</option>
+                  {clientes.map(c => (
+                    <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cobrador</label>
+                <select name="cobrador_id" defaultValue="1"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                  {mockVendedores.map(v => (
+                    <option key={v.id} value={v.id}>{v.nombre}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Caja</label>
+                <select name="caja" defaultValue="Caja Principal"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                  <option value="Caja Principal">Caja Principal</option>
+                  <option value="Caja Chica">Caja Chica</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Concepto</label>
+                <input type="text" name="concepto" defaultValue="Cobro de venta"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+              </div>
+            </div>
+
+            {/* Pagos */}
+            <div className="border rounded-lg overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 flex justify-between items-center border-b">
+                <span className="font-medium text-sm">Formas de Pago</span>
+                <button type="button" onClick={() => {
+                  setReciboPagos([...reciboPagos, { forma_pago: "Efectivo", importe: 0, moneda: "ARS" }])
+                }} className="text-sm text-emerald-700 hover:text-emerald-800 font-medium flex items-center gap-1">
+                  <Plus className="w-4 h-4" /> Agregar Pago
+                </button>
+              </div>
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                    <th className="text-left py-2 px-3">Forma de Pago</th>
+                    <th className="text-left py-2 px-3 w-32">Moneda</th>
+                    <th className="text-right py-2 px-3 w-40">Importe</th>
+                    <th className="w-10"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reciboPagos.map((pago, index) => (
+                    <tr key={index} className="border-b">
+                      <td className="py-2 px-3">
+                        <select value={pago.forma_pago} onChange={(e) => {
+                          const updated = [...reciboPagos]
+                          updated[index].forma_pago = e.target.value
+                          setReciboPagos(updated)
+                        }} className="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                          <option value="Efectivo">Efectivo</option>
+                          <option value="Transferencia">Transferencia Bancaria</option>
+                          <option value="Tarjeta Débito">Tarjeta Débito</option>
+                          <option value="Tarjeta Crédito">Tarjeta Crédito</option>
+                          <option value="Cheque">Cheque</option>
+                          <option value="MercadoPago">MercadoPago</option>
+                        </select>
+                      </td>
+                      <td className="py-2 px-3">
+                        <select value={pago.moneda} onChange={(e) => {
+                          const updated = [...reciboPagos]
+                          updated[index].moneda = e.target.value as "ARS" | "USD"
+                          setReciboPagos(updated)
+                        }} className="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                          <option value="ARS">ARS</option>
+                          <option value="USD">USD</option>
+                        </select>
+                      </td>
+                      <td className="py-2 px-3">
+                        <input type="number" value={pago.importe} min="0" step="0.01"
+                          onChange={(e) => {
+                            const updated = [...reciboPagos]
+                            updated[index].importe = parseFloat(e.target.value) || 0
+                            setReciboPagos(updated)
+                          }}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right" />
+                      </td>
+                      <td className="py-2 px-3">
+                        <button type="button" onClick={() => setReciboPagos(reciboPagos.filter((_, i) => i !== index))}
+                          className="text-red-500 hover:text-red-700">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {reciboPagos.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="text-center py-8 text-gray-400">
+                        No hay pagos agregados. Haga clic en "Agregar Pago" para comenzar.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-between items-center pt-2">
+              <span className="text-lg font-bold">Total: {formatCurrency(totalPagos)}</span>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <button type="button" onClick={() => { setShowModal(false); setReciboPagos([]); setReciboClienteId(null) }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                Cancelar
+              </button>
+              <button type="submit"
+                className="px-4 py-2 text-sm font-medium text-white bg-emerald-700 rounded-md hover:bg-emerald-800">
+                Crear Recibo
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
+  // Modal de Ajuste
+  const [ajusteLineas, setAjusteLineas] = useState<{descripcion: string; fecha_vencimiento: string; importe: number}[]>([])
+  const [ajusteClienteId, setAjusteClienteId] = useState<number | null>(null)
+
+  const renderAjusteModal = () => {
+    const totalAjuste = ajusteLineas.reduce((sum, l) => sum + l.importe, 0)
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="flex items-center justify-between p-4 border-b">
+            <h2 className="text-lg font-semibold text-emerald-900">Nuevo Ajuste de Cliente</h2>
+            <button onClick={() => { setShowModal(false); setAjusteLineas([]); setAjusteClienteId(null) }} className="text-gray-500 hover:text-gray-700">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <form onSubmit={(e) => {
+            e.preventDefault()
+            const formData = new FormData(e.currentTarget)
+            const cliente = clientes.find(c => c.id === ajusteClienteId)
+            if (!cliente || ajusteLineas.length === 0) {
+              alert("Debe seleccionar un cliente y agregar al menos una línea")
+              return
+            }
+            const newAjuste: AjusteCliente = {
+              id: ajustes.length + 1,
+              numero: `AJ X 10000-000001${24 + ajustes.length}`,
+              cliente_id: cliente.id,
+              cliente_nombre: cliente.nombre,
+              estado: "borrador",
+              fecha: new Date().toISOString().split('T')[0],
+              concepto: formData.get("concepto") as string,
+              moneda: formData.get("moneda") as "ARS" | "USD",
+              nota_venta_numero: null,
+              sucursal: "Puerto Norte",
+              lineas: ajusteLineas,
+              total: totalAjuste
+            }
+            setAjustes(prev => [...prev, newAjuste])
+            setShowModal(false)
+            setAjusteLineas([])
+            setAjusteClienteId(null)
+          }} className="p-4 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
+                <select value={ajusteClienteId || ""} onChange={(e) => setAjusteClienteId(parseInt(e.target.value))}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" required>
+                  <option value="">Seleccionar cliente...</option>
+                  {clientes.map(c => (
+                    <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Moneda</label>
+                <select name="moneda" defaultValue="ARS"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                  <option value="ARS">ARS - Pesos</option>
+                  <option value="USD">USD - Dólares</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Concepto *</label>
+              <input type="text" name="concepto" required placeholder="Ej: Bonificación especial, Ajuste de saldo..."
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+
+            {/* Líneas */}
+            <div className="border rounded-lg overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 flex justify-between items-center border-b">
+                <span className="font-medium text-sm">Líneas del Ajuste</span>
+                <button type="button" onClick={() => {
+                  setAjusteLineas([...ajusteLineas, { descripcion: "", fecha_vencimiento: new Date().toISOString().split('T')[0], importe: 0 }])
+                }} className="text-sm text-emerald-700 hover:text-emerald-800 font-medium flex items-center gap-1">
+                  <Plus className="w-4 h-4" /> Agregar Línea
+                </button>
+              </div>
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                    <th className="text-left py-2 px-3">Descripción</th>
+                    <th className="text-left py-2 px-3 w-40">Fecha Venc.</th>
+                    <th className="text-right py-2 px-3 w-40">Importe</th>
+                    <th className="w-10"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ajusteLineas.map((linea, index) => (
+                    <tr key={index} className="border-b">
+                      <td className="py-2 px-3">
+                        <input type="text" value={linea.descripcion} 
+                          onChange={(e) => {
+                            const updated = [...ajusteLineas]
+                            updated[index].descripcion = e.target.value
+                            setAjusteLineas(updated)
+                          }}
+                          placeholder="Descripci��n del ajuste"
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm" />
+                      </td>
+                      <td className="py-2 px-3">
+                        <input type="date" value={linea.fecha_vencimiento}
+                          onChange={(e) => {
+                            const updated = [...ajusteLineas]
+                            updated[index].fecha_vencimiento = e.target.value
+                            setAjusteLineas(updated)
+                          }}
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm" />
+                      </td>
+                      <td className="py-2 px-3">
+                        <input type="number" value={linea.importe} step="0.01"
+                          onChange={(e) => {
+                            const updated = [...ajusteLineas]
+                            updated[index].importe = parseFloat(e.target.value) || 0
+                            setAjusteLineas(updated)
+                          }}
+                          placeholder="Negativo para NC"
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right" />
+                      </td>
+                      <td className="py-2 px-3">
+                        <button type="button" onClick={() => setAjusteLineas(ajusteLineas.filter((_, i) => i !== index))}
+                          className="text-red-500 hover:text-red-700">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {ajusteLineas.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="text-center py-8 text-gray-400">
+                        No hay líneas. Use importes negativos para créditos.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-between items-center pt-2">
+              <span className={`text-lg font-bold ${totalAjuste < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                Total: {formatCurrency(totalAjuste)}
+              </span>
+              <span className="text-sm text-gray-500">
+                {totalAjuste < 0 ? "(Crédito a favor del cliente)" : "(Débito al cliente)"}
+              </span>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <button type="button" onClick={() => { setShowModal(false); setAjusteLineas([]); setAjusteClienteId(null) }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                Cancelar
+              </button>
+              <button type="submit"
+                className="px-4 py-2 text-sm font-medium text-white bg-emerald-700 rounded-md hover:bg-emerald-800">
+                Crear Ajuste
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex h-screen bg-gray-100">
+      {renderSidebar()}
+      <main className="flex-1 overflow-auto p-6">
+        {renderContent()}
+      </main>
+
+      {/* Modals */}
+      {showModal && modalType === "cliente" && renderClienteModal()}
+      {showModal && modalType === "nota_venta" && renderNotaVentaModal()}
+      {showModal && modalType === "recibo" && renderReciboModal()}
+      {showModal && modalType === "ajuste" && renderAjusteModal()}
+      
+      {/* Modal de selección de Series/IMEI */}
+      {showSerieModal && serieModalLineaIndex !== null && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Seleccionar IMEI / Serie
+                </h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {nvLineas[serieModalLineaIndex]?.producto_nombre} - Cantidad: {nvLineas[serieModalLineaIndex]?.cantidad}
+                </p>
+              </div>
+              <button 
+                onClick={() => { setShowSerieModal(false); setSerieModalLineaIndex(null); setSeriesSeleccionadasTemp([]) }}
+                className="p-1 hover:bg-gray-100 rounded-lg"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-6">
+              <div className="mb-4 flex items-center justify-between">
+                <span className="text-sm text-gray-600">
+                  Ubicación: <span className="font-medium">{ubicacionesVenta.find(u => u.id === nvUbicacionId)?.codigo}</span>
+                </span>
+                <span className={`text-sm font-medium ${seriesSeleccionadasTemp.length === nvLineas[serieModalLineaIndex]?.cantidad ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  {seriesSeleccionadasTemp.length} de {nvLineas[serieModalLineaIndex]?.cantidad} seleccionados
+                </span>
+              </div>
+              <div className="space-y-2">
+                {seriesDisponibles
+                  .filter(s => 
+                    s.producto_id === nvLineas[serieModalLineaIndex]?.producto_id && 
+                    s.estado === "disponible" &&
+                    s.ubicacion_id === nvUbicacionId
+                  )
+                  .map(serie => {
+                    const isSelected = seriesSeleccionadasTemp.includes(serie.id)
+                    const cantidadRequerida = nvLineas[serieModalLineaIndex]?.cantidad || 0
+                    const puedeSeleccionar = seriesSeleccionadasTemp.length < cantidadRequerida
+                    
+                    return (
+                      <label
+                        key={serie.id}
+                        className={`flex items-center gap-4 p-4 rounded-lg border cursor-pointer transition-all ${
+                          isSelected 
+                            ? 'border-emerald-500 bg-emerald-50' 
+                            : puedeSeleccionar 
+                              ? 'border-gray-200 hover:bg-gray-50'
+                              : 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          disabled={!isSelected && !puedeSeleccionar}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSeriesSeleccionadasTemp([...seriesSeleccionadasTemp, serie.id])
+                            } else {
+                              setSeriesSeleccionadasTemp(seriesSeleccionadasTemp.filter(id => id !== serie.id))
+                            }
+                          }}
+                          className="w-5 h-5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-semibold text-gray-900">{serie.serie}</span>
+                            {serie.lote && (
+                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Lote: {serie.lote}</span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-600 mt-1">{serie.detalles}</div>
+                          <div className="text-xs text-gray-400 mt-1">Ingreso: {formatDate(serie.fecha_ingreso)}</div>
+                        </div>
+                      </label>
+                    )
+                  })}
+                {seriesDisponibles.filter(s => 
+                  s.producto_id === nvLineas[serieModalLineaIndex]?.producto_id && 
+                  s.estado === "disponible" &&
+                  s.ubicacion_id === nvUbicacionId
+                ).length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                    <p>No hay series disponibles en esta ubicación</p>
+                    <p className="text-sm mt-1">Cambie la ubicación de stock o verifique el inventario</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-xl">
+              <span className="text-sm text-gray-500">
+                {seriesSeleccionadasTemp.length < (nvLineas[serieModalLineaIndex]?.cantidad || 0) && (
+                  <span className="text-amber-600">Faltan seleccionar {(nvLineas[serieModalLineaIndex]?.cantidad || 0) - seriesSeleccionadasTemp.length} unidades</span>
+                )}
+              </span>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setShowSerieModal(false); setSerieModalLineaIndex(null); setSeriesSeleccionadasTemp([]) }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    const updated = [...nvLineas]
+                    updated[serieModalLineaIndex].series_seleccionadas = seriesSeleccionadasTemp.map(id => {
+                      const serie = seriesDisponibles.find(s => s.id === id)!
+                      return { id: serie.id, serie: serie.serie, detalles: serie.detalles }
+                    })
+                    setNvLineas(updated)
+                    setShowSerieModal(false)
+                    setSerieModalLineaIndex(null)
+                    setSeriesSeleccionadasTemp([])
+                  }}
+                  disabled={seriesSeleccionadasTemp.length !== nvLineas[serieModalLineaIndex]?.cantidad}
+                  className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Confirmar seleccion
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

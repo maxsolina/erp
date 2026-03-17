@@ -1,0 +1,2367 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cell Home ERP</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: #f5f6fa;
+      color: #333;
+      font-size: 14px;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #e8eaf6;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #9fa8da;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #7986cb;
+    }
+
+    /* Top Navbar */
+    .navbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 44px;
+      background: #1a237e;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      z-index: 1000;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .navbar-logo {
+      color: white;
+      font-weight: 600;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .navbar-modules {
+      display: flex;
+      margin-left: 40px;
+      gap: 4px;
+    }
+
+    .navbar-btn {
+      background: transparent;
+      border: none;
+      color: rgba(255,255,255,0.8);
+      padding: 8px 16px;
+      cursor: pointer;
+      font-size: 13px;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+
+    .navbar-btn:hover {
+      background: rgba(255,255,255,0.1);
+      color: white;
+    }
+
+    .navbar-btn.active {
+      background: rgba(255,255,255,0.2);
+      color: white;
+    }
+
+    /* Layout */
+    .layout {
+      display: flex;
+      margin-top: 44px;
+      min-height: calc(100vh - 44px);
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 200px;
+      background: white;
+      border-right: 1px solid #e0e0e0;
+      position: fixed;
+      top: 44px;
+      left: 0;
+      bottom: 0;
+      overflow-y: auto;
+      padding: 16px 0;
+    }
+
+    .sidebar-section {
+      padding: 0 16px;
+      margin-bottom: 20px;
+    }
+
+    .sidebar-title {
+      font-size: 10px;
+      font-weight: 600;
+      color: #9e9e9e;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .sidebar-link {
+      display: block;
+      padding: 8px 12px;
+      color: #555;
+      text-decoration: none;
+      font-size: 13px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      margin-left: -16px;
+      padding-left: 28px;
+      transition: all 0.2s;
+    }
+
+    .sidebar-link:hover {
+      background: #f5f6fa;
+      color: #1a237e;
+    }
+
+    .sidebar-link.active {
+      border-left-color: #1a237e;
+      background: #e8eaf6;
+      color: #1a237e;
+      font-weight: 500;
+    }
+
+    /* Main Content */
+    .main-content {
+      margin-left: 200px;
+      flex: 1;
+      padding: 24px;
+      background: #f5f6fa;
+      min-height: calc(100vh - 44px);
+      overflow-y: auto;
+    }
+
+    .page-title {
+      font-size: 24px;
+      font-weight: 600;
+      color: #1a237e;
+      margin-bottom: 24px;
+    }
+
+    /* Cards */
+    .card {
+      background: white;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 16px;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: white;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      padding: 20px;
+      text-align: center;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: #1a237e;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+    }
+
+    /* Tables */
+    .table-container {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      padding: 12px;
+      background: #f5f6fa;
+      font-weight: 600;
+      font-size: 12px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 2px solid #e0e0e0;
+    }
+
+    td {
+      padding: 12px;
+      border-bottom: 1px solid #eee;
+      vertical-align: middle;
+    }
+
+    tr:hover {
+      background: #fafafa;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .badge-borrador { background: #e0e0e0; color: #616161; }
+    .badge-asignada_sin_resolucion { background: #ffe0b2; color: #e65100; }
+    .badge-asignada_en_proceso { background: #bbdefb; color: #1565c0; }
+    .badge-re_presupuestacion { background: #f8bbd0; color: #c2185b; }
+    .badge-falta_repuestos { background: #ffcdd2; color: #c62828; }
+    .badge-control_calidad { background: #e1bee7; color: #7b1fa2; }
+    .badge-facturado { background: #c8e6c9; color: #2e7d32; }
+    .badge-a_entregar { background: #b2dfdb; color: #00695c; }
+    .badge-entregado { background: #a5d6a7; color: #1b5e20; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: #1a237e;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #283593;
+    }
+
+    .btn-secondary {
+      background: #e0e0e0;
+      color: #333;
+    }
+
+    .btn-secondary:hover {
+      background: #bdbdbd;
+    }
+
+    .btn-success {
+      background: #4caf50;
+      color: white;
+    }
+
+    .btn-success:hover {
+      background: #43a047;
+    }
+
+    .btn-danger {
+      background: #f44336;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #e53935;
+    }
+
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
+    .btn-icon {
+      padding: 6px 10px;
+    }
+
+    /* Forms */
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 500;
+      font-size: 13px;
+      color: #333;
+    }
+
+    .form-control {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .form-control:focus {
+      outline: none;
+      border-color: #1a237e;
+      box-shadow: 0 0 0 3px rgba(26,35,126,0.1);
+    }
+
+    .form-control[readonly] {
+      background: #f5f6fa;
+      cursor: not-allowed;
+    }
+
+    select.form-control {
+      cursor: pointer;
+    }
+
+    textarea.form-control {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .form-check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .form-check input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+
+    .form-check label {
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s;
+    }
+
+    .modal-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .modal {
+      background: white;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 900px;
+      max-height: 90vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transform: scale(0.9);
+      transition: transform 0.3s;
+    }
+
+    .modal-overlay.active .modal {
+      transform: scale(1);
+    }
+
+    .modal-header {
+      padding: 16px 20px;
+      background: #1a237e;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .modal-close {
+      background: transparent;
+      border: none;
+      color: white;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .modal-body {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .modal-footer {
+      padding: 16px 20px;
+      background: #f5f6fa;
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      border-top: 1px solid #e0e0e0;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      border-bottom: 2px solid #e0e0e0;
+      margin-bottom: 20px;
+    }
+
+    .tab {
+      padding: 12px 20px;
+      background: transparent;
+      border: none;
+      font-size: 14px;
+      font-weight: 500;
+      color: #666;
+      cursor: pointer;
+      position: relative;
+      transition: color 0.2s;
+    }
+
+    .tab:hover {
+      color: #1a237e;
+    }
+
+    .tab.active {
+      color: #1a237e;
+    }
+
+    .tab.active::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: #1a237e;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Progress Bar */
+    .progress-bar {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 24px;
+      padding: 16px;
+      background: #f5f6fa;
+      border-radius: 6px;
+    }
+
+    .progress-step {
+      flex: 1;
+      text-align: center;
+      padding: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 4px;
+      background: #e0e0e0;
+      color: #999;
+      position: relative;
+    }
+
+    .progress-step.active {
+      background: #1a237e;
+      color: white;
+    }
+
+    .progress-step.completed {
+      background: #4caf50;
+      color: white;
+    }
+
+    /* Filter Bar */
+    .filter-bar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .filter-bar select {
+      min-width: 200px;
+    }
+
+    /* Info Grid */
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .info-item {
+      padding: 12px;
+      background: #f5f6fa;
+      border-radius: 4px;
+    }
+
+    .info-label {
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .info-value {
+      font-size: 14px;
+      font-weight: 500;
+      color: #333;
+    }
+
+    /* Tags */
+    .tags {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      background: #e8eaf6;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #1a237e;
+    }
+
+    .tag.warning {
+      background: #fff3e0;
+      color: #e65100;
+    }
+
+    .tag.danger {
+      background: #ffebee;
+      color: #c62828;
+    }
+
+    /* Action Buttons */
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid #e0e0e0;
+    }
+
+    /* Table Editable */
+    .table-editable input,
+    .table-editable select {
+      padding: 6px 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 13px;
+      width: 100%;
+    }
+
+    .table-editable input:focus {
+      outline: none;
+      border-color: #1a237e;
+    }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #999;
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    /* Checkbox Controls */
+    .control-checkbox {
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .sidebar {
+        display: none;
+      }
+      .main-content {
+        margin-left: 0;
+      }
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+      .info-grid {
+        grid-template-columns: 1fr;
+      }
+      .navbar-modules {
+        margin-left: auto;
+      }
+    }
+
+    /* Estado Selector */
+    .estado-selector {
+      margin-top: 16px;
+    }
+
+    .estado-selector select {
+      margin-right: 12px;
+    }
+
+    /* Tecnico Selector */
+    .tecnico-selector {
+      margin-top: 16px;
+      padding: 12px;
+      background: #e8eaf6;
+      border-radius: 4px;
+    }
+
+    .tecnico-selector label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+
+    /* Checkboxes Grid */
+    .checkboxes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 8px;
+      padding: 12px;
+      background: #f5f6fa;
+      border-radius: 4px;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+
+    /* Loading */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      color: #666;
+    }
+
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid #e0e0e0;
+      border-top-color: #1a237e;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 12px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Total Row */
+    .total-row {
+      font-weight: 600;
+      background: #e8eaf6;
+    }
+
+    .total-row td {
+      border-bottom: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="navbar-logo">
+      🔧 Cell Home ERP
+    </div>
+    <div class="navbar-modules">
+      <button class="navbar-btn active" data-module="taller">Taller</button>
+      <button class="navbar-btn" data-module="ventas">Ventas</button>
+      <button class="navbar-btn" data-module="compras">Compras</button>
+      <button class="navbar-btn" data-module="caja">Caja</button>
+      <button class="navbar-btn" data-module="stock">Stock</button>
+      <button class="navbar-btn" data-module="config">Configuración</button>
+    </div>
+  </nav>
+
+  <!-- Layout -->
+  <div class="layout">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <!-- Content injected by JS -->
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content" id="main-content">
+      <!-- Content injected by JS -->
+    </main>
+  </div>
+
+  <!-- Modal Nueva OT -->
+  <div class="modal-overlay" id="modal-nueva-ot">
+    <div class="modal" style="max-width: 800px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Nueva Orden de Trabajo</h3>
+        <button class="modal-close" onclick="cerrarModal('modal-nueva-ot')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="form-nueva-ot">
+          <div class="form-row">
+            <div>
+              <div class="form-group">
+                <label class="form-label">Área *</label>
+                <select class="form-control" id="ot-area" required>
+                  <option value="">Seleccionar área...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Tipo de OT *</label>
+                <select class="form-control" id="ot-tipo" required>
+                  <option value="">Seleccionar tipo...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Cliente *</label>
+                <select class="form-control" id="ot-cliente" required>
+                  <option value="">Seleccionar cliente...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Celular de Contacto</label>
+                <input type="text" class="form-control" id="ot-celular">
+              </div>
+            </div>
+            <div>
+              <div class="form-group">
+                <label class="form-label">Equipo *</label>
+                <select class="form-control" id="ot-equipo" required>
+                  <option value="">Seleccionar equipo...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Falla Principal *</label>
+                <select class="form-control" id="ot-falla" required>
+                  <option value="">Seleccionar falla...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Categoría de Reparación</label>
+                <input type="text" class="form-control" id="ot-categoria" readonly>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Fallas Secundarias</label>
+                <div class="checkboxes-grid" id="ot-fallas-secundarias">
+                  <!-- Checkboxes injected by JS -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row" id="ot-identificacion">
+            <div class="form-group" id="ot-imei-group">
+              <label class="form-label">IMEI</label>
+              <input type="text" class="form-control" id="ot-imei">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Serial Number</label>
+              <input type="text" class="form-control" id="ot-serial">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Código de Desbloqueo</label>
+            <input type="text" class="form-control" id="ot-codigo">
+          </div>
+
+          <div style="display: flex; gap: 24px; margin-bottom: 16px;">
+            <div class="form-check">
+              <input type="checkbox" id="ot-apagado">
+              <label for="ot-apagado">Ingresa Apagado</label>
+            </div>
+            <div class="form-check">
+              <input type="checkbox" id="ot-mojado">
+              <label for="ot-mojado">Ingresa Mojado</label>
+            </div>
+            <div class="form-check">
+              <input type="checkbox" id="ot-cargador">
+              <label for="ot-cargador">Deja Cargador</label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Presupuesto Estimado ($)</label>
+            <input type="number" class="form-control" id="ot-presupuesto" step="0.01">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Descripción / Observaciones</label>
+            <textarea class="form-control" id="ot-descripcion" rows="3"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="cerrarModal('modal-nueva-ot')">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarOT()">Crear Orden</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Detalle OT -->
+  <div class="modal-overlay" id="modal-detalle-ot">
+    <div class="modal" style="max-width: 900px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="detalle-ot-titulo">Orden de Trabajo #</h3>
+        <button class="modal-close" onclick="cerrarModal('modal-detalle-ot')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="progress-bar" id="detalle-progress">
+          <!-- Progress steps injected by JS -->
+        </div>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="info">Información</button>
+          <button class="tab" data-tab="repuestos">Repuestos y Servicios</button>
+          <button class="tab" data-tab="control">Control</button>
+          <button class="tab" data-tab="etapas">Etapas</button>
+        </div>
+
+        <div class="tab-content active" id="tab-info">
+          <div class="info-grid" id="detalle-info-grid">
+            <!-- Info items injected by JS -->
+          </div>
+          <div class="tags" id="detalle-tags">
+            <!-- Tags injected by JS -->
+          </div>
+          <div class="tecnico-selector">
+            <label>Técnico Asignado:</label>
+            <select class="form-control" id="detalle-tecnico" style="max-width: 300px;">
+              <option value="">Sin asignar</option>
+            </select>
+          </div>
+          <div class="action-buttons" id="detalle-actions">
+            <!-- Action buttons injected by JS -->
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-repuestos">
+          <div class="table-container">
+            <table class="table-editable">
+              <thead>
+                <tr>
+                  <th>Producto/Servicio</th>
+                  <th style="width:80px">Cant.</th>
+                  <th style="width:100px">Precio</th>
+                  <th style="width:80px">Dto.%</th>
+                  <th style="width:100px">Subtotal</th>
+                  <th style="width:60px"></th>
+                </tr>
+              </thead>
+              <tbody id="repuestos-tbody">
+                <!-- Rows injected by JS -->
+              </tbody>
+              <tfoot>
+                <tr class="total-row">
+                  <td colspan="4" style="text-align: right;">TOTAL:</td>
+                  <td id="repuestos-total">$0.00</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div style="margin-top: 16px;">
+            <button class="btn btn-primary btn-sm" onclick="agregarRepuesto()">+ Agregar ítem</button>
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-control">
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Control</th>
+                  <th style="width:150px">Obs. Inicial</th>
+                  <th style="width:80px;text-align:center">Ctrl. Ini.</th>
+                  <th style="width:150px">Obs. Final</th>
+                  <th style="width:80px;text-align:center">Ctrl. Fin.</th>
+                </tr>
+              </thead>
+              <tbody id="controles-tbody">
+                <!-- Rows injected by JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-etapas">
+          <div id="etapas-list">
+            <!-- Etapas injected by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Crear Equipo -->
+  <div class="modal-overlay" id="modal-equipo">
+    <div class="modal" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Nuevo Equipo</h3>
+        <button class="modal-close" onclick="cerrarModal('modal-equipo')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="form-equipo">
+          <div class="form-group">
+            <label class="form-label">Nombre *</label>
+            <input type="text" class="form-control" id="equipo-nombre" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Marca</label>
+            <input type="text" class="form-control" id="equipo-marca">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Área *</label>
+            <select class="form-control" id="equipo-area" required>
+              <option value="">Seleccionar área...</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Días Garantía Compra</label>
+              <input type="number" class="form-control" id="equipo-garantia-compra" value="0">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Días Garantía Reparación</label>
+              <input type="number" class="form-control" id="equipo-garantia-reparacion" value="0">
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="cerrarModal('modal-equipo')">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarEquipo()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Crear Falla -->
+  <div class="modal-overlay" id="modal-falla">
+    <div class="modal" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Nueva Falla</h3>
+        <button class="modal-close" onclick="cerrarModal('modal-falla')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="form-falla">
+          <div class="form-group">
+            <label class="form-label">Nombre *</label>
+            <input type="text" class="form-control" id="falla-nombre" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Equipo *</label>
+            <select class="form-control" id="falla-equipo" required>
+              <option value="">Seleccionar equipo...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Categoría de Reparación</label>
+            <select class="form-control" id="falla-categoria">
+              <option value="">Seleccionar categoría...</option>
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="cerrarModal('modal-falla')">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarFalla()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // API Base URL
+    const API = window.location.origin;
+
+    // State
+    let currentModule = 'taller';
+    let currentView = 'dashboard';
+    let currentOT = null;
+    let areas = [];
+    let clientes = [];
+    let tecnicos = [];
+    let categorias = [];
+
+    // Estado transitions
+    const estadoTransitions = {
+      'borrador': ['asignada_sin_resolucion'],
+      'asignada_sin_resolucion': ['asignada_en_proceso'],
+      'asignada_en_proceso': ['control_calidad', 're_presupuestacion', 'falta_repuestos'],
+      're_presupuestacion': ['asignada_en_proceso', 'control_calidad'],
+      'falta_repuestos': ['asignada_en_proceso', 're_presupuestacion'],
+      'control_calidad': ['facturado', 'asignada_en_proceso'],
+      'facturado': ['a_entregar'],
+      'a_entregar': ['entregado'],
+      'entregado': []
+    };
+
+    const estadoLabels = {
+      'borrador': 'Borrador',
+      'asignada_sin_resolucion': 'Sin Resolución',
+      'asignada_en_proceso': 'En Proceso',
+      're_presupuestacion': 'Re-presupuestación',
+      'falta_repuestos': 'Falta Repuestos',
+      'control_calidad': 'Control Calidad',
+      'facturado': 'Facturado',
+      'a_entregar': 'A Entregar',
+      'entregado': 'Entregado'
+    };
+
+    const estadoOrder = ['borrador', 'asignada_sin_resolucion', 'asignada_en_proceso', 'control_calidad', 'facturado', 'a_entregar', 'entregado'];
+
+    // Sidebar configurations
+    const sidebarConfig = {
+      taller: {
+        sections: [
+          {
+            title: 'General',
+            links: [
+              { id: 'dashboard', label: 'Dashboard' },
+              { id: 'ordenes', label: 'Órdenes de Trabajo' }
+            ]
+          },
+          {
+            title: 'Configuración',
+            links: [
+              { id: 'clientes', label: 'Clientes' },
+              { id: 'tecnicos', label: 'Técnicos' },
+              { id: 'equipos', label: 'Equipos' },
+              { id: 'fallas', label: 'Fallas' }
+            ]
+          }
+        ]
+      },
+      ventas: {
+        sections: [
+          {
+            title: 'Ventas',
+            links: [
+              { id: 'ventas-dashboard', label: 'Dashboard (próximamente)' },
+              { id: 'ventas-facturas', label: 'Facturas (próximamente)' },
+              { id: 'ventas-pedidos', label: 'Pedidos (próximamente)' }
+            ]
+          }
+        ]
+      },
+      compras: {
+        sections: [
+          {
+            title: 'Compras',
+            links: [
+              { id: 'compras-dashboard', label: 'Dashboard (próximamente)' },
+              { id: 'compras-proveedores', label: 'Proveedores (próximamente)' },
+              { id: 'compras-ordenes', label: 'Órdenes (próximamente)' }
+            ]
+          }
+        ]
+      },
+      caja: {
+        sections: [
+          {
+            title: 'Caja',
+            links: [
+              { id: 'caja-dashboard', label: 'Dashboard (próximamente)' },
+              { id: 'caja-movimientos', label: 'Movimientos (próximamente)' },
+              { id: 'caja-arqueo', label: 'Arqueo (próximamente)' }
+            ]
+          }
+        ]
+      },
+      stock: {
+        sections: [
+          {
+            title: 'Stock',
+            links: [
+              { id: 'stock-dashboard', label: 'Dashboard (próximamente)' },
+              { id: 'stock-productos', label: 'Productos (próximamente)' },
+              { id: 'stock-movimientos', label: 'Movimientos (próximamente)' }
+            ]
+          }
+        ]
+      },
+      config: {
+        sections: [
+          {
+            title: 'Configuración',
+            links: [
+              { id: 'config-general', label: 'General (próximamente)' },
+              { id: 'config-usuarios', label: 'Usuarios (próximamente)' },
+              { id: 'config-empresa', label: 'Empresa (próximamente)' }
+            ]
+          }
+        ]
+      }
+    };
+
+    // API Functions
+    async function fetchAPI(endpoint, options = {}) {
+      try {
+        const response = await fetch(`${API}${endpoint}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            ...options.headers
+          },
+          ...options
+        });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.detail || 'Error en la solicitud');
+        }
+        return response.json();
+      } catch (error) {
+        console.error('API Error:', error);
+        throw error;
+      }
+    }
+
+    // Render Sidebar
+    function renderSidebar() {
+      const config = sidebarConfig[currentModule];
+      let html = '';
+      config.sections.forEach(section => {
+        html += `
+          <div class="sidebar-section">
+            <div class="sidebar-title">${section.title}</div>
+            ${section.links.map(link => `
+              <a class="sidebar-link ${currentView === link.id ? 'active' : ''}" onclick="navigateTo('${link.id}')">
+                ${link.label}
+              </a>
+            `).join('')}
+          </div>
+        `;
+      });
+      document.getElementById('sidebar').innerHTML = html;
+    }
+
+    // Navigate
+    function navigateTo(view) {
+      currentView = view;
+      renderSidebar();
+      renderMainContent();
+    }
+
+    function switchModule(module) {
+      currentModule = module;
+      currentView = module === 'taller' ? 'dashboard' : `${module}-dashboard`;
+      
+      document.querySelectorAll('.navbar-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.module === module);
+      });
+      
+      renderSidebar();
+      renderMainContent();
+    }
+
+    // Render Main Content
+    async function renderMainContent() {
+      const main = document.getElementById('main-content');
+      
+      if (currentModule !== 'taller') {
+        main.innerHTML = `
+          <h1 class="page-title">${currentModule.charAt(0).toUpperCase() + currentModule.slice(1)}</h1>
+          <div class="card">
+            <div class="empty-state">
+              <div class="empty-state-icon">🚧</div>
+              <h3>Módulo en desarrollo</h3>
+              <p>Este módulo estará disponible próximamente.</p>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      switch (currentView) {
+        case 'dashboard':
+          await cargarDashboard();
+          break;
+        case 'ordenes':
+          await cargarOrdenes();
+          break;
+        case 'clientes':
+          await cargarClientes();
+          break;
+        case 'tecnicos':
+          await cargarTecnicos();
+          break;
+        case 'equipos':
+          await cargarEquipos();
+          break;
+        case 'fallas':
+          await cargarFallas();
+          break;
+        default:
+          main.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando...</div>';
+      }
+    }
+
+    // Dashboard
+    async function cargarDashboard() {
+      const main = document.getElementById('main-content');
+      main.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando dashboard...</div>';
+
+      try {
+        const data = await fetchAPI('/dashboard');
+        
+        const statsHtml = `
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-value">${data.total_ots || 0}</div>
+              <div class="stat-label">Total OTs</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">${data.por_estado?.borrador || 0}</div>
+              <div class="stat-label">Borrador</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">${data.por_estado?.asignada_sin_resolucion || 0}</div>
+              <div class="stat-label">Sin Asignar</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">${data.por_estado?.asignada_en_proceso || 0}</div>
+              <div class="stat-label">En Proceso</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">${data.por_estado?.control_calidad || 0}</div>
+              <div class="stat-label">Control</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">${data.por_estado?.a_entregar || 0}</div>
+              <div class="stat-label">A Entregar</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">${data.clientes || 0}</div>
+              <div class="stat-label">Clientes</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">${data.tecnicos || 0}</div>
+              <div class="stat-label">Técnicos</div>
+            </div>
+          </div>
+        `;
+
+        let estadosHtml = '';
+        if (data.por_estado) {
+          estadosHtml = `
+            <div class="card">
+              <h3 class="card-title">Conteo por Estado</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Estado</th>
+                    <th>Cantidad</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${Object.entries(data.por_estado).map(([estado, count]) => `
+                    <tr>
+                      <td><span class="badge badge-${estado}">${estadoLabels[estado] || estado}</span></td>
+                      <td>${count}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `;
+        }
+
+        main.innerHTML = `
+          <h1 class="page-title">Dashboard</h1>
+          ${statsHtml}
+          ${estadosHtml}
+        `;
+      } catch (error) {
+        main.innerHTML = `
+          <h1 class="page-title">Dashboard</h1>
+          <div class="card">
+            <div class="empty-state">
+              <div class="empty-state-icon">⚠️</div>
+              <h3>Error al cargar datos</h3>
+              <p>No se pudo conectar con el servidor. Asegúrese de que el backend esté corriendo en ${API}</p>
+              <button class="btn btn-primary" onclick="cargarDashboard()">Reintentar</button>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    // Órdenes
+    async function cargarOrdenes(estado = '') {
+      const main = document.getElementById('main-content');
+      main.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando órdenes...</div>';
+
+      try {
+        const [ordenes, clientesData, tecnicosData] = await Promise.all([
+          fetchAPI(`/ordenes${estado ? `?estado=${estado}` : ''}`),
+          fetchAPI('/clientes'),
+          fetchAPI('/tecnicos')
+        ]);
+
+        clientes = clientesData;
+        tecnicos = tecnicosData;
+
+        const clientesMap = Object.fromEntries(clientes.map(c => [c.id, c.nombre]));
+        const tecnicosMap = Object.fromEntries(tecnicos.map(t => [t.id, t.nombre]));
+
+        main.innerHTML = `
+          <h1 class="page-title">Órdenes de Trabajo</h1>
+          <div class="filter-bar">
+            <select class="form-control" id="filtro-estado" onchange="filtrarOrdenes()">
+              <option value="">Todos los estados</option>
+              ${Object.entries(estadoLabels).map(([key, label]) => `
+                <option value="${key}" ${estado === key ? 'selected' : ''}>${label}</option>
+              `).join('')}
+            </select>
+            <button class="btn btn-primary" onclick="abrirModalNuevaOT()">+ Nueva OT</button>
+          </div>
+          <div class="card">
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>N°</th>
+                    <th>Cliente</th>
+                    <th>Equipo</th>
+                    <th>Falla</th>
+                    <th>Técnico</th>
+                    <th>Estado</th>
+                    <th>Fecha</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${ordenes.length === 0 ? `
+                    <tr><td colspan="8" class="empty-state">No hay órdenes de trabajo</td></tr>
+                  ` : ordenes.map(ot => `
+                    <tr>
+                      <td><strong>#${ot.numero || ot.id}</strong></td>
+                      <td>${clientesMap[ot.cliente_id] || '-'}</td>
+                      <td>${ot.equipo_nombre || '-'}</td>
+                      <td>${ot.falla_nombre || '-'}</td>
+                      <td>${tecnicosMap[ot.tecnico_id] || 'Sin asignar'}</td>
+                      <td><span class="badge badge-${ot.estado}">${estadoLabels[ot.estado] || ot.estado}</span></td>
+                      <td>${ot.created_at ? new Date(ot.created_at).toLocaleDateString('es-AR') : '-'}</td>
+                      <td><button class="btn btn-sm btn-secondary" onclick="verDetalleOT(${ot.id})">Ver</button></td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        main.innerHTML = `
+          <h1 class="page-title">Órdenes de Trabajo</h1>
+          <div class="card">
+            <div class="empty-state">
+              <div class="empty-state-icon">⚠️</div>
+              <h3>Error al cargar órdenes</h3>
+              <p>${error.message}</p>
+              <button class="btn btn-primary" onclick="cargarOrdenes()">Reintentar</button>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    function filtrarOrdenes() {
+      const estado = document.getElementById('filtro-estado').value;
+      cargarOrdenes(estado);
+    }
+
+    // Modal Nueva OT
+    async function abrirModalNuevaOT() {
+      try {
+        const [areasData, clientesData, categoriasData] = await Promise.all([
+          fetchAPI('/areas'),
+          fetchAPI('/clientes'),
+          fetchAPI('/categorias-reparacion')
+        ]);
+
+        areas = areasData;
+        clientes = clientesData;
+        categorias = categoriasData;
+
+        // Populate selects
+        document.getElementById('ot-area').innerHTML = `
+          <option value="">Seleccionar área...</option>
+          ${areas.map(a => `<option value="${a.id}">${a.nombre}</option>`).join('')}
+        `;
+
+        document.getElementById('ot-cliente').innerHTML = `
+          <option value="">Seleccionar cliente...</option>
+          ${clientes.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
+        `;
+
+        document.getElementById('ot-tipo').innerHTML = '<option value="">Seleccionar tipo...</option>';
+        document.getElementById('ot-equipo').innerHTML = '<option value="">Seleccionar equipo...</option>';
+        document.getElementById('ot-falla').innerHTML = '<option value="">Seleccionar falla...</option>';
+        document.getElementById('ot-fallas-secundarias').innerHTML = '';
+        document.getElementById('ot-categoria').value = '';
+
+        // Reset form
+        document.getElementById('form-nueva-ot').reset();
+
+        abrirModal('modal-nueva-ot');
+      } catch (error) {
+        alert('Error al cargar datos: ' + error.message);
+      }
+    }
+
+    // Event listeners for cascading selects
+    document.getElementById('ot-area').addEventListener('change', async function() {
+      const areaId = this.value;
+      if (!areaId) {
+        document.getElementById('ot-tipo').innerHTML = '<option value="">Seleccionar tipo...</option>';
+        document.getElementById('ot-equipo').innerHTML = '<option value="">Seleccionar equipo...</option>';
+        return;
+      }
+
+      try {
+        const [tipos, equipos] = await Promise.all([
+          fetchAPI(`/tipos-ot?area_id=${areaId}`),
+          fetchAPI(`/equipos?area_id=${areaId}`)
+        ]);
+
+        document.getElementById('ot-tipo').innerHTML = `
+          <option value="">Seleccionar tipo...</option>
+          ${tipos.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('')}
+        `;
+
+        document.getElementById('ot-equipo').innerHTML = `
+          <option value="">Seleccionar equipo...</option>
+          ${equipos.map(e => `<option value="${e.id}">${e.marca ? e.marca + ' - ' : ''}${e.nombre}</option>`).join('')}
+        `;
+
+        // Show/hide IMEI based on area (hide for PC/Notebook)
+        const areaNombre = areas.find(a => a.id == areaId)?.nombre?.toLowerCase() || '';
+        const imeiGroup = document.getElementById('ot-imei-group');
+        if (areaNombre.includes('pc') || areaNombre.includes('notebook') || areaNombre.includes('computadora')) {
+          imeiGroup.style.display = 'none';
+        } else {
+          imeiGroup.style.display = 'block';
+        }
+      } catch (error) {
+        console.error('Error loading tipos/equipos:', error);
+      }
+    });
+
+    document.getElementById('ot-equipo').addEventListener('change', async function() {
+      const equipoId = this.value;
+      if (!equipoId) {
+        document.getElementById('ot-falla').innerHTML = '<option value="">Seleccionar falla...</option>';
+        document.getElementById('ot-fallas-secundarias').innerHTML = '';
+        return;
+      }
+
+      try {
+        const fallas = await fetchAPI(`/fallas?equipo_id=${equipoId}`);
+
+        document.getElementById('ot-falla').innerHTML = `
+          <option value="">Seleccionar falla...</option>
+          ${fallas.map(f => `<option value="${f.id}" data-categoria="${f.categoria_id || ''}">${f.nombre}</option>`).join('')}
+        `;
+
+        document.getElementById('ot-fallas-secundarias').innerHTML = fallas.map(f => `
+          <div class="form-check">
+            <input type="checkbox" id="falla-sec-${f.id}" value="${f.id}">
+            <label for="falla-sec-${f.id}">${f.nombre}</label>
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading fallas:', error);
+      }
+    });
+
+    document.getElementById('ot-falla').addEventListener('change', function() {
+      const selected = this.options[this.selectedIndex];
+      const categoriaId = selected?.dataset?.categoria;
+      if (categoriaId && categorias.length > 0) {
+        const cat = categorias.find(c => c.id == categoriaId);
+        document.getElementById('ot-categoria').value = cat?.nombre || '';
+      } else {
+        document.getElementById('ot-categoria').value = '';
+      }
+    });
+
+    async function guardarOT() {
+      const areaId = document.getElementById('ot-area').value;
+      const tipoOtId = document.getElementById('ot-tipo').value;
+      const clienteId = document.getElementById('ot-cliente').value;
+      const equipoId = document.getElementById('ot-equipo').value;
+      const fallaId = document.getElementById('ot-falla').value;
+
+      if (!areaId || !clienteId || !equipoId || !fallaId) {
+        alert('Por favor complete los campos obligatorios');
+        return;
+      }
+
+      const fallasSecundarias = [];
+      document.querySelectorAll('#ot-fallas-secundarias input:checked').forEach(cb => {
+        if (cb.value !== fallaId) fallasSecundarias.push(parseInt(cb.value));
+      });
+
+      const data = {
+        area_id: parseInt(areaId),
+        tipo_ot_id: tipoOtId ? parseInt(tipoOtId) : null,
+        cliente_id: parseInt(clienteId),
+        equipo_id: parseInt(equipoId),
+        falla_id: parseInt(fallaId),
+        fallas_secundarias: fallasSecundarias,
+        imei: document.getElementById('ot-imei').value || null,
+        serial_number: document.getElementById('ot-serial').value || null,
+        codigo_desbloqueo: document.getElementById('ot-codigo').value || null,
+        celular_cliente: document.getElementById('ot-celular').value || null,
+        ingresa_apagado: document.getElementById('ot-apagado').checked,
+        ingresa_mojado: document.getElementById('ot-mojado').checked,
+        deja_cargador: document.getElementById('ot-cargador').checked,
+        presupuesto: parseFloat(document.getElementById('ot-presupuesto').value) || 0,
+        descripcion: document.getElementById('ot-descripcion').value || null
+      };
+
+      try {
+        await fetchAPI('/ordenes', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        });
+        cerrarModal('modal-nueva-ot');
+        cargarOrdenes();
+      } catch (error) {
+        alert('Error al crear la orden: ' + error.message);
+      }
+    }
+
+    // Detalle OT
+    async function verDetalleOT(id) {
+      try {
+        const [ot, repuestos, controles, logs, tecnicosData] = await Promise.all([
+          fetchAPI(`/ordenes/${id}`),
+          fetchAPI(`/ordenes/${id}/repuestos`),
+          fetchAPI(`/ordenes/${id}/controles`),
+          fetchAPI(`/ordenes/${id}/logs`),
+          fetchAPI('/tecnicos')
+        ]);
+
+        currentOT = ot;
+        tecnicos = tecnicosData;
+
+        document.getElementById('detalle-ot-titulo').textContent = `Orden de Trabajo #${ot.numero || ot.id}`;
+
+        // Progress bar
+        const currentIdx = estadoOrder.indexOf(ot.estado);
+        document.getElementById('detalle-progress').innerHTML = estadoOrder.map((estado, idx) => {
+          let className = 'progress-step';
+          if (idx < currentIdx) className += ' completed';
+          else if (idx === currentIdx) className += ' active';
+          return `<div class="${className}">${estadoLabels[estado]}</div>`;
+        }).join('');
+
+        // Info grid
+        document.getElementById('detalle-info-grid').innerHTML = `
+          <div class="info-item">
+            <div class="info-label">Cliente</div>
+            <div class="info-value">${ot.cliente_nombre || '-'}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Teléfono</div>
+            <div class="info-value">${ot.celular_cliente || ot.cliente_telefono || '-'}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Equipo</div>
+            <div class="info-value">${ot.equipo_nombre || '-'}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Falla Principal</div>
+            <div class="info-value">${ot.falla_nombre || '-'}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Presupuesto</div>
+            <div class="info-value">$${(ot.presupuesto || 0).toFixed(2)}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Fecha Ingreso</div>
+            <div class="info-value">${ot.created_at ? new Date(ot.created_at).toLocaleString('es-AR') : '-'}</div>
+          </div>
+          ${ot.descripcion ? `
+          <div class="info-item" style="grid-column: span 2;">
+            <div class="info-label">Descripción</div>
+            <div class="info-value">${ot.descripcion}</div>
+          </div>
+          ` : ''}
+        `;
+
+        // Tags
+        let tagsHtml = '';
+        if (ot.imei) tagsHtml += `<span class="tag">IMEI: ${ot.imei}</span>`;
+        if (ot.serial_number) tagsHtml += `<span class="tag">S/N: ${ot.serial_number}</span>`;
+        if (ot.ingresa_mojado) tagsHtml += `<span class="tag warning">Ingresa Mojado</span>`;
+        if (ot.ingresa_apagado) tagsHtml += `<span class="tag warning">Ingresa Apagado</span>`;
+        if (ot.deja_cargador) tagsHtml += `<span class="tag">Deja Cargador</span>`;
+        document.getElementById('detalle-tags').innerHTML = tagsHtml;
+
+        // Técnico selector
+        document.getElementById('detalle-tecnico').innerHTML = `
+          <option value="">Sin asignar</option>
+          ${tecnicos.map(t => `<option value="${t.id}" ${ot.tecnico_id == t.id ? 'selected' : ''}>${t.nombre}</option>`).join('')}
+        `;
+
+        // Action buttons
+        const nextStates = estadoTransitions[ot.estado] || [];
+        document.getElementById('detalle-actions').innerHTML = nextStates.map(estado => `
+          <button class="btn btn-primary" onclick="cambiarEstado('${estado}')">
+            → ${estadoLabels[estado]}
+          </button>
+        `).join('');
+
+        // Repuestos
+        renderRepuestos(repuestos);
+
+        // Controles
+        renderControles(controles);
+
+        // Etapas (logs)
+        document.getElementById('etapas-list').innerHTML = logs.length === 0 
+          ? '<div class="empty-state">No hay historial de cambios</div>'
+          : logs.map(log => `
+            <div class="card" style="margin-bottom: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <span class="badge badge-${log.estado_anterior}">${estadoLabels[log.estado_anterior] || log.estado_anterior}</span>
+                  → 
+                  <span class="badge badge-${log.estado_nuevo}">${estadoLabels[log.estado_nuevo] || log.estado_nuevo}</span>
+                </div>
+                <small style="color: #666;">${new Date(log.fecha).toLocaleString('es-AR')}</small>
+              </div>
+              ${log.usuario ? `<div style="margin-top: 8px; font-size: 12px; color: #666;">Por: ${log.usuario}</div>` : ''}
+              ${log.observacion ? `<div style="margin-top: 8px; font-size: 13px;">${log.observacion}</div>` : ''}
+            </div>
+          `).join('');
+
+        // Reset tabs
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.querySelector('.tab[data-tab="info"]').classList.add('active');
+        document.getElementById('tab-info').classList.add('active');
+
+        abrirModal('modal-detalle-ot');
+      } catch (error) {
+        alert('Error al cargar detalle: ' + error.message);
+      }
+    }
+
+    function renderRepuestos(repuestos) {
+      let total = 0;
+      document.getElementById('repuestos-tbody').innerHTML = repuestos.map(r => {
+        total += r.subtotal || 0;
+        return `
+          <tr>
+            <td>${r.producto}</td>
+            <td>${r.cantidad}</td>
+            <td>$${(r.precio || 0).toFixed(2)}</td>
+            <td>${r.descuento || 0}%</td>
+            <td>$${(r.subtotal || 0).toFixed(2)}</td>
+            <td><button class="btn btn-danger btn-sm btn-icon" onclick="eliminarRepuesto(${r.id})">×</button></td>
+          </tr>
+        `;
+      }).join('');
+      document.getElementById('repuestos-total').textContent = `$${total.toFixed(2)}`;
+    }
+
+    async function agregarRepuesto() {
+      const producto = prompt('Producto/Servicio:');
+      if (!producto) return;
+      const cantidad = parseFloat(prompt('Cantidad:', '1')) || 1;
+      const precio = parseFloat(prompt('Precio:', '0')) || 0;
+      const descuento = parseFloat(prompt('Descuento %:', '0')) || 0;
+
+      try {
+        await fetchAPI(`/ordenes/${currentOT.id}/repuestos`, {
+          method: 'POST',
+          body: JSON.stringify({ producto, cantidad, precio, descuento })
+        });
+        const repuestos = await fetchAPI(`/ordenes/${currentOT.id}/repuestos`);
+        renderRepuestos(repuestos);
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    async function eliminarRepuesto(rid) {
+      if (!confirm('¿Eliminar este ítem?')) return;
+      try {
+        await fetchAPI(`/ordenes/${currentOT.id}/repuestos/${rid}`, { method: 'DELETE' });
+        const repuestos = await fetchAPI(`/ordenes/${currentOT.id}/repuestos`);
+        renderRepuestos(repuestos);
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    function renderControles(controles) {
+      const defaultControles = [
+        'Pantalla', 'Táctil', 'Auricular', 'Micrófono', 'Altavoz', 'WiFi', 
+        'Bluetooth', 'Carga', 'Batería', 'Cámaras', 'Botones', 'Sensores', 'SIM/SD'
+      ];
+
+      if (controles.length === 0) {
+        document.getElementById('controles-tbody').innerHTML = defaultControles.map((ctrl, idx) => `
+          <tr>
+            <td>${ctrl}</td>
+            <td><input type="text" class="form-control" id="ctrl-obs-ini-${idx}" placeholder="Obs..."></td>
+            <td style="text-align:center"><input type="checkbox" class="control-checkbox" id="ctrl-ini-${idx}"></td>
+            <td><input type="text" class="form-control" id="ctrl-obs-fin-${idx}" placeholder="Obs..."></td>
+            <td style="text-align:center"><input type="checkbox" class="control-checkbox" id="ctrl-fin-${idx}"></td>
+          </tr>
+        `).join('');
+      } else {
+        document.getElementById('controles-tbody').innerHTML = controles.map(c => `
+          <tr>
+            <td>${c.control_nombre}</td>
+            <td><input type="text" class="form-control" value="${c.obs_inicial || ''}" onchange="actualizarControl(${c.id}, 'obs_inicial', this.value)"></td>
+            <td style="text-align:center"><input type="checkbox" class="control-checkbox" ${c.control_inicial ? 'checked' : ''} onchange="actualizarControl(${c.id}, 'control_inicial', this.checked)"></td>
+            <td><input type="text" class="form-control" value="${c.obs_final || ''}" onchange="actualizarControl(${c.id}, 'obs_final', this.value)"></td>
+            <td style="text-align:center"><input type="checkbox" class="control-checkbox" ${c.control_final ? 'checked' : ''} onchange="actualizarControl(${c.id}, 'control_final', this.checked)"></td>
+          </tr>
+        `).join('');
+      }
+    }
+
+    async function actualizarControl(cid, field, value) {
+      try {
+        await fetchAPI(`/ordenes/${currentOT.id}/controles/${cid}`, {
+          method: 'PUT',
+          body: JSON.stringify({ [field]: value })
+        });
+      } catch (error) {
+        alert('Error al actualizar: ' + error.message);
+      }
+    }
+
+    async function cambiarEstado(nuevoEstado) {
+      const observacion = prompt('Observación (opcional):');
+      const tecnicoId = document.getElementById('detalle-tecnico').value;
+
+      try {
+        await fetchAPI(`/ordenes/${currentOT.id}/estado`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            estado: nuevoEstado,
+            observacion: observacion || null,
+            tecnico_id: tecnicoId ? parseInt(tecnicoId) : null,
+            usuario: 'Admin'
+          })
+        });
+        cerrarModal('modal-detalle-ot');
+        cargarOrdenes();
+      } catch (error) {
+        alert('Error al cambiar estado: ' + error.message);
+      }
+    }
+
+    // Tabs
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', function() {
+        const tabId = this.dataset.tab;
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        this.classList.add('active');
+        document.getElementById(`tab-${tabId}`).classList.add('active');
+      });
+    });
+
+    // Clientes
+    async function cargarClientes() {
+      const main = document.getElementById('main-content');
+      main.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando clientes...</div>';
+
+      try {
+        const clientesData = await fetchAPI('/clientes');
+        clientes = clientesData;
+
+        main.innerHTML = `
+          <h1 class="page-title">Clientes</h1>
+          <div class="card">
+            <h3 class="card-title">Nuevo Cliente</h3>
+            <form id="form-cliente" onsubmit="guardarCliente(event)">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Nombre *</label>
+                  <input type="text" class="form-control" id="cliente-nombre" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Teléfono</label>
+                  <input type="text" class="form-control" id="cliente-telefono">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Email</label>
+                  <input type="email" class="form-control" id="cliente-email">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">CUIT</label>
+                  <input type="text" class="form-control" id="cliente-cuit">
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Categoría</label>
+                <select class="form-control" id="cliente-categoria">
+                  <option value="">Sin categoría</option>
+                  <option value="particular">Particular</option>
+                  <option value="empresa">Empresa</option>
+                  <option value="revendedor">Revendedor</option>
+                </select>
+              </div>
+              <button type="submit" class="btn btn-primary">Guardar Cliente</button>
+            </form>
+          </div>
+          <div class="card">
+            <h3 class="card-title">Listado de Clientes</h3>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Teléfono</th>
+                    <th>Email</th>
+                    <th>CUIT</th>
+                    <th>Categoría</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${clientes.length === 0 ? `
+                    <tr><td colspan="5" class="empty-state">No hay clientes registrados</td></tr>
+                  ` : clientes.map(c => `
+                    <tr>
+                      <td>${c.nombre}</td>
+                      <td>${c.telefono || '-'}</td>
+                      <td>${c.email || '-'}</td>
+                      <td>${c.cuit || '-'}</td>
+                      <td>${c.categoria || '-'}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        main.innerHTML = `
+          <h1 class="page-title">Clientes</h1>
+          <div class="card">
+            <div class="empty-state">
+              <div class="empty-state-icon">⚠️</div>
+              <h3>Error al cargar clientes</h3>
+              <p>${error.message}</p>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    async function guardarCliente(e) {
+      e.preventDefault();
+      const data = {
+        nombre: document.getElementById('cliente-nombre').value,
+        telefono: document.getElementById('cliente-telefono').value || null,
+        email: document.getElementById('cliente-email').value || null,
+        cuit: document.getElementById('cliente-cuit').value || null,
+        categoria: document.getElementById('cliente-categoria').value || null
+      };
+
+      try {
+        await fetchAPI('/clientes', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        });
+        cargarClientes();
+      } catch (error) {
+        alert('Error al guardar: ' + error.message);
+      }
+    }
+
+    // Técnicos
+    async function cargarTecnicos() {
+      const main = document.getElementById('main-content');
+      main.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando técnicos...</div>';
+
+      try {
+        const [tecnicosData, areasData] = await Promise.all([
+          fetchAPI('/tecnicos'),
+          fetchAPI('/areas')
+        ]);
+        tecnicos = tecnicosData;
+        areas = areasData;
+
+        const areasMap = Object.fromEntries(areas.map(a => [a.id, a.nombre]));
+
+        main.innerHTML = `
+          <h1 class="page-title">Técnicos</h1>
+          <div class="card">
+            <h3 class="card-title">Nuevo Técnico</h3>
+            <form id="form-tecnico" onsubmit="guardarTecnico(event)">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Nombre *</label>
+                  <input type="text" class="form-control" id="tecnico-nombre" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Tipo</label>
+                  <select class="form-control" id="tecnico-tipo">
+                    <option value="interno">Interno</option>
+                    <option value="externo">Externo</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Área</label>
+                <select class="form-control" id="tecnico-area">
+                  <option value="">Todas las áreas</option>
+                  ${areas.map(a => `<option value="${a.id}">${a.nombre}</option>`).join('')}
+                </select>
+              </div>
+              <button type="submit" class="btn btn-primary">Guardar Técnico</button>
+            </form>
+          </div>
+          <div class="card">
+            <h3 class="card-title">Listado de Técnicos</h3>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Tipo</th>
+                    <th>Área</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${tecnicos.length === 0 ? `
+                    <tr><td colspan="3" class="empty-state">No hay técnicos registrados</td></tr>
+                  ` : tecnicos.map(t => `
+                    <tr>
+                      <td>${t.nombre}</td>
+                      <td>${t.tipo || '-'}</td>
+                      <td>${areasMap[t.area_id] || 'Todas'}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        main.innerHTML = `
+          <h1 class="page-title">Técnicos</h1>
+          <div class="card">
+            <div class="empty-state">
+              <div class="empty-state-icon">⚠️</div>
+              <h3>Error al cargar técnicos</h3>
+              <p>${error.message}</p>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    async function guardarTecnico(e) {
+      e.preventDefault();
+      const data = {
+        nombre: document.getElementById('tecnico-nombre').value,
+        tipo: document.getElementById('tecnico-tipo').value,
+        area_id: document.getElementById('tecnico-area').value ? parseInt(document.getElementById('tecnico-area').value) : null
+      };
+
+      try {
+        await fetchAPI('/tecnicos', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        });
+        cargarTecnicos();
+      } catch (error) {
+        alert('Error al guardar: ' + error.message);
+      }
+    }
+
+    // Equipos
+    let currentAreaFilter = '';
+
+    async function cargarEquipos() {
+      const main = document.getElementById('main-content');
+      main.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando equipos...</div>';
+
+      try {
+        const [areasData] = await Promise.all([
+          fetchAPI('/areas')
+        ]);
+        areas = areasData;
+
+        let equipos = [];
+        if (currentAreaFilter) {
+          equipos = await fetchAPI(`/equipos?area_id=${currentAreaFilter}`);
+        }
+
+        const areasMap = Object.fromEntries(areas.map(a => [a.id, a.nombre]));
+
+        main.innerHTML = `
+          <h1 class="page-title">Equipos</h1>
+          <div class="filter-bar">
+            <select class="form-control" id="filtro-area-equipo" onchange="filtrarEquipos()">
+              <option value="">Seleccionar área...</option>
+              ${areas.map(a => `<option value="${a.id}" ${currentAreaFilter == a.id ? 'selected' : ''}>${a.nombre}</option>`).join('')}
+            </select>
+            <button class="btn btn-primary" onclick="abrirModalEquipo()">+ Nuevo Equipo</button>
+          </div>
+          <div class="card">
+            <div class="table-container">
+              ${!currentAreaFilter ? `
+                <div class="empty-state">
+                  <div class="empty-state-icon">📱</div>
+                  <p>Seleccione un área para ver los equipos</p>
+                </div>
+              ` : equipos.length === 0 ? `
+                <div class="empty-state">No hay equipos en esta área</div>
+              ` : `
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Nombre</th>
+                      <th>Marca</th>
+                      <th>Garantía Compra</th>
+                      <th>Garantía Reparación</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${equipos.map(e => `
+                      <tr>
+                        <td>${e.nombre}</td>
+                        <td>${e.marca || '-'}</td>
+                        <td>${e.dias_garantia_compra || 0} días</td>
+                        <td>${e.dias_garantia_reparacion || 0} días</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              `}
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        main.innerHTML = `
+          <h1 class="page-title">Equipos</h1>
+          <div class="card">
+            <div class="empty-state">
+              <div class="empty-state-icon">⚠️</div>
+              <h3>Error al cargar equipos</h3>
+              <p>${error.message}</p>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    function filtrarEquipos() {
+      currentAreaFilter = document.getElementById('filtro-area-equipo').value;
+      cargarEquipos();
+    }
+
+    async function abrirModalEquipo() {
+      document.getElementById('equipo-area').innerHTML = `
+        <option value="">Seleccionar área...</option>
+        ${areas.map(a => `<option value="${a.id}">${a.nombre}</option>`).join('')}
+      `;
+      document.getElementById('form-equipo').reset();
+      abrirModal('modal-equipo');
+    }
+
+    async function guardarEquipo() {
+      const data = {
+        nombre: document.getElementById('equipo-nombre').value,
+        marca: document.getElementById('equipo-marca').value || null,
+        area_id: parseInt(document.getElementById('equipo-area').value),
+        dias_garantia_compra: parseInt(document.getElementById('equipo-garantia-compra').value) || 0,
+        dias_garantia_reparacion: parseInt(document.getElementById('equipo-garantia-reparacion').value) || 0
+      };
+
+      if (!data.nombre || !data.area_id) {
+        alert('Complete los campos obligatorios');
+        return;
+      }
+
+      try {
+        await fetchAPI('/equipos', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        });
+        cerrarModal('modal-equipo');
+        currentAreaFilter = data.area_id;
+        cargarEquipos();
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    // Fallas
+    let currentEquipoFilter = '';
+
+    async function cargarFallas() {
+      const main = document.getElementById('main-content');
+      main.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando fallas...</div>';
+
+      try {
+        const [areasData, categoriasData] = await Promise.all([
+          fetchAPI('/areas'),
+          fetchAPI('/categorias-reparacion')
+        ]);
+        areas = areasData;
+        categorias = categoriasData;
+
+        let equipos = [];
+        let fallas = [];
+        
+        if (currentAreaFilter) {
+          equipos = await fetchAPI(`/equipos?area_id=${currentAreaFilter}`);
+        }
+        if (currentEquipoFilter) {
+          fallas = await fetchAPI(`/fallas?equipo_id=${currentEquipoFilter}`);
+        }
+
+        const categoriasMap = Object.fromEntries(categorias.map(c => [c.id, c.nombre]));
+
+        main.innerHTML = `
+          <h1 class="page-title">Fallas</h1>
+          <div class="filter-bar">
+            <select class="form-control" id="filtro-area-falla" onchange="cambiarAreaFalla()">
+              <option value="">Seleccionar área...</option>
+              ${areas.map(a => `<option value="${a.id}" ${currentAreaFilter == a.id ? 'selected' : ''}>${a.nombre}</option>`).join('')}
+            </select>
+            <select class="form-control" id="filtro-equipo-falla" onchange="filtrarFallas()">
+              <option value="">Seleccionar equipo...</option>
+              ${equipos.map(e => `<option value="${e.id}" ${currentEquipoFilter == e.id ? 'selected' : ''}>${e.marca ? e.marca + ' - ' : ''}${e.nombre}</option>`).join('')}
+            </select>
+            <button class="btn btn-primary" onclick="abrirModalFalla()">+ Nueva Falla</button>
+          </div>
+          <div class="card">
+            <div class="table-container">
+              ${!currentEquipoFilter ? `
+                <div class="empty-state">
+                  <div class="empty-state-icon">🔧</div>
+                  <p>Seleccione un área y equipo para ver las fallas</p>
+                </div>
+              ` : fallas.length === 0 ? `
+                <div class="empty-state">No hay fallas para este equipo</div>
+              ` : `
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Nombre</th>
+                      <th>Categoría</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${fallas.map(f => `
+                      <tr>
+                        <td>${f.nombre}</td>
+                        <td>${categoriasMap[f.categoria_id] || '-'}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              `}
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        main.innerHTML = `
+          <h1 class="page-title">Fallas</h1>
+          <div class="card">
+            <div class="empty-state">
+              <div class="empty-state-icon">⚠️</div>
+              <h3>Error al cargar fallas</h3>
+              <p>${error.message}</p>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    async function cambiarAreaFalla() {
+      currentAreaFilter = document.getElementById('filtro-area-falla').value;
+      currentEquipoFilter = '';
+      if (currentAreaFilter) {
+        const equipos = await fetchAPI(`/equipos?area_id=${currentAreaFilter}`);
+        document.getElementById('filtro-equipo-falla').innerHTML = `
+          <option value="">Seleccionar equipo...</option>
+          ${equipos.map(e => `<option value="${e.id}">${e.marca ? e.marca + ' - ' : ''}${e.nombre}</option>`).join('')}
+        `;
+      } else {
+        document.getElementById('filtro-equipo-falla').innerHTML = '<option value="">Seleccionar equipo...</option>';
+      }
+    }
+
+    function filtrarFallas() {
+      currentEquipoFilter = document.getElementById('filtro-equipo-falla').value;
+      cargarFallas();
+    }
+
+    async function abrirModalFalla() {
+      let equiposAll = [];
+      for (const area of areas) {
+        const eqs = await fetchAPI(`/equipos?area_id=${area.id}`);
+        equiposAll = equiposAll.concat(eqs.map(e => ({ ...e, area_nombre: area.nombre })));
+      }
+
+      document.getElementById('falla-equipo').innerHTML = `
+        <option value="">Seleccionar equipo...</option>
+        ${equiposAll.map(e => `<option value="${e.id}">[${e.area_nombre}] ${e.marca ? e.marca + ' - ' : ''}${e.nombre}</option>`).join('')}
+      `;
+      document.getElementById('falla-categoria').innerHTML = `
+        <option value="">Seleccionar categoría...</option>
+        ${categorias.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}
+      `;
+      document.getElementById('form-falla').reset();
+      abrirModal('modal-falla');
+    }
+
+    async function guardarFalla() {
+      const data = {
+        nombre: document.getElementById('falla-nombre').value,
+        equipo_id: parseInt(document.getElementById('falla-equipo').value),
+        categoria_id: document.getElementById('falla-categoria').value ? parseInt(document.getElementById('falla-categoria').value) : null
+      };
+
+      if (!data.nombre || !data.equipo_id) {
+        alert('Complete los campos obligatorios');
+        return;
+      }
+
+      try {
+        await fetchAPI('/fallas', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        });
+        cerrarModal('modal-falla');
+        cargarFallas();
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    // Modal helpers
+    function abrirModal(id) {
+      document.getElementById(id).classList.add('active');
+    }
+
+    function cerrarModal(id) {
+      document.getElementById(id).classList.remove('active');
+    }
+
+    // Close modal on overlay click
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+      overlay.addEventListener('click', function(e) {
+        if (e.target === this) {
+          this.classList.remove('active');
+        }
+      });
+    });
+
+    // Module buttons
+    document.querySelectorAll('.navbar-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        switchModule(this.dataset.module);
+      });
+    });
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+      renderSidebar();
+      cargarDashboard();
+    });
+  </script>
+</body>
+</html>
