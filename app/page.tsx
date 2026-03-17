@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import ModuloHome from "@/components/modulo-home"
-import ModuloVentas from "@/components/modulo-ventas"
+import ModuloVentas, { type ClienteVenta } from "@/components/modulo-ventas"
 import ModuloCompras from "@/components/modulo-compras"
 import ModuloStock from "@/components/modulo-stock"
 import ModuloInformes from "@/components/modulo-informes"
@@ -508,6 +508,7 @@ function CellHomeERPContent() {
   const [activeView, setActiveView] = useState("dashboard")
   const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>(mockOrdenes)
   const [clientes, setClientes] = useState<Cliente[]>(mockClientes)
+  const [clientesVenta, setClientesVenta] = useState<ClienteVenta[]>([])
   const [tecnicos, setTecnicos] = useState<Tecnico[]>(mockTecnicos)
   const [equipos, setEquipos] = useState<Equipo[]>(mockEquipos)
   const [fallas, setFallas] = useState<Falla[]>(mockFallas)
@@ -2542,7 +2543,13 @@ function CellHomeERPContent() {
   </div>
   ) : activeModule === "ventas" ? (
   <div className="pt-11">
-  <ModuloVentas />
+        <ModuloVentas
+          clientesIniciales={clientesVenta.length > 0 ? clientesVenta : undefined}
+          onNuevoCliente={(c) => setClientesVenta(prev => {
+            if (prev.find(x => x.id === c.id)) return prev
+            return [...prev, c]
+          })}
+        />
   </div>
   ) : activeModule === "compras" ? (
   <div className="pt-11">
@@ -2583,16 +2590,65 @@ function CellHomeERPContent() {
                 e.preventDefault()
                 const fd = new FormData(e.currentTarget)
                 const nuevoId = Math.max(...clientes.map(c => c.id), 0) + 1
+                const nombre = fd.get("nombre") as string
+                const telefono = (fd.get("celular") as string) || (fd.get("telefono") as string) || ""
+                const email = fd.get("email") as string || ""
+                const direccion = fd.get("direccion") as string || ""
+                const categoria = (fd.get("categoria") as "publico" | "mayorista") || "publico"
+
+                // Agregar al estado del Taller
                 const nuevoCliente: Cliente = {
                   id: nuevoId,
-                  nombre: fd.get("nombre") as string,
-                  telefono: (fd.get("celular") as string) || (fd.get("telefono") as string) || "",
-                  email: fd.get("email") as string || "",
-                  direccion: fd.get("direccion") as string || "",
-                  categoria: (fd.get("categoria") as "publico" | "mayorista") || "publico",
+                  nombre,
+                  telefono,
+                  email,
+                  direccion,
+                  categoria,
                   orden_asignacion: clientes.length + 1,
                 }
                 setClientes(prev => [...prev, nuevoCliente])
+
+                // Agregar también al estado de Ventas (para que aparezca en el módulo de Clientes)
+                const codigoVenta = `C0${15520 + clientesVenta.length}`
+                const nuevoClienteVenta: ClienteVenta = {
+                  id: nuevoId,
+                  codigo: codigoVenta,
+                  nombre,
+                  nombre_fantasia: fd.get("nombre_fantasia") as string || "",
+                  tipo_documento: fd.get("tipo_documento") as "DNI" | "CUIT" | "CUIL" || "DNI",
+                  numero_documento: fd.get("numero_documento") as string || "",
+                  posicion_fiscal: fd.get("posicion_fiscal") as ClienteVenta["posicion_fiscal"] || "consumidor_final",
+                  direccion,
+                  ciudad: fd.get("ciudad") as string || "Rosario",
+                  provincia: fd.get("provincia") as string || "Santa Fe",
+                  codigo_postal: fd.get("codigo_postal") as string || "",
+                  zona: fd.get("zona") as string || "",
+                  telefono: fd.get("telefono") as string || "",
+                  celular: fd.get("celular") as string || "",
+                  email,
+                  categoria: fd.get("categoria") as ClienteVenta["categoria"] || "publico",
+                  vendedor_id: parseInt(fd.get("vendedor_id") as string) || null,
+                  cobrador_id: null,
+                  lista_precios_id: parseInt(fd.get("lista_precios_id") as string) || 1,
+                  descuento_default: parseFloat(fd.get("descuento_default") as string) || 0,
+                  moneda_cuenta_corriente: fd.get("moneda_cuenta_corriente") as "ARS" | "USD" || "ARS",
+                  termino_pago_id: parseInt(fd.get("termino_pago_id") as string) || 1,
+                  activo: true,
+                  es_confidencial: false,
+                  sucursal_origen: "Puerto Norte",
+                  fecha_alta: new Date().toISOString().split("T")[0],
+                  saldo_cuenta_corriente: 0,
+                  total_facturado: 0,
+                  seguimiento: [{
+                    id: Date.now(),
+                    fecha: new Date().toISOString(),
+                    usuario: "Admin",
+                    tipo: "creacion" as const,
+                    descripcion: "Cliente creado desde Nueva OT",
+                  }],
+                }
+                setClientesVenta(prev => [...prev, nuevoClienteVenta])
+
                 setFormCliente(String(nuevoId))
                 setShowNuevoClienteOT(false)
               }} className="p-5">

@@ -609,7 +609,14 @@ const mockMovimientosCC: MovimientoCuentaCorriente[] = [
 ]
 
 // Componente principal
-export default function ModuloVentas() {
+export type { ClienteVenta }
+
+interface ModuloVentasProps {
+  clientesIniciales?: ClienteVenta[]
+  onNuevoCliente?: (c: ClienteVenta) => void
+}
+
+export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: ModuloVentasProps = {}) {
   // Navigation state
   const [activeSection, setActiveSection] = useState<string>("clientes")
   const [activeView, setActiveView] = useState<string>("listado")
@@ -622,7 +629,7 @@ export default function ModuloVentas() {
   })
   
   // Data states
-  const [clientes, setClientes] = useState<ClienteVenta[]>(mockClientesVenta)
+  const [clientes, setClientes] = useState<ClienteVenta[]>(clientesIniciales ?? mockClientesVenta)
   const [notasVenta, setNotasVenta] = useState<NotaVenta[]>(mockNotasVenta)
   const [ordenesEntrega, setOrdenesEntrega] = useState<OrdenEntrega[]>(mockOrdenesEntrega)
   const [remitos, setRemitos] = useState<Remito[]>(mockRemitos)
@@ -1524,6 +1531,7 @@ export default function ModuloVentas() {
             } else {
               setClientes(prev => [...prev, newCliente])
               setSelectedCliente(newCliente)
+              onNuevoCliente?.(newCliente)
             }
             setCreandoCliente(false)
             setEditingItem(null)
@@ -7511,6 +7519,7 @@ export default function ModuloVentas() {
             setClientes(prev => prev.map(c => c.id === editingItem.id ? newCliente : c))
           } else {
             setClientes(prev => [...prev, newCliente])
+            onNuevoCliente?.(newCliente)
           }
           setShowModal(false)
           setEditingItem(null)
