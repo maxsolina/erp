@@ -323,20 +323,28 @@ export default function ModuloContabilidad() {
             </button>
             {expandedSections.includes(section.id) && (
               <div className="ml-4 mt-1 space-y-0.5">
-                {section.items.map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => setActiveView(item.id)}
-                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-colors ${
-                      activeView === item.id
-                        ? "bg-blue-50 text-blue-700 font-medium"
-                        : "text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    <item.icon className="w-4 h-4" />
-                    {item.label}
-                  </button>
-                ))}
+{section.items.map(item => (
+                                  <button
+                                    key={item.id}
+                                    onClick={() => {
+                                      setActiveView(item.id)
+                                      // Limpiar estados al cambiar de vista
+                                      setSelectedMoneda(null)
+                                      setEditingMoneda(null)
+                                      setSelectedTipoCotizacion(null)
+                                      setEditingTipoCotizacion(null)
+                                      setCreatingTipoCotizacion(false)
+                                    }}
+                                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-colors ${
+                                      activeView === item.id
+                                        ? "bg-blue-50 text-blue-700 font-medium"
+                                        : "text-gray-600 hover:bg-gray-50"
+                                    }`}
+                                  >
+                                    <item.icon className="w-4 h-4" />
+                                    {item.label}
+                                  </button>
+                                ))}
               </div>
             )}
           </div>
