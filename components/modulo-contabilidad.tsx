@@ -10,14 +10,22 @@ import {
   Trash2, 
   Coins,
   Save,
-  X
+  X,
+  TrendingUp
 } from "lucide-react"
 
 // Types
+interface TipoCotizacion {
+  id: number
+  nombre: string
+  descripcion: string
+  activo: boolean
+}
+
 interface Cotizacion {
   id: number
   fecha: string
-  tipo: "Divisa" | "Blue" | "Oficial"
+  tipo: string
   tasa: number
 }
 
@@ -27,7 +35,7 @@ interface Moneda {
   simbolo: string
   cotizacion_actual: number
   cotizacion_automatica: boolean
-  tipo_cotizacion_defecto: "Divisa" | "Blue" | "Oficial"
+  tipo_cotizacion_defecto: string
   factor_redondeo: number
   precision_calculo: number
   posicion_simbolo: "antes" | "despues"
@@ -38,7 +46,29 @@ interface Moneda {
   cotizaciones: Cotizacion[]
 }
 
-// Datos de ejemplo
+// Datos de ejemplo - Tipos de Cotizaciones
+const tiposCotizacionIniciales: TipoCotizacion[] = [
+  {
+    id: 1,
+    nombre: "Oficial",
+    descripcion: "Cotización oficial del Banco Central",
+    activo: true
+  },
+  {
+    id: 2,
+    nombre: "Blue",
+    descripcion: "Cotización del mercado paralelo",
+    activo: true
+  },
+  {
+    id: 3,
+    nombre: "Divisa",
+    descripcion: "Cotización para operaciones de comercio exterior",
+    activo: true
+  }
+]
+
+// Datos de ejemplo - Monedas
 const monedasIniciales: Moneda[] = [
   {
     id: 1,
@@ -106,7 +136,14 @@ const monedasAFIP = [
 export default function ModuloContabilidad() {
   // Estado principal
   const [activeView, setActiveView] = useState("monedas")
-  const [expandedSections, setExpandedSections] = useState<string[]>(["monedas"])
+  const [expandedSections, setExpandedSections] = useState<string[]>(["configuracion"])
+
+  // Tipos de Cotizaciones
+  const [tiposCotizacion, setTiposCotizacion] = useState<TipoCotizacion[]>(tiposCotizacionIniciales)
+  const [selectedTipoCotizacion, setSelectedTipoCotizacion] = useState<TipoCotizacion | null>(null)
+  const [editingTipoCotizacion, setEditingTipoCotizacion] = useState<TipoCotizacion | null>(null)
+  const [tipoCotizacionSearchText, setTipoCotizacionSearchText] = useState("")
+  const [creatingTipoCotizacion, setCreatingTipoCotizacion] = useState(false)
 
   // Monedas
   const [monedas, setMonedas] = useState<Moneda[]>(monedasIniciales)
@@ -120,7 +157,7 @@ export default function ModuloContabilidad() {
   // Nueva cotización en edición
   const [nuevaCotizacion, setNuevaCotizacion] = useState<{
     fecha: string
-    tipo: "Divisa" | "Blue" | "Oficial"
+    tipo: string
     tasa: string
   }>({
     fecha: new Date().toISOString().split("T")[0],
@@ -143,11 +180,12 @@ export default function ModuloContabilidad() {
   // Menu
   const menuSections = [
     {
-      id: "monedas",
-      label: "Monedas",
+      id: "configuracion",
+      label: "Configuración",
       icon: Coins,
       items: [
-        { id: "monedas", label: "Monedas", icon: Coins }
+        { id: "monedas", label: "Monedas", icon: Coins },
+        { id: "tipos-cotizacion", label: "Tipos de Cotizaciones", icon: TrendingUp }
       ]
     }
   ]
@@ -209,6 +247,55 @@ export default function ModuloContabilidad() {
       ...editingMoneda,
       cotizaciones: editingMoneda.cotizaciones.filter(c => c.id !== cotizacionId)
     })
+  }
+
+  // Tipos de Cotización - CRUD
+  const guardarTipoCotizacion = () => {
+    if (!editingTipoCotizacion) return
+    
+    if (creatingTipoCotizacion) {
+      const nuevoTipo: TipoCotizacion = {
+        ...editingTipoCotizacion,
+        id: Math.max(...tiposCotizacion.map(t => t.id), 0) + 1
+      }
+      setTiposCotizacion(prev => [...prev, nuevoTipo])
+      setSelectedTipoCotizacion(nuevoTipo)
+    } else {
+      setTiposCotizacion(prev => prev.map(t => 
+        t.id === editingTipoCotizacion.id ? editingTipoCotizacion : t
+      ))
+      setSelectedTipoCotizacion(editingTipoCotizacion)
+    }
+    setEditingTipoCotizacion(null)
+    setCreatingTipoCotizacion(false)
+  }
+
+  const descartarTipoCotizacion = () => {
+    setEditingTipoCotizacion(null)
+    setCreatingTipoCotizacion(false)
+    if (creatingTipoCotizacion) {
+      setSelectedTipoCotizacion(null)
+    }
+  }
+
+  const crearNuevoTipoCotizacion = () => {
+    const nuevoTipo: TipoCotizacion = {
+      id: 0,
+      nombre: "",
+      descripcion: "",
+      activo: true
+    }
+    setSelectedTipoCotizacion(nuevoTipo)
+    setEditingTipoCotizacion(nuevoTipo)
+    setCreatingTipoCotizacion(true)
+  }
+
+  const eliminarTipoCotizacion = (id: number) => {
+    setTiposCotizacion(prev => prev.filter(t => t.id !== id))
+    if (selectedTipoCotizacion?.id === id) {
+      setSelectedTipoCotizacion(null)
+      setEditingTipoCotizacion(null)
+    }
   }
 
   // Sidebar
@@ -469,13 +556,13 @@ export default function ModuloContabilidad() {
                 value={currentMoneda.tipo_cotizacion_defecto}
                 onChange={(e) => setEditingMoneda({ 
                   ...currentMoneda, 
-                  tipo_cotizacion_defecto: e.target.value as "Divisa" | "Blue" | "Oficial" 
+                  tipo_cotizacion_defecto: e.target.value
                 })}
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="Divisa">Divisa</option>
-                <option value="Blue">Blue</option>
-                <option value="Oficial">Oficial</option>
+                {tiposCotizacion.filter(t => t.activo).map(tipo => (
+                  <option key={tipo.id} value={tipo.nombre}>{tipo.nombre}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -535,13 +622,13 @@ export default function ModuloContabilidad() {
                         value={nuevaCotizacion.tipo}
                         onChange={(e) => setNuevaCotizacion({ 
                           ...nuevaCotizacion, 
-                          tipo: e.target.value as "Divisa" | "Blue" | "Oficial" 
+                          tipo: e.target.value
                         })}
                         className="px-2 py-1 border border-gray-300 rounded text-sm w-full focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                       >
-                        <option value="Divisa">Divisa</option>
-                        <option value="Blue">Blue</option>
-                        <option value="Oficial">Oficial</option>
+                        {tiposCotizacion.filter(t => t.activo).map(tipo => (
+                          <option key={tipo.id} value={tipo.nombre}>{tipo.nombre}</option>
+                        ))}
                       </select>
                     </td>
                     <td className="py-2 px-3">
@@ -734,8 +821,246 @@ export default function ModuloContabilidad() {
     )
   }
 
+  // Vista de lista de tipos de cotización
+  const renderListaTiposCotizacion = () => {
+    const filteredTipos = tiposCotizacion.filter(t =>
+      t.nombre.toLowerCase().includes(tipoCotizacionSearchText.toLowerCase()) ||
+      t.descripcion.toLowerCase().includes(tipoCotizacionSearchText.toLowerCase())
+    )
+
+    return (
+      <div>
+        {/* Barra superior */}
+        <div className="flex items-center justify-between mb-4 bg-white border-b border-gray-200 py-2 px-4 -mx-6 -mt-6">
+          <button 
+            onClick={crearNuevoTipoCotizacion}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 transition-colors text-sm font-medium"
+          >
+            Crear
+          </button>
+          
+          <div className="flex-1 flex items-center justify-center gap-4">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar..."
+                value={tipoCotizacionSearchText}
+                onChange={(e) => setTipoCotizacionSearchText(e.target.value)}
+                className="pl-9 pr-4 py-1.5 border border-gray-300 rounded text-sm w-64 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
+              Filtros
+            </button>
+            <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
+              Agrupar
+            </button>
+            <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
+              Favoritos
+            </button>
+            <span className="text-sm text-gray-500 ml-4">
+              1-{filteredTipos.length} de {filteredTipos.length}
+            </span>
+          </div>
+        </div>
+
+        {/* Tabla */}
+        <div className="bg-white border border-gray-200 rounded overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                <th className="text-left py-3 px-4 font-medium">Nombre</th>
+                <th className="text-left py-3 px-4 font-medium">Descripción</th>
+                <th className="text-center py-3 px-4 font-medium">Activo</th>
+                <th className="w-12"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredTipos.map((tipo, idx) => (
+                <tr 
+                  key={tipo.id} 
+                  className={`border-b border-gray-100 hover:bg-blue-50 cursor-pointer transition-colors ${
+                    idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                  }`}
+                  onClick={() => {
+                    setSelectedTipoCotizacion(tipo)
+                    setEditingTipoCotizacion({ ...tipo })
+                    setCreatingTipoCotizacion(false)
+                  }}
+                >
+                  <td className="py-3 px-4 font-medium text-gray-900">{tipo.nombre}</td>
+                  <td className="py-3 px-4 text-gray-600">{tipo.descripcion}</td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                      tipo.activo 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {tipo.activo ? 'Sí' : 'No'}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        eliminarTipoCotizacion(tipo.id)
+                      }}
+                      className="p-1 text-red-500 hover:bg-red-50 rounded"
+                      title="Eliminar"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {filteredTipos.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-8 text-center text-gray-500">
+                    No se encontraron tipos de cotización
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
+  // Vista de detalle/edición de tipo de cotización
+  const renderDetalleTipoCotizacion = () => {
+    if (!selectedTipoCotizacion || !editingTipoCotizacion) return null
+
+    const currentTipo = editingTipoCotizacion
+
+    // Navegación entre tipos
+    const currentIndex = tiposCotizacion.findIndex(t => t.id === selectedTipoCotizacion.id)
+    const prevTipo = currentIndex > 0 ? tiposCotizacion[currentIndex - 1] : null
+    const nextTipo = currentIndex < tiposCotizacion.length - 1 ? tiposCotizacion[currentIndex + 1] : null
+
+    return (
+      <div>
+        {/* Breadcrumb */}
+        <div className="text-sm text-gray-500 mb-4">
+          <button 
+            onClick={() => {
+              setSelectedTipoCotizacion(null)
+              setEditingTipoCotizacion(null)
+              setCreatingTipoCotizacion(false)
+            }} 
+            className="hover:text-blue-600"
+          >
+            Tipos de Cotizaciones
+          </button>
+          <span className="mx-2">/</span>
+          <span className="text-gray-900">{creatingTipoCotizacion ? 'Nuevo' : currentTipo.nombre}</span>
+        </div>
+
+        {/* Header con botones */}
+        <div className="flex items-center justify-between mb-6 bg-white border-b border-gray-200 py-3 px-4 -mx-6">
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={guardarTipoCotizacion}
+              disabled={!currentTipo.nombre.trim()}
+              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Save className="w-4 h-4" />
+              Guardar
+            </button>
+            <button 
+              onClick={descartarTipoCotizacion}
+              className="flex items-center gap-2 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300"
+            >
+              <X className="w-4 h-4" />
+              Descartar
+            </button>
+          </div>
+
+          {!creatingTipoCotizacion && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  if (prevTipo) {
+                    setSelectedTipoCotizacion(prevTipo)
+                    setEditingTipoCotizacion({ ...prevTipo })
+                  }
+                }}
+                disabled={!prevTipo}
+                className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => {
+                  if (nextTipo) {
+                    setSelectedTipoCotizacion(nextTipo)
+                    setEditingTipoCotizacion({ ...nextTipo })
+                  }
+                }}
+                disabled={!nextTipo}
+                className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Formulario */}
+        <div className="bg-white border border-gray-200 rounded p-6">
+          <div className="space-y-4 max-w-xl">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+              <input
+                type="text"
+                value={currentTipo.nombre}
+                onChange={(e) => setEditingTipoCotizacion({ ...currentTipo, nombre: e.target.value })}
+                placeholder="Ej: Oficial, Blue, Divisa..."
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+              <textarea
+                value={currentTipo.descripcion}
+                onChange={(e) => setEditingTipoCotizacion({ ...currentTipo, descripcion: e.target.value })}
+                placeholder="Descripción del tipo de cotización..."
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none"
+              />
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <input
+                type="checkbox"
+                id="tipo_activo"
+                checked={currentTipo.activo}
+                onChange={(e) => setEditingTipoCotizacion({ ...currentTipo, activo: e.target.checked })}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <label htmlFor="tipo_activo" className={`text-sm font-medium ${currentTipo.activo ? 'text-green-600' : 'text-red-600'}`}>
+                Activo
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // Render principal
   const renderContent = () => {
+    if (activeView === "tipos-cotizacion") {
+      if (selectedTipoCotizacion) {
+        return renderDetalleTipoCotizacion()
+      }
+      return renderListaTiposCotizacion()
+    }
+    
+    // Monedas (default)
     if (selectedMoneda) {
       return renderDetalleMoneda()
     }
