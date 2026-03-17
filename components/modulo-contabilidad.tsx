@@ -231,37 +231,56 @@ export default function ModuloContabilidad() {
 
   // Agregar nueva cotización
   const agregarCotizacion = () => {
-    if (!editingMoneda || !nuevaCotizacion.tasa) return
+    // Funciona tanto en modo edición como en modo vista
+    const monedaActual = editingMoneda || selectedMoneda
+    if (!monedaActual || !nuevaCotizacion.tasa) return
 
     const nuevaCotizacionObj: Cotizacion = {
-      id: Math.max(...editingMoneda.cotizaciones.map(c => c.id), 0) + 1,
+      id: Math.max(...monedaActual.cotizaciones.map(c => c.id), 0) + 1,
       fecha: nuevaCotizacion.fecha,
       tipo: nuevaCotizacion.tipo,
       tasa: parseFloat(nuevaCotizacion.tasa.replace(/\./g, '').replace(',', '.'))
     }
 
-    setEditingMoneda({
-      ...editingMoneda,
-      cotizaciones: [nuevaCotizacionObj, ...editingMoneda.cotizaciones],
+    const monedaActualizada = {
+      ...monedaActual,
+      cotizaciones: [nuevaCotizacionObj, ...monedaActual.cotizaciones],
       cotizacion_actual: nuevaCotizacionObj.tasa,
       fecha_tasa: nuevaCotizacion.fecha
-    })
+    }
+
+    // Actualizar el estado correspondiente
+    if (editingMoneda) {
+      setEditingMoneda(monedaActualizada)
+    } else {
+      // Modo vista: actualizar directamente en monedas y selectedMoneda
+      setMonedas(prev => prev.map(m => m.id === monedaActual.id ? monedaActualizada : m))
+      setSelectedMoneda(monedaActualizada)
+    }
 
     setNuevaCotizacion({
       fecha: new Date().toISOString().split("T")[0],
-      tipo: editingMoneda.tipo_cotizacion_defecto,
+      tipo: monedaActual.tipo_cotizacion_defecto,
       tasa: ""
     })
   }
 
   // Eliminar cotización
   const eliminarCotizacion = (cotizacionId: number) => {
-    if (!editingMoneda) return
+    const monedaActual = editingMoneda || selectedMoneda
+    if (!monedaActual) return
     
-    setEditingMoneda({
-      ...editingMoneda,
-      cotizaciones: editingMoneda.cotizaciones.filter(c => c.id !== cotizacionId)
-    })
+    const monedaActualizada = {
+      ...monedaActual,
+      cotizaciones: monedaActual.cotizaciones.filter(c => c.id !== cotizacionId)
+    }
+
+    if (editingMoneda) {
+      setEditingMoneda(monedaActualizada)
+    } else {
+      setMonedas(prev => prev.map(m => m.id === monedaActual.id ? monedaActualizada : m))
+      setSelectedMoneda(monedaActualizada)
+    }
   }
 
   // Monedas - CRUD
