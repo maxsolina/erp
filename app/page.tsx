@@ -517,11 +517,6 @@ function CellHomeERPContent() {
 
   // Nuevo cliente desde OT
   const [showNuevoClienteOT, setShowNuevoClienteOT] = useState(false)
-  const [nuevoClienteNombre, setNuevoClienteNombre] = useState("")
-  const [nuevoClienteTelefono, setNuevoClienteTelefono] = useState("")
-  const [nuevoClienteEmail, setNuevoClienteEmail] = useState("")
-  const [nuevoClienteDireccion, setNuevoClienteDireccion] = useState("")
-  const [nuevoClienteCategoria, setNuevoClienteCategoria] = useState<"publico" | "mayorista">("publico")
   const [activeTab, setActiveTab] = useState("info")
   
   // Form states for Nueva OT
@@ -2578,105 +2573,214 @@ function CellHomeERPContent() {
       {/* Modal Nuevo Cliente desde OT */}
       {showNuevoClienteOT && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200]" onClick={() => setShowNuevoClienteOT(false)}>
-          <div className="bg-white rounded-lg w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
-            <div className="bg-indigo-900 text-white px-5 py-4 flex justify-between items-center rounded-t-lg">
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="bg-indigo-900 text-white px-5 py-4 flex justify-between items-center">
               <h3 className="text-base font-semibold">Nuevo Cliente</h3>
               <button onClick={() => setShowNuevoClienteOT(false)} className="text-white/70 hover:text-white text-2xl leading-none">&times;</button>
             </div>
-            <div className="p-5 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
-                <input
-                  type="text"
-                  value={nuevoClienteNombre}
-                  onChange={e => setNuevoClienteNombre(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Nombre completo..."
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
-                <input
-                  type="text"
-                  value={nuevoClienteTelefono}
-                  onChange={e => setNuevoClienteTelefono(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="+54 9 ..."
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={nuevoClienteEmail}
-                  onChange={e => setNuevoClienteEmail(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="email@ejemplo.com"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
-                <input
-                  type="text"
-                  value={nuevoClienteDireccion}
-                  onChange={e => setNuevoClienteDireccion(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Calle y número..."
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
-                <select
-                  value={nuevoClienteCategoria}
-                  onChange={e => setNuevoClienteCategoria(e.target.value as "publico" | "mayorista")}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="publico">Público</option>
-                  <option value="mayorista">Mayorista</option>
-                </select>
-              </div>
+            <div className="overflow-y-auto flex-1">
+              <form id="form-nuevo-cliente-ot" onSubmit={(e) => {
+                e.preventDefault()
+                const fd = new FormData(e.currentTarget)
+                const nuevoId = Math.max(...clientes.map(c => c.id), 0) + 1
+                const nuevoCliente: Cliente = {
+                  id: nuevoId,
+                  nombre: fd.get("nombre") as string,
+                  telefono: (fd.get("celular") as string) || (fd.get("telefono") as string) || "",
+                  email: fd.get("email") as string || "",
+                  direccion: fd.get("direccion") as string || "",
+                  categoria: (fd.get("categoria") as "publico" | "mayorista") || "publico",
+                  orden_asignacion: clientes.length + 1,
+                }
+                setClientes(prev => [...prev, nuevoCliente])
+                setFormCliente(String(nuevoId))
+                setShowNuevoClienteOT(false)
+              }} className="p-5">
+                {/* Identificación */}
+                <div className="mb-4">
+                  <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5 uppercase tracking-wide">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                    Identificación
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Nombre / Razón Social *</label>
+                      <input type="text" name="nombre" required autoFocus
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Nombre Fantasía</label>
+                      <input type="text" name="nombre_fantasia"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Tipo Documento *</label>
+                      <select name="tipo_documento" defaultValue="DNI"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <option value="DNI">DNI</option>
+                        <option value="CUIT">CUIT</option>
+                        <option value="CUIL">CUIL</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Número Documento *</label>
+                      <input type="text" name="numero_documento" required
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Posición Fiscal *</label>
+                      <select name="posicion_fiscal" defaultValue="consumidor_final"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <option value="consumidor_final">Consumidor Final</option>
+                        <option value="responsable_inscripto">Responsable Inscripto</option>
+                        <option value="monotributista">Monotributista</option>
+                        <option value="exento">Exento</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Dirección */}
+                <div className="mb-4">
+                  <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5 uppercase tracking-wide">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    Dirección
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Dirección</label>
+                      <input type="text" name="direccion"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Ciudad</label>
+                      <input type="text" name="ciudad" defaultValue="Rosario"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Provincia</label>
+                      <input type="text" name="provincia" defaultValue="Santa Fe"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Código Postal</label>
+                      <input type="text" name="codigo_postal"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Zona</label>
+                      <input type="text" name="zona"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contacto */}
+                <div className="mb-4">
+                  <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5 uppercase tracking-wide">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                    Contacto
+                  </h3>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Teléfono</label>
+                      <input type="text" name="telefono"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Celular</label>
+                      <input type="text" name="celular"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Email</label>
+                      <input type="email" name="email"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Información Comercial */}
+                <div className="mb-4">
+                  <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5 uppercase tracking-wide">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    Información Comercial
+                  </h3>
+                  <div className="grid grid-cols-3 gap-3 mb-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Categoría *</label>
+                      <select name="categoria" defaultValue="publico"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <option value="publico">Público General</option>
+                        <option value="mayorista">Mayorista</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Vendedor</label>
+                      <select name="vendedor_id"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <option value="">Sin asignar</option>
+                        <option value="1">Max Solina</option>
+                        <option value="2">Laura García</option>
+                        <option value="3">Carlos Pérez</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Lista de Precios</label>
+                      <select name="lista_precios_id" defaultValue="1"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <option value="1">Minorista (ARS)</option>
+                        <option value="2">Mayorista (ARS)</option>
+                        <option value="3">Minorista (USD)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Descuento Default (%)</label>
+                      <input type="number" name="descuento_default" defaultValue="0" min="0" max="100" step="0.5"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Moneda CC</label>
+                      <select name="moneda_cuenta_corriente" defaultValue="ARS"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <option value="ARS">ARS</option>
+                        <option value="USD">USD</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-0.5">Término de Pago</label>
+                      <select name="termino_pago_id" defaultValue="1"
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <option value="1">Contado Efectivo</option>
+                        <option value="2">Cuenta Corriente 30 días</option>
+                        <option value="3">Cuenta Corriente 60 días</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </form>
             </div>
-            <div className="px-5 pb-5 flex justify-end gap-3 border-t pt-4">
+            <div className="px-5 py-4 flex justify-end gap-3 border-t bg-gray-50">
               <button
-                onClick={() => {
-                  setNuevoClienteNombre("")
-                  setNuevoClienteTelefono("")
-                  setNuevoClienteEmail("")
-                  setNuevoClienteDireccion("")
-                  setNuevoClienteCategoria("publico")
-                  setShowNuevoClienteOT(false)
-                }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                type="button"
+                onClick={() => setShowNuevoClienteOT(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 bg-white rounded hover:bg-gray-50 transition-colors"
               >
                 Cancelar
               </button>
               <button
-                disabled={!nuevoClienteNombre.trim()}
-                onClick={() => {
-                  if (!nuevoClienteNombre.trim()) return
-                  const nuevoId = Math.max(...clientes.map(c => c.id), 0) + 1
-                  const nuevoCliente: Cliente = {
-                    id: nuevoId,
-                    nombre: nuevoClienteNombre.trim(),
-                    telefono: nuevoClienteTelefono,
-                    email: nuevoClienteEmail,
-                    direccion: nuevoClienteDireccion,
-                    categoria: nuevoClienteCategoria,
-                    orden_asignacion: clientes.length + 1,
-                  }
-                  setClientes(prev => [...prev, nuevoCliente])
-                  setFormCliente(String(nuevoId))
-                  setNuevoClienteNombre("")
-                  setNuevoClienteTelefono("")
-                  setNuevoClienteEmail("")
-                  setNuevoClienteDireccion("")
-                  setNuevoClienteCategoria("publico")
-                  setShowNuevoClienteOT(false)
-                }}
-                className="px-4 py-2 text-sm font-medium text-white bg-indigo-900 rounded-md hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                type="submit"
+                form="form-nuevo-cliente-ot"
+                className="px-4 py-2 text-sm font-medium text-white bg-indigo-900 rounded hover:bg-indigo-800 flex items-center gap-1.5 transition-colors"
               >
-                Crear nuevo cliente
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                Crear Cliente
               </button>
             </div>
           </div>
