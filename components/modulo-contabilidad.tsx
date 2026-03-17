@@ -762,7 +762,19 @@ export default function ModuloContabilidad() {
               </button>
             </div>
           ) : (
-            <div></div>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => {
+                  setSelectedMoneda(null)
+                  setEditingMoneda(null)
+                  setCreatingMoneda(false)
+                  setModoEdicionMoneda(false)
+                }}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+              >
+                <ChevronLeft className="w-4 h-4" /> Volver
+              </button>
+            </div>
           )}
 
           <div className="flex items-center gap-2">
@@ -1297,8 +1309,20 @@ export default function ModuloContabilidad() {
               </button>
             </div>
           ) : (
-            // Modo vista: Solo botón Editar a la derecha
-            <div></div>
+            // Modo vista: Botón Volver a la izquierda
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => {
+                  setSelectedTipoCotizacion(null)
+                  setEditingTipoCotizacion(null)
+                  setCreatingTipoCotizacion(false)
+                  setModoEdicionTipoCotizacion(false)
+                }}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+              >
+                <ChevronLeft className="w-4 h-4" /> Volver
+              </button>
+            </div>
           )}
 
           <div className="flex items-center gap-2">
