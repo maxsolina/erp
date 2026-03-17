@@ -11,15 +11,33 @@ import {
   Coins,
   Save,
   X,
-  TrendingUp
+  TrendingUp,
+  Edit,
+  User,
+  ArrowRight,
+  Star,
+  MessageSquare
 } from "lucide-react"
 
 // Types
+interface SeguimientoEntry {
+  id: number
+  fecha: string
+  usuario: string
+  usuario_avatar?: string
+  tipo: "creacion" | "cambio_estado" | "cambio_campo" | "nota" | "mensaje"
+  campo?: string
+  valor_anterior?: string
+  valor_nuevo?: string
+  descripcion?: string
+}
+
 interface TipoCotizacion {
   id: number
   nombre: string
   descripcion: string
   activo: boolean
+  seguimiento?: SeguimientoEntry[]
 }
 
 interface Cotizacion {
@@ -52,19 +70,28 @@ const tiposCotizacionIniciales: TipoCotizacion[] = [
     id: 1,
     nombre: "Oficial",
     descripcion: "Cotización oficial del Banco Central",
-    activo: true
+    activo: true,
+    seguimiento: [
+      { id: 1, fecha: "2026-01-15T10:30:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Tipo de cotización creado" }
+    ]
   },
   {
     id: 2,
     nombre: "Blue",
     descripcion: "Cotización del mercado paralelo",
-    activo: true
+    activo: true,
+    seguimiento: [
+      { id: 1, fecha: "2026-01-15T10:35:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Tipo de cotización creado" }
+    ]
   },
   {
     id: 3,
     nombre: "Divisa",
     descripcion: "Cotización para operaciones de comercio exterior",
-    activo: true
+    activo: true,
+    seguimiento: [
+      { id: 1, fecha: "2026-01-15T10:40:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Tipo de cotización creado" }
+    ]
   }
 ]
 
@@ -144,6 +171,7 @@ export default function ModuloContabilidad() {
   const [editingTipoCotizacion, setEditingTipoCotizacion] = useState<TipoCotizacion | null>(null)
   const [tipoCotizacionSearchText, setTipoCotizacionSearchText] = useState("")
   const [creatingTipoCotizacion, setCreatingTipoCotizacion] = useState(false)
+  const [modoEdicionTipoCotizacion, setModoEdicionTipoCotizacion] = useState(false)
 
   // Monedas
   const [monedas, setMonedas] = useState<Moneda[]>(monedasIniciales)
@@ -253,28 +281,68 @@ export default function ModuloContabilidad() {
   const guardarTipoCotizacion = () => {
     if (!editingTipoCotizacion) return
     
+    const fechaActual = new Date().toISOString()
+    
     if (creatingTipoCotizacion) {
+      const nuevoId = Math.max(...tiposCotizacion.map(t => t.id), 0) + 1
       const nuevoTipo: TipoCotizacion = {
         ...editingTipoCotizacion,
-        id: Math.max(...tiposCotizacion.map(t => t.id), 0) + 1
+        id: nuevoId,
+        seguimiento: [
+          {
+            id: 1,
+            fecha: fechaActual,
+            usuario: "Max Solina",
+            tipo: "creacion",
+            descripcion: "Tipo de cotización creado"
+          }
+        ]
       }
       setTiposCotizacion(prev => [...prev, nuevoTipo])
+      setSelectedTipoCotizacion(nuevoTipo)
+      setEditingTipoCotizacion(null)
+      setCreatingTipoCotizacion(false)
+      setModoEdicionTipoCotizacion(false)
     } else {
+      // Agregar entrada de seguimiento por la edición
+      const seguimientoActualizado = [
+        {
+          id: (editingTipoCotizacion.seguimiento?.length || 0) + 1,
+          fecha: fechaActual,
+          usuario: "Max Solina",
+          tipo: "cambio_campo" as const,
+          campo: "Datos",
+          valor_nuevo: "Registro actualizado"
+        },
+        ...(editingTipoCotizacion.seguimiento || [])
+      ]
+      
+      const tipoActualizado = {
+        ...editingTipoCotizacion,
+        seguimiento: seguimientoActualizado
+      }
+      
       setTiposCotizacion(prev => prev.map(t => 
-        t.id === editingTipoCotizacion.id ? editingTipoCotizacion : t
+        t.id === editingTipoCotizacion.id ? tipoActualizado : t
       ))
+      setSelectedTipoCotizacion(tipoActualizado)
+      setEditingTipoCotizacion(null)
+      setModoEdicionTipoCotizacion(false)
     }
-    // Volver a la lista después de guardar
-    setSelectedTipoCotizacion(null)
-    setEditingTipoCotizacion(null)
-    setCreatingTipoCotizacion(false)
   }
 
   const descartarTipoCotizacion = () => {
-    // Volver a la lista al descartar
-    setSelectedTipoCotizacion(null)
-    setEditingTipoCotizacion(null)
-    setCreatingTipoCotizacion(false)
+    if (creatingTipoCotizacion) {
+      // Si estaba creando, volver a la lista
+      setSelectedTipoCotizacion(null)
+      setEditingTipoCotizacion(null)
+      setCreatingTipoCotizacion(false)
+      setModoEdicionTipoCotizacion(false)
+    } else {
+      // Si estaba editando, volver a la vista de solo lectura
+      setEditingTipoCotizacion(null)
+      setModoEdicionTipoCotizacion(false)
+    }
   }
 
   const crearNuevoTipoCotizacion = () => {
@@ -282,11 +350,154 @@ export default function ModuloContabilidad() {
       id: 0,
       nombre: "",
       descripcion: "",
-      activo: true
+      activo: true,
+      seguimiento: []
     }
     setSelectedTipoCotizacion(nuevoTipo)
     setEditingTipoCotizacion(nuevoTipo)
     setCreatingTipoCotizacion(true)
+    setModoEdicionTipoCotizacion(true)
+  }
+
+  const iniciarEdicionTipoCotizacion = () => {
+    if (selectedTipoCotizacion) {
+      setEditingTipoCotizacion({ ...selectedTipoCotizacion })
+      setModoEdicionTipoCotizacion(true)
+    }
+  }
+
+  // Componente de Seguimiento (tracking de cambios estilo Odoo)
+  const SeguimientoPanel = ({ 
+    seguimiento, 
+    collapsed = true 
+  }: { 
+    seguimiento: SeguimientoEntry[]
+    collapsed?: boolean
+  }) => {
+    const [isExpanded, setIsExpanded] = useState(!collapsed)
+    
+    const formatFechaRelativa = (fecha: string) => {
+      const now = new Date()
+      const date = new Date(fecha)
+      const diffMs = now.getTime() - date.getTime()
+      const diffMins = Math.floor(diffMs / 60000)
+      const diffHours = Math.floor(diffMs / 3600000)
+      const diffDays = Math.floor(diffMs / 86400000)
+      
+      if (diffMins < 1) return "hace un momento"
+      if (diffMins < 60) return `hace ${diffMins} minutos`
+      if (diffHours < 24) return `hace ${diffHours} horas`
+      if (diffDays < 7) return `hace ${diffDays} días`
+      return date.toLocaleDateString("es-AR")
+    }
+    
+    const renderEntryContent = (entry: SeguimientoEntry) => {
+      switch (entry.tipo) {
+        case "creacion":
+          return (
+            <div>
+              <span className="font-medium text-gray-900">Documento creado</span>
+              {entry.descripcion && <p className="text-gray-600 text-sm mt-1">{entry.descripcion}</p>}
+            </div>
+          )
+        case "cambio_estado":
+          return (
+            <div className="flex items-center gap-1">
+              <span className="text-gray-600">Estado:</span>
+              <span className="text-gray-900">{entry.valor_anterior}</span>
+              <ArrowRight className="w-3 h-3 text-gray-400" />
+              <span className="font-medium text-gray-900">{entry.valor_nuevo}</span>
+            </div>
+          )
+        case "cambio_campo":
+          return (
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="text-gray-600">{entry.campo}:</span>
+              {entry.valor_anterior && (
+                <>
+                  <span className="text-gray-500 line-through">{entry.valor_anterior}</span>
+                  <ArrowRight className="w-3 h-3 text-gray-400" />
+                </>
+              )}
+              <span className="font-medium text-gray-900">{entry.valor_nuevo}</span>
+            </div>
+          )
+        case "nota":
+          return (
+            <div className="bg-amber-50 border-l-2 border-amber-400 pl-3 py-1">
+              <span className="text-gray-800">{entry.descripcion}</span>
+            </div>
+          )
+        case "mensaje":
+          return (
+            <div>
+              <span className="text-gray-800">{entry.descripcion}</span>
+            </div>
+          )
+        default:
+          return <span>{entry.descripcion}</span>
+      }
+    }
+    
+    return (
+      <div className="mt-6 border-t border-gray-200 pt-4">
+        {/* Botón Ver seguimiento */}
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="w-full py-2 px-4 text-sm text-purple-700 hover:text-purple-800 border border-gray-200 rounded bg-gray-50 hover:bg-gray-100 transition-colors"
+        >
+          {isExpanded ? "Ocultar seguimiento" : "Ver seguimiento"}
+        </button>
+        
+        {isExpanded && (
+          <div className="mt-4 bg-white border border-gray-200 rounded-lg overflow-hidden">
+            {/* Lista de entradas */}
+            <div className="divide-y divide-gray-100">
+              {seguimiento.length === 0 ? (
+                <div className="p-4 text-center text-gray-500 text-sm">
+                  No hay actividad registrada
+                </div>
+              ) : (
+                seguimiento.map((entry) => (
+                  <div key={entry.id} className="flex gap-3 p-4 hover:bg-gray-50">
+                    {/* Avatar */}
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
+                        <User className="w-4 h-4 text-purple-600" />
+                      </div>
+                    </div>
+                    
+                    {/* Contenido */}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm">
+                        {renderEntryContent(entry)}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                        <span className="font-medium text-purple-700">{entry.usuario}</span>
+                        <span>·</span>
+                        <span>{formatFechaRelativa(entry.fecha)}</span>
+                        <span>·</span>
+                        <button className="hover:text-purple-700">Me gusta</button>
+                      </div>
+                    </div>
+                    
+                    {/* Acciones */}
+                    <div className="flex items-start gap-1">
+                      <button className="p-1 text-gray-400 hover:text-amber-500">
+                        <Star className="w-4 h-4" />
+                      </button>
+                      <button className="p-1 text-gray-400 hover:text-purple-600">
+                        <MessageSquare className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    )
   }
 
   // Sidebar
@@ -325,6 +536,7 @@ export default function ModuloContabilidad() {
                                       setSelectedTipoCotizacion(null)
                                       setEditingTipoCotizacion(null)
                                       setCreatingTipoCotizacion(false)
+                                      setModoEdicionTipoCotizacion(false)
                                     }}
                                     className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-colors ${
                                       activeView === item.id
@@ -886,8 +1098,9 @@ export default function ModuloContabilidad() {
                   }`}
                   onClick={() => {
                     setSelectedTipoCotizacion(tipo)
-                    setEditingTipoCotizacion({ ...tipo })
+                    setEditingTipoCotizacion(null)
                     setCreatingTipoCotizacion(false)
+                    setModoEdicionTipoCotizacion(false)
                   }}
                 >
                   <td className="py-3 px-4 font-medium text-gray-900">{tipo.nombre}</td>
@@ -919,14 +1132,18 @@ export default function ModuloContabilidad() {
 
   // Vista de detalle/edición de tipo de cotización
   const renderDetalleTipoCotizacion = () => {
-    if (!selectedTipoCotizacion || !editingTipoCotizacion) return null
+    if (!selectedTipoCotizacion) return null
 
-    const currentTipo = editingTipoCotizacion
+    const currentTipo = modoEdicionTipoCotizacion && editingTipoCotizacion 
+      ? editingTipoCotizacion 
+      : selectedTipoCotizacion
 
     // Navegación entre tipos
     const currentIndex = tiposCotizacion.findIndex(t => t.id === selectedTipoCotizacion.id)
     const prevTipo = currentIndex > 0 ? tiposCotizacion[currentIndex - 1] : null
     const nextTipo = currentIndex < tiposCotizacion.length - 1 ? tiposCotizacion[currentIndex + 1] : null
+
+    const isEditing = modoEdicionTipoCotizacion || creatingTipoCotizacion
 
     return (
       <div>
@@ -937,6 +1154,7 @@ export default function ModuloContabilidad() {
               setSelectedTipoCotizacion(null)
               setEditingTipoCotizacion(null)
               setCreatingTipoCotizacion(false)
+              setModoEdicionTipoCotizacion(false)
             }} 
             className="hover:text-blue-600"
           >
@@ -948,52 +1166,71 @@ export default function ModuloContabilidad() {
 
         {/* Header con botones */}
         <div className="flex items-center justify-between mb-6 bg-white border-b border-gray-200 py-3 px-4 -mx-6">
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={guardarTipoCotizacion}
-              disabled={!currentTipo.nombre.trim()}
-              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Save className="w-4 h-4" />
-              Guardar
-            </button>
-            <button 
-              onClick={descartarTipoCotizacion}
-              className="flex items-center gap-2 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300"
-            >
-              <X className="w-4 h-4" />
-              Descartar
-            </button>
-          </div>
-
-          {!creatingTipoCotizacion && (
+          {isEditing ? (
+            // Modo edición: Guardar y Descartar
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  if (prevTipo) {
-                    setSelectedTipoCotizacion(prevTipo)
-                    setEditingTipoCotizacion({ ...prevTipo })
-                  }
-                }}
-                disabled={!prevTipo}
-                className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+              <button 
+                onClick={guardarTipoCotizacion}
+                disabled={!currentTipo.nombre.trim()}
+                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <ChevronLeft className="w-5 h-5" />
+                <Save className="w-4 h-4" />
+                Guardar
               </button>
-              <button
-                onClick={() => {
-                  if (nextTipo) {
-                    setSelectedTipoCotizacion(nextTipo)
-                    setEditingTipoCotizacion({ ...nextTipo })
-                  }
-                }}
-                disabled={!nextTipo}
-                className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+              <button 
+                onClick={descartarTipoCotizacion}
+                className="flex items-center gap-2 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300"
               >
-                <ChevronRight className="w-5 h-5" />
+                <X className="w-4 h-4" />
+                Descartar
               </button>
             </div>
+          ) : (
+            // Modo vista: Solo botón Editar a la derecha
+            <div></div>
           )}
+
+          <div className="flex items-center gap-2">
+            {!isEditing && !creatingTipoCotizacion && (
+              <button 
+                onClick={iniciarEdicionTipoCotizacion}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+              >
+                <Edit className="w-4 h-4" /> Editar
+              </button>
+            )}
+            
+            {!creatingTipoCotizacion && (
+              <>
+                <button
+                  onClick={() => {
+                    if (prevTipo) {
+                      setSelectedTipoCotizacion(prevTipo)
+                      setEditingTipoCotizacion(null)
+                      setModoEdicionTipoCotizacion(false)
+                    }
+                  }}
+                  disabled={!prevTipo}
+                  className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => {
+                    if (nextTipo) {
+                      setSelectedTipoCotizacion(nextTipo)
+                      setEditingTipoCotizacion(null)
+                      setModoEdicionTipoCotizacion(false)
+                    }
+                  }}
+                  disabled={!nextTipo}
+                  className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Formulario */}
@@ -1001,37 +1238,65 @@ export default function ModuloContabilidad() {
           <div className="space-y-4 max-w-xl">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
-              <input
-                type="text"
-                value={currentTipo.nombre}
-                onChange={(e) => setEditingTipoCotizacion({ ...currentTipo, nombre: e.target.value })}
-                placeholder="Ej: Oficial, Blue, Divisa..."
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              />
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={currentTipo.nombre}
+                  onChange={(e) => setEditingTipoCotizacion({ ...currentTipo, nombre: e.target.value })}
+                  placeholder="Ej: Oficial, Blue, Divisa..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                />
+              ) : (
+                <p className="text-gray-900 py-2">{currentTipo.nombre}</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
-              <textarea
-                value={currentTipo.descripcion}
-                onChange={(e) => setEditingTipoCotizacion({ ...currentTipo, descripcion: e.target.value })}
-                placeholder="Descripción del tipo de cotización..."
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none"
-              />
+              {isEditing ? (
+                <textarea
+                  value={currentTipo.descripcion}
+                  onChange={(e) => setEditingTipoCotizacion({ ...currentTipo, descripcion: e.target.value })}
+                  placeholder="Descripción del tipo de cotización..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                />
+              ) : (
+                <p className="text-gray-900 py-2">{currentTipo.descripcion || '-'}</p>
+              )}
             </div>
             <div className="flex items-center gap-2 pt-2">
-              <input
-                type="checkbox"
-                id="tipo_activo"
-                checked={currentTipo.activo}
-                onChange={(e) => setEditingTipoCotizacion({ ...currentTipo, activo: e.target.checked })}
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-              />
-              <label htmlFor="tipo_activo" className={`text-sm font-medium ${currentTipo.activo ? 'text-green-600' : 'text-red-600'}`}>
-                Activo
-              </label>
+              {isEditing ? (
+                <>
+                  <input
+                    type="checkbox"
+                    id="tipo_activo"
+                    checked={currentTipo.activo}
+                    onChange={(e) => setEditingTipoCotizacion({ ...currentTipo, activo: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="tipo_activo" className={`text-sm font-medium ${currentTipo.activo ? 'text-green-600' : 'text-red-600'}`}>
+                    Activo
+                  </label>
+                </>
+              ) : (
+                <>
+                  <span className="text-sm font-medium text-gray-700">Estado:</span>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                    currentTipo.activo 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-red-100 text-red-800'
+                  }`}>
+                    {currentTipo.activo ? 'Activo' : 'Inactivo'}
+                  </span>
+                </>
+              )}
             </div>
           </div>
+
+          {/* Panel de Seguimiento */}
+          {!creatingTipoCotizacion && selectedTipoCotizacion.seguimiento && (
+            <SeguimientoPanel seguimiento={selectedTipoCotizacion.seguimiento} />
+          )}
         </div>
       </div>
     )
