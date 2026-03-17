@@ -259,23 +259,22 @@ export default function ModuloContabilidad() {
         id: Math.max(...tiposCotizacion.map(t => t.id), 0) + 1
       }
       setTiposCotizacion(prev => [...prev, nuevoTipo])
-      setSelectedTipoCotizacion(nuevoTipo)
     } else {
       setTiposCotizacion(prev => prev.map(t => 
         t.id === editingTipoCotizacion.id ? editingTipoCotizacion : t
       ))
-      setSelectedTipoCotizacion(editingTipoCotizacion)
     }
+    // Volver a la lista después de guardar
+    setSelectedTipoCotizacion(null)
     setEditingTipoCotizacion(null)
     setCreatingTipoCotizacion(false)
   }
 
   const descartarTipoCotizacion = () => {
+    // Volver a la lista al descartar
+    setSelectedTipoCotizacion(null)
     setEditingTipoCotizacion(null)
     setCreatingTipoCotizacion(false)
-    if (creatingTipoCotizacion) {
-      setSelectedTipoCotizacion(null)
-    }
   }
 
   const crearNuevoTipoCotizacion = () => {
