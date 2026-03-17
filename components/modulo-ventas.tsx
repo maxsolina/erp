@@ -629,7 +629,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   })
   
   // Data states
-  const [clientes, setClientes] = useState<ClienteVenta[]>(clientesIniciales ?? mockClientesVenta)
+  const [clientes, setClientes] = useState<ClienteVenta[]>(() => {
+    if (!clientesIniciales || clientesIniciales.length === 0) return mockClientesVenta
+    // Fusionar mock base + clientes nuevos que no estén en el mock
+    const mockIds = new Set(mockClientesVenta.map(c => c.id))
+    const extras = clientesIniciales.filter(c => !mockIds.has(c.id))
+    return [...mockClientesVenta, ...extras]
+  })
   const [notasVenta, setNotasVenta] = useState<NotaVenta[]>(mockNotasVenta)
   const [ordenesEntrega, setOrdenesEntrega] = useState<OrdenEntrega[]>(mockOrdenesEntrega)
   const [remitos, setRemitos] = useState<Remito[]>(mockRemitos)
