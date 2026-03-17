@@ -7908,7 +7908,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     }
   }
 
-  // Render Lista de Listas de Precios
+  // ==================== RENDER LISTAS DE PRECIOS ====================
   const renderListasPrecios = () => {
     if (selectedListaPrecios) {
       return renderDetalleListaPrecios()
