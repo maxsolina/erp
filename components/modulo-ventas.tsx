@@ -1,5 +1,6 @@
 "use client"
 
+// Modulo de Ventas - Cell Home ERP
 import React, { useState, useMemo } from "react"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History } from "lucide-react"
 import BotonVolver from "./ui/boton-volver"
@@ -7908,7 +7909,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     }
   }
 
-  // ===================== RENDER LISTAS DE PRECIOS =====================
+  // =========================== RENDER LISTAS DE PRECIOS ===========================
+  // Funciones de renderizado para el módulo de Listas de Precios y Versiones
   const renderListasPrecios = () => {
     if (selectedListaPrecios) {
       return renderDetalleListaPrecios()
