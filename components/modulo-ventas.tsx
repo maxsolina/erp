@@ -3580,8 +3580,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedNV.lineas.map(linea => (
-                    <tr key={linea.id} className="border-b border-gray-100">
+                  {selectedNV.lineas.map((linea, idx) => (
+                    <tr key={`${linea.id}-${idx}`} className="border-b border-gray-100">
                       <td className="py-3">
                         <p className="font-medium">{linea.producto_nombre}</p>
                         <p className="text-xs text-gray-500">{linea.producto_sku}</p>
