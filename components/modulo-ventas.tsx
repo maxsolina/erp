@@ -7594,6 +7594,1193 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     </div>
   )
 
+  // ==================== LISTAS DE PRECIOS ====================
+  
+  // Funciones CRUD Listas de Precios
+  const crearNuevaListaPrecios = () => {
+    const nuevaLista: ListaPrecios = {
+      id: 0,
+      nombre: "",
+      tipo: "Minorista",
+      moneda_base: "ARS",
+      incluye_iva: true,
+      activa: true,
+      no_visible: false,
+      dias_validez: 30,
+      estado: "borrador",
+      usuarios_admin: [],
+      usuarios_habilitados: [],
+      observaciones_filtro: "",
+      seguimiento: []
+    }
+    setSelectedListaPrecios(nuevaLista)
+    setEditingListaPrecios(nuevaLista)
+    setCreandoListaPrecios(true)
+    setModoEdicionListaPrecios(true)
+    setListaPreciosTab("versiones")
+  }
+
+  const guardarListaPrecios = () => {
+    if (!editingListaPrecios || !editingListaPrecios.nombre.trim()) return
+    
+    const fechaActual = new Date().toISOString()
+    
+    if (creandoListaPrecios) {
+      const nuevoId = Math.max(...listasPrecios.map(l => l.id), 0) + 1
+      const nuevaLista: ListaPrecios = {
+        ...editingListaPrecios,
+        id: nuevoId,
+        seguimiento: [{
+          id: 1,
+          fecha: fechaActual,
+          usuario: "Max Solina",
+          tipo: "creacion",
+          descripcion: "Lista de precios creada"
+        }]
+      }
+      setListasPrecios(prev => [...prev, nuevaLista])
+      setSelectedListaPrecios(nuevaLista)
+      setEditingListaPrecios(null)
+      setCreandoListaPrecios(false)
+      setModoEdicionListaPrecios(false)
+    } else {
+      const seguimientoActualizado = [
+        {
+          id: (editingListaPrecios.seguimiento?.length || 0) + 1,
+          fecha: fechaActual,
+          usuario: "Max Solina",
+          tipo: "cambio_campo" as const,
+          campo: "Datos",
+          valor_nuevo: "Lista actualizada"
+        },
+        ...(editingListaPrecios.seguimiento || [])
+      ]
+      
+      const listaActualizada = { ...editingListaPrecios, seguimiento: seguimientoActualizado }
+      setListasPrecios(prev => prev.map(l => l.id === editingListaPrecios.id ? listaActualizada : l))
+      setSelectedListaPrecios(listaActualizada)
+      setEditingListaPrecios(null)
+      setModoEdicionListaPrecios(false)
+    }
+  }
+
+  const descartarListaPrecios = () => {
+    if (creandoListaPrecios) {
+      setSelectedListaPrecios(null)
+    }
+    setEditingListaPrecios(null)
+    setCreandoListaPrecios(false)
+    setModoEdicionListaPrecios(false)
+  }
+
+  const iniciarEdicionListaPrecios = () => {
+    if (selectedListaPrecios) {
+      setEditingListaPrecios({ ...selectedListaPrecios })
+      setModoEdicionListaPrecios(true)
+    }
+  }
+
+  // Funciones CRUD Versiones
+  const crearNuevaVersion = (listaId?: number) => {
+    const lista = listaId ? listasPrecios.find(l => l.id === listaId) : selectedListaPrecios
+    if (!lista) return
+    
+    const nuevaVersion: VersionListaPrecios = {
+      id: 0,
+      lista_precios_id: lista.id,
+      lista_precios_nombre: lista.nombre,
+      nombre: "",
+      fecha_inicial: new Date().toISOString().split("T")[0],
+      fecha_final: null,
+      activa: false,
+      estado: "borrador",
+      ultima_actualizacion: new Date().toISOString(),
+      lineas: [],
+      seguimiento: []
+    }
+    setSelectedVersion(nuevaVersion)
+    setEditingVersion(nuevaVersion)
+    setCreandoVersion(true)
+    setModoEdicionVersion(true)
+  }
+
+  const crearVersionBasadaEnOtra = (versionBase: VersionListaPrecios) => {
+    const nuevaVersion: VersionListaPrecios = {
+      id: 0,
+      lista_precios_id: versionBase.lista_precios_id,
+      lista_precios_nombre: versionBase.lista_precios_nombre,
+      nombre: nuevaVersionBasadaForm.nombre || `Copia de ${versionBase.nombre}`,
+      fecha_inicial: nuevaVersionBasadaForm.fecha_inicial || new Date().toISOString().split("T")[0],
+      fecha_final: nuevaVersionBasadaForm.fecha_final || null,
+      activa: false,
+      estado: "borrador",
+      ultima_actualizacion: new Date().toISOString(),
+      lineas: nuevaVersionBasadaForm.copiar_lineas ? versionBase.lineas.map((l, idx) => ({ ...l, id: idx + 1 })) : [],
+      seguimiento: [{
+        id: 1,
+        fecha: new Date().toISOString(),
+        usuario: "Max Solina",
+        tipo: "creacion" as const,
+        descripcion: `Versión creada basada en "${versionBase.nombre}"`
+      }]
+    }
+    
+    const nuevoId = Math.max(...versionesLista.map(v => v.id), 0) + 1
+    nuevaVersion.id = nuevoId
+    
+    setVersionesLista(prev => [...prev, nuevaVersion])
+    setSelectedVersion(nuevaVersion)
+    setEditingVersion(null)
+    setCreandoVersion(false)
+    setModoEdicionVersion(false)
+    setModalNuevaVersionBasada(false)
+    setNuevaVersionBasadaForm({ nombre: "", fecha_inicial: "", fecha_final: "", copiar_lineas: true })
+  }
+
+  const guardarVersion = () => {
+    if (!editingVersion || !editingVersion.nombre.trim()) return
+    
+    const fechaActual = new Date().toISOString()
+    
+    if (creandoVersion) {
+      const nuevoId = Math.max(...versionesLista.map(v => v.id), 0) + 1
+      const nuevaVersion: VersionListaPrecios = {
+        ...editingVersion,
+        id: nuevoId,
+        ultima_actualizacion: fechaActual,
+        seguimiento: [{
+          id: 1,
+          fecha: fechaActual,
+          usuario: "Max Solina",
+          tipo: "creacion",
+          descripcion: "Versión creada"
+        }]
+      }
+      setVersionesLista(prev => [...prev, nuevaVersion])
+      setSelectedVersion(nuevaVersion)
+      setEditingVersion(null)
+      setCreandoVersion(false)
+      setModoEdicionVersion(false)
+    } else {
+      const seguimientoActualizado = [
+        {
+          id: (editingVersion.seguimiento?.length || 0) + 1,
+          fecha: fechaActual,
+          usuario: "Max Solina",
+          tipo: "cambio_campo" as const,
+          campo: "Datos",
+          valor_nuevo: "Versión actualizada"
+        },
+        ...(editingVersion.seguimiento || [])
+      ]
+      
+      const versionActualizada = { 
+        ...editingVersion, 
+        ultima_actualizacion: fechaActual,
+        seguimiento: seguimientoActualizado 
+      }
+      setVersionesLista(prev => prev.map(v => v.id === editingVersion.id ? versionActualizada : v))
+      setSelectedVersion(versionActualizada)
+      setEditingVersion(null)
+      setModoEdicionVersion(false)
+    }
+  }
+
+  const descartarVersion = () => {
+    if (creandoVersion) {
+      setSelectedVersion(null)
+    }
+    setEditingVersion(null)
+    setCreandoVersion(false)
+    setModoEdicionVersion(false)
+  }
+
+  const iniciarEdicionVersion = () => {
+    if (selectedVersion) {
+      setEditingVersion({ ...selectedVersion })
+      setModoEdicionVersion(true)
+    }
+  }
+
+  // Funciones para líneas de versión
+  const agregarLineaVersion = () => {
+    const versionActual = editingVersion || selectedVersion
+    if (!versionActual || !nuevaLineaVersion.producto_id) return
+    
+    const costoImporte = nuevaLineaVersion.costo_importe || 0
+    const markupPorcentaje = nuevaLineaVersion.markup_porcentaje || 0
+    const markupNominal = nuevaLineaVersion.markup_nominal || 0
+    const cotizacion = nuevaLineaVersion.cotizacion_dolar || COTIZACION_DOLAR_MOCK
+    const forzarPrecio = nuevaLineaVersion.forzar_precio_pesos || false
+    const precioForzado = nuevaLineaVersion.precio_forzado_ars || null
+    
+    // Calcular precio de venta
+    let precioVenta: number
+    if (forzarPrecio && precioForzado) {
+      precioVenta = precioForzado / cotizacion // Convertir a USD si la lista es USD
+    } else {
+      const costoConMarkup = costoImporte * (1 + markupPorcentaje / 100) + markupNominal
+      precioVenta = costoConMarkup
+    }
+    
+    const nuevaLinea: LineaListaPrecios = {
+      id: Math.max(...versionActual.lineas.map(l => l.id), 0) + 1,
+      producto_id: nuevaLineaVersion.producto_id,
+      producto_codigo: nuevaLineaVersion.producto_codigo || "",
+      producto_nombre: nuevaLineaVersion.producto_nombre || "",
+      costo_moneda: nuevaLineaVersion.costo_moneda || "ARS",
+      costo_importe: costoImporte,
+      cotizacion_dolar: cotizacion,
+      markup_porcentaje: markupPorcentaje,
+      markup_nominal: markupNominal,
+      forzar_precio_pesos: forzarPrecio,
+      precio_forzado_ars: precioForzado,
+      precio_venta: Math.round(precioVenta * 100) / 100,
+      precio_venta_moneda: nuevaLineaVersion.precio_venta_moneda || "ARS",
+      iva: nuevaLineaVersion.iva || 21
+    }
+    
+    const versionActualizada = {
+      ...versionActual,
+      lineas: [...versionActual.lineas, nuevaLinea],
+      ultima_actualizacion: new Date().toISOString()
+    }
+    
+    if (editingVersion) {
+      setEditingVersion(versionActualizada)
+    } else {
+      setVersionesLista(prev => prev.map(v => v.id === versionActual.id ? versionActualizada : v))
+      setSelectedVersion(versionActualizada)
+    }
+    
+    setNuevaLineaVersion({})
+  }
+
+  const eliminarLineaVersion = (lineaId: number) => {
+    const versionActual = editingVersion || selectedVersion
+    if (!versionActual) return
+    
+    const versionActualizada = {
+      ...versionActual,
+      lineas: versionActual.lineas.filter(l => l.id !== lineaId),
+      ultima_actualizacion: new Date().toISOString()
+    }
+    
+    if (editingVersion) {
+      setEditingVersion(versionActualizada)
+    } else {
+      setVersionesLista(prev => prev.map(v => v.id === versionActual.id ? versionActualizada : v))
+      setSelectedVersion(versionActualizada)
+    }
+  }
+
+  const actualizarLineaVersion = (lineaId: number, campo: keyof LineaListaPrecios, valor: unknown) => {
+    const versionActual = editingVersion || selectedVersion
+    if (!versionActual) return
+    
+    const versionActualizada = {
+      ...versionActual,
+      lineas: versionActual.lineas.map(l => {
+        if (l.id !== lineaId) return l
+        
+        const lineaActualizada = { ...l, [campo]: valor }
+        
+        // Recalcular precio si cambió algo relevante
+        if (['costo_importe', 'markup_porcentaje', 'markup_nominal', 'forzar_precio_pesos', 'precio_forzado_ars', 'cotizacion_dolar'].includes(campo)) {
+          if (lineaActualizada.forzar_precio_pesos && lineaActualizada.precio_forzado_ars) {
+            lineaActualizada.precio_venta = lineaActualizada.precio_forzado_ars / (lineaActualizada.cotizacion_dolar || COTIZACION_DOLAR_MOCK)
+          } else {
+            const costoConMarkup = lineaActualizada.costo_importe * (1 + lineaActualizada.markup_porcentaje / 100) + lineaActualizada.markup_nominal
+            lineaActualizada.precio_venta = Math.round(costoConMarkup * 100) / 100
+          }
+        }
+        
+        return lineaActualizada
+      }),
+      ultima_actualizacion: new Date().toISOString()
+    }
+    
+    if (editingVersion) {
+      setEditingVersion(versionActualizada)
+    } else {
+      setVersionesLista(prev => prev.map(v => v.id === versionActual.id ? versionActualizada : v))
+      setSelectedVersion(versionActualizada)
+    }
+  }
+
+  const formatCurrency = (num: number, moneda: "ARS" | "USD" = "ARS") => {
+    if (moneda === "USD") {
+      return `US$ ${num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    }
+    return `$ ${num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
+
+  // Render Lista de Listas de Precios
+  const renderListasPrecios = () => {
+    if (selectedListaPrecios) {
+      return renderDetalleListaPrecios()
+    }
+    return renderListaListasPrecios()
+  }
+
+  const renderListaListasPrecios = () => {
+    const filteredListas = listasPrecios.filter(l =>
+      l.nombre.toLowerCase().includes(listaPreciosSearchText.toLowerCase()) ||
+      l.tipo.toLowerCase().includes(listaPreciosSearchText.toLowerCase())
+    )
+
+    return (
+      <div>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4 bg-white border-b border-gray-200 py-3 px-4 -mx-6 -mt-6">
+          <button 
+            onClick={crearNuevaListaPrecios}
+            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 transition-colors text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            Crear
+          </button>
+          
+          <div className="flex-1 flex items-center justify-center gap-4">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar lista de precios..."
+                value={listaPreciosSearchText}
+                onChange={(e) => setListaPreciosSearchText(e.target.value)}
+                className="pl-9 pr-4 py-1.5 border border-gray-300 rounded text-sm w-64 focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+              />
+            </div>
+          </div>
+
+          <span className="text-sm text-gray-500">
+            1-{filteredListas.length} de {filteredListas.length}
+          </span>
+        </div>
+
+        {/* Tabla */}
+        <div className="bg-white border border-gray-200 rounded overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                <th className="text-left py-3 px-4 font-medium">Nombre</th>
+                <th className="text-center py-3 px-4 font-medium">Tipo</th>
+                <th className="text-center py-3 px-4 font-medium">Moneda</th>
+                <th className="text-center py-3 px-4 font-medium">IVA Inc.</th>
+                <th className="text-center py-3 px-4 font-medium">Días Validez</th>
+                <th className="text-center py-3 px-4 font-medium">Estado</th>
+                <th className="text-center py-3 px-4 font-medium">Versiones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredListas.map((lista, idx) => {
+                const versionesCount = versionesLista.filter(v => v.lista_precios_id === lista.id).length
+                return (
+                  <tr 
+                    key={lista.id} 
+                    className={`border-b border-gray-100 hover:bg-emerald-50 cursor-pointer transition-colors ${
+                      idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                    }`}
+                    onClick={() => {
+                      setSelectedListaPrecios(lista)
+                      setEditingListaPrecios(null)
+                      setModoEdicionListaPrecios(false)
+                      setCreandoListaPrecios(false)
+                      setListaPreciosTab("versiones")
+                    }}
+                  >
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-900">{lista.nombre}</span>
+                        {lista.no_visible && <Eye className="w-4 h-4 text-gray-400" title="No visible" />}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 text-center text-sm text-gray-600">{lista.tipo}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                        lista.moneda_base === 'USD' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                      }`}>
+                        {lista.moneda_base}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      {lista.incluye_iva ? (
+                        <CheckCircle className="w-4 h-4 text-green-500 mx-auto" />
+                      ) : (
+                        <X className="w-4 h-4 text-gray-400 mx-auto" />
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-center text-sm">{lista.dias_validez}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                        lista.estado === 'activa' ? 'bg-green-100 text-green-800' :
+                        lista.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {lista.estado.charAt(0).toUpperCase() + lista.estado.slice(1)}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center text-sm text-gray-600">{versionesCount}</td>
+                  </tr>
+                )
+              })}
+              {filteredListas.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-gray-500">
+                    No se encontraron listas de precios
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
+  // Detalle de Lista de Precios
+  const renderDetalleListaPrecios = () => {
+    if (!selectedListaPrecios) return null
+
+    const currentLista = modoEdicionListaPrecios && editingListaPrecios ? editingListaPrecios : selectedListaPrecios
+    const isEditing = modoEdicionListaPrecios || creandoListaPrecios
+    const versionesDeLista = versionesLista.filter(v => v.lista_precios_id === selectedListaPrecios.id)
+
+    // Navegación
+    const currentIndex = listasPrecios.findIndex(l => l.id === selectedListaPrecios.id)
+    const prevLista = currentIndex > 0 ? listasPrecios[currentIndex - 1] : null
+    const nextLista = currentIndex < listasPrecios.length - 1 ? listasPrecios[currentIndex + 1] : null
+
+    return (
+      <div>
+        {/* Breadcrumb */}
+        <div className="text-sm text-gray-500 mb-4">
+          <button onClick={() => { setSelectedListaPrecios(null); setEditingListaPrecios(null); setCreandoListaPrecios(false); setModoEdicionListaPrecios(false) }} className="hover:text-emerald-600">
+            Listas de Precios
+          </button>
+          <span className="mx-2">/</span>
+          <span className="text-gray-900">{creandoListaPrecios ? 'Nueva Lista' : currentLista.nombre}</span>
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6 bg-white border-b border-gray-200 py-3 px-4 -mx-6">
+          {isEditing ? (
+            <div className="flex items-center gap-2">
+              <button onClick={guardarListaPrecios} disabled={!currentLista.nombre.trim()} className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                <Save className="w-4 h-4" /> Guardar
+              </button>
+              <button onClick={descartarListaPrecios} className="flex items-center gap-2 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
+                <X className="w-4 h-4" /> Descartar
+              </button>
+            </div>
+          ) : (
+            <BotonVolver onClick={() => { setSelectedListaPrecios(null); setEditingListaPrecios(null); setCreandoListaPrecios(false); setModoEdicionListaPrecios(false) }} />
+          )}
+
+          <div className="flex items-center gap-2">
+            {!isEditing && !creandoListaPrecios && (
+              <button onClick={iniciarEdicionListaPrecios} className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">
+                <Edit className="w-4 h-4" /> Editar
+              </button>
+            )}
+            {!creandoListaPrecios && (
+              <>
+                <button onClick={() => prevLista && (setSelectedListaPrecios(prevLista), setEditingListaPrecios(null), setModoEdicionListaPrecios(false))} disabled={!prevLista} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed">
+                  <ChevronRight className="w-5 h-5 rotate-180" />
+                </button>
+                <button onClick={() => nextLista && (setSelectedListaPrecios(nextLista), setEditingListaPrecios(null), setModoEdicionListaPrecios(false))} disabled={!nextLista} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed">
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Formulario */}
+        <div className="bg-white border border-gray-200 rounded p-6">
+          {/* Campos principales */}
+          <div className="grid grid-cols-4 gap-4 mb-6">
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+              {isEditing ? (
+                <input type="text" value={currentLista.nombre} onChange={(e) => setEditingListaPrecios({ ...currentLista, nombre: e.target.value })} placeholder="Nombre de la lista" className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500" />
+              ) : (
+                <p className="text-gray-900 py-2 font-medium text-lg">{currentLista.nombre}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+              {isEditing ? (
+                <select value={currentLista.tipo} onChange={(e) => setEditingListaPrecios({ ...currentLista, tipo: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
+                  {mockTiposListaPrecios.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              ) : (
+                <p className="text-gray-900 py-2">{currentLista.tipo}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Moneda Base</label>
+              {isEditing ? (
+                <select value={currentLista.moneda_base} onChange={(e) => setEditingListaPrecios({ ...currentLista, moneda_base: e.target.value as "ARS" | "USD" })} className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
+                  <option value="ARS">ARS - Peso Argentino</option>
+                  <option value="USD">USD - Dólar</option>
+                </select>
+              ) : (
+                <p className="text-gray-900 py-2">{currentLista.moneda_base}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 gap-4 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Días de Validez</label>
+              {isEditing ? (
+                <input type="number" value={currentLista.dias_validez} onChange={(e) => setEditingListaPrecios({ ...currentLista, dias_validez: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500" min="1" />
+              ) : (
+                <p className="text-gray-900 py-2">{currentLista.dias_validez} días</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+              {isEditing ? (
+                <select value={currentLista.estado} onChange={(e) => setEditingListaPrecios({ ...currentLista, estado: e.target.value as ListaPrecios["estado"] })} className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
+                  <option value="borrador">Borrador</option>
+                  <option value="activa">Activa</option>
+                  <option value="inactiva">Inactiva</option>
+                </select>
+              ) : (
+                <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
+                  currentLista.estado === 'activa' ? 'bg-green-100 text-green-800' :
+                  currentLista.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
+                }`}>{currentLista.estado.charAt(0).toUpperCase() + currentLista.estado.slice(1)}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-4 pt-6">
+              {isEditing ? (
+                <>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={currentLista.incluye_iva} onChange={(e) => setEditingListaPrecios({ ...currentLista, incluye_iva: e.target.checked })} className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500" />
+                    <span className="text-sm text-gray-700">Incluye IVA</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={currentLista.no_visible} onChange={(e) => setEditingListaPrecios({ ...currentLista, no_visible: e.target.checked })} className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500" />
+                    <span className="text-sm text-gray-700">No visible</span>
+                  </label>
+                </>
+              ) : (
+                <>
+                  <span className="text-sm text-gray-600">
+                    {currentLista.incluye_iva ? <span className="text-green-600">IVA incluido</span> : <span className="text-gray-400">IVA no incluido</span>}
+                  </span>
+                  {currentLista.no_visible && <span className="text-sm text-gray-400">(No visible)</span>}
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="border-b border-gray-200 mb-4">
+            <nav className="flex gap-4">
+              {[
+                { id: "versiones", label: `Versiones (${versionesDeLista.length})` },
+                { id: "filtros", label: "Filtros" },
+                { id: "usuarios_admin", label: "Usuarios Admin" },
+                { id: "usuarios_habilitados", label: "Usuarios Habilitados" }
+              ].map(tab => (
+                <button key={tab.id} onClick={() => setListaPreciosTab(tab.id as typeof listaPreciosTab)}
+                  className={`py-2 px-1 border-b-2 text-sm font-medium transition-colors ${
+                    listaPreciosTab === tab.id ? "border-emerald-500 text-emerald-600" : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}>
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          {/* Contenido de Tabs */}
+          {listaPreciosTab === "versiones" && (
+            <div>
+              {!creandoListaPrecios && (
+                <div className="flex justify-end mb-4">
+                  <button onClick={() => crearNuevaVersion(selectedListaPrecios.id)} className="flex items-center gap-2 bg-emerald-600 text-white px-3 py-1.5 rounded text-sm hover:bg-emerald-700">
+                    <Plus className="w-4 h-4" /> Nueva Versión
+                  </button>
+                </div>
+              )}
+              <div className="border border-gray-200 rounded overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                      <th className="text-left py-2 px-3 font-medium">Nombre</th>
+                      <th className="text-center py-2 px-3 font-medium">Fecha Inicial</th>
+                      <th className="text-center py-2 px-3 font-medium">Fecha Final</th>
+                      <th className="text-center py-2 px-3 font-medium">Estado</th>
+                      <th className="text-center py-2 px-3 font-medium">Líneas</th>
+                      <th className="text-center py-2 px-3 font-medium">Última Actualización</th>
+                      <th className="w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {versionesDeLista.map((version, idx) => (
+                      <tr key={version.id} className={`border-b border-gray-100 hover:bg-emerald-50 cursor-pointer ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                        onClick={() => { setSelectedVersion(version); setActiveView("versiones_lista") }}>
+                        <td className="py-2 px-3 font-medium text-gray-900">{version.nombre}</td>
+                        <td className="py-2 px-3 text-center text-gray-600">{new Date(version.fecha_inicial).toLocaleDateString("es-AR")}</td>
+                        <td className="py-2 px-3 text-center text-gray-600">{version.fecha_final ? new Date(version.fecha_final).toLocaleDateString("es-AR") : "-"}</td>
+                        <td className="py-2 px-3 text-center">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                            version.estado === 'activa' ? 'bg-green-100 text-green-800' :
+                            version.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
+                          }`}>{version.estado.charAt(0).toUpperCase() + version.estado.slice(1)}</span>
+                        </td>
+                        <td className="py-2 px-3 text-center text-gray-600">{version.lineas.length}</td>
+                        <td className="py-2 px-3 text-center text-gray-500 text-xs">{new Date(version.ultima_actualizacion).toLocaleString("es-AR")}</td>
+                        <td className="py-2 px-3">
+                          <button onClick={(e) => { e.stopPropagation(); setModalNuevaVersionBasada(true); setSelectedVersion(version) }} className="p-1 text-gray-500 hover:bg-gray-100 rounded" title="Crear versión basada en esta">
+                            <Copy className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {versionesDeLista.length === 0 && (
+                      <tr><td colSpan={7} className="py-8 text-center text-gray-500">No hay versiones para esta lista</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {listaPreciosTab === "filtros" && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Observaciones / Filtros</label>
+              {isEditing ? (
+                <textarea value={currentLista.observaciones_filtro} onChange={(e) => setEditingListaPrecios({ ...currentLista, observaciones_filtro: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500" rows={4} placeholder="Observaciones o criterios de filtro para esta lista..." />
+              ) : (
+                <p className="text-gray-600 bg-gray-50 p-3 rounded">{currentLista.observaciones_filtro || "Sin observaciones"}</p>
+              )}
+            </div>
+          )}
+
+          {listaPreciosTab === "usuarios_admin" && (
+            <div>
+              <p className="text-sm text-gray-600 mb-4">Usuarios con permisos de administración de esta lista.</p>
+              <div className="space-y-2">
+                {mockUsuariosVentas.map(u => (
+                  <label key={u.id} className="flex items-center gap-2">
+                    {isEditing ? (
+                      <input type="checkbox" checked={currentLista.usuarios_admin.includes(u.id)}
+                        onChange={(e) => setEditingListaPrecios({
+                          ...currentLista,
+                          usuarios_admin: e.target.checked ? [...currentLista.usuarios_admin, u.id] : currentLista.usuarios_admin.filter(id => id !== u.id)
+                        })} className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500" />
+                    ) : (
+                      currentLista.usuarios_admin.includes(u.id) ? <CheckCircle className="w-4 h-4 text-emerald-500" /> : <X className="w-4 h-4 text-gray-300" />
+                    )}
+                    <span className="text-sm text-gray-700">{u.nombre}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {listaPreciosTab === "usuarios_habilitados" && (
+            <div>
+              <p className="text-sm text-gray-600 mb-4">Usuarios habilitados para usar esta lista en presupuestos/ventas.</p>
+              <div className="space-y-2">
+                {mockUsuariosVentas.map(u => (
+                  <label key={u.id} className="flex items-center gap-2">
+                    {isEditing ? (
+                      <input type="checkbox" checked={currentLista.usuarios_habilitados.includes(u.id)}
+                        onChange={(e) => setEditingListaPrecios({
+                          ...currentLista,
+                          usuarios_habilitados: e.target.checked ? [...currentLista.usuarios_habilitados, u.id] : currentLista.usuarios_habilitados.filter(id => id !== u.id)
+                        })} className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500" />
+                    ) : (
+                      currentLista.usuarios_habilitados.includes(u.id) ? <CheckCircle className="w-4 h-4 text-emerald-500" /> : <X className="w-4 h-4 text-gray-300" />
+                    )}
+                    <span className="text-sm text-gray-700">{u.nombre}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Seguimiento */}
+          {!creandoListaPrecios && selectedListaPrecios.seguimiento && (
+            <SeguimientoPanel seguimiento={selectedListaPrecios.seguimiento} />
+          )}
+        </div>
+
+        {/* Modal Nueva Versión Basada */}
+        {modalNuevaVersionBasada && selectedVersion && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-semibold mb-4">Crear versión basada en "{selectedVersion.nombre}"</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de la nueva versión</label>
+                  <input type="text" value={nuevaVersionBasadaForm.nombre} onChange={(e) => setNuevaVersionBasadaForm({ ...nuevaVersionBasadaForm, nombre: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500" placeholder={`Copia de ${selectedVersion.nombre}`} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Fecha Inicial</label>
+                    <input type="date" value={nuevaVersionBasadaForm.fecha_inicial} onChange={(e) => setNuevaVersionBasadaForm({ ...nuevaVersionBasadaForm, fecha_inicial: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Fecha Final</label>
+                    <input type="date" value={nuevaVersionBasadaForm.fecha_final} onChange={(e) => setNuevaVersionBasadaForm({ ...nuevaVersionBasadaForm, fecha_final: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500" />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={nuevaVersionBasadaForm.copiar_lineas} onChange={(e) => setNuevaVersionBasadaForm({ ...nuevaVersionBasadaForm, copiar_lineas: e.target.checked })}
+                    className="w-4 h-4 text-emerald-600 border-gray-300 rounded" />
+                  <span className="text-sm text-gray-700">Copiar líneas de precios ({selectedVersion.lineas.length} líneas)</span>
+                </label>
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <button onClick={() => { setModalNuevaVersionBasada(false); setNuevaVersionBasadaForm({ nombre: "", fecha_inicial: "", fecha_final: "", copiar_lineas: true }) }}
+                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">Cancelar</button>
+                <button onClick={() => crearVersionBasadaEnOtra(selectedVersion)}
+                  className="px-4 py-2 text-sm bg-emerald-600 text-white rounded hover:bg-emerald-700">Crear Versión</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ==================== VERSIONES DE LISTA ====================
+  
+  const renderVersionesLista = () => {
+    if (selectedVersion) {
+      return renderDetalleVersion()
+    }
+    return renderListaVersiones()
+  }
+
+  const renderListaVersiones = () => {
+    let filteredVersiones = versionesLista
+    
+    if (versionFilterLista) {
+      filteredVersiones = filteredVersiones.filter(v => v.lista_precios_id === versionFilterLista)
+    }
+    
+    if (versionSearchText) {
+      filteredVersiones = filteredVersiones.filter(v =>
+        v.nombre.toLowerCase().includes(versionSearchText.toLowerCase()) ||
+        v.lista_precios_nombre.toLowerCase().includes(versionSearchText.toLowerCase())
+      )
+    }
+
+    return (
+      <div>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4 bg-white border-b border-gray-200 py-3 px-4 -mx-6 -mt-6">
+          <button onClick={() => crearNuevaVersion()} disabled={listasPrecios.length === 0}
+            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 transition-colors text-sm font-medium disabled:opacity-50">
+            <Plus className="w-4 h-4" /> Crear
+          </button>
+          
+          <div className="flex-1 flex items-center justify-center gap-4">
+            <select value={versionFilterLista || ""} onChange={(e) => setVersionFilterLista(e.target.value ? Number(e.target.value) : null)}
+              className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-emerald-500">
+              <option value="">Todas las listas</option>
+              {listasPrecios.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}
+            </select>
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="text" placeholder="Buscar versión..." value={versionSearchText} onChange={(e) => setVersionSearchText(e.target.value)}
+                className="pl-9 pr-4 py-1.5 border border-gray-300 rounded text-sm w-64 focus:ring-1 focus:ring-emerald-500" />
+            </div>
+          </div>
+
+          <span className="text-sm text-gray-500">1-{filteredVersiones.length} de {filteredVersiones.length}</span>
+        </div>
+
+        {/* Tabla */}
+        <div className="bg-white border border-gray-200 rounded overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                <th className="text-left py-3 px-4 font-medium">Lista</th>
+                <th className="text-left py-3 px-4 font-medium">Versión</th>
+                <th className="text-center py-3 px-4 font-medium">Fecha Inicial</th>
+                <th className="text-center py-3 px-4 font-medium">Fecha Final</th>
+                <th className="text-center py-3 px-4 font-medium">Estado</th>
+                <th className="text-center py-3 px-4 font-medium">Líneas</th>
+                <th className="text-center py-3 px-4 font-medium">Última Actualización</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredVersiones.map((version, idx) => (
+                <tr key={version.id} className={`border-b border-gray-100 hover:bg-emerald-50 cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                  onClick={() => { setSelectedVersion(version); setEditingVersion(null); setModoEdicionVersion(false); setCreandoVersion(false) }}>
+                  <td className="py-3 px-4 text-gray-600">{version.lista_precios_nombre}</td>
+                  <td className="py-3 px-4 font-medium text-gray-900">{version.nombre}</td>
+                  <td className="py-3 px-4 text-center text-gray-600">{new Date(version.fecha_inicial).toLocaleDateString("es-AR")}</td>
+                  <td className="py-3 px-4 text-center text-gray-600">{version.fecha_final ? new Date(version.fecha_final).toLocaleDateString("es-AR") : "-"}</td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                      version.estado === 'activa' ? 'bg-green-100 text-green-800' :
+                      version.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
+                    }`}>{version.estado.charAt(0).toUpperCase() + version.estado.slice(1)}</span>
+                  </td>
+                  <td className="py-3 px-4 text-center text-gray-600">{version.lineas.length}</td>
+                  <td className="py-3 px-4 text-center text-gray-500 text-xs">{new Date(version.ultima_actualizacion).toLocaleString("es-AR")}</td>
+                </tr>
+              ))}
+              {filteredVersiones.length === 0 && (
+                <tr><td colSpan={7} className="py-8 text-center text-gray-500">No se encontraron versiones</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
+  // Detalle de Versión con Grilla Editable
+  const renderDetalleVersion = () => {
+    if (!selectedVersion) return null
+
+    const currentVersion = modoEdicionVersion && editingVersion ? editingVersion : selectedVersion
+    const isEditing = modoEdicionVersion || creandoVersion
+    const listaPrecios = listasPrecios.find(l => l.id === currentVersion.lista_precios_id)
+
+    // Navegación
+    const versionesDeLista = versionesLista.filter(v => v.lista_precios_id === currentVersion.lista_precios_id)
+    const currentIndex = versionesDeLista.findIndex(v => v.id === selectedVersion.id)
+    const prevVersion = currentIndex > 0 ? versionesDeLista[currentIndex - 1] : null
+    const nextVersion = currentIndex < versionesDeLista.length - 1 ? versionesDeLista[currentIndex + 1] : null
+
+    return (
+      <div>
+        {/* Breadcrumb */}
+        <div className="text-sm text-gray-500 mb-4">
+          <button onClick={() => { setSelectedVersion(null); setEditingVersion(null); setCreandoVersion(false); setModoEdicionVersion(false) }} className="hover:text-emerald-600">
+            Versiones de Lista
+          </button>
+          <span className="mx-2">/</span>
+          <span className="text-gray-600">{currentVersion.lista_precios_nombre}</span>
+          <span className="mx-2">/</span>
+          <span className="text-gray-900">{creandoVersion ? 'Nueva Versión' : currentVersion.nombre}</span>
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6 bg-white border-b border-gray-200 py-3 px-4 -mx-6">
+          {isEditing ? (
+            <div className="flex items-center gap-2">
+              <button onClick={guardarVersion} disabled={!currentVersion.nombre.trim()} className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                <Save className="w-4 h-4" /> Guardar
+              </button>
+              <button onClick={descartarVersion} className="flex items-center gap-2 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
+                <X className="w-4 h-4" /> Descartar
+              </button>
+            </div>
+          ) : (
+            <BotonVolver onClick={() => { setSelectedVersion(null); setEditingVersion(null); setCreandoVersion(false); setModoEdicionVersion(false) }} />
+          )}
+
+          <div className="flex items-center gap-2">
+            {!isEditing && !creandoVersion && (
+              <button onClick={iniciarEdicionVersion} className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">
+                <Edit className="w-4 h-4" /> Editar
+              </button>
+            )}
+            {!creandoVersion && (
+              <>
+                <button onClick={() => prevVersion && (setSelectedVersion(prevVersion), setEditingVersion(null), setModoEdicionVersion(false))} disabled={!prevVersion} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed">
+                  <ChevronRight className="w-5 h-5 rotate-180" />
+                </button>
+                <button onClick={() => nextVersion && (setSelectedVersion(nextVersion), setEditingVersion(null), setModoEdicionVersion(false))} disabled={!nextVersion} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed">
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Formulario */}
+        <div className="bg-white border border-gray-200 rounded p-6">
+          {/* Cabecera de versión */}
+          <div className="grid grid-cols-5 gap-4 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Precios</label>
+              {isEditing && creandoVersion ? (
+                <select value={currentVersion.lista_precios_id} onChange={(e) => {
+                  const lista = listasPrecios.find(l => l.id === Number(e.target.value))
+                  if (lista) setEditingVersion({ ...currentVersion, lista_precios_id: lista.id, lista_precios_nombre: lista.nombre })
+                }} className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500">
+                  {listasPrecios.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}
+                </select>
+              ) : (
+                <p className="text-gray-900 py-2">{currentVersion.lista_precios_nombre}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+              {isEditing ? (
+                <input type="text" value={currentVersion.nombre} onChange={(e) => setEditingVersion({ ...currentVersion, nombre: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500" placeholder="Nombre de la versión" />
+              ) : (
+                <p className="text-gray-900 py-2 font-medium">{currentVersion.nombre}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fecha Inicial</label>
+              {isEditing ? (
+                <input type="date" value={currentVersion.fecha_inicial} onChange={(e) => setEditingVersion({ ...currentVersion, fecha_inicial: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500" />
+              ) : (
+                <p className="text-gray-900 py-2">{new Date(currentVersion.fecha_inicial).toLocaleDateString("es-AR")}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fecha Final</label>
+              {isEditing ? (
+                <input type="date" value={currentVersion.fecha_final || ""} onChange={(e) => setEditingVersion({ ...currentVersion, fecha_final: e.target.value || null })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500" />
+              ) : (
+                <p className="text-gray-900 py-2">{currentVersion.fecha_final ? new Date(currentVersion.fecha_final).toLocaleDateString("es-AR") : "Sin fecha fin"}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+              {isEditing ? (
+                <select value={currentVersion.estado} onChange={(e) => setEditingVersion({ ...currentVersion, estado: e.target.value as VersionListaPrecios["estado"] })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500">
+                  <option value="borrador">Borrador</option>
+                  <option value="activa">Activa</option>
+                  <option value="cerrada">Cerrada</option>
+                </select>
+              ) : (
+                <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
+                  currentVersion.estado === 'activa' ? 'bg-green-100 text-green-800' :
+                  currentVersion.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
+                }`}>{currentVersion.estado.charAt(0).toUpperCase() + currentVersion.estado.slice(1)}</span>
+              )}
+            </div>
+          </div>
+
+          {/* Info de la Lista Padre */}
+          {listaPrecios && (
+            <div className="bg-gray-50 rounded p-3 mb-4 text-sm">
+              <span className="text-gray-600">Moneda: </span>
+              <span className="font-medium">{listaPrecios.moneda_base}</span>
+              <span className="mx-3 text-gray-300">|</span>
+              <span className="text-gray-600">IVA: </span>
+              <span className="font-medium">{listaPrecios.incluye_iva ? "Incluido" : "No incluido"}</span>
+              <span className="mx-3 text-gray-300">|</span>
+              <span className="text-gray-600">Cotización Dólar: </span>
+              <span className="font-medium">$ {COTIZACION_DOLAR_MOCK.toLocaleString('es-AR')}</span>
+            </div>
+          )}
+
+          {/* Grilla de Líneas */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-semibold text-gray-900">Líneas de Precios ({currentVersion.lineas.length})</h4>
+              {!creandoVersion && (
+                <button onClick={() => setEditandoLineas(!editandoLineas)} className={`flex items-center gap-1 px-2 py-1 text-xs rounded ${editandoLineas ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                  <Edit className="w-3 h-3" /> {editandoLineas ? 'Editando' : 'Editar líneas'}
+                </button>
+              )}
+            </div>
+
+            <div className="border border-gray-200 rounded overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr className="text-gray-500 uppercase tracking-wider">
+                    <th className="text-left py-2 px-2 font-medium">Código</th>
+                    <th className="text-left py-2 px-2 font-medium">Producto</th>
+                    <th className="text-center py-2 px-2 font-medium">Mon. Costo</th>
+                    <th className="text-right py-2 px-2 font-medium">Costo</th>
+                    <th className="text-right py-2 px-2 font-medium">Cotiz. USD</th>
+                    <th className="text-right py-2 px-2 font-medium">Markup %</th>
+                    <th className="text-right py-2 px-2 font-medium">Markup $</th>
+                    <th className="text-center py-2 px-2 font-medium">Forzar $</th>
+                    <th className="text-right py-2 px-2 font-medium">Precio Venta</th>
+                    <th className="text-center py-2 px-2 font-medium">IVA</th>
+                    {editandoLineas && <th className="w-8"></th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Fila para agregar nueva línea */}
+                  {editandoLineas && (
+                    <tr className="border-b border-gray-200 bg-emerald-50/50">
+                      <td className="py-1.5 px-2" colSpan={2}>
+                        <select value={nuevaLineaVersion.producto_id || ""} onChange={(e) => {
+                          const prod = productosConSerie.find(p => p.id === Number(e.target.value))
+                          if (prod) setNuevaLineaVersion({ ...nuevaLineaVersion, producto_id: prod.id, producto_codigo: prod.sku, producto_nombre: prod.nombre, costo_importe: prod.costo || 0 })
+                        }} className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500">
+                          <option value="">Seleccionar producto...</option>
+                          {productosConSerie.map(prod => <option key={prod.id} value={prod.id}>{prod.sku} - {prod.nombre}</option>)}
+                        </select>
+                      </td>
+                      <td className="py-1.5 px-2">
+                        <select value={nuevaLineaVersion.costo_moneda || "ARS"} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, costo_moneda: e.target.value as "ARS" | "USD" })}
+                          className="w-full px-1 py-1 border border-gray-300 rounded text-xs">
+                          <option value="ARS">ARS</option>
+                          <option value="USD">USD</option>
+                        </select>
+                      </td>
+                      <td className="py-1.5 px-2">
+                        <input type="number" value={nuevaLineaVersion.costo_importe || ""} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, costo_importe: Number(e.target.value) })}
+                          className="w-20 px-1 py-1 border border-gray-300 rounded text-xs text-right" placeholder="0" />
+                      </td>
+                      <td className="py-1.5 px-2">
+                        <input type="number" value={nuevaLineaVersion.cotizacion_dolar || COTIZACION_DOLAR_MOCK} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, cotizacion_dolar: Number(e.target.value) })}
+                          className="w-20 px-1 py-1 border border-gray-300 rounded text-xs text-right" />
+                      </td>
+                      <td className="py-1.5 px-2">
+                        <input type="number" value={nuevaLineaVersion.markup_porcentaje || ""} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, markup_porcentaje: Number(e.target.value) })}
+                          className="w-16 px-1 py-1 border border-gray-300 rounded text-xs text-right" placeholder="0" />
+                      </td>
+                      <td className="py-1.5 px-2">
+                        <input type="number" value={nuevaLineaVersion.markup_nominal || ""} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, markup_nominal: Number(e.target.value) })}
+                          className="w-16 px-1 py-1 border border-gray-300 rounded text-xs text-right" placeholder="0" />
+                      </td>
+                      <td className="py-1.5 px-2 text-center">
+                        <input type="checkbox" checked={nuevaLineaVersion.forzar_precio_pesos || false} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, forzar_precio_pesos: e.target.checked })}
+                          className="w-3 h-3 text-emerald-600 border-gray-300 rounded" />
+                      </td>
+                      <td className="py-1.5 px-2">
+                        {nuevaLineaVersion.forzar_precio_pesos ? (
+                          <input type="number" value={nuevaLineaVersion.precio_forzado_ars || ""} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, precio_forzado_ars: Number(e.target.value) })}
+                            className="w-24 px-1 py-1 border border-gray-300 rounded text-xs text-right" placeholder="Precio $" />
+                        ) : (
+                          <span className="text-gray-400">Auto</span>
+                        )}
+                      </td>
+                      <td className="py-1.5 px-2">
+                        <select value={nuevaLineaVersion.iva || 21} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, iva: Number(e.target.value) as 0 | 10.5 | 21 })}
+                          className="w-14 px-1 py-1 border border-gray-300 rounded text-xs">
+                          <option value={21}>21%</option>
+                          <option value={10.5}>10.5%</option>
+                          <option value={0}>0%</option>
+                        </select>
+                      </td>
+                      <td className="py-1.5 px-2">
+                        <button onClick={agregarLineaVersion} disabled={!nuevaLineaVersion.producto_id}
+                          className="p-1 text-emerald-600 hover:bg-emerald-100 rounded disabled:opacity-30 disabled:cursor-not-allowed">
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                  {/* Líneas existentes */}
+                  {currentVersion.lineas.map((linea, idx) => (
+                    <tr key={`${linea.id}-${idx}`} className={`border-b border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                      <td className="py-1.5 px-2 text-gray-600">{linea.producto_codigo}</td>
+                      <td className="py-1.5 px-2 font-medium text-gray-900">{linea.producto_nombre}</td>
+                      <td className="py-1.5 px-2 text-center">
+                        {editandoLineas ? (
+                          <select value={linea.costo_moneda} onChange={(e) => actualizarLineaVersion(linea.id, 'costo_moneda', e.target.value)}
+                            className="w-14 px-1 py-0.5 border border-gray-300 rounded text-xs">
+                            <option value="ARS">ARS</option>
+                            <option value="USD">USD</option>
+                          </select>
+                        ) : (
+                          <span className={`px-1 py-0.5 rounded text-xs ${linea.costo_moneda === 'USD' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>{linea.costo_moneda}</span>
+                        )}
+                      </td>
+                      <td className="py-1.5 px-2 text-right">
+                        {editandoLineas ? (
+                          <input type="number" value={linea.costo_importe} onChange={(e) => actualizarLineaVersion(linea.id, 'costo_importe', Number(e.target.value))}
+                            className="w-20 px-1 py-0.5 border border-gray-300 rounded text-xs text-right" />
+                        ) : (
+                          formatCurrency(linea.costo_importe, linea.costo_moneda)
+                        )}
+                      </td>
+                      <td className="py-1.5 px-2 text-right">
+                        {editandoLineas ? (
+                          <input type="number" value={linea.cotizacion_dolar} onChange={(e) => actualizarLineaVersion(linea.id, 'cotizacion_dolar', Number(e.target.value))}
+                            className="w-20 px-1 py-0.5 border border-gray-300 rounded text-xs text-right" />
+                        ) : (
+                          `$ ${linea.cotizacion_dolar.toLocaleString('es-AR')}`
+                        )}
+                      </td>
+                      <td className="py-1.5 px-2 text-right">
+                        {editandoLineas ? (
+                          <input type="number" value={linea.markup_porcentaje} onChange={(e) => actualizarLineaVersion(linea.id, 'markup_porcentaje', Number(e.target.value))}
+                            className="w-14 px-1 py-0.5 border border-gray-300 rounded text-xs text-right" />
+                        ) : (
+                          `${linea.markup_porcentaje}%`
+                        )}
+                      </td>
+                      <td className="py-1.5 px-2 text-right">
+                        {editandoLineas ? (
+                          <input type="number" value={linea.markup_nominal} onChange={(e) => actualizarLineaVersion(linea.id, 'markup_nominal', Number(e.target.value))}
+                            className="w-14 px-1 py-0.5 border border-gray-300 rounded text-xs text-right" />
+                        ) : (
+                          linea.markup_nominal > 0 ? formatCurrency(linea.markup_nominal, linea.costo_moneda) : '-'
+                        )}
+                      </td>
+                      <td className="py-1.5 px-2 text-center">
+                        {editandoLineas ? (
+                          <input type="checkbox" checked={linea.forzar_precio_pesos} onChange={(e) => actualizarLineaVersion(linea.id, 'forzar_precio_pesos', e.target.checked)}
+                            className="w-3 h-3 text-emerald-600 border-gray-300 rounded" />
+                        ) : (
+                          linea.forzar_precio_pesos ? <CheckCircle className="w-3 h-3 text-amber-500 mx-auto" /> : <span className="text-gray-300">-</span>
+                        )}
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-medium text-emerald-700">
+                        {linea.forzar_precio_pesos && linea.precio_forzado_ars ? (
+                          editandoLineas ? (
+                            <input type="number" value={linea.precio_forzado_ars} onChange={(e) => actualizarLineaVersion(linea.id, 'precio_forzado_ars', Number(e.target.value))}
+                              className="w-24 px-1 py-0.5 border border-amber-300 bg-amber-50 rounded text-xs text-right" />
+                          ) : (
+                            <span className="text-amber-700">{formatCurrency(linea.precio_forzado_ars, "ARS")}</span>
+                          )
+                        ) : (
+                          formatCurrency(linea.precio_venta, linea.precio_venta_moneda)
+                        )}
+                      </td>
+                      <td className="py-1.5 px-2 text-center">
+                        {editandoLineas ? (
+                          <select value={linea.iva} onChange={(e) => actualizarLineaVersion(linea.id, 'iva', Number(e.target.value))}
+                            className="w-12 px-1 py-0.5 border border-gray-300 rounded text-xs">
+                            <option value={21}>21%</option>
+                            <option value={10.5}>10.5%</option>
+                            <option value={0}>0%</option>
+                          </select>
+                        ) : (
+                          `${linea.iva}%`
+                        )}
+                      </td>
+                      {editandoLineas && (
+                        <td className="py-1.5 px-2">
+                          <button onClick={() => eliminarLineaVersion(linea.id)} className="p-1 text-red-500 hover:bg-red-50 rounded">
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                  {currentVersion.lineas.length === 0 && !editandoLineas && (
+                    <tr><td colSpan={10} className="py-8 text-center text-gray-500">No hay líneas en esta versión</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Seguimiento */}
+          {!creandoVersion && selectedVersion.seguimiento && (
+            <SeguimientoPanel seguimiento={selectedVersion.seguimiento} />
+          )}
+        </div>
+      </div>
+    )
+  }
+
   // Main content render
   const renderContent = () => {
     switch (activeView) {
