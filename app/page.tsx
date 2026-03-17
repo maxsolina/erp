@@ -514,6 +514,14 @@ function CellHomeERPContent() {
   
   // OT navigation state
   const [selectedOT, setSelectedOT] = useState<OrdenTrabajo | null>(null)
+
+  // Nuevo cliente desde OT
+  const [showNuevoClienteOT, setShowNuevoClienteOT] = useState(false)
+  const [nuevoClienteNombre, setNuevoClienteNombre] = useState("")
+  const [nuevoClienteTelefono, setNuevoClienteTelefono] = useState("")
+  const [nuevoClienteEmail, setNuevoClienteEmail] = useState("")
+  const [nuevoClienteDireccion, setNuevoClienteDireccion] = useState("")
+  const [nuevoClienteCategoria, setNuevoClienteCategoria] = useState<"publico" | "mayorista">("publico")
   const [activeTab, setActiveTab] = useState("info")
   
   // Form states for Nueva OT
@@ -1321,6 +1329,16 @@ function CellHomeERPContent() {
                 <option value="">Seleccionar cliente...</option>
                 {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </select>
+              <button
+                type="button"
+                onClick={() => setShowNuevoClienteOT(true)}
+                className="mt-1.5 flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Crear nuevo cliente
+              </button>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Celular de Contacto</label>
@@ -2554,6 +2572,114 @@ function CellHomeERPContent() {
           <main className="ml-52 flex-1 p-6 min-h-[calc(100vh-44px)]">
             {renderContent()}
           </main>
+        </div>
+      )}
+
+      {/* Modal Nuevo Cliente desde OT */}
+      {showNuevoClienteOT && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200]" onClick={() => setShowNuevoClienteOT(false)}>
+          <div className="bg-white rounded-lg w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="bg-indigo-900 text-white px-5 py-4 flex justify-between items-center rounded-t-lg">
+              <h3 className="text-base font-semibold">Nuevo Cliente</h3>
+              <button onClick={() => setShowNuevoClienteOT(false)} className="text-white/70 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                <input
+                  type="text"
+                  value={nuevoClienteNombre}
+                  onChange={e => setNuevoClienteNombre(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Nombre completo..."
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+                <input
+                  type="text"
+                  value={nuevoClienteTelefono}
+                  onChange={e => setNuevoClienteTelefono(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="+54 9 ..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={nuevoClienteEmail}
+                  onChange={e => setNuevoClienteEmail(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="email@ejemplo.com"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
+                <input
+                  type="text"
+                  value={nuevoClienteDireccion}
+                  onChange={e => setNuevoClienteDireccion(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Calle y número..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                <select
+                  value={nuevoClienteCategoria}
+                  onChange={e => setNuevoClienteCategoria(e.target.value as "publico" | "mayorista")}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="publico">Público</option>
+                  <option value="mayorista">Mayorista</option>
+                </select>
+              </div>
+            </div>
+            <div className="px-5 pb-5 flex justify-end gap-3 border-t pt-4">
+              <button
+                onClick={() => {
+                  setNuevoClienteNombre("")
+                  setNuevoClienteTelefono("")
+                  setNuevoClienteEmail("")
+                  setNuevoClienteDireccion("")
+                  setNuevoClienteCategoria("publico")
+                  setShowNuevoClienteOT(false)
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                disabled={!nuevoClienteNombre.trim()}
+                onClick={() => {
+                  if (!nuevoClienteNombre.trim()) return
+                  const nuevoId = Math.max(...clientes.map(c => c.id), 0) + 1
+                  const nuevoCliente: Cliente = {
+                    id: nuevoId,
+                    nombre: nuevoClienteNombre.trim(),
+                    telefono: nuevoClienteTelefono,
+                    email: nuevoClienteEmail,
+                    direccion: nuevoClienteDireccion,
+                    categoria: nuevoClienteCategoria,
+                    orden_asignacion: clientes.length + 1,
+                  }
+                  setClientes(prev => [...prev, nuevoCliente])
+                  setFormCliente(String(nuevoId))
+                  setNuevoClienteNombre("")
+                  setNuevoClienteTelefono("")
+                  setNuevoClienteEmail("")
+                  setNuevoClienteDireccion("")
+                  setNuevoClienteCategoria("publico")
+                  setShowNuevoClienteOT(false)
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-indigo-900 rounded-md hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Crear nuevo cliente
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
