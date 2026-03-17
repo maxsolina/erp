@@ -1,8 +1,9 @@
 "use client"
 
 import React, { useState, useMemo, useRef, useEffect } from "react"
-import { Search, Filter, ChevronDown, X, Plus, FileText, Truck, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Calendar, Tag, RefreshCw, Barcode, QrCode, Layers, ArrowLeftRight, ClipboardCheck, TrendingUp, TrendingDown, Box, Warehouse, Hash, RotateCcw, ChevronRight, MessageSquare, Star, User, Activity, BarChart3, Settings, DollarSign, Users, GripVertical } from "lucide-react"
+import { Search, Filter, ChevronDown, X, Plus, FileText, Truck, Package, ArrowRight, Eye, Edit, Trash2, Download, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Calendar, Tag, RefreshCw, Barcode, QrCode, Layers, ArrowLeftRight, ClipboardCheck, TrendingUp, TrendingDown, Box, Warehouse, Hash, RotateCcw, ChevronRight, MessageSquare, Star, User, Activity, BarChart3, Settings, DollarSign, Users, GripVertical } from "lucide-react"
 import OdooFilterBar, { FilterOption, GroupByOption, SavedFilter } from "./odoo-filter-bar"
+import BotonVolver from "./ui/boton-volver"
 
 // Types para Stock/Deposito
 interface Deposito {
@@ -1296,9 +1297,7 @@ export default function ModuloStock() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
-            <button onClick={() => setSelectedProducto(null)} className="p-2 hover:bg-gray-100 rounded-md">
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
+<BotonVolver onClick={() => setSelectedProducto(null)} variant="minimal" texto="" />
             <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center">
               <Package className="w-8 h-8 text-gray-400" />
             </div>
@@ -1987,12 +1986,7 @@ export default function ModuloStock() {
         
         {/* Botones de acción */}
         <div className="flex items-center gap-3 mb-4">
-          <button 
-            onClick={() => setSelectedTransferencia(null)}
-            className="text-gray-600 hover:text-gray-800 text-sm"
-          >
-            Volver
-          </button>
+<BotonVolver onClick={() => setSelectedTransferencia(null)} variant="ghost" />
           <div className="flex-1" />
           
           {/* Indicador de estado */}

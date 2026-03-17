@@ -1,7 +1,8 @@
 "use client"
 
 import React, { useState } from "react"
-import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Settings, Lock, Unlock, FileBox, Ship, Plane } from "lucide-react"
+import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Settings, Lock, Unlock, FileBox, Ship, Plane } from "lucide-react"
+import BotonVolver from "./ui/boton-volver"
 
 // Types
 interface Proveedor {
@@ -890,9 +891,7 @@ export default function ModuloCompras() {
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-4">
-            <button onClick={() => setSelectedProveedor(null)} className="text-gray-500 hover:text-gray-700">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
+            <BotonVolver onClick={() => setSelectedProveedor(null)} variant="minimal" texto="" />
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{selectedProveedor.nombre}</h1>
               <p className="text-sm text-gray-500">{selectedProveedor.codigo} | {selectedProveedor.cuit}</p>
@@ -1081,9 +1080,7 @@ export default function ModuloCompras() {
     return (
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
-          <button onClick={() => setCreandoProveedor(false)} className="text-gray-500 hover:text-gray-700">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+<BotonVolver onClick={() => setCreandoProveedor(false)} variant="minimal" texto="" />
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Nuevo Proveedor</h1>
             <p className="text-sm text-gray-500">Complete los datos del nuevo proveedor</p>
@@ -1212,9 +1209,7 @@ export default function ModuloCompras() {
 
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-4">
-            <button onClick={() => setSelectedOC(null)} className="text-gray-500 hover:text-gray-700">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
+            <BotonVolver onClick={() => setSelectedOC(null)} variant="minimal" texto="" />
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{selectedOC.numero}</h1>
               <p className="text-sm text-gray-500">{formatDate(selectedOC.fecha)} | {selectedOC.proveedor_nombre}</p>
@@ -1268,9 +1263,7 @@ export default function ModuloCompras() {
     return (
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
-          <button onClick={() => setCreandoOC(false)} className="text-gray-500 hover:text-gray-700">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+<BotonVolver onClick={() => setCreandoOC(false)} variant="minimal" texto="" />
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Nueva Orden de Compra</h1>
           </div>
@@ -1384,9 +1377,7 @@ export default function ModuloCompras() {
 
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-4">
-            <button onClick={() => setSelectedLegajo(null)} className="text-gray-500 hover:text-gray-700">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
+            <BotonVolver onClick={() => setSelectedLegajo(null)} variant="minimal" texto="" />
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{selectedLegajo.numero}</h1>
               <p className="text-sm text-gray-500">{selectedLegajo.nombre} | {formatDate(selectedLegajo.fecha_apertura)}</p>
@@ -1635,9 +1626,7 @@ export default function ModuloCompras() {
     return (
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
-          <button onClick={() => setCreandoLegajo(false)} className="text-gray-500 hover:text-gray-700">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+<BotonVolver onClick={() => setCreandoLegajo(false)} variant="minimal" texto="" />
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Nuevo Legajo de Importación</h1>
           </div>
@@ -1750,9 +1739,7 @@ export default function ModuloCompras() {
 
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-4">
-            <button onClick={() => setSelectedDespachoSimple(null)} className="text-gray-500 hover:text-gray-700">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
+            <BotonVolver onClick={() => setSelectedDespachoSimple(null)} variant="minimal" texto="" />
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{selectedDespachoSimple.numero}</h1>
               <p className="text-sm text-gray-500">{selectedDespachoSimple.nombre} | {formatDate(selectedDespachoSimple.fecha)}</p>
@@ -1913,9 +1900,7 @@ export default function ModuloCompras() {
     return (
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
-          <button onClick={() => setCreandoDespachoSimple(false)} className="text-gray-500 hover:text-gray-700">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+<BotonVolver onClick={() => setCreandoDespachoSimple(false)} variant="minimal" texto="" />
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Nuevo Despacho Simple</h1>
           </div>
