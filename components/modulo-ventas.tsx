@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useMemo } from "react"
-import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor } from "lucide-react"
+import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History } from "lucide-react"
 import BotonVolver from "./ui/boton-volver"
 
 // Types para Ventas
@@ -46,8 +46,48 @@ interface Vendedor {
 interface ListaPrecios {
   id: number
   nombre: string
-  moneda: "ARS" | "USD"
+  tipo: string
+  moneda_base: "ARS" | "USD"
+  incluye_iva: boolean
   activa: boolean
+  no_visible: boolean
+  dias_validez: number
+  estado: "borrador" | "activa" | "inactiva"
+  usuarios_admin: number[]
+  usuarios_habilitados: number[]
+  observaciones_filtro: string
+  seguimiento?: SeguimientoEntry[]
+}
+
+interface VersionListaPrecios {
+  id: number
+  lista_precios_id: number
+  lista_precios_nombre: string
+  nombre: string
+  fecha_inicial: string
+  fecha_final: string | null
+  activa: boolean
+  estado: "borrador" | "activa" | "cerrada"
+  ultima_actualizacion: string
+  lineas: LineaListaPrecios[]
+  seguimiento?: SeguimientoEntry[]
+}
+
+interface LineaListaPrecios {
+  id: number
+  producto_id: number
+  producto_codigo: string
+  producto_nombre: string
+  costo_moneda: "ARS" | "USD"
+  costo_importe: number
+  cotizacion_dolar: number
+  markup_porcentaje: number
+  markup_nominal: number
+  forzar_precio_pesos: boolean
+  precio_forzado_ars: number | null
+  precio_venta: number
+  precio_venta_moneda: "ARS" | "USD"
+  iva: 0 | 10.5 | 21
 }
 
 interface TerminoPago {
@@ -295,10 +335,126 @@ const mockVendedores: Vendedor[] = [
 ]
 
 const mockListasPrecios: ListaPrecios[] = [
-  { id: 1, nombre: "Minorista (ARS)", moneda: "ARS", activa: true },
-  { id: 2, nombre: "Mayorista (ARS)", moneda: "ARS", activa: true },
-  { id: 3, nombre: "Minorista (USD)", moneda: "USD", activa: true },
+  { 
+    id: 1, 
+    nombre: "Lista Minorista", 
+    tipo: "Minorista",
+    moneda_base: "ARS", 
+    incluye_iva: true,
+    activa: true,
+    no_visible: false,
+    dias_validez: 30,
+    estado: "activa",
+    usuarios_admin: [1],
+    usuarios_habilitados: [1, 2],
+    observaciones_filtro: "",
+    seguimiento: [
+      { id: 1, fecha: "2024-01-01T10:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Lista de precios creada" }
+    ]
+  },
+  { 
+    id: 2, 
+    nombre: "Lista Mayorista", 
+    tipo: "Mayorista",
+    moneda_base: "ARS", 
+    incluye_iva: false,
+    activa: true,
+    no_visible: false,
+    dias_validez: 15,
+    estado: "activa",
+    usuarios_admin: [1],
+    usuarios_habilitados: [1, 2],
+    observaciones_filtro: "",
+    seguimiento: [
+      { id: 1, fecha: "2024-01-01T10:30:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Lista de precios creada" }
+    ]
+  },
+  { 
+    id: 3, 
+    nombre: "Lista Distribuidor USD", 
+    tipo: "Distribuidor",
+    moneda_base: "USD", 
+    incluye_iva: false,
+    activa: true,
+    no_visible: true,
+    dias_validez: 7,
+    estado: "activa",
+    usuarios_admin: [1],
+    usuarios_habilitados: [1],
+    observaciones_filtro: "Solo para distribuidores autorizados",
+    seguimiento: [
+      { id: 1, fecha: "2024-01-01T11:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Lista de precios creada" }
+    ]
+  },
 ]
+
+const mockVersionesLista: VersionListaPrecios[] = [
+  {
+    id: 1,
+    lista_precios_id: 1,
+    lista_precios_nombre: "Lista Minorista",
+    nombre: "Versión Marzo 2024",
+    fecha_inicial: "2024-03-01",
+    fecha_final: "2024-03-31",
+    activa: true,
+    estado: "activa",
+    ultima_actualizacion: "2024-03-15T14:30:00",
+    lineas: [
+      { id: 1, producto_id: 1, producto_codigo: "IPH15PM256", producto_nombre: "iPhone 15 Pro Max 256GB", costo_moneda: "USD", costo_importe: 1100, cotizacion_dolar: 1200, markup_porcentaje: 25, markup_nominal: 0, forzar_precio_pesos: false, precio_forzado_ars: null, precio_venta: 1375, precio_venta_moneda: "USD", iva: 21 },
+      { id: 2, producto_id: 2, producto_codigo: "SGS24U", producto_nombre: "Samsung Galaxy S24 Ultra", costo_moneda: "USD", costo_importe: 950, cotizacion_dolar: 1200, markup_porcentaje: 30, markup_nominal: 0, forzar_precio_pesos: false, precio_forzado_ars: null, precio_venta: 1235, precio_venta_moneda: "USD", iva: 21 },
+      { id: 3, producto_id: 3, producto_codigo: "FUNDA-IPH15", producto_nombre: "Funda iPhone 15 Silicona", costo_moneda: "ARS", costo_importe: 15000, cotizacion_dolar: 1200, markup_porcentaje: 50, markup_nominal: 0, forzar_precio_pesos: false, precio_forzado_ars: null, precio_venta: 22500, precio_venta_moneda: "ARS", iva: 21 },
+      { id: 4, producto_id: 4, producto_codigo: "APP2", producto_nombre: "AirPods Pro 2", costo_moneda: "USD", costo_importe: 200, cotizacion_dolar: 1200, markup_porcentaje: 35, markup_nominal: 0, forzar_precio_pesos: true, precio_forzado_ars: 350000, precio_venta: 291.67, precio_venta_moneda: "USD", iva: 21 },
+    ],
+    seguimiento: [
+      { id: 1, fecha: "2024-03-01T09:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Versión creada" },
+      { id: 2, fecha: "2024-03-15T14:30:00", usuario: "Max Solina", tipo: "cambio_campo", campo: "Líneas", valor_anterior: "3", valor_nuevo: "4", descripcion: "Agregada línea AirPods Pro 2" }
+    ]
+  },
+  {
+    id: 2,
+    lista_precios_id: 1,
+    lista_precios_nombre: "Lista Minorista",
+    nombre: "Versión Abril 2024",
+    fecha_inicial: "2024-04-01",
+    fecha_final: null,
+    activa: false,
+    estado: "borrador",
+    ultima_actualizacion: "2024-03-28T10:00:00",
+    lineas: [],
+    seguimiento: [
+      { id: 1, fecha: "2024-03-28T10:00:00", usuario: "Max Solina", tipo: "creacion", descripcion: "Versión creada como borrador" }
+    ]
+  },
+  {
+    id: 3,
+    lista_precios_id: 2,
+    lista_precios_nombre: "Lista Mayorista",
+    nombre: "Versión Q1 2024",
+    fecha_inicial: "2024-01-01",
+    fecha_final: "2024-03-31",
+    activa: true,
+    estado: "activa",
+    ultima_actualizacion: "2024-01-15T11:00:00",
+    lineas: [
+      { id: 1, producto_id: 1, producto_codigo: "IPH15PM256", producto_nombre: "iPhone 15 Pro Max 256GB", costo_moneda: "USD", costo_importe: 1100, cotizacion_dolar: 1200, markup_porcentaje: 15, markup_nominal: 0, forzar_precio_pesos: false, precio_forzado_ars: null, precio_venta: 1265, precio_venta_moneda: "USD", iva: 21 },
+      { id: 2, producto_id: 2, producto_codigo: "SGS24U", producto_nombre: "Samsung Galaxy S24 Ultra", costo_moneda: "USD", costo_importe: 950, cotizacion_dolar: 1200, markup_porcentaje: 18, markup_nominal: 0, forzar_precio_pesos: false, precio_forzado_ars: null, precio_venta: 1121, precio_venta_moneda: "USD", iva: 21 },
+    ],
+    seguimiento: [
+      { id: 1, fecha: "2024-01-01T09:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Versión creada" }
+    ]
+  },
+]
+
+const mockTiposListaPrecios = ["Minorista", "Mayorista", "Distribuidor", "Especial", "Promocional"]
+
+const mockUsuariosVentas = [
+  { id: 1, nombre: "Max Solina" },
+  { id: 2, nombre: "Laura García" },
+  { id: 3, nombre: "Carlos Méndez" },
+]
+
+// Cotización del dólar mock (se conectará al módulo Contabilidad)
+const COTIZACION_DOLAR_MOCK = 1200
 
 const mockTerminosPago: TerminoPago[] = [
   { id: 1, nombre: "Contado Efectivo", dias: 0 },
@@ -626,7 +782,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     ventas: true,
     logistica: true,
     comprobantes: true,
-    cobranzas: true
+    cobranzas: true,
+    configuracion: true
   })
   
   // Data states
@@ -715,6 +872,26 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [reciboFacturaIdForm, setReciboFacturaIdForm] = useState<number | null>(null)
   const [reciboMontoForm, setReciboMontoForm] = useState<number>(0)
   const [reciboPrevisualizando, setReciboPrevisualizando] = useState(false)
+  
+  // Estados para Listas de Precios
+  const [listasPrecios, setListasPrecios] = useState<ListaPrecios[]>(mockListasPrecios)
+  const [versionesLista, setVersionesLista] = useState<VersionListaPrecios[]>(mockVersionesLista)
+  const [selectedListaPrecios, setSelectedListaPrecios] = useState<ListaPrecios | null>(null)
+  const [editingListaPrecios, setEditingListaPrecios] = useState<ListaPrecios | null>(null)
+  const [selectedVersion, setSelectedVersion] = useState<VersionListaPrecios | null>(null)
+  const [editingVersion, setEditingVersion] = useState<VersionListaPrecios | null>(null)
+  const [creandoListaPrecios, setCreandoListaPrecios] = useState(false)
+  const [creandoVersion, setCreandoVersion] = useState(false)
+  const [modoEdicionListaPrecios, setModoEdicionListaPrecios] = useState(false)
+  const [modoEdicionVersion, setModoEdicionVersion] = useState(false)
+  const [listaPreciosSearchText, setListaPreciosSearchText] = useState("")
+  const [versionSearchText, setVersionSearchText] = useState("")
+  const [versionFilterLista, setVersionFilterLista] = useState<number | null>(null)
+  const [listaPreciosTab, setListaPreciosTab] = useState<"versiones" | "filtros" | "usuarios_admin" | "usuarios_habilitados">("versiones")
+  const [editandoLineas, setEditandoLineas] = useState(false)
+  const [nuevaLineaVersion, setNuevaLineaVersion] = useState<Partial<LineaListaPrecios>>({})
+  const [modalNuevaVersionBasada, setModalNuevaVersionBasada] = useState(false)
+  const [nuevaVersionBasadaForm, setNuevaVersionBasadaForm] = useState({ nombre: "", fecha_inicial: "", fecha_final: "", copiar_lineas: true })
   
   // Estados para ubicación de stock en NV
   const [nvDepositoId, setNvDepositoId] = useState<number>(1) // Casa Central por defecto
@@ -962,6 +1139,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       icon: CreditCard,
       items: [
         { id: "recibos", label: "Recibos", icon: CreditCard },
+      ]
+    },
+    {
+      id: "configuracion",
+      label: "Configuración",
+      icon: Tag,
+      items: [
+        { id: "listas_precios", label: "Listas de Precios", icon: Tag },
+        { id: "versiones_lista", label: "Versiones de Lista", icon: Layers },
       ]
     },
   ]
@@ -7433,6 +7619,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         return renderNotasDebitoCredito("credito")
       case "recibos":
         return renderRecibos()
+      case "listas_precios":
+        return renderListasPrecios()
+      case "versiones_lista":
+        return renderVersionesLista()
       default:
         return renderDashboard()
     }
