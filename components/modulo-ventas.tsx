@@ -44,6 +44,15 @@ interface Vendedor {
   activo: boolean
 }
 
+interface CategoriaCliente {
+  id: number
+  nombre: string
+  lista_precios_defecto_id: number | null
+  descripcion: string
+  activa: boolean
+  seguimiento?: SeguimientoEntry[]
+}
+
 interface ListaPrecios {
   id: number
   nombre: string
@@ -333,6 +342,33 @@ const mockVendedores: Vendedor[] = [
   { id: 1, nombre: "Max Solina", activo: true },
   { id: 2, nombre: "Laura García", activo: true },
   { id: 3, nombre: "Carlos Pérez", activo: true },
+]
+
+const mockCategoriasCliente: CategoriaCliente[] = [
+  {
+    id: 1,
+    nombre: "Público General",
+    lista_precios_defecto_id: 1,
+    descripcion: "Clientes minoristas en general",
+    activa: true,
+    seguimiento: [{ id: 1, fecha: "2024-01-01T10:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Categoría creada" }]
+  },
+  {
+    id: 2,
+    nombre: "Mayorista",
+    lista_precios_defecto_id: 2,
+    descripcion: "Clientes mayoristas y distribuidores",
+    activa: true,
+    seguimiento: [{ id: 1, fecha: "2024-01-01T10:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Categoría creada" }]
+  },
+  {
+    id: 3,
+    nombre: "MercadoLibre",
+    lista_precios_defecto_id: 1,
+    descripcion: "Compradores a través de MercadoLibre",
+    activa: true,
+    seguimiento: [{ id: 1, fecha: "2024-01-01T10:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Categoría creada" }]
+  },
 ]
 
 const mockListasPrecios: ListaPrecios[] = [
@@ -874,6 +910,17 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [reciboMontoForm, setReciboMontoForm] = useState<number>(0)
   const [reciboPrevisualizando, setReciboPrevisualizando] = useState(false)
   
+  // Estados para Categorías de Clientes
+  const [categoriasCliente, setCategoriasCliente] = useState<CategoriaCliente[]>(mockCategoriasCliente)
+  const [selectedCategoria, setSelectedCategoria] = useState<CategoriaCliente | null>(null)
+  const [editingCategoria, setEditingCategoria] = useState<CategoriaCliente | null>(null)
+  const [creandoCategoria, setCreandoCategoria] = useState(false)
+  const [modoEdicionCategoria, setModoEdicionCategoria] = useState(false)
+  const [categoriaSearchText, setCategoriaSearchText] = useState("")
+
+  // Estado categoría seleccionada en form cliente
+  const [formClienteCategoriaId, setFormClienteCategoriaId] = useState<number | null>(null)
+
   // Estados para Listas de Precios
   const [listasPrecios, setListasPrecios] = useState<ListaPrecios[]>(mockListasPrecios)
   const [versionesLista, setVersionesLista] = useState<VersionListaPrecios[]>(mockVersionesLista)
@@ -1158,6 +1205,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       items: [
         { id: "listas_precios", label: "Listas de Precios", icon: Tag },
         { id: "versiones_lista", label: "Versiones de Lista", icon: Layers },
+        { id: "categorias_cliente", label: "Categorías de Clientes", icon: Users },
       ]
     },
   ]
@@ -1841,12 +1889,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </h3>
               <div className="grid grid-cols-3 gap-3 mb-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Categoría *</label>
-                  <select name="categoria" defaultValue={editingItem?.categoria || "publico"}
-                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                    <option value="publico">Público General</option>
-                    <option value="mercadolibre">MercadoLibre</option>
-                    <option value="mayorista">Mayorista</option>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Categoría de Cliente</label>
+                  <select
+                    name="categoria_id"
+                    value={formClienteCategoriaId ?? ""}
+                    onChange={(e) => {
+                      const catId = e.target.value ? Number(e.target.value) : null
+                      setFormClienteCategoriaId(catId)
+                    }}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  >
+                    <option value="">Sin categoría</option>
+                    {categoriasCliente.filter(c => c.activa).map(c => (
+                      <option key={c.id} value={c.id}>{c.nombre}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -1860,13 +1916,24 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Lista de Precios</label>
-                  <select name="lista_precios_id" defaultValue={editingItem?.lista_precios_id || 1}
-                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                    {mockListasPrecios.map(lp => (
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Lista de Precios por Defecto</label>
+                  <select
+                    name="lista_precios_id"
+                    value={
+                      formClienteCategoriaId
+                        ? (categoriasCliente.find(c => c.id === formClienteCategoriaId)?.lista_precios_defecto_id ?? editingItem?.lista_precios_id ?? 1)
+                        : (editingItem?.lista_precios_id ?? 1)
+                    }
+                    onChange={() => {}}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:bg-gray-50 disabled:text-gray-500"
+                  >
+                    {listasPrecios.map(lp => (
                       <option key={lp.id} value={lp.id}>{lp.nombre}</option>
                     ))}
                   </select>
+                  {formClienteCategoriaId && (
+                    <p className="text-xs text-emerald-600 mt-0.5">Completado por la categoría seleccionada</p>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
@@ -1899,7 +1966,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
               <button
                 type="button"
-                onClick={() => { setCreandoCliente(false); setEditingItem(null) }}
+                onClick={() => { setCreandoCliente(false); setEditingItem(null); setFormClienteCategoriaId(null) }}
                 className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
               >
                 Cancelar
@@ -7930,6 +7997,230 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     }
   }
 
+  // =========================== CATEGORÍAS DE CLIENTES ===========================
+
+  const renderCategoriasCliente = () => {
+    if (selectedCategoria) return renderDetalleCategoriaCliente()
+    return renderListaCategoriasCliente()
+  }
+
+  const renderListaCategoriasCliente = () => {
+    const filtered = categoriasCliente.filter(c =>
+      c.nombre.toLowerCase().includes(categoriaSearchText.toLowerCase()) ||
+      c.descripcion.toLowerCase().includes(categoriaSearchText.toLowerCase())
+    )
+    return (
+      <div>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4 bg-white border-b border-gray-200 py-3 px-4 -mx-6 -mt-6">
+          <button
+            onClick={() => {
+              const nueva: CategoriaCliente = { id: 0, nombre: "", lista_precios_defecto_id: null, descripcion: "", activa: true, seguimiento: [] }
+              setSelectedCategoria(nueva)
+              setEditingCategoria(nueva)
+              setCreandoCategoria(true)
+              setModoEdicionCategoria(true)
+            }}
+            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 transition-colors text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" /> Crear
+          </button>
+          <div className="flex-1 flex items-center justify-center">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="text" placeholder="Buscar categoría..." value={categoriaSearchText} onChange={(e) => setCategoriaSearchText(e.target.value)}
+                className="pl-9 pr-4 py-1.5 border border-gray-300 rounded text-sm w-64 focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500" />
+            </div>
+          </div>
+          <span className="text-sm text-gray-500">1-{filtered.length} de {filtered.length}</span>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                <th className="text-left py-3 px-4 font-medium">Nombre</th>
+                <th className="text-left py-3 px-4 font-medium">Descripción</th>
+                <th className="text-left py-3 px-4 font-medium">Lista de Precios por Defecto</th>
+                <th className="text-center py-3 px-4 font-medium">Activa</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((cat, idx) => {
+                const lista = listasPrecios.find(l => l.id === cat.lista_precios_defecto_id)
+                return (
+                  <tr key={cat.id} className={`border-b border-gray-100 hover:bg-emerald-50 cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                    onClick={() => { setSelectedCategoria(cat); setEditingCategoria(null); setModoEdicionCategoria(false); setCreandoCategoria(false) }}>
+                    <td className="py-3 px-4 font-medium text-gray-900">{cat.nombre}</td>
+                    <td className="py-3 px-4 text-gray-600 text-sm">{cat.descripcion || "-"}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{lista?.nombre || <span className="text-gray-400">Sin asignar</span>}</td>
+                    <td className="py-3 px-4 text-center">
+                      {cat.activa ? <CheckCircle className="w-4 h-4 text-green-500 mx-auto" /> : <X className="w-4 h-4 text-gray-400 mx-auto" />}
+                    </td>
+                  </tr>
+                )
+              })}
+              {filtered.length === 0 && (
+                <tr><td colSpan={4} className="py-8 text-center text-gray-500">No se encontraron categorías</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
+  const renderDetalleCategoriaCliente = () => {
+    if (!selectedCategoria) return null
+    const current = modoEdicionCategoria && editingCategoria ? editingCategoria : selectedCategoria
+    const isEditing = modoEdicionCategoria
+
+    const guardar = () => {
+      if (!editingCategoria || !editingCategoria.nombre.trim()) return
+      const fecha = new Date().toISOString()
+      if (creandoCategoria) {
+        const nuevoId = Math.max(...categoriasCliente.map(c => c.id), 0) + 1
+        const nueva: CategoriaCliente = {
+          ...editingCategoria,
+          id: nuevoId,
+          seguimiento: [{ id: 1, fecha, usuario: "Max Solina", tipo: "creacion", descripcion: "Categoría creada" }]
+        }
+        setCategoriasCliente(prev => [...prev, nueva])
+        setSelectedCategoria(nueva)
+      } else {
+        const actualizada = {
+          ...editingCategoria,
+          seguimiento: [
+            { id: (editingCategoria.seguimiento?.length || 0) + 1, fecha, usuario: "Max Solina", tipo: "cambio_campo" as const, campo: "Datos", valor_nuevo: "Categoría actualizada" },
+            ...(editingCategoria.seguimiento || [])
+          ]
+        }
+        setCategoriasCliente(prev => prev.map(c => c.id === editingCategoria.id ? actualizada : c))
+        setSelectedCategoria(actualizada)
+      }
+      setEditingCategoria(null)
+      setCreandoCategoria(false)
+      setModoEdicionCategoria(false)
+    }
+
+    const descartar = () => {
+      if (creandoCategoria) setSelectedCategoria(null)
+      setEditingCategoria(null)
+      setCreandoCategoria(false)
+      setModoEdicionCategoria(false)
+    }
+
+    const currentIndex = categoriasCliente.findIndex(c => c.id === selectedCategoria.id)
+    const prev = currentIndex > 0 ? categoriasCliente[currentIndex - 1] : null
+    const next = currentIndex < categoriasCliente.length - 1 ? categoriasCliente[currentIndex + 1] : null
+
+    return (
+      <div>
+        {/* Breadcrumb */}
+        <div className="text-sm text-gray-500 mb-4">
+          <button onClick={() => { setSelectedCategoria(null); setEditingCategoria(null); setCreandoCategoria(false); setModoEdicionCategoria(false) }} className="hover:text-emerald-600">
+            Categorías de Clientes
+          </button>
+          <span className="mx-2">/</span>
+          <span className="text-gray-900">{creandoCategoria ? "Nueva Categoría" : current.nombre}</span>
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6 bg-white border-b border-gray-200 py-3 px-4 -mx-6">
+          {isEditing ? (
+            <div className="flex items-center gap-2">
+              <button onClick={guardar} disabled={!current.nombre.trim()} className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                <Save className="w-4 h-4" /> Guardar
+              </button>
+              <button onClick={descartar} className="flex items-center gap-2 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
+                <X className="w-4 h-4" /> Descartar
+              </button>
+            </div>
+          ) : (
+            <BotonVolver onClick={() => { setSelectedCategoria(null); setEditingCategoria(null); setCreandoCategoria(false); setModoEdicionCategoria(false) }} />
+          )}
+          <div className="flex items-center gap-2">
+            {!isEditing && !creandoCategoria && (
+              <button onClick={() => { setEditingCategoria({ ...selectedCategoria }); setModoEdicionCategoria(true) }}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">
+                <Edit className="w-4 h-4" /> Editar
+              </button>
+            )}
+            {!creandoCategoria && (
+              <>
+                <button onClick={() => prev && (setSelectedCategoria(prev), setEditingCategoria(null), setModoEdicionCategoria(false))} disabled={!prev} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30">
+                  <ChevronRight className="w-5 h-5 rotate-180" />
+                </button>
+                <button onClick={() => next && (setSelectedCategoria(next), setEditingCategoria(null), setModoEdicionCategoria(false))} disabled={!next} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30">
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Formulario */}
+        <div className="bg-white border border-gray-200 rounded p-6">
+          <div className="grid grid-cols-2 gap-6 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+              {isEditing ? (
+                <input type="text" value={current.nombre} onChange={(e) => setEditingCategoria({ ...current, nombre: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500" placeholder="Nombre de la categoría" />
+              ) : (
+                <p className="text-gray-900 py-2 font-semibold text-lg">{current.nombre}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Precios por Defecto</label>
+              {isEditing ? (
+                <select value={current.lista_precios_defecto_id ?? ""}
+                  onChange={(e) => setEditingCategoria({ ...current, lista_precios_defecto_id: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500">
+                  <option value="">Sin asignar</option>
+                  {listasPrecios.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}
+                </select>
+              ) : (
+                <p className="text-gray-900 py-2">
+                  {listasPrecios.find(l => l.id === current.lista_precios_defecto_id)?.nombre || <span className="text-gray-400">Sin asignar</span>}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-6 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+              {isEditing ? (
+                <textarea value={current.descripcion} onChange={(e) => setEditingCategoria({ ...current, descripcion: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500" rows={3} placeholder="Descripción de la categoría" />
+              ) : (
+                <p className="text-gray-600 bg-gray-50 p-3 rounded">{current.descripcion || "Sin descripción"}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+              {isEditing ? (
+                <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                  <input type="checkbox" checked={current.activa} onChange={(e) => setEditingCategoria({ ...current, activa: e.target.checked })}
+                    className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500" />
+                  <span className="text-sm text-gray-700">Activa</span>
+                </label>
+              ) : (
+                <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium mt-2 ${current.activa ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                  {current.activa ? "Activa" : "Inactiva"}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {!creandoCategoria && selectedCategoria.seguimiento && (
+            <SeguimientoPanel seguimiento={selectedCategoria.seguimiento} />
+          )}
+        </div>
+      </div>
+    )
+  }
+
   // =========================== RENDER LISTAS DE PRECIOS ===========================
   // Funciones de renderizado para el módulo de Listas de Precios y Versiones
   const renderListasPrecios = () => {
@@ -8866,6 +9157,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         return renderListasPrecios()
       case "versiones_lista":
         return renderVersionesLista()
+      case "categorias_cliente":
+        return renderCategoriasCliente()
       default:
         return renderDashboard()
     }
