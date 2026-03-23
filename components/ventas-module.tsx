@@ -932,8 +932,9 @@ function BloquesMediosPago({ factura, onConfirmarCobro }: {
 
       {/* Líneas */}
       <div className="space-y-3">
-        {lineas.map(linea => {
+        {lineas.map((linea, idx) => {
           const calc = calcularLinea(linea)
+          const esPrimeraLineaEfectivo = linea.medio === "efectivo" && lineas.findIndex(l => l.medio === "efectivo") === idx
           return (
             <div key={linea.id} className="rounded-lg border border-gray-200 overflow-hidden">
               {/* Fila de inputs */}
@@ -971,7 +972,7 @@ function BloquesMediosPago({ factura, onConfirmarCobro }: {
                 )}
 
                 <div className="ml-auto flex items-center gap-2">
-                  {linea.medio === "efectivo" && (
+                  {esPrimeraLineaEfectivo && (
                     <label className="flex items-center gap-1.5 cursor-pointer select-none">
                       <input
                         type="checkbox"
@@ -9084,7 +9085,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <button onClick={() => { setModalNuevaVersionBasada(false); setNuevaVersionBasadaForm({ nombre: "", fecha_inicial: "", fecha_final: "", copiar_lineas: true }) }}
                   className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">Cancelar</button>
                 <button onClick={() => crearVersionBasadaEnOtra(selectedVersion)}
-                  className="px-4 py-2 text-sm bg-emerald-600 text-white rounded hover:bg-emerald-700">Crear Versión</button>
+                  className="px-4 py-2 text-sm bg-emerald-600 text-white rounded hover:bg-emerald-700">Crear Versi��n</button>
               </div>
             </div>
           </div>
