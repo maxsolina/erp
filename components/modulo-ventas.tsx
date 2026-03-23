@@ -44,6 +44,15 @@ interface Vendedor {
   activo: boolean
 }
 
+interface CategoriaCliente {
+  id: number
+  nombre: string
+  lista_precios_defecto_id: number | null
+  descripcion: string
+  activa: boolean
+  seguimiento?: SeguimientoEntry[]
+}
+
 interface ListaPrecios {
   id: number
   nombre: string
@@ -140,6 +149,9 @@ interface LineaNV {
   producto_sku: string
   cantidad: number
   precio_unitario: number
+  precio_unitario_moneda: "ARS" | "USD"
+  precio_unitario_usd: number
+  precio_unitario_ars: number
   descuento: number
   subtotal: number
   fecha_entrega: string
@@ -333,6 +345,33 @@ const mockVendedores: Vendedor[] = [
   { id: 1, nombre: "Max Solina", activo: true },
   { id: 2, nombre: "Laura García", activo: true },
   { id: 3, nombre: "Carlos Pérez", activo: true },
+]
+
+const mockCategoriasCliente: CategoriaCliente[] = [
+  {
+    id: 1,
+    nombre: "Público General",
+    lista_precios_defecto_id: 1,
+    descripcion: "Clientes minoristas en general",
+    activa: true,
+    seguimiento: [{ id: 1, fecha: "2024-01-01T10:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Categoría creada" }]
+  },
+  {
+    id: 2,
+    nombre: "Mayorista",
+    lista_precios_defecto_id: 2,
+    descripcion: "Clientes mayoristas y distribuidores",
+    activa: true,
+    seguimiento: [{ id: 1, fecha: "2024-01-01T10:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Categoría creada" }]
+  },
+  {
+    id: 3,
+    nombre: "MercadoLibre",
+    lista_precios_defecto_id: 1,
+    descripcion: "Compradores a través de MercadoLibre",
+    activa: true,
+    seguimiento: [{ id: 1, fecha: "2024-01-01T10:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Categoría creada" }]
+  },
 ]
 
 const mockListasPrecios: ListaPrecios[] = [
@@ -874,6 +913,17 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [reciboMontoForm, setReciboMontoForm] = useState<number>(0)
   const [reciboPrevisualizando, setReciboPrevisualizando] = useState(false)
   
+  // Estados para Categorías de Clientes
+  const [categoriasCliente, setCategoriasCliente] = useState<CategoriaCliente[]>(mockCategoriasCliente)
+  const [selectedCategoria, setSelectedCategoria] = useState<CategoriaCliente | null>(null)
+  const [editingCategoria, setEditingCategoria] = useState<CategoriaCliente | null>(null)
+  const [creandoCategoria, setCreandoCategoria] = useState(false)
+  const [modoEdicionCategoria, setModoEdicionCategoria] = useState(false)
+  const [categoriaSearchText, setCategoriaSearchText] = useState("")
+
+  // Estado categoría seleccionada en form cliente
+  const [formClienteCategoriaId, setFormClienteCategoriaId] = useState<number | null>(null)
+
   // Estados para Listas de Precios
   const [listasPrecios, setListasPrecios] = useState<ListaPrecios[]>(mockListasPrecios)
   const [versionesLista, setVersionesLista] = useState<VersionListaPrecios[]>(mockVersionesLista)
@@ -969,6 +1019,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       currency: currency,
       minimumFractionDigits: 2 
     }).format(amount)
+  }
+
+  const formatPrecioForzadoARS = (amount: number) => {
+    const formatted = new Intl.NumberFormat('es-AR', { 
+      style: 'currency', 
+      currency: "ARS",
+      minimumFractionDigits: 2 
+    }).format(amount)
+    return `ARS ${formatted}`
   }
 
   const formatDate = (dateString: string) => {
@@ -1149,6 +1208,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       items: [
         { id: "listas_precios", label: "Listas de Precios", icon: Tag },
         { id: "versiones_lista", label: "Versiones de Lista", icon: Layers },
+        { id: "categorias_cliente", label: "Categorías de Clientes", icon: Users },
       ]
     },
   ]
@@ -1832,12 +1892,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </h3>
               <div className="grid grid-cols-3 gap-3 mb-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Categoría *</label>
-                  <select name="categoria" defaultValue={editingItem?.categoria || "publico"}
-                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                    <option value="publico">Público General</option>
-                    <option value="mercadolibre">MercadoLibre</option>
-                    <option value="mayorista">Mayorista</option>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Categoría de Cliente</label>
+                  <select
+                    name="categoria_id"
+                    value={formClienteCategoriaId ?? ""}
+                    onChange={(e) => {
+                      const catId = e.target.value ? Number(e.target.value) : null
+                      setFormClienteCategoriaId(catId)
+                    }}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  >
+                    <option value="">Sin categoría</option>
+                    {categoriasCliente.filter(c => c.activa).map(c => (
+                      <option key={c.id} value={c.id}>{c.nombre}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -1851,13 +1919,24 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Lista de Precios</label>
-                  <select name="lista_precios_id" defaultValue={editingItem?.lista_precios_id || 1}
-                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                    {mockListasPrecios.map(lp => (
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Lista de Precios por Defecto</label>
+                  <select
+                    name="lista_precios_id"
+                    value={
+                      formClienteCategoriaId
+                        ? (categoriasCliente.find(c => c.id === formClienteCategoriaId)?.lista_precios_defecto_id ?? editingItem?.lista_precios_id ?? 1)
+                        : (editingItem?.lista_precios_id ?? 1)
+                    }
+                    onChange={() => {}}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:bg-gray-50 disabled:text-gray-500"
+                  >
+                    {listasPrecios.map(lp => (
                       <option key={lp.id} value={lp.id}>{lp.nombre}</option>
                     ))}
                   </select>
+                  {formClienteCategoriaId && (
+                    <p className="text-xs text-emerald-600 mt-0.5">Completado por la categoría seleccionada</p>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
@@ -1890,7 +1969,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
               <button
                 type="button"
-                onClick={() => { setCreandoCliente(false); setEditingItem(null) }}
+                onClick={() => { setCreandoCliente(false); setEditingItem(null); setFormClienteCategoriaId(null) }}
                 className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
               >
                 Cancelar
@@ -3298,7 +3377,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
                     <th className="text-left py-1.5 px-2">Producto</th>
                     <th className="text-center py-1.5 px-2 w-20">Cant.</th>
-                    <th className="text-right py-1.5 px-2 w-24">Precio</th>
+                    <th className="text-right py-1.5 px-2 w-24">Precio USD</th>
+                    <th className="text-right py-1.5 px-2 w-28">Precio ARS</th>
                     <th className="text-center py-1.5 px-2 w-16">Dto.%</th>
                     <th className="text-right py-1.5 px-2 w-24">Subtotal</th>
                     <th className="w-8"></th>
@@ -3351,10 +3431,50 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                           updated[index].producto_id = p.id
                                           updated[index].producto_nombre = p.nombre
                                           updated[index].producto_sku = p.sku
-                                          updated[index].precio_unitario = p.precio_venta
                                           updated[index].requiere_serie = p.requiere_serie
                                           updated[index].series_seleccionadas = []
-                                          updated[index].subtotal = updated[index].cantidad * p.precio_venta * (1 - updated[index].descuento / 100)
+                                          // Buscar precio desde la versión activa de la lista de precios del cliente
+                                          const clienteNV = clientes.find(c => c.id === nvClienteId)
+                                          const listaId = clienteNV?.lista_precios_id ?? null
+                                          const versionActiva = listaId
+                                            ? versionesLista.find(v => v.lista_id === listaId && v.estado === "activa")
+                                            : null
+                                          const lineaLP = versionActiva?.lineas.find(l => l.producto_id === p.id)
+                                          let precioUnitario = p.precio_venta
+                                          let moneda: "ARS" | "USD" = "ARS"
+                                          let precioUSD = 0
+                                          let precioARS = 0
+                                          if (lineaLP) {
+                                            const cotiz = lineaLP.cotizacion_dolar || COTIZACION_DOLAR_MOCK
+                                            if (lineaLP.forzar_precio_pesos && lineaLP.precio_forzado_ars) {
+                                              // Precio forzado en ARS
+                                              precioARS = lineaLP.precio_forzado_ars
+                                              precioUSD = parseFloat((precioARS / cotiz).toFixed(2))
+                                              precioUnitario = precioARS
+                                              moneda = "ARS"
+                                            } else if (lineaLP.precio_venta_moneda === "USD") {
+                                              precioUSD = lineaLP.precio_venta
+                                              precioARS = parseFloat((precioUSD * cotiz).toFixed(2))
+                                              precioUnitario = precioARS
+                                              moneda = "USD"
+                                            } else {
+                                              precioARS = lineaLP.precio_venta
+                                              precioUSD = parseFloat((precioARS / cotiz).toFixed(2))
+                                              precioUnitario = precioARS
+                                              moneda = "ARS"
+                                            }
+                                          } else {
+                                            // Sin lista: usar precio_venta del producto como ARS
+                                            precioARS = p.precio_venta
+                                            precioUSD = parseFloat((precioARS / COTIZACION_DOLAR_MOCK).toFixed(2))
+                                            precioUnitario = precioARS
+                                            moneda = "ARS"
+                                          }
+                                          updated[index].precio_unitario = precioUnitario
+                                          updated[index].precio_unitario_moneda = moneda
+                                          updated[index].precio_unitario_usd = precioUSD
+                                          updated[index].precio_unitario_ars = precioARS
+                                          updated[index].subtotal = updated[index].cantidad * precioUnitario * (1 - updated[index].descuento / 100)
                                           setNvLineas(updated)
                                           setProductoSearchIndex(null)
                                           setProductoSearchText("")
@@ -3424,20 +3544,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-center"
                         />
                       </td>
-                      <td className="py-1 px-2">
-                        <input
-                          type="number"
-                          value={linea.precio_unitario}
-                          min="0"
-                          step="0.01"
-                          onChange={(e) => {
-                            const updated = [...nvLineas]
-                            updated[index].precio_unitario = parseFloat(e.target.value) || 0
-                            updated[index].subtotal = updated[index].cantidad * updated[index].precio_unitario * (1 - updated[index].descuento / 100)
-                            setNvLineas(updated)
-                          }}
-                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right"
-                        />
+                      <td className="py-1 px-2 text-right text-sm text-blue-700 font-medium">
+                        {linea.precio_unitario_usd > 0
+                          ? `US$ ${linea.precio_unitario_usd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : <span className="text-gray-300">-</span>
+                        }
+                      </td>
+                      <td className="py-1 px-2 text-right text-sm font-medium">
+                        {linea.precio_unitario_ars > 0 ? (
+                          <span className={linea.precio_unitario_moneda === "ARS" ? "text-amber-700" : "text-gray-700"}>
+                            ARS $ {linea.precio_unitario_ars.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        ) : (
+                          <span className="text-gray-300">-</span>
+                        )}
                       </td>
                       <td className="py-1 px-2">
                         <input
@@ -3471,7 +3591,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   ))}
                   {nvLineas.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="text-center py-4 text-gray-400 text-sm">
+                      <td colSpan={7} className="text-center py-4 text-gray-400 text-sm">
                         No hay productos agregados
                       </td>
                     </tr>
@@ -3490,6 +3610,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       producto_sku: "",
                       cantidad: 1,
                       precio_unitario: 0,
+                      precio_unitario_moneda: "ARS",
+                      precio_unitario_usd: 0,
+                      precio_unitario_ars: 0,
                       descuento: 0,
                       subtotal: 0,
                       fecha_entrega: new Date().toISOString().split('T')[0],
@@ -3559,7 +3682,41 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           </div>
 
           {/* Columna derecha - Resumen y acciones */}
-          <div className="space-y-6">
+          <div className="space-y-4">
+            {/* Categoría de Cliente y Lista de Precios */}
+            {(() => {
+              const clienteNV = clientes.find(c => c.id === nvClienteId)
+              const categoriaNV = clienteNV ? categoriasCliente.find(cat => cat.nombre.toLowerCase() === clienteNV.categoria.toLowerCase()) : null
+              const listaNV = clienteNV ? listasPrecios.find(l => l.id === clienteNV.lista_precios_id) : null
+              return (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                  <h3 className="font-semibold text-gray-900 mb-3 text-sm">Configuración de Venta</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Categoría de Cliente</label>
+                      {clienteNV ? (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                          {categoriaNV?.nombre || clienteNV.categoria}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">Seleccione un cliente</span>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Lista de Precios por Defecto</label>
+                      {clienteNV ? (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+                          {listaNV?.nombre || "Sin asignar"}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">Seleccione un cliente</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* Resumen */}
             <div className="bg-white rounded-lg shadow-sm p-4">
               <h3 className="font-semibold text-gray-900 mb-4">Resumen</h3>
@@ -7762,6 +7919,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       setEditingVersion(null)
       setCreandoVersion(false)
       setModoEdicionVersion(false)
+      setEditandoLineas(false)
+      setNuevaLineaVersion({})
     } else {
       const seguimientoActualizado = [
         {
@@ -7784,6 +7943,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       setSelectedVersion(versionActualizada)
       setEditingVersion(null)
       setModoEdicionVersion(false)
+      setEditandoLineas(false)
+      setNuevaLineaVersion({})
     }
   }
 
@@ -7794,12 +7955,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setEditingVersion(null)
     setCreandoVersion(false)
     setModoEdicionVersion(false)
+    setEditandoLineas(false)
+    setNuevaLineaVersion({})
   }
 
   const iniciarEdicionVersion = () => {
     if (selectedVersion) {
       setEditingVersion({ ...selectedVersion })
       setModoEdicionVersion(true)
+      setEditandoLineas(true)
     }
   }
 
@@ -7884,7 +8048,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       lineas: versionActual.lineas.map(l => {
         if (l.id !== lineaId) return l
         
-        const lineaActualizada = { ...l, [campo]: valor }
+        let lineaActualizada = { ...l, [campo]: valor }
+        
+        // Si se activa forzar precio, limpiar markups
+        if (campo === 'forzar_precio_pesos' && valor === true) {
+          lineaActualizada = { ...lineaActualizada, markup_porcentaje: 0, markup_nominal: 0 }
+        }
         
         // Recalcular precio si cambió algo relevante
         if (['costo_importe', 'markup_porcentaje', 'markup_nominal', 'forzar_precio_pesos', 'precio_forzado_ars', 'cotizacion_dolar'].includes(campo)) {
@@ -7907,6 +8076,230 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       setVersionesLista(prev => prev.map(v => v.id === versionActual.id ? versionActualizada : v))
       setSelectedVersion(versionActualizada)
     }
+  }
+
+  // =========================== CATEGORÍAS DE CLIENTES ===========================
+
+  const renderCategoriasCliente = () => {
+    if (selectedCategoria) return renderDetalleCategoriaCliente()
+    return renderListaCategoriasCliente()
+  }
+
+  const renderListaCategoriasCliente = () => {
+    const filtered = categoriasCliente.filter(c =>
+      c.nombre.toLowerCase().includes(categoriaSearchText.toLowerCase()) ||
+      c.descripcion.toLowerCase().includes(categoriaSearchText.toLowerCase())
+    )
+    return (
+      <div>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4 bg-white border-b border-gray-200 py-3 px-4 -mx-6 -mt-6">
+          <button
+            onClick={() => {
+              const nueva: CategoriaCliente = { id: 0, nombre: "", lista_precios_defecto_id: null, descripcion: "", activa: true, seguimiento: [] }
+              setSelectedCategoria(nueva)
+              setEditingCategoria(nueva)
+              setCreandoCategoria(true)
+              setModoEdicionCategoria(true)
+            }}
+            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 transition-colors text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" /> Crear
+          </button>
+          <div className="flex-1 flex items-center justify-center">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="text" placeholder="Buscar categoría..." value={categoriaSearchText} onChange={(e) => setCategoriaSearchText(e.target.value)}
+                className="pl-9 pr-4 py-1.5 border border-gray-300 rounded text-sm w-64 focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500" />
+            </div>
+          </div>
+          <span className="text-sm text-gray-500">1-{filtered.length} de {filtered.length}</span>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                <th className="text-left py-3 px-4 font-medium">Nombre</th>
+                <th className="text-left py-3 px-4 font-medium">Descripción</th>
+                <th className="text-left py-3 px-4 font-medium">Lista de Precios por Defecto</th>
+                <th className="text-center py-3 px-4 font-medium">Activa</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((cat, idx) => {
+                const lista = listasPrecios.find(l => l.id === cat.lista_precios_defecto_id)
+                return (
+                  <tr key={cat.id} className={`border-b border-gray-100 hover:bg-emerald-50 cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                    onClick={() => { setSelectedCategoria(cat); setEditingCategoria(null); setModoEdicionCategoria(false); setCreandoCategoria(false) }}>
+                    <td className="py-3 px-4 font-medium text-gray-900">{cat.nombre}</td>
+                    <td className="py-3 px-4 text-gray-600 text-sm">{cat.descripcion || "-"}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{lista?.nombre || <span className="text-gray-400">Sin asignar</span>}</td>
+                    <td className="py-3 px-4 text-center">
+                      {cat.activa ? <CheckCircle className="w-4 h-4 text-green-500 mx-auto" /> : <X className="w-4 h-4 text-gray-400 mx-auto" />}
+                    </td>
+                  </tr>
+                )
+              })}
+              {filtered.length === 0 && (
+                <tr><td colSpan={4} className="py-8 text-center text-gray-500">No se encontraron categorías</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
+  const renderDetalleCategoriaCliente = () => {
+    if (!selectedCategoria) return null
+    const current = modoEdicionCategoria && editingCategoria ? editingCategoria : selectedCategoria
+    const isEditing = modoEdicionCategoria
+
+    const guardar = () => {
+      if (!editingCategoria || !editingCategoria.nombre.trim()) return
+      const fecha = new Date().toISOString()
+      if (creandoCategoria) {
+        const nuevoId = Math.max(...categoriasCliente.map(c => c.id), 0) + 1
+        const nueva: CategoriaCliente = {
+          ...editingCategoria,
+          id: nuevoId,
+          seguimiento: [{ id: 1, fecha, usuario: "Max Solina", tipo: "creacion", descripcion: "Categoría creada" }]
+        }
+        setCategoriasCliente(prev => [...prev, nueva])
+        setSelectedCategoria(nueva)
+      } else {
+        const actualizada = {
+          ...editingCategoria,
+          seguimiento: [
+            { id: (editingCategoria.seguimiento?.length || 0) + 1, fecha, usuario: "Max Solina", tipo: "cambio_campo" as const, campo: "Datos", valor_nuevo: "Categoría actualizada" },
+            ...(editingCategoria.seguimiento || [])
+          ]
+        }
+        setCategoriasCliente(prev => prev.map(c => c.id === editingCategoria.id ? actualizada : c))
+        setSelectedCategoria(actualizada)
+      }
+      setEditingCategoria(null)
+      setCreandoCategoria(false)
+      setModoEdicionCategoria(false)
+    }
+
+    const descartar = () => {
+      if (creandoCategoria) setSelectedCategoria(null)
+      setEditingCategoria(null)
+      setCreandoCategoria(false)
+      setModoEdicionCategoria(false)
+    }
+
+    const currentIndex = categoriasCliente.findIndex(c => c.id === selectedCategoria.id)
+    const prev = currentIndex > 0 ? categoriasCliente[currentIndex - 1] : null
+    const next = currentIndex < categoriasCliente.length - 1 ? categoriasCliente[currentIndex + 1] : null
+
+    return (
+      <div>
+        {/* Breadcrumb */}
+        <div className="text-sm text-gray-500 mb-4">
+          <button onClick={() => { setSelectedCategoria(null); setEditingCategoria(null); setCreandoCategoria(false); setModoEdicionCategoria(false) }} className="hover:text-emerald-600">
+            Categorías de Clientes
+          </button>
+          <span className="mx-2">/</span>
+          <span className="text-gray-900">{creandoCategoria ? "Nueva Categoría" : current.nombre}</span>
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6 bg-white border-b border-gray-200 py-3 px-4 -mx-6">
+          {isEditing ? (
+            <div className="flex items-center gap-2">
+              <button onClick={guardar} disabled={!current.nombre.trim()} className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                <Save className="w-4 h-4" /> Guardar
+              </button>
+              <button onClick={descartar} className="flex items-center gap-2 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
+                <X className="w-4 h-4" /> Descartar
+              </button>
+            </div>
+          ) : (
+            <BotonVolver onClick={() => { setSelectedCategoria(null); setEditingCategoria(null); setCreandoCategoria(false); setModoEdicionCategoria(false) }} />
+          )}
+          <div className="flex items-center gap-2">
+            {!isEditing && !creandoCategoria && (
+              <button onClick={() => { setEditingCategoria({ ...selectedCategoria }); setModoEdicionCategoria(true) }}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">
+                <Edit className="w-4 h-4" /> Editar
+              </button>
+            )}
+            {!creandoCategoria && (
+              <>
+                <button onClick={() => prev && (setSelectedCategoria(prev), setEditingCategoria(null), setModoEdicionCategoria(false))} disabled={!prev} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30">
+                  <ChevronRight className="w-5 h-5 rotate-180" />
+                </button>
+                <button onClick={() => next && (setSelectedCategoria(next), setEditingCategoria(null), setModoEdicionCategoria(false))} disabled={!next} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30">
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Formulario */}
+        <div className="bg-white border border-gray-200 rounded p-6">
+          <div className="grid grid-cols-2 gap-6 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+              {isEditing ? (
+                <input type="text" value={current.nombre} onChange={(e) => setEditingCategoria({ ...current, nombre: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500" placeholder="Nombre de la categoría" />
+              ) : (
+                <p className="text-gray-900 py-2 font-semibold text-lg">{current.nombre}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Precios por Defecto</label>
+              {isEditing ? (
+                <select value={current.lista_precios_defecto_id ?? ""}
+                  onChange={(e) => setEditingCategoria({ ...current, lista_precios_defecto_id: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500">
+                  <option value="">Sin asignar</option>
+                  {listasPrecios.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}
+                </select>
+              ) : (
+                <p className="text-gray-900 py-2">
+                  {listasPrecios.find(l => l.id === current.lista_precios_defecto_id)?.nombre || <span className="text-gray-400">Sin asignar</span>}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-6 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+              {isEditing ? (
+                <textarea value={current.descripcion} onChange={(e) => setEditingCategoria({ ...current, descripcion: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500" rows={3} placeholder="Descripción de la categoría" />
+              ) : (
+                <p className="text-gray-600 bg-gray-50 p-3 rounded">{current.descripcion || "Sin descripción"}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+              {isEditing ? (
+                <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                  <input type="checkbox" checked={current.activa} onChange={(e) => setEditingCategoria({ ...current, activa: e.target.checked })}
+                    className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500" />
+                  <span className="text-sm text-gray-700">Activa</span>
+                </label>
+              ) : (
+                <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium mt-2 ${current.activa ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                  {current.activa ? "Activa" : "Inactiva"}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {!creandoCategoria && selectedCategoria.seguimiento && (
+            <SeguimientoPanel seguimiento={selectedCategoria.seguimiento} />
+          )}
+        </div>
+      </div>
+    )
   }
 
   // =========================== RENDER LISTAS DE PRECIOS ===========================
@@ -8582,7 +8975,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-gray-900">Líneas de Precios ({currentVersion.lineas.length})</h4>
-              {!creandoVersion && (
+              {!creandoVersion && !modoEdicionVersion && (
                 <button onClick={() => setEditandoLineas(!editandoLineas)} className={`flex items-center gap-1 px-2 py-1 text-xs rounded ${editandoLineas ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                   <Edit className="w-3 h-3" /> {editandoLineas ? 'Editando' : 'Editar líneas'}
                 </button>
@@ -8635,23 +9028,44 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           className="w-20 px-1 py-1 border border-gray-300 rounded text-xs text-right" />
                       </td>
                       <td className="py-1.5 px-2">
-                        <input type="number" value={nuevaLineaVersion.markup_porcentaje || ""} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, markup_porcentaje: Number(e.target.value) })}
-                          className="w-16 px-1 py-1 border border-gray-300 rounded text-xs text-right" placeholder="0" />
+                        <input
+                          type="number"
+                          value={nuevaLineaVersion.markup_porcentaje || ""}
+                          onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, markup_porcentaje: Number(e.target.value) })}
+                          disabled={!!nuevaLineaVersion.forzar_precio_pesos}
+                          className={`w-16 px-1 py-1 border rounded text-xs text-right ${nuevaLineaVersion.forzar_precio_pesos ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed' : 'border-gray-300'}`}
+                          placeholder="0"
+                        />
                       </td>
                       <td className="py-1.5 px-2">
-                        <input type="number" value={nuevaLineaVersion.markup_nominal || ""} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, markup_nominal: Number(e.target.value) })}
-                          className="w-16 px-1 py-1 border border-gray-300 rounded text-xs text-right" placeholder="0" />
+                        <input
+                          type="number"
+                          value={nuevaLineaVersion.markup_nominal || ""}
+                          onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, markup_nominal: Number(e.target.value) })}
+                          disabled={!!nuevaLineaVersion.forzar_precio_pesos}
+                          className={`w-16 px-1 py-1 border rounded text-xs text-right ${nuevaLineaVersion.forzar_precio_pesos ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed' : 'border-gray-300'}`}
+                          placeholder="0"
+                        />
                       </td>
                       <td className="py-1.5 px-2 text-center">
-                        <input type="checkbox" checked={nuevaLineaVersion.forzar_precio_pesos || false} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, forzar_precio_pesos: e.target.checked })}
-                          className="w-3 h-3 text-emerald-600 border-gray-300 rounded" />
+                        <input
+                          type="checkbox"
+                          checked={nuevaLineaVersion.forzar_precio_pesos || false}
+                          onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, forzar_precio_pesos: e.target.checked, markup_porcentaje: e.target.checked ? 0 : nuevaLineaVersion.markup_porcentaje, markup_nominal: e.target.checked ? 0 : nuevaLineaVersion.markup_nominal })}
+                          className="w-3 h-3 text-emerald-600 border-gray-300 rounded cursor-pointer"
+                        />
                       </td>
                       <td className="py-1.5 px-2">
                         {nuevaLineaVersion.forzar_precio_pesos ? (
-                          <input type="number" value={nuevaLineaVersion.precio_forzado_ars || ""} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, precio_forzado_ars: Number(e.target.value) })}
-                            className="w-24 px-1 py-1 border border-gray-300 rounded text-xs text-right" placeholder="Precio $" />
+                          <input
+                            type="number"
+                            value={nuevaLineaVersion.precio_forzado_ars || ""}
+                            onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, precio_forzado_ars: Number(e.target.value) })}
+                            className="w-28 px-1 py-1 border border-amber-400 bg-amber-50 rounded text-xs text-right text-amber-800 placeholder-amber-400 focus:ring-1 focus:ring-amber-400"
+                            placeholder="Precio ARS"
+                          />
                         ) : (
-                          <span className="text-gray-400">Auto</span>
+                          <span className="text-gray-400 text-xs">Auto</span>
                         )}
                       </td>
                       <td className="py-1.5 px-2">
@@ -8704,38 +9118,57 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       </td>
                       <td className="py-1.5 px-2 text-right">
                         {(editandoLineas || creandoVersion) ? (
-                          <input type="number" value={linea.markup_porcentaje} onChange={(e) => actualizarLineaVersion(linea.id, 'markup_porcentaje', Number(e.target.value))}
-                            className="w-14 px-1 py-0.5 border border-gray-300 rounded text-xs text-right" />
+                          <input
+                            type="number"
+                            value={linea.markup_porcentaje}
+                            onChange={(e) => actualizarLineaVersion(linea.id, 'markup_porcentaje', Number(e.target.value))}
+                            disabled={linea.forzar_precio_pesos}
+                            className={`w-14 px-1 py-0.5 border rounded text-xs text-right ${linea.forzar_precio_pesos ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed' : 'border-gray-300'}`}
+                          />
                         ) : (
-                          `${linea.markup_porcentaje}%`
+                          linea.forzar_precio_pesos ? <span className="text-gray-300">-</span> : `${linea.markup_porcentaje}%`
                         )}
                       </td>
                       <td className="py-1.5 px-2 text-right">
                         {(editandoLineas || creandoVersion) ? (
-                          <input type="number" value={linea.markup_nominal} onChange={(e) => actualizarLineaVersion(linea.id, 'markup_nominal', Number(e.target.value))}
-                            className="w-14 px-1 py-0.5 border border-gray-300 rounded text-xs text-right" />
+                          <input
+                            type="number"
+                            value={linea.markup_nominal}
+                            onChange={(e) => actualizarLineaVersion(linea.id, 'markup_nominal', Number(e.target.value))}
+                            disabled={linea.forzar_precio_pesos}
+                            className={`w-14 px-1 py-0.5 border rounded text-xs text-right ${linea.forzar_precio_pesos ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed' : 'border-gray-300'}`}
+                          />
                         ) : (
-                          linea.markup_nominal > 0 ? formatCurrency(linea.markup_nominal, linea.costo_moneda) : '-'
+                          linea.forzar_precio_pesos ? <span className="text-gray-300">-</span> : (linea.markup_nominal > 0 ? formatCurrency(linea.markup_nominal, linea.costo_moneda) : '-')
                         )}
                       </td>
                       <td className="py-1.5 px-2 text-center">
                         {(editandoLineas || creandoVersion) ? (
                           <input type="checkbox" checked={linea.forzar_precio_pesos} onChange={(e) => actualizarLineaVersion(linea.id, 'forzar_precio_pesos', e.target.checked)}
-                            className="w-3 h-3 text-emerald-600 border-gray-300 rounded" />
+                            className="w-3 h-3 text-emerald-600 border-gray-300 rounded cursor-pointer" />
                         ) : (
                           linea.forzar_precio_pesos ? <CheckCircle className="w-3 h-3 text-amber-500 mx-auto" /> : <span className="text-gray-300">-</span>
                         )}
                       </td>
-                      <td className="py-1.5 px-2 text-right font-medium text-emerald-700">
-                        {linea.forzar_precio_pesos && linea.precio_forzado_ars ? (
-                          (editandoLineas || creandoVersion) ? (
-                            <input type="number" value={linea.precio_forzado_ars} onChange={(e) => actualizarLineaVersion(linea.id, 'precio_forzado_ars', Number(e.target.value))}
-                              className="w-24 px-1 py-0.5 border border-amber-300 bg-amber-50 rounded text-xs text-right" />
+                      <td className="py-1.5 px-2 text-right font-medium">
+                        {(editandoLineas || creandoVersion) ? (
+                          linea.forzar_precio_pesos ? (
+                            <input
+                              type="number"
+                              value={linea.precio_forzado_ars ?? ""}
+                              onChange={(e) => actualizarLineaVersion(linea.id, 'precio_forzado_ars', e.target.value === "" ? null : Number(e.target.value))}
+                              placeholder="Precio ARS"
+                              className="w-28 px-1 py-0.5 border border-amber-400 bg-amber-50 rounded text-xs text-right text-amber-800 focus:ring-1 focus:ring-amber-400"
+                            />
                           ) : (
-                            <span className="text-amber-700">{formatCurrency(linea.precio_forzado_ars, "ARS")}</span>
+                            <span className="text-emerald-700">{formatCurrency(linea.precio_venta, linea.precio_venta_moneda)}</span>
                           )
                         ) : (
-                          formatCurrency(linea.precio_venta, linea.precio_venta_moneda)
+                          linea.forzar_precio_pesos && linea.precio_forzado_ars ? (
+                            <span className="text-amber-700">{formatPrecioForzadoARS(linea.precio_forzado_ars)}</span>
+                          ) : (
+                            <span className="text-emerald-700">{formatCurrency(linea.precio_venta, linea.precio_venta_moneda)}</span>
+                          )
                         )}
                       </td>
                       <td className="py-1.5 px-2 text-center">
@@ -8805,6 +9238,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         return renderListasPrecios()
       case "versiones_lista":
         return renderVersionesLista()
+      case "categorias_cliente":
+        return renderCategoriasCliente()
       default:
         return renderDashboard()
     }
