@@ -3375,12 +3375,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <table className="w-full">
                 <thead>
                   <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
-                    <th className="text-left py-1.5 px-2">Producto</th>
+                    <th className="text-left py-1.5 px-2 min-w-[260px]">Producto</th>
                     <th className="text-center py-1.5 px-2 w-20">Cant.</th>
-                    <th className="text-right py-1.5 px-2 w-24">Precio USD</th>
-                    <th className="text-right py-1.5 px-2 w-28">Precio ARS</th>
+                    <th className="text-right py-1.5 px-2 w-28">Precio USD</th>
+                    <th className="text-right py-1.5 px-2 w-32">Precio ARS</th>
                     <th className="text-center py-1.5 px-2 w-16">Dto.%</th>
-                    <th className="text-right py-1.5 px-2 w-24">Subtotal</th>
+                    <th className="text-right py-1.5 px-2 w-28">Subtotal</th>
                     <th className="w-8"></th>
                   </tr>
                 </thead>
@@ -3416,7 +3416,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                               />
                               {/* Dropdown de sugerencias */}
                               {productoSearchIndex === index && (
-                                <div className="absolute left-0 top-full z-50 w-full mt-1 bg-white border border-gray-300 shadow-lg max-h-48 overflow-y-auto">
+                                <div className="absolute left-0 top-full z-50 min-w-[280px] w-full mt-1 bg-white border border-gray-300 shadow-lg max-h-48 overflow-y-auto rounded">
                                   {productosConSerie
                                     .filter(p =>
                                       p.nombre.toLowerCase().includes(productoSearchText.toLowerCase()) ||
