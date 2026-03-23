@@ -3416,13 +3416,29 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                 className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
                               />
                               {/* Dropdown de sugerencias */}
-                              {productoSearchIndex === index && (
+                              {productoSearchIndex === index && (() => {
+                                // Determinar los productos disponibles según lista de precios del cliente
+                                const clienteNVdrop = clientes.find(c => c.id === nvClienteId)
+                                const listaIdDrop = clienteNVdrop?.lista_precios_id ?? null
+                                const versionActivaDrop = listaIdDrop
+                                  ? versionesLista.find(v => v.lista_id === listaIdDrop && v.estado === "activa")
+                                  : null
+                                // Si hay versión activa, mostrar solo los productos de esa versión; si no, mostrar todos
+                                const productosDrop = versionActivaDrop
+                                  ? productosConSerie.filter(p => versionActivaDrop.lineas.some(l => l.producto_id === p.id))
+                                  : productosConSerie
+                                const productosFiltrados = productosDrop.filter(p =>
+                                  p.nombre.toLowerCase().includes(productoSearchText.toLowerCase()) ||
+                                  p.sku.toLowerCase().includes(productoSearchText.toLowerCase())
+                                )
+                                return (
                                 <div className="absolute left-0 top-full z-50 min-w-[280px] w-full mt-1 bg-white border border-gray-300 shadow-lg max-h-48 overflow-y-auto rounded">
-                                  {productosConSerie
-                                    .filter(p =>
-                                      p.nombre.toLowerCase().includes(productoSearchText.toLowerCase()) ||
-                                      p.sku.toLowerCase().includes(productoSearchText.toLowerCase())
-                                    )
+                                  {versionActivaDrop && (
+                                    <div className="px-2 py-1 text-xs text-emerald-700 bg-emerald-50 border-b border-emerald-100 font-medium">
+                                      Lista: {listasPrecios.find(l => l.id === listaIdDrop)?.nombre}
+                                    </div>
+                                  )}
+                                  {productosFiltrados
                                     .map(p => (
                                       <div
                                         key={p.id}
@@ -3493,13 +3509,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                       </div>
                                     ))
                                   }
-                                  {productosConSerie.filter(p =>
-                                    p.nombre.toLowerCase().includes(productoSearchText.toLowerCase()) ||
-                                    p.sku.toLowerCase().includes(productoSearchText.toLowerCase())
-                                  ).length === 0 && (
-                                    <div className="px-2 py-1 text-sm text-gray-500">No se encontraron productos</div>
+                                  {productosFiltrados.length === 0 && (
+                                    <div className="px-2 py-1.5 text-sm text-gray-500">
+                                      {versionActivaDrop
+                                        ? "No hay productos en la lista de precios del cliente"
+                                        : "No se encontraron productos"}
+                                    </div>
                                   )}
                                 </div>
+                                )
+                              })()}
                               )}
                             </div>
                             {linea.requiere_serie && linea.producto_id > 0 && (
