@@ -3161,8 +3161,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const selectedCliente = clientes.find(c => c.id === nvClienteId)
     const lineasValidas = nvLineas.filter(l => l.producto_id > 0 && l.producto_nombre.trim() !== "")
     const subtotal = lineasValidas.reduce((sum, l) => sum + l.subtotal, 0)
-    const iva = subtotal * 0.21
-    const total = subtotal + iva
+    const total = subtotal
     const deposito = depositosVenta.find(d => d.id === nvDepositoId)
     const ubicacion = ubicacionesVenta.find(u => u.id === nvUbicacionId)
 
@@ -3309,10 +3308,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <span className="text-gray-500">Subtotal:</span>
                 <span>{formatCurrency(subtotal)}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">IVA (21%):</span>
-                <span>{formatCurrency(iva)}</span>
-              </div>
               <div className="flex justify-between text-lg font-bold pt-2 border-t">
                 <span>Total:</span>
                 <span className="text-emerald-700">{formatCurrency(total)}</span>
@@ -3327,10 +3322,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   // Vista de Crear Nota de Venta (pantalla completa, no modal)
   const renderCrearNV = () => {
     const selectedCliente = clientes.find(c => c.id === nvClienteId)
-    const subtotal = nvLineas.reduce((sum, l) => sum + l.subtotal, 0)
-    const total = subtotal * 1.21
-
-    // Si estamos en previsualización, mostrar vista previa
+  const subtotal = nvLineas.reduce((sum, l) => sum + l.subtotal, 0)
+  const total = subtotal
+  
+  // Si estamos en previsualización, mostrar vista previa
     if (nvPrevisualizando) {
       return renderPrevisualizacionNV()
     }
@@ -3747,10 +3742,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Subtotal:</span>
                   <span className="font-medium">{formatCurrency(subtotal)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">IVA (21%):</span>
-                  <span className="font-medium">{formatCurrency(subtotal * 0.21)}</span>
                 </div>
                 <div className="border-t pt-3">
                   <div className="flex justify-between text-lg font-bold">
