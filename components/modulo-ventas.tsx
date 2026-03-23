@@ -7762,6 +7762,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       setEditingVersion(null)
       setCreandoVersion(false)
       setModoEdicionVersion(false)
+      setEditandoLineas(false)
+      setNuevaLineaVersion({})
     } else {
       const seguimientoActualizado = [
         {
@@ -7784,6 +7786,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       setSelectedVersion(versionActualizada)
       setEditingVersion(null)
       setModoEdicionVersion(false)
+      setEditandoLineas(false)
+      setNuevaLineaVersion({})
     }
   }
 
@@ -7794,12 +7798,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setEditingVersion(null)
     setCreandoVersion(false)
     setModoEdicionVersion(false)
+    setEditandoLineas(false)
+    setNuevaLineaVersion({})
   }
 
   const iniciarEdicionVersion = () => {
     if (selectedVersion) {
       setEditingVersion({ ...selectedVersion })
       setModoEdicionVersion(true)
+      setEditandoLineas(true)
     }
   }
 
@@ -8582,7 +8589,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-gray-900">Líneas de Precios ({currentVersion.lineas.length})</h4>
-              {!creandoVersion && (
+              {!creandoVersion && !modoEdicionVersion && (
                 <button onClick={() => setEditandoLineas(!editandoLineas)} className={`flex items-center gap-1 px-2 py-1 text-xs rounded ${editandoLineas ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                   <Edit className="w-3 h-3" /> {editandoLineas ? 'Editando' : 'Editar líneas'}
                 </button>
