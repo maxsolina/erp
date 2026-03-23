@@ -1,6 +1,6 @@
 "use client"
 
-// Modulo de Ventas - Cell Home ERP v2
+// Modulo de Ventas - Cell Home ERP v3
 import React, { useState, useMemo } from "react"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History } from "lucide-react"
 import BotonVolver from "./ui/boton-volver"
@@ -1817,6 +1817,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <form onSubmit={(e) => {
             e.preventDefault()
             const formData = new FormData(e.currentTarget)
+            const catId = formClienteCategoriaId
+            const catNombre = categoriasCliente.find(c => c.id === catId)?.nombre?.toLowerCase() as ClienteVenta["categoria"] | undefined
             const newCliente: ClienteVenta = {
               id: editingItem?.id || clientes.length + 1,
               codigo: editingItem?.codigo || `C0${15520 + clientes.length}`,
@@ -1833,7 +1835,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               telefono: formData.get("telefono") as string || "",
               celular: formData.get("celular") as string || "",
               email: formData.get("email") as string || "",
-              categoria: formData.get("categoria") as ClienteVenta["categoria"],
+              categoria: catNombre ?? (editingItem?.categoria ?? null),
               vendedor_id: parseInt(formData.get("vendedor_id") as string) || null,
               cobrador_id: null,
               lista_precios_id: parseInt(formData.get("lista_precios_id") as string) || 1,
@@ -9292,6 +9294,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <form onSubmit={(e) => {
           e.preventDefault()
           const formData = new FormData(e.currentTarget)
+          const catId2 = formClienteCategoriaId
+          const catNombre2 = categoriasCliente.find(c => c.id === catId2)?.nombre?.toLowerCase() as ClienteVenta["categoria"] | undefined
           const newCliente: ClienteVenta = {
             id: editingItem?.id || clientes.length + 1,
             codigo: editingItem?.codigo || `C0${15520 + clientes.length}`,
@@ -9308,7 +9312,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             telefono: formData.get("telefono") as string || "",
             celular: formData.get("celular") as string || "",
             email: formData.get("email") as string || "",
-            categoria: formData.get("categoria") as ClienteVenta["categoria"],
+            categoria: catNombre2 ?? (editingItem?.categoria ?? null),
             vendedor_id: parseInt(formData.get("vendedor_id") as string) || null,
             cobrador_id: null,
             lista_precios_id: parseInt(formData.get("lista_precios_id") as string) || 1,
