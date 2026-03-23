@@ -7891,7 +7891,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       lineas: versionActual.lineas.map(l => {
         if (l.id !== lineaId) return l
         
-        const lineaActualizada = { ...l, [campo]: valor }
+        let lineaActualizada = { ...l, [campo]: valor }
+        
+        // Si se activa forzar precio, limpiar markups
+        if (campo === 'forzar_precio_pesos' && valor === true) {
+          lineaActualizada = { ...lineaActualizada, markup_porcentaje: 0, markup_nominal: 0 }
+        }
         
         // Recalcular precio si cambió algo relevante
         if (['costo_importe', 'markup_porcentaje', 'markup_nominal', 'forzar_precio_pesos', 'precio_forzado_ars', 'cotizacion_dolar'].includes(campo)) {
@@ -8642,23 +8647,44 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           className="w-20 px-1 py-1 border border-gray-300 rounded text-xs text-right" />
                       </td>
                       <td className="py-1.5 px-2">
-                        <input type="number" value={nuevaLineaVersion.markup_porcentaje || ""} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, markup_porcentaje: Number(e.target.value) })}
-                          className="w-16 px-1 py-1 border border-gray-300 rounded text-xs text-right" placeholder="0" />
+                        <input
+                          type="number"
+                          value={nuevaLineaVersion.markup_porcentaje || ""}
+                          onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, markup_porcentaje: Number(e.target.value) })}
+                          disabled={!!nuevaLineaVersion.forzar_precio_pesos}
+                          className={`w-16 px-1 py-1 border rounded text-xs text-right ${nuevaLineaVersion.forzar_precio_pesos ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed' : 'border-gray-300'}`}
+                          placeholder="0"
+                        />
                       </td>
                       <td className="py-1.5 px-2">
-                        <input type="number" value={nuevaLineaVersion.markup_nominal || ""} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, markup_nominal: Number(e.target.value) })}
-                          className="w-16 px-1 py-1 border border-gray-300 rounded text-xs text-right" placeholder="0" />
+                        <input
+                          type="number"
+                          value={nuevaLineaVersion.markup_nominal || ""}
+                          onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, markup_nominal: Number(e.target.value) })}
+                          disabled={!!nuevaLineaVersion.forzar_precio_pesos}
+                          className={`w-16 px-1 py-1 border rounded text-xs text-right ${nuevaLineaVersion.forzar_precio_pesos ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed' : 'border-gray-300'}`}
+                          placeholder="0"
+                        />
                       </td>
                       <td className="py-1.5 px-2 text-center">
-                        <input type="checkbox" checked={nuevaLineaVersion.forzar_precio_pesos || false} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, forzar_precio_pesos: e.target.checked })}
-                          className="w-3 h-3 text-emerald-600 border-gray-300 rounded" />
+                        <input
+                          type="checkbox"
+                          checked={nuevaLineaVersion.forzar_precio_pesos || false}
+                          onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, forzar_precio_pesos: e.target.checked, markup_porcentaje: e.target.checked ? 0 : nuevaLineaVersion.markup_porcentaje, markup_nominal: e.target.checked ? 0 : nuevaLineaVersion.markup_nominal })}
+                          className="w-3 h-3 text-emerald-600 border-gray-300 rounded cursor-pointer"
+                        />
                       </td>
                       <td className="py-1.5 px-2">
                         {nuevaLineaVersion.forzar_precio_pesos ? (
-                          <input type="number" value={nuevaLineaVersion.precio_forzado_ars || ""} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, precio_forzado_ars: Number(e.target.value) })}
-                            className="w-24 px-1 py-1 border border-gray-300 rounded text-xs text-right" placeholder="Precio $" />
+                          <input
+                            type="number"
+                            value={nuevaLineaVersion.precio_forzado_ars || ""}
+                            onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, precio_forzado_ars: Number(e.target.value) })}
+                            className="w-28 px-1 py-1 border border-amber-400 bg-amber-50 rounded text-xs text-right text-amber-800 placeholder-amber-400 focus:ring-1 focus:ring-amber-400"
+                            placeholder="Precio ARS"
+                          />
                         ) : (
-                          <span className="text-gray-400">Auto</span>
+                          <span className="text-gray-400 text-xs">Auto</span>
                         )}
                       </td>
                       <td className="py-1.5 px-2">
@@ -8711,38 +8737,57 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       </td>
                       <td className="py-1.5 px-2 text-right">
                         {(editandoLineas || creandoVersion) ? (
-                          <input type="number" value={linea.markup_porcentaje} onChange={(e) => actualizarLineaVersion(linea.id, 'markup_porcentaje', Number(e.target.value))}
-                            className="w-14 px-1 py-0.5 border border-gray-300 rounded text-xs text-right" />
+                          <input
+                            type="number"
+                            value={linea.markup_porcentaje}
+                            onChange={(e) => actualizarLineaVersion(linea.id, 'markup_porcentaje', Number(e.target.value))}
+                            disabled={linea.forzar_precio_pesos}
+                            className={`w-14 px-1 py-0.5 border rounded text-xs text-right ${linea.forzar_precio_pesos ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed' : 'border-gray-300'}`}
+                          />
                         ) : (
-                          `${linea.markup_porcentaje}%`
+                          linea.forzar_precio_pesos ? <span className="text-gray-300">-</span> : `${linea.markup_porcentaje}%`
                         )}
                       </td>
                       <td className="py-1.5 px-2 text-right">
                         {(editandoLineas || creandoVersion) ? (
-                          <input type="number" value={linea.markup_nominal} onChange={(e) => actualizarLineaVersion(linea.id, 'markup_nominal', Number(e.target.value))}
-                            className="w-14 px-1 py-0.5 border border-gray-300 rounded text-xs text-right" />
+                          <input
+                            type="number"
+                            value={linea.markup_nominal}
+                            onChange={(e) => actualizarLineaVersion(linea.id, 'markup_nominal', Number(e.target.value))}
+                            disabled={linea.forzar_precio_pesos}
+                            className={`w-14 px-1 py-0.5 border rounded text-xs text-right ${linea.forzar_precio_pesos ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed' : 'border-gray-300'}`}
+                          />
                         ) : (
-                          linea.markup_nominal > 0 ? formatCurrency(linea.markup_nominal, linea.costo_moneda) : '-'
+                          linea.forzar_precio_pesos ? <span className="text-gray-300">-</span> : (linea.markup_nominal > 0 ? formatCurrency(linea.markup_nominal, linea.costo_moneda) : '-')
                         )}
                       </td>
                       <td className="py-1.5 px-2 text-center">
                         {(editandoLineas || creandoVersion) ? (
                           <input type="checkbox" checked={linea.forzar_precio_pesos} onChange={(e) => actualizarLineaVersion(linea.id, 'forzar_precio_pesos', e.target.checked)}
-                            className="w-3 h-3 text-emerald-600 border-gray-300 rounded" />
+                            className="w-3 h-3 text-emerald-600 border-gray-300 rounded cursor-pointer" />
                         ) : (
                           linea.forzar_precio_pesos ? <CheckCircle className="w-3 h-3 text-amber-500 mx-auto" /> : <span className="text-gray-300">-</span>
                         )}
                       </td>
-                      <td className="py-1.5 px-2 text-right font-medium text-emerald-700">
-                        {linea.forzar_precio_pesos && linea.precio_forzado_ars ? (
-                          (editandoLineas || creandoVersion) ? (
-                            <input type="number" value={linea.precio_forzado_ars} onChange={(e) => actualizarLineaVersion(linea.id, 'precio_forzado_ars', Number(e.target.value))}
-                              className="w-24 px-1 py-0.5 border border-amber-300 bg-amber-50 rounded text-xs text-right" />
+                      <td className="py-1.5 px-2 text-right font-medium">
+                        {(editandoLineas || creandoVersion) ? (
+                          linea.forzar_precio_pesos ? (
+                            <input
+                              type="number"
+                              value={linea.precio_forzado_ars ?? ""}
+                              onChange={(e) => actualizarLineaVersion(linea.id, 'precio_forzado_ars', e.target.value === "" ? null : Number(e.target.value))}
+                              placeholder="Precio ARS"
+                              className="w-28 px-1 py-0.5 border border-amber-400 bg-amber-50 rounded text-xs text-right text-amber-800 focus:ring-1 focus:ring-amber-400"
+                            />
                           ) : (
-                            <span className="text-amber-700">{formatCurrency(linea.precio_forzado_ars, "ARS")}</span>
+                            <span className="text-emerald-700">{formatCurrency(linea.precio_venta, linea.precio_venta_moneda)}</span>
                           )
                         ) : (
-                          formatCurrency(linea.precio_venta, linea.precio_venta_moneda)
+                          linea.forzar_precio_pesos && linea.precio_forzado_ars ? (
+                            <span className="text-amber-700">{formatCurrency(linea.precio_forzado_ars, "ARS")}</span>
+                          ) : (
+                            <span className="text-emerald-700">{formatCurrency(linea.precio_venta, linea.precio_venta_moneda)}</span>
+                          )
                         )}
                       </td>
                       <td className="py-1.5 px-2 text-center">
