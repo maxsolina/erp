@@ -964,11 +964,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
   // Helper functions
   const formatCurrency = (amount: number, currency: "ARS" | "USD" = "ARS") => {
-    return new Intl.NumberFormat('es-AR', { 
+    const formatted = new Intl.NumberFormat('es-AR', { 
       style: 'currency', 
       currency: currency,
       minimumFractionDigits: 2 
     }).format(amount)
+    if (currency === "ARS") {
+      return `ARS ${formatted}`
+    }
+    return formatted
   }
 
   const formatDate = (dateString: string) => {
