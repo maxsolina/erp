@@ -1,7 +1,7 @@
 "use client"
 
 // Modulo de Ventas - Cell Home ERP v3
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useRef } from "react"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History } from "lucide-react"
  import BotonVolver from "./ui/boton-volver"
 import ProductoDropdown from "./producto-dropdown"
@@ -960,6 +960,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   // Estados para búsqueda de productos en líneas
   const [productoSearchIndex, setProductoSearchIndex] = useState<number | null>(null)
   const [productoSearchText, setProductoSearchText] = useState("")
+  const productoInputRefs = useRef<(HTMLInputElement | null)[]>([])
   
   // Estados para búsqueda de productos en facturas
   const [facturaProductoSearchIndex, setFacturaProductoSearchIndex] = useState<number | null>(null)
@@ -3408,6 +3409,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           <div className="flex items-center gap-2">
                             <div className="flex-1 relative">
                               <input
+                                ref={(el) => { productoInputRefs.current[index] = el }}
                                 type="text"
                                 autoComplete="off"
                                 autoCorrect="off"
@@ -3444,6 +3446,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                     versionesLista={versionesLista}
                                     productosConSerie={productosConSerie}
                                     productoSearchText={productoSearchText}
+                                    anchorRef={{ current: productoInputRefs.current[index] } as React.RefObject<HTMLInputElement>}
                                     onSelect={(p, precioUnitario, moneda, precioUSD, precioARS) => {
                                       const updated = [...nvLineas]
                                       updated[index].producto_id = p.id
