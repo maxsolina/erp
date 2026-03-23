@@ -3501,40 +3501,41 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                 placeholder="Buscar producto..."
                                 className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
                               />
-                              {/* Dropdown de sugerencias */}
-                              {productoSearchIndex === index && (
-                                <ProductoDropdown
-                                  nvClienteId={nvClienteId}
-                                  clientes={clientes}
-                                  listasPrecios={listasPrecios}
-                                  versionesLista={versionesLista}
-                                  productosConSerie={productosConSerie}
-                                  productoSearchText={productoSearchText}
-                                  onSelect={(p, precioUnitario, moneda, precioUSD, precioARS) => {
-                                    const updated = [...nvLineas]
-                                    updated[index].producto_id = p.id
-                                    updated[index].producto_nombre = p.nombre
-                                    updated[index].producto_sku = p.sku
-                                    updated[index].requiere_serie = p.requiere_serie
-                                    updated[index].series_seleccionadas = []
-                                    updated[index].precio_unitario = precioUnitario
-                                    updated[index].precio_unitario_moneda = moneda
-                                    updated[index].precio_unitario_usd = precioUSD
-                                    updated[index].precio_unitario_ars = precioARS
-                                    updated[index].subtotal = updated[index].cantidad * precioUnitario * (1 - updated[index].descuento / 100)
-                                    setNvLineas(updated)
-                                    setProductoSearchIndex(null)
-                                    setProductoSearchText("")
-                                    if (p.requiere_serie) {
-                                      setTimeout(() => {
-                                        setSerieModalLineaIndex(index)
-                                        setSeriesSeleccionadasTemp([])
-                                        setShowSerieModal(true)
-                                      }, 100)
-                                    }
-                                  }}
-                                />
-                              )}
+                              {/* --- Dropdown productos por lista de precios del cliente --- */}
+                              {productoSearchIndex === index
+                                ? <ProductoDropdown
+                                    nvClienteId={nvClienteId}
+                                    clientes={clientes}
+                                    listasPrecios={listasPrecios}
+                                    versionesLista={versionesLista}
+                                    productosConSerie={productosConSerie}
+                                    productoSearchText={productoSearchText}
+                                    onSelect={(p, precioUnitario, moneda, precioUSD, precioARS) => {
+                                      const updated = [...nvLineas]
+                                      updated[index].producto_id = p.id
+                                      updated[index].producto_nombre = p.nombre
+                                      updated[index].producto_sku = p.sku
+                                      updated[index].requiere_serie = p.requiere_serie
+                                      updated[index].series_seleccionadas = []
+                                      updated[index].precio_unitario = precioUnitario
+                                      updated[index].precio_unitario_moneda = moneda
+                                      updated[index].precio_unitario_usd = precioUSD
+                                      updated[index].precio_unitario_ars = precioARS
+                                      updated[index].subtotal = updated[index].cantidad * precioUnitario * (1 - updated[index].descuento / 100)
+                                      setNvLineas(updated)
+                                      setProductoSearchIndex(null)
+                                      setProductoSearchText("")
+                                      if (p.requiere_serie) {
+                                        setTimeout(() => {
+                                          setSerieModalLineaIndex(index)
+                                          setSeriesSeleccionadasTemp([])
+                                          setShowSerieModal(true)
+                                        }, 100)
+                                      }
+                                    }}
+                                  />
+                                : null
+                              }
                             </div>
                             {linea.requiere_serie && linea.producto_id > 0 && (
                               <button
