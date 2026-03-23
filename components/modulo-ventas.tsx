@@ -813,6 +813,79 @@ interface ModuloVentasProps {
   onNuevoCliente?: (c: ClienteVenta) => void
 }
 
+function ProductoDropdown({ nvClienteId, clientes, listasPrecios, versionesLista, productosConSerie, productoSearchText, onSelect }: {
+  nvClienteId: number | null
+  clientes: any[]
+  listasPrecios: any[]
+  versionesLista: any[]
+  productosConSerie: any[]
+  productoSearchText: string
+  onSelect: (p: any, precioUnitario: number, moneda: "ARS" | "USD", precioUSD: number, precioARS: number) => void
+}) {
+  const clienteNVdrop = clientes.find((c: any) => c.id === nvClienteId)
+  const listaIdDrop = clienteNVdrop?.lista_precios_id ?? null
+  const versionActivaDrop = listaIdDrop
+    ? versionesLista.find((v: any) => v.lista_id === listaIdDrop && v.estado === "activa")
+    : null
+  const productosDrop = versionActivaDrop
+    ? productosConSerie.filter((p: any) => versionActivaDrop.lineas.some((l: any) => l.producto_id === p.id))
+    : productosConSerie
+  const productosFiltrados = productosDrop.filter((p: any) =>
+    p.nombre.toLowerCase().includes(productoSearchText.toLowerCase()) ||
+    p.sku.toLowerCase().includes(productoSearchText.toLowerCase())
+  )
+
+  const calcularPrecios = (p: any): { precioUnitario: number; moneda: "ARS" | "USD"; precioUSD: number; precioARS: number } => {
+    const lineaLP = versionActivaDrop?.lineas.find((l: any) => l.producto_id === p.id)
+    if (lineaLP) {
+      const cotiz = lineaLP.cotizacion_dolar || COTIZACION_DOLAR_MOCK
+      if (lineaLP.forzar_precio_pesos && lineaLP.precio_forzado_ars) {
+        const precioARS = lineaLP.precio_forzado_ars
+        return { precioUnitario: precioARS, moneda: "ARS", precioUSD: parseFloat((precioARS / cotiz).toFixed(2)), precioARS }
+      } else if (lineaLP.precio_venta_moneda === "USD") {
+        const precioUSD = lineaLP.precio_venta
+        const precioARS = parseFloat((precioUSD * cotiz).toFixed(2))
+        return { precioUnitario: precioARS, moneda: "USD", precioUSD, precioARS }
+      } else {
+        const precioARS = lineaLP.precio_venta
+        return { precioUnitario: precioARS, moneda: "ARS", precioUSD: parseFloat((precioARS / cotiz).toFixed(2)), precioARS }
+      }
+    }
+    const precioARS = p.precio_venta
+    return { precioUnitario: precioARS, moneda: "ARS", precioUSD: parseFloat((precioARS / COTIZACION_DOLAR_MOCK).toFixed(2)), precioARS }
+  }
+
+  return (
+    <div className="absolute left-0 top-full z-50 min-w-[280px] w-full mt-1 bg-white border border-gray-300 shadow-lg max-h-48 overflow-y-auto rounded">
+      {versionActivaDrop && (
+        <div className="px-2 py-1 text-xs text-emerald-700 bg-emerald-50 border-b border-emerald-100 font-medium">
+          Lista: {listasPrecios.find((l: any) => l.id === listaIdDrop)?.nombre}
+        </div>
+      )}
+      {productosFiltrados.map((p: any) => (
+        <div
+          key={p.id}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            const { precioUnitario, moneda, precioUSD, precioARS } = calcularPrecios(p)
+            onSelect(p, precioUnitario, moneda, precioUSD, precioARS)
+          }}
+          className="px-2 py-1 hover:bg-blue-600 hover:text-white cursor-pointer text-sm"
+        >
+          <span className="font-medium">[{p.sku}]</span> {p.nombre}
+        </div>
+      ))}
+      {productosFiltrados.length === 0 && (
+        <div className="px-2 py-1.5 text-sm text-gray-500">
+          {versionActivaDrop
+            ? "No hay productos en la lista de precios del cliente"
+            : "No se encontraron productos"}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: ModuloVentasProps = {}) {
   // Navigation state
   const [activeSection, setActiveSection] = useState<string>("clientes")
@@ -3416,109 +3489,38 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                 className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
                               />
                               {/* Dropdown de sugerencias */}
-                              {productoSearchIndex === index && (() => {
-                                // Determinar los productos disponibles según lista de precios del cliente
-                                const clienteNVdrop = clientes.find(c => c.id === nvClienteId)
-                                const listaIdDrop = clienteNVdrop?.lista_precios_id ?? null
-                                const versionActivaDrop = listaIdDrop
-                                  ? versionesLista.find(v => v.lista_id === listaIdDrop && v.estado === "activa")
-                                  : null
-                                // Si hay versión activa, mostrar solo los productos de esa versión; si no, mostrar todos
-                                const productosDrop = versionActivaDrop
-                                  ? productosConSerie.filter(p => versionActivaDrop.lineas.some(l => l.producto_id === p.id))
-                                  : productosConSerie
-                                const productosFiltrados = productosDrop.filter(p =>
-                                  p.nombre.toLowerCase().includes(productoSearchText.toLowerCase()) ||
-                                  p.sku.toLowerCase().includes(productoSearchText.toLowerCase())
-                                )
-                                return (
-                                <div className="absolute left-0 top-full z-50 min-w-[280px] w-full mt-1 bg-white border border-gray-300 shadow-lg max-h-48 overflow-y-auto rounded">
-                                  {versionActivaDrop && (
-                                    <div className="px-2 py-1 text-xs text-emerald-700 bg-emerald-50 border-b border-emerald-100 font-medium">
-                                      Lista: {listasPrecios.find(l => l.id === listaIdDrop)?.nombre}
-                                    </div>
-                                  )}
-                                  {productosFiltrados
-                                    .map(p => (
-                                      <div
-                                        key={p.id}
-                                        onMouseDown={(e) => {
-                                          e.preventDefault()
-                                          const updated = [...nvLineas]
-                                          updated[index].producto_id = p.id
-                                          updated[index].producto_nombre = p.nombre
-                                          updated[index].producto_sku = p.sku
-                                          updated[index].requiere_serie = p.requiere_serie
-                                          updated[index].series_seleccionadas = []
-                                          // Buscar precio desde la versión activa de la lista de precios del cliente
-                                          const clienteNV = clientes.find(c => c.id === nvClienteId)
-                                          const listaId = clienteNV?.lista_precios_id ?? null
-                                          const versionActiva = listaId
-                                            ? versionesLista.find(v => v.lista_id === listaId && v.estado === "activa")
-                                            : null
-                                          const lineaLP = versionActiva?.lineas.find(l => l.producto_id === p.id)
-                                          let precioUnitario = p.precio_venta
-                                          let moneda: "ARS" | "USD" = "ARS"
-                                          let precioUSD = 0
-                                          let precioARS = 0
-                                          if (lineaLP) {
-                                            const cotiz = lineaLP.cotizacion_dolar || COTIZACION_DOLAR_MOCK
-                                            if (lineaLP.forzar_precio_pesos && lineaLP.precio_forzado_ars) {
-                                              // Precio forzado en ARS
-                                              precioARS = lineaLP.precio_forzado_ars
-                                              precioUSD = parseFloat((precioARS / cotiz).toFixed(2))
-                                              precioUnitario = precioARS
-                                              moneda = "ARS"
-                                            } else if (lineaLP.precio_venta_moneda === "USD") {
-                                              precioUSD = lineaLP.precio_venta
-                                              precioARS = parseFloat((precioUSD * cotiz).toFixed(2))
-                                              precioUnitario = precioARS
-                                              moneda = "USD"
-                                            } else {
-                                              precioARS = lineaLP.precio_venta
-                                              precioUSD = parseFloat((precioARS / cotiz).toFixed(2))
-                                              precioUnitario = precioARS
-                                              moneda = "ARS"
-                                            }
-                                          } else {
-                                            // Sin lista: usar precio_venta del producto como ARS
-                                            precioARS = p.precio_venta
-                                            precioUSD = parseFloat((precioARS / COTIZACION_DOLAR_MOCK).toFixed(2))
-                                            precioUnitario = precioARS
-                                            moneda = "ARS"
-                                          }
-                                          updated[index].precio_unitario = precioUnitario
-                                          updated[index].precio_unitario_moneda = moneda
-                                          updated[index].precio_unitario_usd = precioUSD
-                                          updated[index].precio_unitario_ars = precioARS
-                                          updated[index].subtotal = updated[index].cantidad * precioUnitario * (1 - updated[index].descuento / 100)
-                                          setNvLineas(updated)
-                                          setProductoSearchIndex(null)
-                                          setProductoSearchText("")
-                                          if (p.requiere_serie) {
-                                            setTimeout(() => {
-                                              setSerieModalLineaIndex(index)
-                                              setSeriesSeleccionadasTemp([])
-                                              setShowSerieModal(true)
-                                            }, 100)
-                                          }
-                                        }}
-                                        className="px-2 py-1 hover:bg-blue-600 hover:text-white cursor-pointer text-sm"
-                                      >
-                                        <span className="font-medium">[{p.sku}]</span> {p.nombre}
-                                      </div>
-                                    ))
-                                  }
-                                  {productosFiltrados.length === 0 && (
-                                    <div className="px-2 py-1.5 text-sm text-gray-500">
-                                      {versionActivaDrop
-                                        ? "No hay productos en la lista de precios del cliente"
-                                        : "No se encontraron productos"}
-                                    </div>
-                                  )}
-                                </div>
-                                )
-                              })()}
+                              {productoSearchIndex === index && (
+                                <ProductoDropdown
+                                  nvClienteId={nvClienteId}
+                                  clientes={clientes}
+                                  listasPrecios={listasPrecios}
+                                  versionesLista={versionesLista}
+                                  productosConSerie={productosConSerie}
+                                  productoSearchText={productoSearchText}
+                                  onSelect={(p, precioUnitario, moneda, precioUSD, precioARS) => {
+                                    const updated = [...nvLineas]
+                                    updated[index].producto_id = p.id
+                                    updated[index].producto_nombre = p.nombre
+                                    updated[index].producto_sku = p.sku
+                                    updated[index].requiere_serie = p.requiere_serie
+                                    updated[index].series_seleccionadas = []
+                                    updated[index].precio_unitario = precioUnitario
+                                    updated[index].precio_unitario_moneda = moneda
+                                    updated[index].precio_unitario_usd = precioUSD
+                                    updated[index].precio_unitario_ars = precioARS
+                                    updated[index].subtotal = updated[index].cantidad * precioUnitario * (1 - updated[index].descuento / 100)
+                                    setNvLineas(updated)
+                                    setProductoSearchIndex(null)
+                                    setProductoSearchText("")
+                                    if (p.requiere_serie) {
+                                      setTimeout(() => {
+                                        setSerieModalLineaIndex(index)
+                                        setSeriesSeleccionadasTemp([])
+                                        setShowSerieModal(true)
+                                      }, 100)
+                                    }
+                                  }}
+                                />
                               )}
                             </div>
                             {linea.requiere_serie && linea.producto_id > 0 && (
