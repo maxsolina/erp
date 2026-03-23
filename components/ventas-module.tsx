@@ -1005,7 +1005,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       evaluacion: [
         { componente: "Pantalla", estado: "Buena", descuento: 0 },
         { componente: "Batería", estado: "Desgastada", descuento: 25000 },
-        { componente: "Cámara", estado: "Buena", descuento: 0 },
+        { componente: "C��mara", estado: "Buena", descuento: 0 },
         { componente: "Carcasa", estado: "Rayada", descuento: 20000 },
       ]
     }
@@ -3011,7 +3011,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       }
       setRemitos(prev => [...prev, newRemito])
 
-      // Crear Factura
+      // Crear Factura en borrador
       const facturaNumero = `FC X 10000-000${13460 + facturas.length}`
       const facturaId = facturas.length + 1
       const newFactura: Factura = {
@@ -3025,7 +3025,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         cliente_cuit: cliente.numero_documento,
         fecha: fechaHoy,
         fecha_vencimiento: fechaHoy,
-        estado: "pendiente",
+        estado: "borrador",
         moneda: moneda,
         lineas: lineasValidas.map(l => ({
           producto_nombre: l.producto_nombre,
@@ -3042,55 +3042,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         cae: null,
         cae_vencimiento: null,
         sucursal: "Puerto Norte",
-        seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "Factura creada desde venta inmediata" }]
+        seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "Factura creada en borrador desde confirmación de NV" }]
       }
       setFacturas(prev => [...prev, newFactura])
-
-      // Actualizar cuenta corriente del cliente
-      const nuevoMovimiento: MovimientoCuentaCorriente = {
-        id: movimientosCC.length + 1,
-        cliente_id: cliente.id,
-        fecha: fechaHoy,
-        tipo: "debito",
-        concepto: "Factura de venta",
-        documento_tipo: "factura",
-        documento_numero: facturaNumero,
-        documento_id: facturaId,
-        moneda: moneda,
-        importe: totalValido,
-        saldo_posterior: cliente.saldo_cuenta_corriente + totalValido
-      }
-      setMovimientosCC(prev => [...prev, nuevoMovimiento])
-
-      setClientes(prev => prev.map(c =>
-        c.id === cliente.id ? {
-          ...c,
-          saldo_cuenta_corriente: c.saldo_cuenta_corriente + totalValido,
-          total_facturado: c.total_facturado + totalValido
-        } : c
-      ))
-
-      // Crear Recibo en borrador
-      const reciboNumero = `RC X Norte-000${11735 + recibos.length}`
-      const reciboId = recibos.length + 1
-      const newRecibo: Recibo = {
-        id: reciboId,
-        numero: reciboNumero,
-        cliente_id: cliente.id,
-        cliente_nombre: cliente.nombre,
-        estado: "borrador",
-        fecha: fechaHoy,
-        importe: totalValido,
-        importe_no_conciliado: totalValido,
-        moneda: moneda,
-        sucursal: "Puerto Norte",
-        caja: "Caja Principal",
-        cobrador_nombre: vendedorNombre,
-        nota_venta_numero: nvNumero,
-        concepto: `Cobro venta ${nvNumero}`,
-        pagos: []
-      }
-      setRecibos(prev => [...prev, newRecibo])
     }
 
     // Limpiar y abrir la NV creada
@@ -9549,7 +9503,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               const facturaNumero = `FC-A X 10000-000${20050 + facturas.length}`
               const facturaId = facturas.length + 1
               
-              // 3. Crear Factura (abierta - genera deuda en cuenta corriente)
+              // 3. Crear Factura en borrador
               const tipoFactura = cliente.posicion_fiscal === "responsable_inscripto" ? "A" : 
                                   cliente.posicion_fiscal === "monotributista" ? "C" : "B"
               const newFactura: Factura = {
@@ -9561,7 +9515,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 cliente_id: cliente.id,
                 cliente_nombre: cliente.nombre,
                 cliente_documento: cliente.numero_documento,
-                estado: "abierta",
+                estado: "borrador",
                 fecha: fechaHoy,
                 vendedor_nombre: vendedorNombre,
                 domicilio_facturacion: cliente.direccion,
@@ -9591,57 +9545,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               }
               setFacturas(prev => [...prev, newFactura])
 
-              // 3b. Crear movimiento de DEBITO en cuenta corriente
-              const saldoAnteriorCliente2 = cliente.saldo_cuenta_corriente
-              const nuevoMovimientoDebito2: MovimientoCuentaCorriente = {
-                id: movimientosCC.length + 1,
-                cliente_id: cliente.id,
-                fecha: fechaHoy,
-                tipo: "debito",
-                concepto: `Factura de venta - ${nvNumero}`,
-                documento_tipo: "factura",
-                documento_numero: facturaNumero,
-                documento_id: facturaId,
-                moneda: moneda,
-                importe: total,
-                saldo_posterior: saldoAnteriorCliente2 + total
-              }
-              setMovimientosCC(prev => [...prev, nuevoMovimientoDebito2])
-
               // Actualizar Remito con número de factura
               setRemitos(prev => prev.map(r => 
                 r.id === remitoId ? { ...r, factura_numero: facturaNumero } : r
-              ))
-
-              const reciboNumero = `RC X Norte-000${11735 + recibos.length}`
-              
-              // 4. Crear Recibo en borrador
-              const newRecibo: Recibo = {
-                id: recibos.length + 1,
-                numero: reciboNumero,
-                cliente_id: cliente.id,
-                cliente_nombre: cliente.nombre,
-                estado: "borrador",
-                fecha: fechaHoy,
-                importe: total,
-                importe_no_conciliado: total,
-                moneda: moneda,
-                sucursal: "Puerto Norte",
-                caja: "Caja Principal",
-                cobrador_nombre: vendedorNombre,
-                nota_venta_numero: nvNumero,
-                concepto: `Cobro ${nvNumero}`,
-                pagos: []
-              }
-              setRecibos(prev => [...prev, newRecibo])
-
-              // Actualizar saldo del cliente (la factura genera deuda = débito)
-              setClientes(prev => prev.map(c => 
-                c.id === cliente.id ? { 
-                  ...c, 
-                  saldo_cuenta_corriente: c.saldo_cuenta_corriente + total,
-                  total_facturado: c.total_facturado + total
-                } : c
               ))
             }
 
