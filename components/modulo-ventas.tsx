@@ -1195,12 +1195,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   const getCategoriaColor = (categoria: string) => {
-    const colors: Record<string, string> = {
-      publico: "bg-gray-100 text-gray-700",
-      mercadolibre: "bg-yellow-100 text-yellow-700",
-      mayorista: "bg-purple-100 text-purple-700"
-    }
-    return colors[categoria] || "bg-gray-100 text-gray-700"
+  const colors: Record<string, string> = {
+  publico: "bg-gray-100 text-gray-700",
+  mercadolibre: "bg-yellow-100 text-yellow-700",
+  mayorista: "bg-purple-100 text-purple-700"
+  }
+  return colors[categoria?.toLowerCase()] || "bg-purple-100 text-purple-700"
   }
 
   // Filtered data
@@ -1761,9 +1761,18 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   </td>
                   <td className="py-3 px-4 text-sm text-gray-600">{cliente.ciudad}</td>
                   <td className="py-3 px-4">
-                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getCategoriaColor(cliente.categoria)}`}>
-                      {cliente.categoria === "publico" ? "Público" : cliente.categoria === "mercadolibre" ? "Mercadolibre" : "Mayorista"}
-                    </span>
+                    {cliente.categoria ? (
+                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getCategoriaColor(cliente.categoria.toLowerCase())}`}>
+                        {(() => {
+                          const cat = categoriasCliente.find(c => c.nombre.toLowerCase() === cliente.categoria.toLowerCase())
+                          if (cat) return cat.nombre
+                          const key = cliente.categoria.toLowerCase()
+                          if (key === "publico") return "Público"
+                          if (key === "mercadolibre") return "Mercadolibre"
+                          return cliente.categoria.charAt(0).toUpperCase() + cliente.categoria.slice(1).toLowerCase()
+                        })()}
+                      </span>
+                    ) : null}
                   </td>
                   <td className="py-3 px-4 text-sm text-gray-600">{cliente.email}</td>
                   <td className="py-3 px-4 text-right">
