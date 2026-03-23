@@ -830,14 +830,26 @@ interface ResultadoCalculo {
   totalConRecargo: number
 }
 
-function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado }: {
+function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEstadoPagoChange }: {
   factura: Factura
   onConfirmarCobro?: (lineas: LineaPago[], totalConRecargos: number, totalRecargos: number) => void
   onCobroConfirmado?: (totalRecargos: number, desglose: { nombre: string; importe: number }[]) => void
+  onEstadoPagoChange?: (estado: { cobrado: boolean; tieneLineas: boolean; diferenciaOk: boolean }) => void
 }) {
   const [lineas, setLineas] = useState<LineaPago[]>([])
   const [cobrado, setCobrado] = useState(false)
   const tarjetas = tarjetasIniciales
+
+  // Notificar estado al padre cada vez que cambie algo relevante
+  useEffect(() => {
+    const totalIngresado = lineas.reduce((s, l) => s + (l.monto || 0), 0)
+    const diferencia = totalIngresado - factura.total
+    onEstadoPagoChange?.({
+      cobrado,
+      tieneLineas: lineas.length > 0 && totalIngresado > 0,
+      diferenciaOk: Math.abs(diferencia) <= 0.5,
+    })
+  }, [lineas, cobrado, factura.total])
   const grupos = gruposIniciales
   const recargos = recargosIniciales
   const CUOTAS_OPTS = [1, 2, 3, 4, 5, 6, 9, 12, 18, 24]
@@ -5582,6 +5594,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
   // Vista de previsualización de Factura
   const [prevRecargosConfirmados, setPrevRecargosConfirmados] = useState<{ totalRecargos: number; desglose: { nombre: string; importe: number }[] } | null>(null)
+  const [prevEstadoPago, setPrevEstadoPago] = useState<{ cobrado: boolean; tieneLineas: boolean; diferenciaOk: boolean }>({ cobrado: false, tieneLineas: false, diferenciaOk: false })
+  const [modalValidacionMsg, setModalValidacionMsg] = useState<string | null>(null)
 
   const renderPrevisualizacionFactura = () => {
     const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
@@ -5617,7 +5631,17 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <Save className="w-4 h-4" /> Guardar Cambios
             </button>
             <button 
-              onClick={handleCrearFacturaFinal}
+              onClick={() => {
+                if (!prevEstadoPago.tieneLineas) {
+                  setModalValidacionMsg("Debés ingresar al menos un medio de pago antes de confirmar la factura.")
+                  return
+                }
+                if (!prevEstadoPago.cobrado) {
+                  setModalValidacionMsg("El cobro no fue confirmado. Completá los medios de pago y presioná \"Confirmar cobro\".")
+                  return
+                }
+                handleCrearFacturaFinal()
+              }}
               className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 flex items-center gap-1"
             >
               <CheckCircle className="w-4 h-4" /> Confirmar Factura
@@ -5738,9 +5762,31 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </div>
           </div>
 
+          {/* Modal de validación */}
+          {modalValidacionMsg && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-6">
+                <div className="flex items-start gap-3 mb-4">
+                  <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-1">No se puede confirmar la factura</h3>
+                    <p className="text-sm text-gray-600">{modalValidacionMsg}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setModalValidacionMsg(null)}
+                  className="w-full py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800"
+                >
+                  Entendido
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Medios de Pago — disponible antes de guardar */}
           <BloquesMediosPago
             key={`prev-${facturaClienteId}`}
+            onEstadoPagoChange={(estado) => setPrevEstadoPago(estado)}
             onCobroConfirmado={(totalRecargos, desglose) => {
               setPrevRecargosConfirmados({ totalRecargos, desglose })
             }}
