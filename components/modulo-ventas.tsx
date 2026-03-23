@@ -3,7 +3,8 @@
 // Modulo de Ventas - Cell Home ERP v3
 import React, { useState, useMemo } from "react"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History } from "lucide-react"
-import BotonVolver from "./ui/boton-volver"
+ import BotonVolver from "./ui/boton-volver"
+import ProductoDropdown from "./producto-dropdown"
 
 // Types para Ventas
 interface ClienteVenta {
@@ -813,79 +814,7 @@ interface ModuloVentasProps {
   onNuevoCliente?: (c: ClienteVenta) => void
 }
 
-// ProductoDropdown: muestra productos filtrados por la lista de precios activa del cliente
-function ProductoDropdown({ nvClienteId, clientes, listasPrecios, versionesLista, productosConSerie, productoSearchText, onSelect }: {
-  nvClienteId: number | null
-  clientes: any[]
-  listasPrecios: any[]
-  versionesLista: any[]
-  productosConSerie: any[]
-  productoSearchText: string
-  onSelect: (p: any, precioUnitario: number, moneda: "ARS" | "USD", precioUSD: number, precioARS: number) => void
-}) {
-  const clienteNVdrop = clientes.find((c: any) => c.id === nvClienteId)
-  const listaIdDrop = clienteNVdrop?.lista_precios_id ?? null
-  const versionActivaDrop = listaIdDrop
-    ? versionesLista.find((v: any) => v.lista_precios_id === listaIdDrop && v.estado === "activa")
-    : null
-  const productosDrop = versionActivaDrop
-    ? productosConSerie.filter((p: any) => versionActivaDrop.lineas.some((l: any) => l.producto_id === p.id))
-    : productosConSerie
-  const productosFiltrados = productosDrop.filter((p: any) =>
-    p.nombre.toLowerCase().includes(productoSearchText.toLowerCase()) ||
-    p.sku.toLowerCase().includes(productoSearchText.toLowerCase())
-  )
 
-  const calcularPrecios = (p: any): { precioUnitario: number; moneda: "ARS" | "USD"; precioUSD: number; precioARS: number } => {
-    const lineaLP = versionActivaDrop?.lineas.find((l: any) => l.producto_id === p.id)
-    if (lineaLP) {
-      const cotiz = lineaLP.cotizacion_dolar || COTIZACION_DOLAR_MOCK
-      if (lineaLP.forzar_precio_pesos && lineaLP.precio_forzado_ars) {
-        const precioARS = lineaLP.precio_forzado_ars
-        return { precioUnitario: precioARS, moneda: "ARS", precioUSD: parseFloat((precioARS / cotiz).toFixed(2)), precioARS }
-      } else if (lineaLP.precio_venta_moneda === "USD") {
-        const precioUSD = lineaLP.precio_venta
-        const precioARS = parseFloat((precioUSD * cotiz).toFixed(2))
-        return { precioUnitario: precioARS, moneda: "USD", precioUSD, precioARS }
-      } else {
-        const precioARS = lineaLP.precio_venta
-        return { precioUnitario: precioARS, moneda: "ARS", precioUSD: parseFloat((precioARS / cotiz).toFixed(2)), precioARS }
-      }
-    }
-    const precioARS = p.precio_venta
-    return { precioUnitario: precioARS, moneda: "ARS", precioUSD: parseFloat((precioARS / COTIZACION_DOLAR_MOCK).toFixed(2)), precioARS }
-  }
-
-  return (
-    <div className="absolute left-0 top-full z-50 min-w-[280px] w-full mt-1 bg-white border border-gray-300 shadow-lg max-h-48 overflow-y-auto rounded">
-      {versionActivaDrop && (
-        <div className="px-2 py-1 text-xs text-emerald-700 bg-emerald-50 border-b border-emerald-100 font-medium">
-          Lista: {listasPrecios.find((l: any) => l.id === listaIdDrop)?.nombre}
-        </div>
-      )}
-      {productosFiltrados.map((p: any) => (
-        <div
-          key={p.id}
-          onMouseDown={(e) => {
-            e.preventDefault()
-            const { precioUnitario, moneda, precioUSD, precioARS } = calcularPrecios(p)
-            onSelect(p, precioUnitario, moneda, precioUSD, precioARS)
-          }}
-          className="px-2 py-1 hover:bg-blue-600 hover:text-white cursor-pointer text-sm"
-        >
-          <span className="font-medium">[{p.sku}]</span> {p.nombre}
-        </div>
-      ))}
-      {productosFiltrados.length === 0 && (
-        <div className="px-2 py-1.5 text-sm text-gray-500">
-          {versionActivaDrop
-            ? "No hay productos en la lista de precios del cliente"
-            : "No se encontraron productos"}
-        </div>
-      )}
-    </div>
-  )
-}
 
 export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: ModuloVentasProps = {}) {
   // Navigation state
