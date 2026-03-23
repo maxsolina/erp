@@ -964,15 +964,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
   // Helper functions
   const formatCurrency = (amount: number, currency: "ARS" | "USD" = "ARS") => {
-    const formatted = new Intl.NumberFormat('es-AR', { 
+    return new Intl.NumberFormat('es-AR', { 
       style: 'currency', 
       currency: currency,
       minimumFractionDigits: 2 
     }).format(amount)
-    if (currency === "ARS") {
-      return `ARS ${formatted}`
-    }
-    return formatted
+  }
+
+  const formatPrecioForzadoARS = (amount: number) => {
+    const formatted = new Intl.NumberFormat('es-AR', { 
+      style: 'currency', 
+      currency: "ARS",
+      minimumFractionDigits: 2 
+    }).format(amount)
+    return `ARS ${formatted}`
   }
 
   const formatDate = (dateString: string) => {
@@ -8788,7 +8793,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           )
                         ) : (
                           linea.forzar_precio_pesos && linea.precio_forzado_ars ? (
-                            <span className="text-amber-700">{formatCurrency(linea.precio_forzado_ars, "ARS")}</span>
+                            <span className="text-amber-700">{formatPrecioForzadoARS(linea.precio_forzado_ars)}</span>
                           ) : (
                             <span className="text-emerald-700">{formatCurrency(linea.precio_venta, linea.precio_venta_moneda)}</span>
                           )
