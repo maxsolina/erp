@@ -7520,11 +7520,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       : []
 
     const recibosFiltrados = todosRecibosCliente.filter(r => {
-      // Filtro por conciliado
+      // Filtro por conciliado: "no"=pendientes, "si"=conciliados, "todos"=todos
       if (conciliacionFiltroConciliado === "no" && r.importe_no_conciliado <= 0) return false
       if (conciliacionFiltroConciliado === "si" && r.importe_no_conciliado > 0) return false
-      // Filtro por checkbox "Todos"
-      if (!conciliacionMostrarTodosCreditos && r.importe_no_conciliado <= 0) return false
+      // Si filtro es "todos", el checkbox controla si se muestran los conciliados
+      if (conciliacionFiltroConciliado === "todos" && !conciliacionMostrarTodosCreditos && r.importe_no_conciliado <= 0) return false
       // Filtro por texto
       if (conciliacionFiltroTextoCreditos && !r.numero.toLowerCase().includes(conciliacionFiltroTextoCreditos.toLowerCase())) return false
       return true
@@ -7725,19 +7725,19 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         {conciliacionTab === "conciliar" ? (
         <div className="bg-white rounded-lg shadow-sm border">
           {/* Header estilo Odoo */}
-          <div className="p-4 border-b bg-gray-50">
-            <div className="flex items-end gap-4">
+          <div className="px-3 py-2.5 border-b bg-gray-50">
+            <div className="flex items-center gap-2 flex-wrap">
               {/* Cliente */}
-              <div className="flex-1">
-                <label className="block text-xs text-gray-500 mb-1">Cliente</label>
-                <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 flex-1 min-w-0">
+                <label className="text-xs text-gray-500 shrink-0">Cliente</label>
+                <div className="flex items-center gap-1 flex-1 min-w-0">
                   <select 
                     value={conciliacionClienteId || ""}
                     onChange={(e) => {
                       setConciliacionClienteId(e.target.value ? parseInt(e.target.value) : null)
                       limpiarSeleccion()
                     }}
-                    className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                    className="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="">Seleccionar cliente...</option>
                     {clientes.map(c => (
@@ -7746,25 +7746,21 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   </select>
                   {clienteSeleccionado && (
                     <button 
-                      onClick={() => {
-                        setClienteSeleccionadoId(clienteSeleccionado.id)
-                        setActiveSubmenu("ficha_cliente")
-                      }}
-                      className="p-1.5 text-gray-400 hover:text-blue-600"
-                      title="Abrir ficha cliente"
+                      onClick={() => { setClienteSeleccionadoId(clienteSeleccionado.id); setActiveSubmenu("ficha_cliente") }}
+                      className="p-1 text-gray-400 hover:text-blue-600 shrink-0"
                     >
-                      <ArrowRight className="w-4 h-4" />
+                      <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
               </div>
               {/* Nota de Venta */}
-              <div className="w-48">
-                <label className="block text-xs text-gray-500 mb-1">Nota de Venta</label>
+              <div className="flex items-center gap-1">
+                <label className="text-xs text-gray-500 shrink-0">NV</label>
                 <select 
                   value={conciliacionFiltroNV}
                   onChange={(e) => setConciliacionFiltroNV(e.target.value)}
-                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-28 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="">Todas</option>
                   {conciliacionClienteId && notasVenta.filter(nv => nv.cliente_id === conciliacionClienteId).map(nv => (
@@ -7773,49 +7769,46 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </select>
               </div>
               {/* Conciliado */}
-              <div className="w-32">
-                <label className="block text-xs text-gray-500 mb-1">Conciliado</label>
+              <div className="flex items-center gap-1">
+                <label className="text-xs text-gray-500 shrink-0">Conciliado</label>
                 <select 
                   value={conciliacionFiltroConciliado}
                   onChange={(e) => setConciliacionFiltroConciliado(e.target.value as typeof conciliacionFiltroConciliado)}
-                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-20 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="no">No</option>
                   <option value="si">Si</option>
                   <option value="todos">Todos</option>
                 </select>
               </div>
-              {/* Balance central */}
-              <div className="px-4 py-1 bg-white border rounded text-center min-w-24">
-                <span className={`text-lg font-bold ${balance === 0 ? 'text-gray-800' : balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
+              {/* Balance */}
+              <div className="px-2 py-1 bg-white border rounded text-center">
+                <span className={`text-sm font-bold ${balance === 0 ? 'text-gray-800' : balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
                   {formatCurrency(Math.abs(balance))}
                 </span>
               </div>
               {/* Opciones de marcado */}
-              <div className="flex items-center gap-4 text-xs">
-                <label className="flex items-center gap-1.5 cursor-pointer">
+              <div className="flex items-center gap-3 text-xs">
+                <label className="flex items-center gap-1 cursor-pointer">
                   <input 
                     type="checkbox" 
                     checked={conciliacionSeleccionDebitos.length === 0 && conciliacionSeleccionCreditos.length === 0}
                     onChange={limpiarSeleccion}
-                    className="w-3.5 h-3.5 rounded border-gray-300"
+                    className="w-3 h-3 rounded border-gray-300"
                   />
                   <span className="text-gray-600">Desmarcar</span>
                 </label>
-                <label className="flex items-center gap-1.5 cursor-pointer">
+                <label className="flex items-center gap-1 cursor-pointer">
                   <input 
                     type="checkbox" 
                     checked={facturasFiltradas.filter(f => f.saldo > 0).length > 0 && 
                              conciliacionSeleccionDebitos.length === facturasFiltradas.filter(f => f.saldo > 0).length}
-                    onChange={() => {
-                      seleccionarTodoDebitos()
-                      seleccionarTodoCreditos()
-                    }}
-                    className="w-3.5 h-3.5 rounded border-gray-300"
+                    onChange={() => { seleccionarTodoDebitos(); seleccionarTodoCreditos() }}
+                    className="w-3 h-3 rounded border-gray-300"
                   />
                   <span className="text-gray-600">Marcar todo</span>
                 </label>
-                <label className="flex items-center gap-1.5 cursor-pointer">
+                <label className="flex items-center gap-1 cursor-pointer">
                   <input 
                     type="checkbox" 
                     onChange={marcarAutomatico}
@@ -7857,7 +7850,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </div>
               </div>
               {/* Tabla Debitos */}
-              <div className="flex-1 overflow-auto max-h-96">
+              <div className="flex-1 overflow-auto max-h-64">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-white border-b">
                     <tr className="text-gray-500">
@@ -7961,7 +7954,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </div>
               </div>
               {/* Tabla Creditos */}
-              <div className="flex-1 overflow-auto max-h-96">
+              <div className="flex-1 overflow-auto max-h-64">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-white border-b">
                     <tr className="text-gray-500">
