@@ -1,7 +1,7 @@
 "use client"
 
 // Modulo de Ventas - Cell Home ERP v3
-import React, { useState, useMemo, useRef } from "react"
+import React, { useState, useMemo, useRef, useEffect } from "react"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History } from "lucide-react"
  import BotonVolver from "./ui/boton-volver"
 import ProductoDropdown from "./producto-dropdown"
