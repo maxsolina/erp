@@ -3566,16 +3566,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           className="w-16 border border-gray-300 rounded px-2 py-1 text-sm text-center"
                         />
                       </td>
-                      <td className="py-1 px-2 text-right text-sm text-blue-700 font-medium">
+                      <td className="py-1 px-2 text-right text-xs text-blue-700 font-medium">
                         {linea.precio_unitario_usd > 0
                           ? `US$ ${linea.precio_unitario_usd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                           : <span className="text-gray-300">-</span>
                         }
                       </td>
-                      <td className="py-1 px-2 text-right text-sm font-medium">
+                      <td className="py-1 px-2 text-right text-xs font-medium">
                         {linea.precio_unitario_ars > 0 ? (
                           <span className={linea.precio_unitario_moneda === "ARS" ? "text-amber-700" : "text-gray-700"}>
-                            ARS $ {linea.precio_unitario_ars.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ARS $ {linea.precio_unitario_ars.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                           </span>
                         ) : (
                           <span className="text-gray-300">-</span>
