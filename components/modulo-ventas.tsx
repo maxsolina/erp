@@ -3450,7 +3450,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <thead>
                   <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
                     <th className="text-left py-1.5 px-2">Producto</th>
-                    <th className="text-center py-1.5 px-2 w-16">Cant.</th>
+                    <th className="text-center py-1.5 px-2 w-10">Cant.</th>
                     <th className="text-right py-1.5 px-2 w-28">Precio USD</th>
                     <th className="text-right py-1.5 px-2 w-32">Precio ARS</th>
                     <th className="text-center py-1.5 px-2 w-16">Dto.%</th>
@@ -3563,16 +3563,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                               setShowSerieModal(true)
                             }
                           }}
-                          className="w-16 border border-gray-300 rounded px-2 py-1 text-sm text-center"
+                          className="w-10 border border-gray-300 rounded px-1 py-1 text-sm text-center"
                         />
                       </td>
-                      <td className="py-1 px-2 text-right text-xs text-blue-700 font-medium">
+                      <td className="py-1 px-2 text-right text-sm text-blue-700 font-medium">
                         {linea.precio_unitario_usd > 0
                           ? `US$ ${linea.precio_unitario_usd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                           : <span className="text-gray-300">-</span>
                         }
                       </td>
-                      <td className="py-1 px-2 text-right text-xs font-medium">
+                      <td className="py-1 px-2 text-right text-sm font-medium">
                         {linea.precio_unitario_ars > 0 ? (
                           <span className={linea.precio_unitario_moneda === "ARS" ? "text-amber-700" : "text-gray-700"}>
                             ARS $ {linea.precio_unitario_ars.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
