@@ -73,7 +73,7 @@ export default function ProductoDropdown({
   }
 
   return (
-    <div className="absolute left-0 top-full z-50 min-w-[280px] w-full mt-1 bg-white border border-gray-300 shadow-lg max-h-48 overflow-y-auto rounded">
+    <div className="absolute left-0 bottom-full z-50 min-w-[280px] w-full mb-1 bg-white border border-gray-300 shadow-lg max-h-48 overflow-y-auto rounded">
       {versionActiva && (
         <div className="px-2 py-1 text-xs text-emerald-700 bg-emerald-50 border-b border-emerald-100 font-medium">
           Lista: {listasPrecios.find((l: any) => l.id === listaId)?.nombre ?? versionActiva.lista_precios_nombre}
