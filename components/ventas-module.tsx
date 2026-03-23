@@ -3409,6 +3409,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                             <div className="flex-1 relative">
                               <input
                                 type="text"
+                                autoComplete="off"
+                                autoCorrect="off"
+                                autoCapitalize="off"
+                                spellCheck={false}
+                                name={`producto-search-${index}`}
                                 value={productoSearchIndex === index ? productoSearchText : linea.producto_nombre}
                                 onChange={(e) => {
                                   setProductoSearchIndex(index)
