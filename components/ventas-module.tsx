@@ -1001,13 +1001,23 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
                     value={linea.monto || ""}
                     onChange={e => actualizarLinea(linea.id, { monto: parseFloat(e.target.value) || 0 })}
                     placeholder="0,00"
-                    className="border border-gray-300 rounded px-2 py-1.5 text-sm text-right w-36 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    disabled={linea.medio === "tarjeta" && !linea.tarjeta_id}
+                    title={linea.medio === "tarjeta" && !linea.tarjeta_id ? "Seleccioná una tarjeta primero" : undefined}
+                    className={`border rounded px-2 py-1.5 text-sm text-right w-36 focus:ring-2 focus:ring-emerald-500 focus:outline-none ${linea.medio === "tarjeta" && !linea.tarjeta_id ? "border-red-300 bg-red-50 cursor-not-allowed text-gray-400" : "border-gray-300"}`}
                   />
                   <button onClick={() => eliminarLinea(linea.id)} className="p-1 text-gray-400 hover:text-red-600">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
               </div>
+
+              {/* Error: tarjeta no seleccionada */}
+              {linea.medio === "tarjeta" && !linea.tarjeta_id && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border-t border-red-100 text-xs text-red-600">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  Seleccioná una tarjeta para poder ingresar el monto.
+                </div>
+              )}
 
               {/* Desglose de recargo para tarjeta */}
               {linea.medio === "tarjeta" && linea.tarjeta_id && linea.monto > 0 && (
