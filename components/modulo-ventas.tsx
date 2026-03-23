@@ -813,6 +813,7 @@ interface ModuloVentasProps {
   onNuevoCliente?: (c: ClienteVenta) => void
 }
 
+// ProductoDropdown: muestra productos filtrados por la lista de precios activa del cliente
 function ProductoDropdown({ nvClienteId, clientes, listasPrecios, versionesLista, productosConSerie, productoSearchText, onSelect }: {
   nvClienteId: number | null
   clientes: any[]
@@ -1761,18 +1762,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   </td>
                   <td className="py-3 px-4 text-sm text-gray-600">{cliente.ciudad}</td>
                   <td className="py-3 px-4">
-                    {cliente.categoria ? (
-                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getCategoriaColor(cliente.categoria.toLowerCase())}`}>
-                        {(() => {
-                          const cat = categoriasCliente.find(c => c.nombre.toLowerCase() === cliente.categoria.toLowerCase())
-                          if (cat) return cat.nombre
-                          const key = cliente.categoria.toLowerCase()
-                          if (key === "publico") return "Público"
-                          if (key === "mercadolibre") return "Mercadolibre"
-                          return cliente.categoria.charAt(0).toUpperCase() + cliente.categoria.slice(1).toLowerCase()
-                        })()}
-                      </span>
-                    ) : null}
+                    {(() => {
+                      const catObj = categoriasCliente.find(c =>
+                        c.nombre.toLowerCase() === (cliente.categoria ?? "").toLowerCase() ||
+                        String(c.id) === String(cliente.categoria_id ?? "")
+                      )
+                      const label = catObj?.nombre ?? cliente.categoria ?? ""
+                      if (!label) return null
+                      const colorKey = label.toLowerCase()
+                      return (
+                        <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getCategoriaColor(colorKey)}`}>
+                          {label}
+                        </span>
+                      )
+                    })()}
                   </td>
                   <td className="py-3 px-4 text-sm text-gray-600">{cliente.email}</td>
                   <td className="py-3 px-4 text-right">
