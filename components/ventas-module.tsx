@@ -676,10 +676,10 @@ const mockFacturas: Factura[] = [
   {
     id: 2, numero: "FC C 20000-00023950", tipo: "C", nota_venta_id: 1, nota_venta_numero: "NV X 20000-00023950",
     cliente_id: 1, cliente_nombre: "Alejandra Gallo", cliente_documento: "DNI 32456789",
-    estado: "abierta", fecha: "2024-03-08T10:00:00", vendedor_nombre: "Max Solina",
+    estado: "conciliada", fecha: "2024-03-08T10:00:00", vendedor_nombre: "Max Solina",
     domicilio_facturacion: "Av. Libertador 1234, CABA", moneda: "ARS", tipo_cotizacion: "blue", cotizacion: 1145,
     termino_pago: "Contado", condicion_pago: "Contado", fecha_vencimiento: "2024-03-08",
-    subtotal: 14462.81, descuento: 0, impuestos: 3037.19, total: 17500, saldo: 17500,
+    subtotal: 14462.81, descuento: 0, impuestos: 3037.19, total: 17500, saldo: 0,
     sucursal: "Puerto Norte",
     lineas: [
       { producto_nombre: "iPhone 15 Pro Max", descripcion: "", cantidad: 1, precio_unitario: 14462.81, descuento: 0, subtotal: 14462.81 }
@@ -7845,7 +7845,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     Todos
                   </label>
                   <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">
-                    {facturasFiltradas.filter(f => f.saldo > 0).length}
+                    {facturasFiltradas.length}
                   </span>
                 </div>
               </div>
@@ -7917,7 +7917,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     }) : (
                       <tr>
                         <td colSpan={9} className="py-8 text-center text-gray-400">
-                          {conciliacionClienteId ? "No hay facturas pendientes" : "Seleccione un cliente"}
+                          {!conciliacionClienteId ? "Seleccione un cliente" : conciliacionFiltroConciliado === "si" ? "No hay facturas conciliadas" : "No hay facturas pendientes"}
                         </td>
                       </tr>
                     )}
