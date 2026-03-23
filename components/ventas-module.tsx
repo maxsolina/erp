@@ -5520,6 +5520,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const handleCrearFacturaFinal = () => {
     const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
     const subtotal = facturaLineas.reduce((sum, l) => sum + l.subtotal, 0)
+    const totalRecargos = prevRecargosConfirmados?.totalRecargos || 0
+    const totalFinal = subtotal + totalRecargos
 
     if (!clienteSeleccionado || facturaLineas.length === 0) {
       alert("Debe seleccionar un cliente y agregar al menos un producto")
@@ -5549,16 +5551,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       termino_pago: mockTerminosPago.find(tp => tp.id === clienteSeleccionado.termino_pago_id)?.nombre || "Contado",
       subtotal: subtotal,
       descuento: 0,
-      impuestos: 0,
-      total: subtotal,
-      saldo: subtotal,
+      impuestos: totalRecargos,
+      total: totalFinal,
+      saldo: 0,
       sucursal: "Puerto Norte",
       lineas: facturaLineas,
-      vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: subtotal }]
+      vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: totalFinal }]
     }
     setFacturas(prev => [...prev, newFactura])
 
-    // Crear movimiento de debito
+    // Crear movimiento de debito por el total (subtotal + recargos)
     const saldoAnterior = clienteSeleccionado.saldo_cuenta_corriente
     const nuevoMovimiento: MovimientoCuentaCorriente = {
       id: movimientosCC.length + 1,
@@ -5570,8 +5572,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       documento_numero: facturaNumero,
       documento_id: facturaId,
       moneda: "ARS",
-      importe: subtotal,
-      saldo_posterior: saldoAnterior + subtotal
+      importe: totalFinal,
+      saldo_posterior: saldoAnterior + totalFinal
     }
     setMovimientosCC(prev => [...prev, nuevoMovimiento])
 
@@ -5579,11 +5581,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setClientes(prev => prev.map(c =>
       c.id === clienteSeleccionado.id ? {
         ...c,
-        saldo_cuenta_corriente: c.saldo_cuenta_corriente + total,
-        total_facturado: c.total_facturado + total
+        saldo_cuenta_corriente: c.saldo_cuenta_corriente + totalFinal,
+        total_facturado: c.total_facturado + totalFinal
       } : c
     ))
 
+    // Resetear estado de previsualización
+    setPrevRecargosConfirmados(null)
+    setPrevEstadoPago({ cobrado: false, tieneLineas: false, diferenciaOk: false })
     setCreandoFactura(false)
     setFacturaPrevisualizando(false)
     setFacturaClienteId(null)
