@@ -7501,11 +7501,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       : []
     
     const facturasFiltradas = todasFacturasCliente.filter(f => {
-      // Filtro por conciliado
+      // Filtro por conciliado: "no"=pendientes, "si"=conciliadas, "todos"=todas
       if (conciliacionFiltroConciliado === "no" && f.saldo <= 0) return false
       if (conciliacionFiltroConciliado === "si" && f.saldo > 0) return false
-      // Filtro por checkbox "Todos"
-      if (!conciliacionMostrarTodosDebitos && f.saldo <= 0) return false
+      // Si no hay filtro de conciliado activo ("todos"), aplicar checkbox "Todos" para ocultar conciliadas
+      if (conciliacionFiltroConciliado === "todos" && !conciliacionMostrarTodosDebitos && f.saldo <= 0) return false
       // Filtro por texto
       if (conciliacionFiltroTextoDebitos && !f.numero.toLowerCase().includes(conciliacionFiltroTextoDebitos.toLowerCase()) && 
           !f.nota_venta_numero.toLowerCase().includes(conciliacionFiltroTextoDebitos.toLowerCase())) return false
