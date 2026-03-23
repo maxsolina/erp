@@ -1,9 +1,10 @@
 "use client"
 
-// Modulo de Ventas - Cell Home ERP
-import React, { useState, useMemo } from "react"
+// Modulo de Ventas - Cell Home ERP v3
+import React, { useState, useMemo, useRef } from "react"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History } from "lucide-react"
-import BotonVolver from "./ui/boton-volver"
+ import BotonVolver from "./ui/boton-volver"
+import ProductoDropdown from "./producto-dropdown"
 
 // Types para Ventas
 interface ClienteVenta {
@@ -813,6 +814,8 @@ interface ModuloVentasProps {
   onNuevoCliente?: (c: ClienteVenta) => void
 }
 
+
+
 export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: ModuloVentasProps = {}) {
   // Navigation state
   const [activeSection, setActiveSection] = useState<string>("clientes")
@@ -957,6 +960,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   // Estados para búsqueda de productos en líneas
   const [productoSearchIndex, setProductoSearchIndex] = useState<number | null>(null)
   const [productoSearchText, setProductoSearchText] = useState("")
+  const productoInputRefs = useRef<(HTMLInputElement | null)[]>([])
   
   // Estados para búsqueda de productos en facturas
   const [facturaProductoSearchIndex, setFacturaProductoSearchIndex] = useState<number | null>(null)
@@ -1122,12 +1126,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   const getCategoriaColor = (categoria: string) => {
-    const colors: Record<string, string> = {
-      publico: "bg-gray-100 text-gray-700",
-      mercadolibre: "bg-yellow-100 text-yellow-700",
-      mayorista: "bg-purple-100 text-purple-700"
-    }
-    return colors[categoria] || "bg-gray-100 text-gray-700"
+  const colors: Record<string, string> = {
+  publico: "bg-gray-100 text-gray-700",
+  mercadolibre: "bg-yellow-100 text-yellow-700",
+  mayorista: "bg-purple-100 text-purple-700"
+  }
+  return colors[categoria?.toLowerCase()] || "bg-purple-100 text-purple-700"
   }
 
   // Filtered data
@@ -1607,12 +1611,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       return renderFichaOT()
     }
     
-    if (selectedCliente) {
-      return renderFichaCliente()
-    }
-
     if (creandoCliente) {
       return renderFormularioCliente()
+    }
+
+    if (selectedCliente) {
+      return renderFichaCliente()
     }
 
     return (
@@ -1688,9 +1692,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   </td>
                   <td className="py-3 px-4 text-sm text-gray-600">{cliente.ciudad}</td>
                   <td className="py-3 px-4">
-                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getCategoriaColor(cliente.categoria)}`}>
-                      {cliente.categoria === "publico" ? "Público" : cliente.categoria === "mercadolibre" ? "Mercadolibre" : "Mayorista"}
-                    </span>
+                    {(() => {
+                      const catObj = categoriasCliente.find(c =>
+                        c.nombre.toLowerCase() === (cliente.categoria ?? "").toLowerCase() ||
+                        String(c.id) === String(cliente.categoria_id ?? "")
+                      )
+                      const label = catObj?.nombre ?? cliente.categoria ?? ""
+                      if (!label) return null
+                      const colorKey = label.toLowerCase()
+                      return (
+                        <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getCategoriaColor(colorKey)}`}>
+                          {label}
+                        </span>
+                      )
+                    })()}
                   </td>
                   <td className="py-3 px-4 text-sm text-gray-600">{cliente.email}</td>
                   <td className="py-3 px-4 text-right">
@@ -1732,6 +1747,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <form onSubmit={(e) => {
             e.preventDefault()
             const formData = new FormData(e.currentTarget)
+            const catId = formClienteCategoriaId
+            const catNombre = categoriasCliente.find(c => c.id === catId)?.nombre?.toLowerCase() as ClienteVenta["categoria"] | undefined
             const newCliente: ClienteVenta = {
               id: editingItem?.id || clientes.length + 1,
               codigo: editingItem?.codigo || `C0${15520 + clientes.length}`,
@@ -1748,7 +1765,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               telefono: formData.get("telefono") as string || "",
               celular: formData.get("celular") as string || "",
               email: formData.get("email") as string || "",
-              categoria: formData.get("categoria") as ClienteVenta["categoria"],
+              categoria: catNombre ?? (editingItem?.categoria ?? null),
               vendedor_id: parseInt(formData.get("vendedor_id") as string) || null,
               cobrador_id: null,
               lista_precios_id: parseInt(formData.get("lista_precios_id") as string) || 1,
@@ -2004,9 +2021,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <div className="flex-1">
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold text-emerald-900">{selectedCliente.nombre}</h1>
-              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoriaColor(selectedCliente.categoria)}`}>
-                {selectedCliente.categoria === "publico" ? "Público" : selectedCliente.categoria === "mercadolibre" ? "Mercadolibre" : "Mayorista"}
-              </span>
+              {selectedCliente.categoria && (
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoriaColor(selectedCliente.categoria)}`}>
+                  {selectedCliente.categoria === "publico" ? "Público"
+                    : selectedCliente.categoria === "mercadolibre" ? "Mercadolibre"
+                    : selectedCliente.categoria.charAt(0).toUpperCase() + selectedCliente.categoria.slice(1)}
+                </span>
+              )}
             </div>
             <p className="text-sm text-gray-500">{selectedCliente.codigo} | {getPosicionFiscalLabel(selectedCliente.posicion_fiscal)}</p>
           </div>
@@ -3088,8 +3109,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const selectedCliente = clientes.find(c => c.id === nvClienteId)
     const lineasValidas = nvLineas.filter(l => l.producto_id > 0 && l.producto_nombre.trim() !== "")
     const subtotal = lineasValidas.reduce((sum, l) => sum + l.subtotal, 0)
-    const iva = subtotal * 0.21
-    const total = subtotal + iva
+    const total = subtotal
     const deposito = depositosVenta.find(d => d.id === nvDepositoId)
     const ubicacion = ubicacionesVenta.find(u => u.id === nvUbicacionId)
 
@@ -3236,10 +3256,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <span className="text-gray-500">Subtotal:</span>
                 <span>{formatCurrency(subtotal)}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">IVA (21%):</span>
-                <span>{formatCurrency(iva)}</span>
-              </div>
               <div className="flex justify-between text-lg font-bold pt-2 border-t">
                 <span>Total:</span>
                 <span className="text-emerald-700">{formatCurrency(total)}</span>
@@ -3254,10 +3270,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   // Vista de Crear Nota de Venta (pantalla completa, no modal)
   const renderCrearNV = () => {
     const selectedCliente = clientes.find(c => c.id === nvClienteId)
-    const subtotal = nvLineas.reduce((sum, l) => sum + l.subtotal, 0)
-    const total = subtotal * 1.21
-
-    // Si estamos en previsualización, mostrar vista previa
+  const subtotal = nvLineas.reduce((sum, l) => sum + l.subtotal, 0)
+  const total = subtotal
+  
+  // Si estamos en previsualización, mostrar vista previa
     if (nvPrevisualizando) {
       return renderPrevisualizacionNV()
     }
@@ -3372,15 +3388,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <Package className="w-4 h-4" /> Productos
                 </h3>
               </div>
-              <table className="w-full">
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[700px]">
                 <thead>
                   <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
                     <th className="text-left py-1.5 px-2">Producto</th>
-                    <th className="text-center py-1.5 px-2 w-20">Cant.</th>
-                    <th className="text-right py-1.5 px-2 w-24">Precio USD</th>
-                    <th className="text-right py-1.5 px-2 w-28">Precio ARS</th>
+                    <th className="text-center py-1.5 px-2 w-10">Cant.</th>
+                    <th className="text-right py-1.5 px-2 w-28">Precio USD</th>
+                    <th className="text-right py-1.5 px-2 w-32">Precio ARS</th>
                     <th className="text-center py-1.5 px-2 w-16">Dto.%</th>
-                    <th className="text-right py-1.5 px-2 w-24">Subtotal</th>
+                    <th className="text-right py-1.5 px-2 w-28">Subtotal</th>
                     <th className="w-8"></th>
                   </tr>
                 </thead>
@@ -3392,7 +3409,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           <div className="flex items-center gap-2">
                             <div className="flex-1 relative">
                               <input
+                                ref={(el) => { productoInputRefs.current[index] = el }}
                                 type="text"
+                                autoComplete="off"
+                                autoCorrect="off"
+                                autoCapitalize="off"
+                                spellCheck={false}
+                                name={`producto-search-${index}`}
                                 value={productoSearchIndex === index ? productoSearchText : linea.producto_nombre}
                                 onChange={(e) => {
                                   setProductoSearchIndex(index)
@@ -3414,92 +3437,42 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                 placeholder="Buscar producto..."
                                 className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
                               />
-                              {/* Dropdown de sugerencias */}
-                              {productoSearchIndex === index && (
-                                <div className="absolute left-0 top-full z-50 w-full mt-1 bg-white border border-gray-300 shadow-lg max-h-48 overflow-y-auto">
-                                  {productosConSerie
-                                    .filter(p =>
-                                      p.nombre.toLowerCase().includes(productoSearchText.toLowerCase()) ||
-                                      p.sku.toLowerCase().includes(productoSearchText.toLowerCase())
-                                    )
-                                    .map(p => (
-                                      <div
-                                        key={p.id}
-                                        onMouseDown={(e) => {
-                                          e.preventDefault()
-                                          const updated = [...nvLineas]
-                                          updated[index].producto_id = p.id
-                                          updated[index].producto_nombre = p.nombre
-                                          updated[index].producto_sku = p.sku
-                                          updated[index].requiere_serie = p.requiere_serie
-                                          updated[index].series_seleccionadas = []
-                                          // Buscar precio desde la versión activa de la lista de precios del cliente
-                                          const clienteNV = clientes.find(c => c.id === nvClienteId)
-                                          const listaId = clienteNV?.lista_precios_id ?? null
-                                          const versionActiva = listaId
-                                            ? versionesLista.find(v => v.lista_id === listaId && v.estado === "activa")
-                                            : null
-                                          const lineaLP = versionActiva?.lineas.find(l => l.producto_id === p.id)
-                                          let precioUnitario = p.precio_venta
-                                          let moneda: "ARS" | "USD" = "ARS"
-                                          let precioUSD = 0
-                                          let precioARS = 0
-                                          if (lineaLP) {
-                                            const cotiz = lineaLP.cotizacion_dolar || COTIZACION_DOLAR_MOCK
-                                            if (lineaLP.forzar_precio_pesos && lineaLP.precio_forzado_ars) {
-                                              // Precio forzado en ARS
-                                              precioARS = lineaLP.precio_forzado_ars
-                                              precioUSD = parseFloat((precioARS / cotiz).toFixed(2))
-                                              precioUnitario = precioARS
-                                              moneda = "ARS"
-                                            } else if (lineaLP.precio_venta_moneda === "USD") {
-                                              precioUSD = lineaLP.precio_venta
-                                              precioARS = parseFloat((precioUSD * cotiz).toFixed(2))
-                                              precioUnitario = precioARS
-                                              moneda = "USD"
-                                            } else {
-                                              precioARS = lineaLP.precio_venta
-                                              precioUSD = parseFloat((precioARS / cotiz).toFixed(2))
-                                              precioUnitario = precioARS
-                                              moneda = "ARS"
-                                            }
-                                          } else {
-                                            // Sin lista: usar precio_venta del producto como ARS
-                                            precioARS = p.precio_venta
-                                            precioUSD = parseFloat((precioARS / COTIZACION_DOLAR_MOCK).toFixed(2))
-                                            precioUnitario = precioARS
-                                            moneda = "ARS"
-                                          }
-                                          updated[index].precio_unitario = precioUnitario
-                                          updated[index].precio_unitario_moneda = moneda
-                                          updated[index].precio_unitario_usd = precioUSD
-                                          updated[index].precio_unitario_ars = precioARS
-                                          updated[index].subtotal = updated[index].cantidad * precioUnitario * (1 - updated[index].descuento / 100)
-                                          setNvLineas(updated)
-                                          setProductoSearchIndex(null)
-                                          setProductoSearchText("")
-                                          if (p.requiere_serie) {
-                                            setTimeout(() => {
-                                              setSerieModalLineaIndex(index)
-                                              setSeriesSeleccionadasTemp([])
-                                              setShowSerieModal(true)
-                                            }, 100)
-                                          }
-                                        }}
-                                        className="px-2 py-1 hover:bg-blue-600 hover:text-white cursor-pointer text-sm"
-                                      >
-                                        <span className="font-medium">[{p.sku}]</span> {p.nombre}
-                                      </div>
-                                    ))
-                                  }
-                                  {productosConSerie.filter(p =>
-                                    p.nombre.toLowerCase().includes(productoSearchText.toLowerCase()) ||
-                                    p.sku.toLowerCase().includes(productoSearchText.toLowerCase())
-                                  ).length === 0 && (
-                                    <div className="px-2 py-1 text-sm text-gray-500">No se encontraron productos</div>
-                                  )}
-                                </div>
-                              )}
+                              {/* --- Dropdown productos por lista de precios del cliente --- */}
+                              {productoSearchIndex === index
+                                ? <ProductoDropdown
+                                    nvClienteId={nvClienteId}
+                                    clientes={clientes}
+                                    listasPrecios={listasPrecios}
+                                    versionesLista={versionesLista}
+                                    productosConSerie={productosConSerie}
+                                    productoSearchText={productoSearchText}
+                                    anchorRef={{ current: productoInputRefs.current[index] } as React.RefObject<HTMLInputElement>}
+                                    onSelect={(p, precioUnitario, moneda, precioUSD, precioARS) => {
+                                      const updated = [...nvLineas]
+                                      updated[index].producto_id = p.id
+                                      updated[index].producto_nombre = p.nombre
+                                      updated[index].producto_sku = p.sku
+                                      updated[index].requiere_serie = p.requiere_serie
+                                      updated[index].series_seleccionadas = []
+                                      updated[index].precio_unitario = precioUnitario
+                                      updated[index].precio_unitario_moneda = moneda
+                                      updated[index].precio_unitario_usd = precioUSD
+                                      updated[index].precio_unitario_ars = precioARS
+                                      updated[index].subtotal = updated[index].cantidad * precioUnitario * (1 - updated[index].descuento / 100)
+                                      setNvLineas(updated)
+                                      setProductoSearchIndex(null)
+                                      setProductoSearchText("")
+                                      if (p.requiere_serie) {
+                                        setTimeout(() => {
+                                          setSerieModalLineaIndex(index)
+                                          setSeriesSeleccionadasTemp([])
+                                          setShowSerieModal(true)
+                                        }, 100)
+                                      }
+                                    }}
+                                  />
+                                : null
+                              }
                             </div>
                             {linea.requiere_serie && linea.producto_id > 0 && (
                               <button
@@ -3541,7 +3514,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                               setShowSerieModal(true)
                             }
                           }}
-                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-center"
+                          className="w-10 border border-gray-300 rounded px-1 py-1 text-sm text-center"
                         />
                       </td>
                       <td className="py-1 px-2 text-right text-sm text-blue-700 font-medium">
@@ -3553,7 +3526,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       <td className="py-1 px-2 text-right text-sm font-medium">
                         {linea.precio_unitario_ars > 0 ? (
                           <span className={linea.precio_unitario_moneda === "ARS" ? "text-amber-700" : "text-gray-700"}>
-                            ARS $ {linea.precio_unitario_ars.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ARS $ {linea.precio_unitario_ars.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                           </span>
                         ) : (
                           <span className="text-gray-300">-</span>
@@ -3598,6 +3571,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   )}
                 </tbody>
               </table>
+              </div>
               {/* Boton agregar producto al final */}
               <div className="px-2 py-2 border-t border-gray-100">
                 <button
@@ -3724,10 +3698,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Subtotal:</span>
                   <span className="font-medium">{formatCurrency(subtotal)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">IVA (21%):</span>
-                  <span className="font-medium">{formatCurrency(subtotal * 0.21)}</span>
                 </div>
                 <div className="border-t pt-3">
                   <div className="flex justify-between text-lg font-bold">
@@ -7843,11 +7813,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const lista = listaId ? listasPrecios.find(l => l.id === listaId) : selectedListaPrecios
     if (!lista) return
     
+    const versionesExistentes = versionesLista.filter(v => v.lista_precios_id === lista.id)
+    const nombreDefault = `V${versionesExistentes.length + 1} - ${lista.nombre}`
     const nuevaVersion: VersionListaPrecios = {
       id: 0,
       lista_precios_id: lista.id,
       lista_precios_nombre: lista.nombre,
-      nombre: "",
+      nombre: nombreDefault,
       fecha_inicial: new Date().toISOString().split("T")[0],
       fecha_final: null,
       activa: false,
@@ -9260,6 +9232,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <form onSubmit={(e) => {
           e.preventDefault()
           const formData = new FormData(e.currentTarget)
+          const catId2 = formClienteCategoriaId
+          const catNombre2 = categoriasCliente.find(c => c.id === catId2)?.nombre?.toLowerCase() as ClienteVenta["categoria"] | undefined
           const newCliente: ClienteVenta = {
             id: editingItem?.id || clientes.length + 1,
             codigo: editingItem?.codigo || `C0${15520 + clientes.length}`,
@@ -9276,7 +9250,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             telefono: formData.get("telefono") as string || "",
             celular: formData.get("celular") as string || "",
             email: formData.get("email") as string || "",
-            categoria: formData.get("categoria") as ClienteVenta["categoria"],
+            categoria: catNombre2 ?? (editingItem?.categoria ?? null),
             vendedor_id: parseInt(formData.get("vendedor_id") as string) || null,
             cobrador_id: null,
             lista_precios_id: parseInt(formData.get("lista_precios_id") as string) || 1,
