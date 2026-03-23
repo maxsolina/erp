@@ -3635,7 +3635,41 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           </div>
 
           {/* Columna derecha - Resumen y acciones */}
-          <div className="space-y-6">
+          <div className="space-y-4">
+            {/* Categoría de Cliente y Lista de Precios */}
+            {(() => {
+              const clienteNV = clientes.find(c => c.id === nvClienteId)
+              const categoriaNV = clienteNV ? categoriasCliente.find(cat => cat.nombre.toLowerCase() === clienteNV.categoria.toLowerCase()) : null
+              const listaNV = clienteNV ? listasPrecios.find(l => l.id === clienteNV.lista_precios_id) : null
+              return (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                  <h3 className="font-semibold text-gray-900 mb-3 text-sm">Configuración de Venta</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Categoría de Cliente</label>
+                      {clienteNV ? (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                          {categoriaNV?.nombre || clienteNV.categoria}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">Seleccione un cliente</span>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Lista de Precios por Defecto</label>
+                      {clienteNV ? (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+                          {listaNV?.nombre || "Sin asignar"}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">Seleccione un cliente</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* Resumen */}
             <div className="bg-white rounded-lg shadow-sm p-4">
               <h3 className="font-semibold text-gray-900 mb-4">Resumen</h3>
