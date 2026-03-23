@@ -5449,16 +5449,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       return
     }
 
-    const tipoFactura = clienteSeleccionado.posicion_fiscal === "responsable_inscripto" ? "A" :
-      clienteSeleccionado.posicion_fiscal === "monotributista" ? "C" : "B"
-    const facturaNumero = `FC-${tipoFactura} X 10000-000${20050 + facturas.length}`
+    const facturaNumero = `FC X 10000-000${20050 + facturas.length}`
     const facturaId = facturas.length + 1
     const fechaHoy = new Date().toISOString()
 
     const newFactura: Factura = {
       id: facturaId,
       numero: facturaNumero,
-      tipo: tipoFactura as "A" | "B" | "C",
+      tipo: "B",
       nota_venta_id: 0,
       nota_venta_numero: "-",
       cliente_id: clienteSeleccionado.id,
@@ -5474,12 +5472,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       termino_pago: mockTerminosPago.find(tp => tp.id === clienteSeleccionado.termino_pago_id)?.nombre || "Contado",
       subtotal: subtotal,
       descuento: 0,
-      impuestos: subtotal * 0.21,
-      total: total,
-      saldo: total,
+      impuestos: 0,
+      total: subtotal,
+      saldo: subtotal,
       sucursal: "Puerto Norte",
       lineas: lineasValidas,
-      vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: total }]
+      vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: subtotal }]
     }
     setFacturas(prev => [...prev, newFactura])
 
@@ -5495,23 +5493,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const handleCrearFacturaFinal = () => {
     const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
     const subtotal = facturaLineas.reduce((sum, l) => sum + l.subtotal, 0)
-    const total = subtotal * 1.21
-    
+
     if (!clienteSeleccionado || facturaLineas.length === 0) {
       alert("Debe seleccionar un cliente y agregar al menos un producto")
       return
     }
 
-    const tipoFactura = clienteSeleccionado.posicion_fiscal === "responsable_inscripto" ? "A" :
-      clienteSeleccionado.posicion_fiscal === "monotributista" ? "C" : "B"
-    const facturaNumero = `FC-${tipoFactura} X 10000-000${20050 + facturas.length}`
+    const facturaNumero = `FC X 10000-000${20050 + facturas.length}`
     const facturaId = facturas.length + 1
     const fechaHoy = new Date().toISOString()
 
     const newFactura: Factura = {
       id: facturaId,
       numero: facturaNumero,
-      tipo: tipoFactura as "A" | "B" | "C",
+      tipo: "B",
       nota_venta_id: 0,
       nota_venta_numero: "-",
       cliente_id: clienteSeleccionado.id,
@@ -5527,12 +5522,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       termino_pago: mockTerminosPago.find(tp => tp.id === clienteSeleccionado.termino_pago_id)?.nombre || "Contado",
       subtotal: subtotal,
       descuento: 0,
-      impuestos: subtotal * 0.21,
-      total: total,
-      saldo: total,
+      impuestos: 0,
+      total: subtotal,
+      saldo: subtotal,
       sucursal: "Puerto Norte",
       lineas: facturaLineas,
-      vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: total }]
+      vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: subtotal }]
     }
     setFacturas(prev => [...prev, newFactura])
 
@@ -5548,8 +5543,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       documento_numero: facturaNumero,
       documento_id: facturaId,
       moneda: "ARS",
-      importe: total,
-      saldo_posterior: saldoAnterior + total
+      importe: subtotal,
+      saldo_posterior: saldoAnterior + subtotal
     }
     setMovimientosCC(prev => [...prev, nuevoMovimiento])
 
@@ -5766,9 +5761,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
                   <div><span className="text-gray-500">Documento:</span> <span className="font-medium">{clienteSeleccionado.tipo_documento}: {clienteSeleccionado.numero_documento}</span></div>
                   <div><span className="text-gray-500">Posicion Fiscal:</span> <span className="font-medium capitalize">{clienteSeleccionado.posicion_fiscal.replace('_', ' ')}</span></div>
-                  <div><span className="text-gray-500">Tipo Factura:</span> <span className="font-medium">
-                    {clienteSeleccionado.posicion_fiscal === "responsable_inscripto" ? "A" : clienteSeleccionado.posicion_fiscal === "monotributista" ? "C" : "B"}
-                  </span></div>
+
                   <div>
                     <span className="text-gray-500">Lista de Precios:</span>
                     <select
@@ -5970,7 +5963,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 <BotonVolver onClick={() => setSelectedFactura(null)} variant="minimal" texto="" />
             <div>
               <h1 className="text-2xl font-bold text-emerald-900">{selectedFactura.numero}</h1>
-              <p className="text-sm text-gray-500">{formatDateTime(selectedFactura.fecha)} | Tipo {selectedFactura.tipo}</p>
+                <p className="text-sm text-gray-500">{formatDateTime(selectedFactura.fecha)}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -6116,7 +6109,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <h3 className="font-semibold text-gray-900 border-b pb-2">Datos de Factura</h3>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div><span className="text-gray-500">Numero:</span> <span className="font-medium">{selectedFactura.numero}</span></div>
-                <div><span className="text-gray-500">Tipo:</span> <span className="font-medium">Factura {selectedFactura.tipo}</span></div>
+                <div><span className="text-gray-500">Tipo:</span> <span className="font-medium">Factura</span></div>
                 <div><span className="text-gray-500">Fecha:</span> <span className="font-medium">{formatDate(selectedFactura.fecha)}</span></div>
                 <div><span className="text-gray-500">NV:</span> <span className="font-medium text-emerald-700">{selectedFactura.nota_venta_numero}</span></div>
                 <div><span className="text-gray-500">Vendedor:</span> <span className="font-medium">{selectedFactura.vendedor_nombre}</span></div>
@@ -9847,8 +9840,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               lineas: nvLineas,
               subtotal: subtotal,
               descuento_global: 0,
-              impuestos: subtotal * 0.21,
-              total: total,
+              impuestos: 0,
+              total: subtotal,
               sucursal: "Puerto Norte",
               punto_venta: "10000"
             }
@@ -9923,16 +9916,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 oe.id === oeId ? { ...oe, remito_numero: remitoNumero } : oe
               ))
 
-              const facturaNumero = `FC-A X 10000-000${20050 + facturas.length}`
+              const facturaNumero = `FC X 10000-000${20050 + facturas.length}`
               const facturaId = facturas.length + 1
               
               // 3. Crear Factura en borrador
-              const tipoFactura = cliente.posicion_fiscal === "responsable_inscripto" ? "A" : 
-                                  cliente.posicion_fiscal === "monotributista" ? "C" : "B"
               const newFactura: Factura = {
                 id: facturaId,
                 numero: facturaNumero,
-                tipo: tipoFactura as "A" | "B" | "C",
+                tipo: "B",
                 nota_venta_id: nvId,
                 nota_venta_numero: nvNumero,
                 cliente_id: cliente.id,
@@ -9948,9 +9939,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 termino_pago: terminoPagoNombre,
                 subtotal: subtotal,
                 descuento: 0,
-                impuestos: subtotal * 0.21,
-                total: total,
-                saldo: total,
+                impuestos: 0,
+                total: subtotal,
+                saldo: subtotal,
                 sucursal: "Puerto Norte",
                 lineas: nvLineas.map(l => ({
                   producto_nombre: l.producto_nombre,
@@ -9963,7 +9954,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 vencimientos: [{
                   descripcion: "Vencimiento 1",
                   fecha: fechaHoy.split('T')[0],
-                  total: total
+                  total: subtotal
                 }]
               }
               setFacturas(prev => [...prev, newFactura])
