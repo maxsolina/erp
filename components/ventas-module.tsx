@@ -6150,6 +6150,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
           {/* Bloque Medios de Pago */}
           <BloquesMediosPago
+            key={selectedFactura.id}
             factura={selectedFactura}
             onConfirmarCobro={(lineasPago, totalConRecargos, totalRecargos) => {
               const fechaHoy = new Date().toISOString()
