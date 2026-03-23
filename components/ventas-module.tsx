@@ -5570,11 +5570,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
     const lineasValidas = facturaLineas.filter(l => l.producto_nombre.trim() !== "")
     const subtotal = lineasValidas.reduce((sum, l) => sum + l.subtotal, 0)
-    const iva = subtotal * 0.21
-    const total = subtotal + iva
-    const tipoFactura = clienteSeleccionado?.posicion_fiscal === "responsable_inscripto" ? "A" :
-      clienteSeleccionado?.posicion_fiscal === "monotributista" ? "C" : "B"
-
     return (
       <div>
         {/* Header con breadcrumb */}
@@ -5584,7 +5579,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div className="flex items-center gap-4 mb-6">
 <BotonVolver onClick={() => setFacturaPrevisualizando(false)} variant="minimal" texto="" />
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-emerald-900">Nueva Factura Tipo {tipoFactura}</h1>
+            <h1 className="text-2xl font-bold text-emerald-900">Nueva Factura</h1>
             <p className="text-sm text-gray-500">{new Date().toLocaleDateString('es-AR')} | Puerto Norte</p>
           </div>
           <button className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1">
@@ -5708,13 +5703,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <span className="text-gray-500">Subtotal:</span>
                 <span>{formatCurrency(subtotal)}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">IVA (21%):</span>
-                <span>{formatCurrency(iva)}</span>
-              </div>
               <div className="flex justify-between text-lg font-bold pt-2 border-t">
                 <span>Total:</span>
-                <span className="text-emerald-700">{formatCurrency(total)}</span>
+                <span className="text-emerald-700">{formatCurrency(subtotal)}</span>
               </div>
             </div>
           </div>
@@ -5726,7 +5717,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const renderCrearFactura = () => {
     const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
     const subtotal = facturaLineas.reduce((sum, l) => sum + l.subtotal, 0)
-    const total = subtotal * 1.21
 
     // Si estamos en previsualización, mostrar vista previa
     if (facturaPrevisualizando) {
@@ -5918,9 +5908,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <h3 className="font-semibold text-gray-900 mb-4">Resumen</h3>
               <div className="space-y-3">
                 <div className="flex justify-between text-sm"><span className="text-gray-600">Subtotal:</span><span className="font-medium">{formatCurrency(subtotal)}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-gray-600">IVA (21%):</span><span className="font-medium">{formatCurrency(subtotal * 0.21)}</span></div>
                 <div className="border-t pt-3">
-                  <div className="flex justify-between text-lg font-bold"><span>Total:</span><span className="text-emerald-700">{formatCurrency(total)}</span></div>
+                  <div className="flex justify-between text-lg font-bold"><span>Total:</span><span className="text-emerald-700">{formatCurrency(subtotal)}</span></div>
                 </div>
               </div>
             </div>
