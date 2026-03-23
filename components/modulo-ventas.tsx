@@ -3372,11 +3372,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <Package className="w-4 h-4" /> Productos
                 </h3>
               </div>
-              <table className="w-full">
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[700px]">
                 <thead>
                   <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
-                    <th className="text-left py-1.5 px-2 min-w-[260px]">Producto</th>
-                    <th className="text-center py-1.5 px-2 w-20">Cant.</th>
+                    <th className="text-left py-1.5 px-2">Producto</th>
+                    <th className="text-center py-1.5 px-2 w-16">Cant.</th>
                     <th className="text-right py-1.5 px-2 w-28">Precio USD</th>
                     <th className="text-right py-1.5 px-2 w-32">Precio ARS</th>
                     <th className="text-center py-1.5 px-2 w-16">Dto.%</th>
@@ -3541,7 +3542,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                               setShowSerieModal(true)
                             }
                           }}
-                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-center"
+                          className="w-16 border border-gray-300 rounded px-2 py-1 text-sm text-center"
                         />
                       </td>
                       <td className="py-1 px-2 text-right text-sm text-blue-700 font-medium">
@@ -3598,6 +3599,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   )}
                 </tbody>
               </table>
+              </div>
               {/* Boton agregar producto al final */}
               <div className="px-2 py-2 border-t border-gray-100">
                 <button
