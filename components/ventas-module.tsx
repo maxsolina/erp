@@ -5563,7 +5563,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       descuento: 0,
       impuestos: totalRecargos,
       total: totalFinal,
-      saldo: 0,
+      saldo: totalFinal,
       sucursal: "Puerto Norte",
       lineas: facturaLineas,
       vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: totalFinal }]
