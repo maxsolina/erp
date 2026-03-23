@@ -5,6 +5,8 @@ import React, { useState, useMemo, useRef } from "react"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History } from "lucide-react"
  import BotonVolver from "./ui/boton-volver"
 import ProductoDropdown from "./producto-dropdown"
+import { tarjetasIniciales, gruposIniciales, recargosIniciales } from "./modulo-finanzas"
+import type { Tarjeta as TarjetaFinanzas, GrupoTarjeta as GrupoTarjetaFinanzas, RecargoTarjeta as RecargoTarjetaFinanzas } from "./modulo-finanzas"
 
 // Types para Ventas
 interface ClienteVenta {
@@ -805,6 +807,201 @@ const mockMovimientosCC: MovimientoCuentaCorriente[] = [
     documento_id: 3, moneda: "ARS", importe: 45000, saldo_posterior: 45000
   },
 ]
+
+// ─── Bloque Medios de Pago (dentro de ficha de Factura) ──────────────────────
+
+interface LineaPago {
+  id: number
+  medio: "efectivo" | "transferencia" | "tarjeta"
+  tarjeta_id?: number
+  cuotas?: number
+  monto: number
+}
+
+function BloquesMediosPago({ factura }: { factura: Factura }) {
+  const [lineas, setLineas] = useState<LineaPago[]>([])
+  const tarjetas = tarjetasIniciales
+  const grupos = gruposIniciales
+  const recargos = recargosIniciales
+
+  const CUOTAS_OPTS = [1, 2, 3, 4, 5, 6, 9, 12, 18, 24]
+
+  const formatARS = (n: number) =>
+    new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 }).format(n)
+
+  const buscarRecargo = (tarjetaId: number, cuotas: number, fecha: string): RecargoTarjetaFinanzas | null => {
+    const fechaDate = new Date(fecha)
+    const diaSemana = fechaDate.getDay()
+    const diasKeys: (keyof RecargoTarjetaFinanzas["dias"])[] = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"]
+    const diaKey = diasKeys[diaSemana]
+    const candidatos = recargos.filter(r =>
+      r.tarjeta_id === tarjetaId &&
+      r.activo &&
+      cuotas >= r.desde_cuota &&
+      cuotas <= r.hasta_cuota &&
+      fecha.slice(0, 10) >= r.fecha_desde &&
+      fecha.slice(0, 10) <= r.fecha_hasta &&
+      r.dias[diaKey]
+    )
+    if (!candidatos.length) return null
+    return candidatos.sort((a, b) => (a.hasta_cuota - a.desde_cuota) - (b.hasta_cuota - b.desde_cuota))[0]
+  }
+
+  const calcularRecargoLinea = (linea: LineaPago) => {
+    if (linea.medio !== "tarjeta" || !linea.tarjeta_id) return null
+    const cuotas = linea.cuotas || 1
+    const rec = buscarRecargo(linea.tarjeta_id, cuotas, factura.fecha)
+    if (!rec) return null
+    const grupo = grupos.find(g => g.id === rec.grupo_id)
+    const importeRecargo = linea.monto * (rec.recargo_pct / 100)
+    const cargos = (grupo?.cargos || []).map(c => ({
+      nombre: c.nombre, pct: c.arancel, importe: linea.monto * (c.arancel / 100)
+    }))
+    const totalRecargo = importeRecargo + cargos.reduce((s, c) => s + c.importe, 0)
+    return { recargo: rec, grupo, importeRecargo, cargos, totalRecargo, totalConRecargo: linea.monto + totalRecargo }
+  }
+
+  const agregarLinea = () => {
+    setLineas(prev => [...prev, { id: Date.now(), medio: "efectivo", monto: 0 }])
+  }
+
+  const actualizarLinea = (id: number, cambios: Partial<LineaPago>) => {
+    setLineas(prev => prev.map(l => l.id === id ? { ...l, ...cambios } : l))
+  }
+
+  const eliminarLinea = (id: number) => {
+    setLineas(prev => prev.filter(l => l.id !== id))
+  }
+
+  const totalRecargos = lineas.reduce((sum, l) => {
+    const c = calcularRecargoLinea(l)
+    return sum + (c?.totalRecargo || 0)
+  }, 0)
+
+  const totalPagos = lineas.reduce((s, l) => s + (l.monto || 0), 0)
+  const totalConRecargos = totalPagos + totalRecargos
+  const diferencia = factura.total + totalRecargos - totalConRecargos
+
+  if (lineas.length === 0) {
+    return (
+      <div className="mt-6 border-t pt-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-gray-900 text-sm uppercase tracking-wide">Medios de Pago</h3>
+          <button onClick={agregarLinea}
+            className="flex items-center gap-1.5 text-sm text-emerald-700 hover:text-emerald-900 font-medium">
+            <Plus className="w-4 h-4" /> Agregar medio de pago
+          </button>
+        </div>
+        <p className="text-sm text-gray-400 italic">Sin medios de pago registrados.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-6 border-t pt-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold text-gray-900 text-sm uppercase tracking-wide">Medios de Pago</h3>
+        <button onClick={agregarLinea}
+          className="flex items-center gap-1.5 text-sm text-emerald-700 hover:text-emerald-900 font-medium">
+          <Plus className="w-4 h-4" /> Agregar línea
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {lineas.map(linea => {
+          const calc = calcularRecargoLinea(linea)
+          const tarjetaInfo = tarjetas.find(t => t.id === linea.tarjeta_id)
+          return (
+            <div key={linea.id} className="rounded-lg border border-gray-200 overflow-hidden">
+              {/* Fila de inputs */}
+              <div className="flex items-center gap-3 p-3 bg-gray-50">
+                <select value={linea.medio} onChange={e => actualizarLinea(linea.id, { medio: e.target.value as LineaPago["medio"], tarjeta_id: undefined, cuotas: undefined })}
+                  className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                  <option value="efectivo">Efectivo</option>
+                  <option value="transferencia">Transferencia</option>
+                  <option value="tarjeta">Tarjeta</option>
+                </select>
+
+                {linea.medio === "tarjeta" && (
+                  <>
+                    <select value={linea.tarjeta_id || ""} onChange={e => actualizarLinea(linea.id, { tarjeta_id: parseInt(e.target.value), cuotas: 1 })}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                      <option value="">Seleccionar tarjeta...</option>
+                      {tarjetas.filter(t => t.activa).map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                    </select>
+                    <select value={linea.cuotas || 1} onChange={e => actualizarLinea(linea.id, { cuotas: parseInt(e.target.value) })}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none w-20">
+                      {CUOTAS_OPTS.map(c => <option key={c} value={c}>{c}c</option>)}
+                    </select>
+                  </>
+                )}
+
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="text-sm text-gray-500">$</span>
+                  <input type="number" value={linea.monto || ""} onChange={e => actualizarLinea(linea.id, { monto: parseFloat(e.target.value) || 0 })}
+                    placeholder="0,00" className="border border-gray-300 rounded px-2 py-1.5 text-sm text-right w-32 focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
+                  <button onClick={() => eliminarLinea(linea.id)} className="p-1 text-gray-400 hover:text-red-600"><X className="w-4 h-4" /></button>
+                </div>
+              </div>
+
+              {/* Desglose de recargo */}
+              {linea.medio === "tarjeta" && linea.tarjeta_id && linea.monto > 0 && (
+                <div className="px-4 pb-3 pt-2 bg-white border-t border-gray-100">
+                  {calc ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <CreditCard className="w-3.5 h-3.5 text-gray-400" />
+                        <span className="text-xs font-medium text-gray-600">{tarjetaInfo?.nombre} — {linea.cuotas} cuota{(linea.cuotas || 1) > 1 ? "s" : ""} · {calc.grupo?.nombre}</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>Monto abonado c/tarjeta:</span><span>{formatARS(linea.monto)}</span>
+                      </div>
+                      {calc.cargos.map((c, i) => (
+                        <div key={i} className="flex justify-between text-xs text-gray-500">
+                          <span>{c.nombre} ({c.pct}%):</span><span>{formatARS(c.importe)}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between text-xs text-amber-700 font-medium border-t border-amber-100 pt-1">
+                        <span>Recargo total ({calc.recargo.recargo_pct}%):</span><span>{formatARS(calc.totalRecargo)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs font-bold text-gray-900">
+                        <span>Total a acreditar:</span><span>{formatARS(calc.totalConRecargo)}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-xs text-amber-600">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      No se encontró recargo configurado para esta combinación. Verificá Finanzas → Recargos.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Resumen total */}
+      {lineas.length > 0 && (
+        <div className="mt-4 flex justify-end">
+          <div className="w-72 space-y-1.5 text-sm">
+            <div className="flex justify-between text-gray-600"><span>Total factura:</span><span>{formatARS(factura.total)}</span></div>
+            {totalRecargos > 0 && <div className="flex justify-between text-amber-700"><span>Total recargos:</span><span>+ {formatARS(totalRecargos)}</span></div>}
+            <div className="flex justify-between font-bold text-base border-t pt-2 text-gray-900">
+              <span>Total con recargo:</span><span>{formatARS(totalConRecargos)}</span>
+            </div>
+            {Math.abs(diferencia) > 1 && (
+              <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium pt-1">
+                <AlertCircle className="w-3.5 h-3.5" />
+                Diferencia: {formatARS(Math.abs(diferencia))} {diferencia > 0 ? "faltante" : "excedente"}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // Componente principal
 export type { ClienteVenta }
@@ -5865,6 +6062,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <div className="flex justify-between text-red-600 font-medium"><span>Saldo:</span><span>{formatCurrency(selectedFactura.saldo, selectedFactura.moneda)}</span></div>
             </div>
           </div>
+
+          {/* Bloque Medios de Pago */}
+          <BloquesMediosPago factura={selectedFactura} />
 
           {/* Seguimiento */}
           <SeguimientoPanel seguimiento={selectedFactura.seguimiento || []} />

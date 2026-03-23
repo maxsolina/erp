@@ -7,6 +7,7 @@ import ModuloCompras from "@/components/modulo-compras"
 import ModuloStock from "@/components/modulo-stock"
 import ModuloInformes from "@/components/modulo-informes"
 import ModuloContabilidad from "@/components/modulo-contabilidad"
+import ModuloFinanzas from "@/components/modulo-finanzas"
 import ERPWrapper from "@/components/erp-wrapper"
 
 // Types
@@ -2521,7 +2522,7 @@ function CellHomeERPContent() {
           Cell Home ERP
         </div>
         <div className="flex ml-10 gap-1">
-          {["home", "taller", "ventas", "compras", "contabilidad", "caja", "deposito", "informes", "config"].map(mod => (
+          {["home", "taller", "ventas", "compras", "finanzas", "contabilidad", "caja", "deposito", "informes", "config"].map(mod => (
             <button
               key={mod}
               onClick={() => { setActiveModule(mod); setActiveView("dashboard") }}
@@ -2555,6 +2556,10 @@ function CellHomeERPContent() {
   ) : activeModule === "compras" ? (
   <div className="pt-11">
   <ModuloCompras />
+  </div>
+  ) : activeModule === "finanzas" ? (
+  <div className="pt-11">
+  <ModuloFinanzas />
   </div>
   ) : activeModule === "contabilidad" ? (
   <div className="pt-11">
