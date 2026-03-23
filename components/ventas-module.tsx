@@ -830,9 +830,10 @@ interface ResultadoCalculo {
   totalConRecargo: number
 }
 
-function BloquesMediosPago({ factura, onConfirmarCobro }: {
+function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado }: {
   factura: Factura
   onConfirmarCobro?: (lineas: LineaPago[], totalConRecargos: number, totalRecargos: number) => void
+  onCobroConfirmado?: (totalRecargos: number, desglose: { nombre: string; importe: number }[]) => void
 }) {
   const [lineas, setLineas] = useState<LineaPago[]>([])
   const [cobrado, setCobrado] = useState(false)
@@ -1094,7 +1095,20 @@ function BloquesMediosPago({ factura, onConfirmarCobro }: {
             {totalIngresado > 0 && Math.abs(diferencia) <= 0.5 && (
               <button
                 onClick={() => {
+                  // Construir desglose de recargos para mostrar en totales
+                  const desgloseRecargos: { nombre: string; importe: number }[] = []
+                  lineas.forEach(l => {
+                    const c = calcularLinea(l)
+                    if (!c) return
+                    if (c.recargo.recargo_pct > 0) {
+                      desgloseRecargos.push({ nombre: `Recargo tarjeta (${c.tarjeta?.nombre} ${c.recargo.recargo_pct}%)`, importe: c.importeRecargo })
+                    }
+                    c.cargos.forEach(cargo => {
+                      desgloseRecargos.push({ nombre: cargo.nombre, importe: cargo.importe })
+                    })
+                  })
                   onConfirmarCobro?.(lineas, totalConRecargos, totalRecargos)
+                  onCobroConfirmado?.(totalRecargos, desgloseRecargos)
                   setCobrado(true)
                 }}
                 className="mt-3 w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg flex items-center justify-center gap-2"
@@ -5567,6 +5581,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   // Vista de previsualización de Factura
+  const [prevRecargosConfirmados, setPrevRecargosConfirmados] = useState<{ totalRecargos: number; desglose: { nombre: string; importe: number }[] } | null>(null)
+
   const renderPrevisualizacionFactura = () => {
     const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
     const lineasValidas = facturaLineas.filter(l => l.producto_nombre.trim() !== "")
@@ -5698,12 +5714,26 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <div className="flex justify-end">
             <div className="w-64 space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-500">Subtotal:</span>
+                <span className="text-gray-500">Subtotal (precio contado):</span>
                 <span>{formatCurrency(subtotal)}</span>
               </div>
+              {prevRecargosConfirmados && prevRecargosConfirmados.desglose.map((d, i) => (
+                <div key={i} className="flex justify-between text-amber-700">
+                  <span>{d.nombre}:</span>
+                  <span>+ {formatCurrency(d.importe)}</span>
+                </div>
+              ))}
+              {prevRecargosConfirmados && prevRecargosConfirmados.totalRecargos > 0 && (
+                <div className="flex justify-between text-amber-700 font-medium">
+                  <span>Total recargos:</span>
+                  <span>+ {formatCurrency(prevRecargosConfirmados.totalRecargos)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-lg font-bold pt-2 border-t">
                 <span>Total:</span>
-                <span className="text-emerald-700">{formatCurrency(subtotal)}</span>
+                <span className="text-emerald-700">
+                  {formatCurrency(subtotal + (prevRecargosConfirmados?.totalRecargos || 0))}
+                </span>
               </div>
             </div>
           </div>
@@ -5711,6 +5741,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           {/* Medios de Pago — disponible antes de guardar */}
           <BloquesMediosPago
             key={`prev-${facturaClienteId}`}
+            onCobroConfirmado={(totalRecargos, desglose) => {
+              setPrevRecargosConfirmados({ totalRecargos, desglose })
+            }}
             factura={{
               id: 0,
               numero: "",
