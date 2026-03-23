@@ -971,6 +971,17 @@ function BloquesMediosPago({ factura, onConfirmarCobro }: {
                 )}
 
                 <div className="ml-auto flex items-center gap-2">
+                  {linea.medio === "efectivo" && (
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={linea.monto === factura.total}
+                        onChange={e => actualizarLinea(linea.id, { monto: e.target.checked ? factura.total : 0 })}
+                        className="w-3.5 h-3.5 accent-emerald-600"
+                      />
+                      <span className="text-xs text-gray-500 whitespace-nowrap">Todo efectivo</span>
+                    </label>
+                  )}
                   <input
                     type="number"
                     value={linea.monto || ""}
