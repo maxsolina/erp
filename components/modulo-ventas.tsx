@@ -1,6 +1,6 @@
 "use client"
 
-// Modulo de Ventas - Cell Home ERP
+// Modulo de Ventas - Cell Home ERP v2
 import React, { useState, useMemo } from "react"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History } from "lucide-react"
 import BotonVolver from "./ui/boton-volver"
@@ -7857,11 +7857,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const lista = listaId ? listasPrecios.find(l => l.id === listaId) : selectedListaPrecios
     if (!lista) return
     
+    const versionesExistentes = versionesLista.filter(v => v.lista_precios_id === lista.id)
+    const nombreDefault = `V${versionesExistentes.length + 1} - ${lista.nombre}`
     const nuevaVersion: VersionListaPrecios = {
       id: 0,
       lista_precios_id: lista.id,
       lista_precios_nombre: lista.nombre,
-      nombre: "",
+      nombre: nombreDefault,
       fecha_inicial: new Date().toISOString().split("T")[0],
       fecha_final: null,
       activa: false,
