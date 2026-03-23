@@ -53,7 +53,7 @@ export interface RecargoTarjeta {
 
 // ─── Initial Data ───────────────────────────────────────────────────────────
 
-const tarjetasIniciales: Tarjeta[] = [
+export const tarjetasIniciales: Tarjeta[] = [
   { id: 1, nombre: "Visa", tipo: "credito", dias_presentacion: 7, dias_pago: 18, activa: true },
   { id: 2, nombre: "Mastercard", tipo: "credito", dias_presentacion: 7, dias_pago: 18, activa: true },
   { id: 3, nombre: "American Express", tipo: "credito", dias_presentacion: 7, dias_pago: 21, activa: true },
@@ -65,7 +65,7 @@ const tarjetasIniciales: Tarjeta[] = [
   { id: 9, nombre: "Cabal Débito", tipo: "debito", dias_presentacion: 2, dias_pago: 3, activa: true },
 ]
 
-const gruposIniciales: GrupoTarjeta[] = [
+export const gruposIniciales: GrupoTarjeta[] = [
   {
     id: 1, nombre: "Viumi", banco: "Banco Macro CC ARS", tipo_movimiento: "Acreditación de Tarjeta", activo: true,
     tarjetas_ids: [1, 2, 6, 7],
@@ -85,28 +85,28 @@ const gruposIniciales: GrupoTarjeta[] = [
   },
 ]
 
-const recargosIniciales: RecargoTarjeta[] = [
+export const recargosIniciales: RecargoTarjeta[] = [
   {
     id: 1, sucursal: "Puerto Norte", tarjeta_id: 1, grupo_id: 1,
-    desde_cuota: 1, hasta_cuota: 1, fecha_desde: "2025-01-01", fecha_hasta: "2025-12-31",
+    desde_cuota: 1, hasta_cuota: 1, fecha_desde: "2026-01-01", fecha_hasta: "2026-12-31",
     recargo_pct: 0, activo: true,
     dias: { lun: true, mar: true, mie: true, jue: true, vie: true, sab: true, dom: true }
   },
   {
     id: 2, sucursal: "Puerto Norte", tarjeta_id: 1, grupo_id: 1,
-    desde_cuota: 2, hasta_cuota: 3, fecha_desde: "2025-01-01", fecha_hasta: "2025-12-31",
+    desde_cuota: 2, hasta_cuota: 3, fecha_desde: "2026-01-01", fecha_hasta: "2026-12-31",
     recargo_pct: 9, activo: true,
     dias: { lun: true, mar: true, mie: true, jue: true, vie: true, sab: true, dom: true }
   },
   {
     id: 3, sucursal: "Puerto Norte", tarjeta_id: 1, grupo_id: 1,
-    desde_cuota: 4, hasta_cuota: 6, fecha_desde: "2025-01-01", fecha_hasta: "2025-12-31",
+    desde_cuota: 4, hasta_cuota: 6, fecha_desde: "2026-01-01", fecha_hasta: "2026-12-31",
     recargo_pct: 18, activo: true,
     dias: { lun: true, mar: true, mie: true, jue: true, vie: true, sab: true, dom: true }
   },
   {
     id: 4, sucursal: "Puerto Norte", tarjeta_id: 2, grupo_id: 1,
-    desde_cuota: 1, hasta_cuota: 3, fecha_desde: "2025-01-01", fecha_hasta: "2025-12-31",
+    desde_cuota: 1, hasta_cuota: 3, fecha_desde: "2026-01-01", fecha_hasta: "2026-12-31",
     recargo_pct: 8, activo: true,
     dias: { lun: true, mar: true, mie: true, jue: true, vie: true, sab: true, dom: true }
   },
