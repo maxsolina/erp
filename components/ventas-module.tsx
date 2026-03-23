@@ -5627,10 +5627,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <span className="text-gray-500">Pos. Fiscal:</span>
                   <span className="ml-2 font-medium capitalize">{clienteSeleccionado?.posicion_fiscal?.replace("_", " ")}</span>
                 </div>
-                <div>
-                  <span className="text-gray-500">Tipo Factura:</span>
-                  <span className="ml-2 font-medium">{tipoFactura}</span>
-                </div>
+
                 <div>
                   <span className="text-gray-500">Teléfono:</span>
                   <span className="ml-2 font-medium text-emerald-600">{clienteSeleccionado?.telefono || clienteSeleccionado?.celular || "-"}</span>
