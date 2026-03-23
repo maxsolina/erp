@@ -1680,12 +1680,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       return renderFichaOT()
     }
     
-    if (selectedCliente) {
-      return renderFichaCliente()
-    }
-
     if (creandoCliente) {
       return renderFormularioCliente()
+    }
+
+    if (selectedCliente) {
+      return renderFichaCliente()
     }
 
     return (
@@ -2077,9 +2077,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <div className="flex-1">
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold text-emerald-900">{selectedCliente.nombre}</h1>
-              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoriaColor(selectedCliente.categoria)}`}>
-                {selectedCliente.categoria === "publico" ? "Público" : selectedCliente.categoria === "mercadolibre" ? "Mercadolibre" : "Mayorista"}
-              </span>
+              {selectedCliente.categoria && (
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoriaColor(selectedCliente.categoria)}`}>
+                  {selectedCliente.categoria === "publico" ? "Público"
+                    : selectedCliente.categoria === "mercadolibre" ? "Mercadolibre"
+                    : selectedCliente.categoria.charAt(0).toUpperCase() + selectedCliente.categoria.slice(1)}
+                </span>
+              )}
             </div>
             <p className="text-sm text-gray-500">{selectedCliente.codigo} | {getPosicionFiscalLabel(selectedCliente.posicion_fiscal)}</p>
           </div>
