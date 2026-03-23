@@ -5706,6 +5706,26 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </div>
             </div>
           </div>
+
+          {/* Medios de Pago — disponible antes de guardar */}
+          <BloquesMediosPago
+            key={`prev-${facturaClienteId}`}
+            factura={{
+              id: 0,
+              numero: "",
+              tipo: "B",
+              estado: "borrador",
+              fecha: new Date().toISOString(),
+              cliente_id: facturaClienteId || 0,
+              cliente_nombre: clienteSeleccionado?.nombre || "",
+              moneda: "ARS",
+              subtotal,
+              descuento: 0,
+              impuestos: 0,
+              total: subtotal,
+              saldo: subtotal,
+            } as Factura}
+          />
         </div>
       </div>
     )
