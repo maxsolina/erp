@@ -825,7 +825,7 @@ function ProductoDropdown({ nvClienteId, clientes, listasPrecios, versionesLista
   const clienteNVdrop = clientes.find((c: any) => c.id === nvClienteId)
   const listaIdDrop = clienteNVdrop?.lista_precios_id ?? null
   const versionActivaDrop = listaIdDrop
-    ? versionesLista.find((v: any) => v.lista_id === listaIdDrop && v.estado === "activa")
+    ? versionesLista.find((v: any) => v.lista_precios_id === listaIdDrop && v.estado === "activa")
     : null
   const productosDrop = versionActivaDrop
     ? productosConSerie.filter((p: any) => versionActivaDrop.lineas.some((l: any) => l.producto_id === p.id))
