@@ -24,20 +24,28 @@ export default function ProductoDropdown({
   const clienteNV = clientes.find((c: any) => c.id === nvClienteId)
   const listaId = clienteNV?.lista_precios_id ?? null
 
+  console.log("[v0] ProductoDropdown - nvClienteId:", nvClienteId, "listaId:", listaId)
+  console.log("[v0] ProductoDropdown - versionesLista:", versionesLista.map((v: any) => ({ id: v.id, lista_precios_id: v.lista_precios_id, activa: v.activa, estado: v.estado, lineas: v.lineas?.length })))
+  console.log("[v0] ProductoDropdown - productosConSerie total:", productosConSerie.length)
+
   // Busca la versión activa por lista_precios_id y estado activa (campo booleano o string)
   const versionActiva = listaId
     ? versionesLista.find((v: any) => {
         const mismaLista = v.lista_precios_id === listaId
-        const estaActiva = v.activa === true || v.estado === "activa"
+        const estaActiva = v.activa === true || v.estado === "activa" || v.estado === "Activa"
         return mismaLista && estaActiva
       })
     : null
+
+  console.log("[v0] ProductoDropdown - versionActiva:", versionActiva ? { id: versionActiva.id, nombre: versionActiva.nombre, lineas: versionActiva.lineas?.length } : null)
 
   const productosDeLista = versionActiva
     ? productosConSerie.filter((p: any) =>
         versionActiva.lineas?.some((l: any) => l.producto_id === p.id)
       )
     : productosConSerie
+
+  console.log("[v0] ProductoDropdown - productosDeLista:", productosDeLista.length, "filtrados por texto:", productoSearchText)
 
   const productosFiltrados = productosDeLista.filter((p: any) =>
     p.nombre.toLowerCase().includes(productoSearchText.toLowerCase()) ||
