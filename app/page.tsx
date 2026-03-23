@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import ModuloHome from "@/components/modulo-home"
-import ModuloVentas, { type ClienteVenta } from "@/components/modulo-ventas"
+import ModuloVentas, { type ClienteVenta } from "@/components/modulo-ventas-v2"
 import ModuloCompras from "@/components/modulo-compras"
 import ModuloStock from "@/components/modulo-stock"
 import ModuloInformes from "@/components/modulo-informes"
