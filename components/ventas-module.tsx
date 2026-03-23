@@ -5528,7 +5528,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       return
     }
 
-    const facturaNumero = `FC X 10000-000${20050 + facturas.length}`
+    const facturaNumero = `FC-${String(20050 + facturas.length).padStart(6, "0")}`
     const facturaId = facturas.length + 1
     const fechaHoy = new Date().toISOString()
 
@@ -5606,16 +5606,17 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
     const lineasValidas = facturaLineas.filter(l => l.producto_nombre.trim() !== "")
     const subtotal = lineasValidas.reduce((sum, l) => sum + l.subtotal, 0)
+    const numeroProvisorio = `FC-${String(20050 + facturas.length).padStart(6, "0")}`
     return (
       <div>
         {/* Header con breadcrumb */}
         <div className="text-sm text-gray-500 mb-2">
-          Facturas / <span className="text-gray-700">Nueva Factura</span>
+          Facturas / <span className="text-gray-700">{numeroProvisorio}</span>
         </div>
         <div className="flex items-center gap-4 mb-6">
 <BotonVolver onClick={() => setFacturaPrevisualizando(false)} variant="minimal" texto="" />
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-emerald-900">Nueva Factura</h1>
+            <h1 className="text-2xl font-bold text-emerald-900">{numeroProvisorio}</h1>
             <p className="text-sm text-gray-500">{new Date().toLocaleDateString('es-AR')} | Puerto Norte</p>
           </div>
           <button className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1">
