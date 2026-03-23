@@ -1005,7 +1005,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       evaluacion: [
         { componente: "Pantalla", estado: "Buena", descuento: 0 },
         { componente: "Batería", estado: "Desgastada", descuento: 25000 },
-        { componente: "C��mara", estado: "Buena", descuento: 0 },
+        { componente: "C����mara", estado: "Buena", descuento: 0 },
         { componente: "Carcasa", estado: "Rayada", descuento: 20000 },
       ]
     }
@@ -5710,6 +5710,58 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
         <div className="bg-gray-800 rounded-t-lg px-4 py-3 flex items-center justify-between mb-0">
           <div className="flex items-center gap-2">
+            {selectedFactura.estado === 'borrador' && (
+              <>
+                <button
+                  onClick={() => setShowCancelarFacturaModal(true)}
+                  className="px-3 py-1.5 text-sm border border-gray-400 text-white rounded-md hover:bg-gray-700 flex items-center gap-1"
+                >
+                  <X className="w-4 h-4" /> Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    const fechaHoy = new Date().toISOString()
+                    const clienteFactura = clientes.find(c => c.id === selectedFactura.cliente_id)
+                    // Generar movimiento de débito en CC
+                    if (clienteFactura) {
+                      const saldoAnterior = clienteFactura.saldo_cuenta_corriente
+                      const nuevoMovimiento: MovimientoCuentaCorriente = {
+                        id: movimientosCC.length + 1,
+                        cliente_id: clienteFactura.id,
+                        fecha: fechaHoy,
+                        tipo: "debito",
+                        concepto: `Factura de venta confirmada`,
+                        documento_tipo: "factura",
+                        documento_numero: selectedFactura.numero,
+                        documento_id: selectedFactura.id,
+                        moneda: selectedFactura.moneda,
+                        importe: selectedFactura.total,
+                        saldo_posterior: saldoAnterior + selectedFactura.total
+                      }
+                      setMovimientosCC(prev => [...prev, nuevoMovimiento])
+                      setClientes(prev => prev.map(c =>
+                        c.id === clienteFactura.id
+                          ? { ...c, saldo_cuenta_corriente: c.saldo_cuenta_corriente + selectedFactura.total, total_facturado: (c.total_facturado || 0) + selectedFactura.total }
+                          : c
+                      ))
+                    }
+                    const updatedFactura = {
+                      ...selectedFactura,
+                      estado: "abierta" as const,
+                      seguimiento: [
+                        ...(selectedFactura.seguimiento || []),
+                        { id: (selectedFactura.seguimiento?.length || 0) + 1, fecha: fechaHoy, usuario: "Max Solina", tipo: "confirmacion" as const, descripcion: "Factura confirmada — pasó de Borrador a Abierta" }
+                      ]
+                    }
+                    setFacturas(prev => prev.map(f => f.id === selectedFactura.id ? updatedFactura : f))
+                    setSelectedFactura(updatedFactura)
+                  }}
+                  className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 flex items-center gap-1"
+                >
+                  <CheckCircle className="w-4 h-4" /> Confirmar Factura
+                </button>
+              </>
+            )}
             {(selectedFactura.estado === 'abierta' || selectedFactura.estado === 'vencida') && (
               <>
                 <button 
