@@ -149,6 +149,9 @@ interface LineaNV {
   producto_sku: string
   cantidad: number
   precio_unitario: number
+  precio_unitario_moneda: "ARS" | "USD"
+  precio_unitario_usd: number
+  precio_unitario_ars: number
   descuento: number
   subtotal: number
   fecha_entrega: string
@@ -3374,7 +3377,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
                     <th className="text-left py-1.5 px-2">Producto</th>
                     <th className="text-center py-1.5 px-2 w-20">Cant.</th>
-                    <th className="text-right py-1.5 px-2 w-24">Precio</th>
+                    <th className="text-right py-1.5 px-2 w-24">Precio USD</th>
+                    <th className="text-right py-1.5 px-2 w-28">Precio ARS</th>
                     <th className="text-center py-1.5 px-2 w-16">Dto.%</th>
                     <th className="text-right py-1.5 px-2 w-24">Subtotal</th>
                     <th className="w-8"></th>
@@ -3427,10 +3431,50 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                           updated[index].producto_id = p.id
                                           updated[index].producto_nombre = p.nombre
                                           updated[index].producto_sku = p.sku
-                                          updated[index].precio_unitario = p.precio_venta
                                           updated[index].requiere_serie = p.requiere_serie
                                           updated[index].series_seleccionadas = []
-                                          updated[index].subtotal = updated[index].cantidad * p.precio_venta * (1 - updated[index].descuento / 100)
+                                          // Buscar precio desde la versión activa de la lista de precios del cliente
+                                          const clienteNV = clientes.find(c => c.id === nvClienteId)
+                                          const listaId = clienteNV?.lista_precios_id ?? null
+                                          const versionActiva = listaId
+                                            ? versionesLista.find(v => v.lista_id === listaId && v.estado === "activa")
+                                            : null
+                                          const lineaLP = versionActiva?.lineas.find(l => l.producto_id === p.id)
+                                          let precioUnitario = p.precio_venta
+                                          let moneda: "ARS" | "USD" = "ARS"
+                                          let precioUSD = 0
+                                          let precioARS = 0
+                                          if (lineaLP) {
+                                            const cotiz = lineaLP.cotizacion_dolar || COTIZACION_DOLAR_MOCK
+                                            if (lineaLP.forzar_precio_pesos && lineaLP.precio_forzado_ars) {
+                                              // Precio forzado en ARS
+                                              precioARS = lineaLP.precio_forzado_ars
+                                              precioUSD = parseFloat((precioARS / cotiz).toFixed(2))
+                                              precioUnitario = precioARS
+                                              moneda = "ARS"
+                                            } else if (lineaLP.precio_venta_moneda === "USD") {
+                                              precioUSD = lineaLP.precio_venta
+                                              precioARS = parseFloat((precioUSD * cotiz).toFixed(2))
+                                              precioUnitario = precioARS
+                                              moneda = "USD"
+                                            } else {
+                                              precioARS = lineaLP.precio_venta
+                                              precioUSD = parseFloat((precioARS / cotiz).toFixed(2))
+                                              precioUnitario = precioARS
+                                              moneda = "ARS"
+                                            }
+                                          } else {
+                                            // Sin lista: usar precio_venta del producto como ARS
+                                            precioARS = p.precio_venta
+                                            precioUSD = parseFloat((precioARS / COTIZACION_DOLAR_MOCK).toFixed(2))
+                                            precioUnitario = precioARS
+                                            moneda = "ARS"
+                                          }
+                                          updated[index].precio_unitario = precioUnitario
+                                          updated[index].precio_unitario_moneda = moneda
+                                          updated[index].precio_unitario_usd = precioUSD
+                                          updated[index].precio_unitario_ars = precioARS
+                                          updated[index].subtotal = updated[index].cantidad * precioUnitario * (1 - updated[index].descuento / 100)
                                           setNvLineas(updated)
                                           setProductoSearchIndex(null)
                                           setProductoSearchText("")
@@ -3500,20 +3544,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-center"
                         />
                       </td>
-                      <td className="py-1 px-2">
-                        <input
-                          type="number"
-                          value={linea.precio_unitario}
-                          min="0"
-                          step="0.01"
-                          onChange={(e) => {
-                            const updated = [...nvLineas]
-                            updated[index].precio_unitario = parseFloat(e.target.value) || 0
-                            updated[index].subtotal = updated[index].cantidad * updated[index].precio_unitario * (1 - updated[index].descuento / 100)
-                            setNvLineas(updated)
-                          }}
-                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right"
-                        />
+                      <td className="py-1 px-2 text-right text-sm text-blue-700 font-medium">
+                        {linea.precio_unitario_usd > 0
+                          ? `US$ ${linea.precio_unitario_usd.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : <span className="text-gray-300">-</span>
+                        }
+                      </td>
+                      <td className="py-1 px-2 text-right text-sm font-medium">
+                        {linea.precio_unitario_ars > 0 ? (
+                          <span className={linea.precio_unitario_moneda === "ARS" ? "text-amber-700" : "text-gray-700"}>
+                            ARS $ {linea.precio_unitario_ars.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        ) : (
+                          <span className="text-gray-300">-</span>
+                        )}
                       </td>
                       <td className="py-1 px-2">
                         <input
@@ -3547,7 +3591,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   ))}
                   {nvLineas.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="text-center py-4 text-gray-400 text-sm">
+                      <td colSpan={7} className="text-center py-4 text-gray-400 text-sm">
                         No hay productos agregados
                       </td>
                     </tr>
@@ -3566,6 +3610,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       producto_sku: "",
                       cantidad: 1,
                       precio_unitario: 0,
+                      precio_unitario_moneda: "ARS",
+                      precio_unitario_usd: 0,
+                      precio_unitario_ars: 0,
                       descuento: 0,
                       subtotal: 0,
                       fecha_entrega: new Date().toISOString().split('T')[0],
