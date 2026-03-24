@@ -2126,7 +2126,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
         {/* Formulario */}
         <div className="bg-white rounded-lg shadow-sm">
-          <form onSubmit={(e) => {
+          <form onSubmit={async (e) => {
             e.preventDefault()
             const formData = new FormData(e.currentTarget)
             const catId = formClienteCategoriaId
@@ -9869,7 +9869,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <X className="w-5 h-5" />
           </button>
         </div>
-        <form onSubmit={(e) => {
+        <form onSubmit={async (e) => {
           e.preventDefault()
           const formData = new FormData(e.currentTarget)
           const catId2 = formClienteCategoriaId
