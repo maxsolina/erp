@@ -8093,22 +8093,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
           {/* Barra inferior de acciones */}
           <div className="p-3 border-t bg-gray-50 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={marcarAutomatico}
-                disabled={!conciliacionClienteId || facturasFiltradas.filter(f => f.saldo > 0).length === 0}
-                className="px-3 py-1.5 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-              >
-                <RefreshCw className="w-3 h-3" /> Sugerir (FIFO)
-              </button>
-              <button 
-                onClick={limpiarSeleccion}
-                disabled={conciliacionSeleccionDebitos.length === 0 && conciliacionSeleccionCreditos.length === 0}
-                className="px-3 py-1.5 text-xs border border-gray-300 rounded hover:bg-white disabled:opacity-50"
-              >
-                Limpiar Seleccion
-              </button>
-            </div>
+            <div></div>
             <div className="flex items-center gap-3 text-xs">
               <span className="text-gray-500">Debitos: <span className="text-red-600 font-medium">{formatCurrency(totalDebitosSeleccionados)}</span></span>
               <span className="text-gray-500">Creditos: <span className="text-green-600 font-medium">{formatCurrency(totalCreditosSeleccionados)}</span></span>
