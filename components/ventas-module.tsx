@@ -1213,12 +1213,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     mutateClientes()
   }, [mutateClientes])
 
-  // Handler para guardar cliente (formulario página completa)
-  const handleSubmitClienteForm = useCallback(async (e: React.FormEvent<HTMLFormElement>, editingItem: ClienteVenta | null, formClienteCategoriaId: number | null, categoriasCliente: { id: number, nombre: string }[], setCreandoCliente: (v: boolean) => void, setEditingItem: (v: ClienteVenta | null) => void, setSelectedCliente: (v: ClienteVenta) => void, onNuevoCliente?: (c: ClienteVenta) => void) => {
-    e.preventDefault()
-    const formData = new FormData(e.currentTarget)
+  // Helper para construir ClienteVenta desde form
+  const buildClienteFromForm = useCallback((formData: FormData, editingItem: ClienteVenta | null, formClienteCategoriaId: number | null, categoriasCliente: { id: number, nombre: string }[]): ClienteVenta => {
     const catNombre = categoriasCliente.find(c => c.id === formClienteCategoriaId)?.nombre?.toLowerCase() as ClienteVenta["categoria"] | undefined
-    const newCliente: ClienteVenta = {
+    return {
       id: editingItem?.id || clientes.length + 1,
       codigo: editingItem?.codigo || `C0${15520 + clientes.length}`,
       nombre: formData.get("nombre") as string,
@@ -1241,117 +1239,76 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       descuento_default: parseFloat(formData.get("descuento_default") as string) || 0,
       moneda_cuenta_corriente: formData.get("moneda_cuenta_corriente") as "ARS" | "USD",
       termino_pago_id: parseInt(formData.get("termino_pago_id") as string) || 1,
-      activo: true,
-      es_confidencial: false,
-      sucursal_origen: "Puerto Norte",
+      activo: true, es_confidencial: false, sucursal_origen: "Puerto Norte",
       fecha_alta: editingItem?.fecha_alta || new Date().toISOString().split('T')[0],
       saldo_cuenta_corriente: editingItem?.saldo_cuenta_corriente || 0,
       total_facturado: editingItem?.total_facturado || 0,
       seguimiento: editingItem?.seguimiento || [{ id: Date.now(), fecha: new Date().toISOString(), usuario: "Max Solina", tipo: "creacion" as const, descripcion: "Cliente creado" }]
     }
-    try {
-      const condicion = newCliente.posicion_fiscal === "responsable_inscripto" ? "Responsable Inscripto"
-        : newCliente.posicion_fiscal === "monotributista" ? "Monotributista"
-        : newCliente.posicion_fiscal === "exento" ? "Exento" : "Consumidor Final"
-      if (editingItem) {
-        const updated = await apiActualizarCliente(editingItem.id, {
-          nombre: newCliente.nombre, razon_social: newCliente.nombre_fantasia || null,
-          tipo_documento: newCliente.tipo_documento, numero_documento: newCliente.numero_documento || null,
-          condicion_iva: condicion, email: newCliente.email || null, telefono: newCliente.telefono || null,
-          direccion: newCliente.direccion || null, ciudad: newCliente.ciudad || null, provincia: newCliente.provincia || null,
-          termino_pago_id: newCliente.termino_pago_id || null, vendedor_id: newCliente.vendedor_id || null, activo: true,
-        })
-        await mutateClientes()
-        setSelectedCliente({ ...newCliente, id: updated.id })
-      } else {
-        const maxId = clientesDB.length > 0 ? Math.max(...clientesDB.map(c => c.id)) : 0
-        const codigo = `C0${String(15517 + maxId).padStart(5, "0")}`
-        const created = await apiCrearCliente({
-          codigo, nombre: newCliente.nombre, razon_social: newCliente.nombre_fantasia || null,
-          tipo_documento: newCliente.tipo_documento, numero_documento: newCliente.numero_documento || null,
-          condicion_iva: condicion, email: newCliente.email || null, telefono: newCliente.telefono || null,
-          direccion: newCliente.direccion || null, ciudad: newCliente.ciudad || null, provincia: newCliente.provincia || null,
-          termino_pago_id: newCliente.termino_pago_id || null, vendedor_id: newCliente.vendedor_id || null,
-          activo: true, saldo_cuenta_corriente: 0, total_facturado: 0,
-        })
-        await mutateClientes()
-        setSelectedCliente({ ...newCliente, id: created.id, codigo })
-        onNuevoCliente?.({ ...newCliente, id: created.id, codigo })
-      }
-    } catch (err) {
-      alert("Error al guardar cliente: " + (err as Error).message)
-      return
-    }
-    setCreandoCliente(false)
-    setEditingItem(null)
-  }, [clientes.length, clientesDB, mutateClientes])
+  }, [clientes.length])
 
-  // Handler para guardar cliente (modal)
-  const handleSubmitClienteModal = useCallback(async (e: React.FormEvent<HTMLFormElement>, editingItem: ClienteVenta | null, formClienteCategoriaId: number | null, categoriasCliente: { id: number, nombre: string }[], setShowModal: (v: boolean) => void, setEditingItem: (v: ClienteVenta | null) => void, onNuevoCliente?: (c: ClienteVenta) => void) => {
+  // Helper para construir payload DB desde ClienteVenta
+  const buildClientePayload = (newCliente: ClienteVenta) => {
+    const condicion = newCliente.posicion_fiscal === "responsable_inscripto" ? "Responsable Inscripto"
+      : newCliente.posicion_fiscal === "monotributista" ? "Monotributista"
+      : newCliente.posicion_fiscal === "exento" ? "Exento" : "Consumidor Final"
+    return {
+      nombre: newCliente.nombre, razon_social: newCliente.nombre_fantasia || null,
+      tipo_documento: newCliente.tipo_documento, numero_documento: newCliente.numero_documento || null,
+      condicion_iva: condicion, email: newCliente.email || null, telefono: newCliente.telefono || null,
+      direccion: newCliente.direccion || null, ciudad: newCliente.ciudad || null, provincia: newCliente.provincia || null,
+      termino_pago_id: newCliente.termino_pago_id || null, vendedor_id: newCliente.vendedor_id || null, activo: true,
+    }
+  }
+
+  // Handler para guardar cliente (formulario página completa) — sin await
+  const handleSubmitClienteForm = useCallback((e: React.FormEvent<HTMLFormElement>, editingItem: ClienteVenta | null, formClienteCategoriaId: number | null, categoriasCliente: { id: number, nombre: string }[], setCreandoCliente: (v: boolean) => void, setEditingItem: (v: ClienteVenta | null) => void, setSelectedCliente: (v: ClienteVenta) => void, onNuevoCliente?: (c: ClienteVenta) => void) => {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
-    const catNombre2 = categoriasCliente.find(c => c.id === formClienteCategoriaId)?.nombre?.toLowerCase() as ClienteVenta["categoria"] | undefined
-    const newCliente: ClienteVenta = {
-      id: editingItem?.id || clientes.length + 1,
-      codigo: editingItem?.codigo || `C0${15520 + clientes.length}`,
-      nombre: formData.get("nombre") as string,
-      nombre_fantasia: formData.get("nombre_fantasia") as string || "",
-      tipo_documento: formData.get("tipo_documento") as "DNI" | "CUIT" | "CUIL",
-      numero_documento: formData.get("numero_documento") as string,
-      posicion_fiscal: formData.get("posicion_fiscal") as ClienteVenta["posicion_fiscal"],
-      direccion: formData.get("direccion") as string,
-      ciudad: formData.get("ciudad") as string || "Rosario",
-      provincia: formData.get("provincia") as string || "Santa Fe",
-      codigo_postal: formData.get("codigo_postal") as string || "",
-      zona: formData.get("zona") as string || "",
-      telefono: formData.get("telefono") as string || "",
-      celular: formData.get("celular") as string || "",
-      email: formData.get("email") as string || "",
-      categoria: catNombre2 ?? (editingItem?.categoria ?? null),
-      vendedor_id: parseInt(formData.get("vendedor_id") as string) || null,
-      cobrador_id: null,
-      lista_precios_id: parseInt(formData.get("lista_precios_id") as string) || 1,
-      descuento_default: parseFloat(formData.get("descuento_default") as string) || 0,
-      moneda_cuenta_corriente: formData.get("moneda_cuenta_corriente") as "ARS" | "USD",
-      termino_pago_id: parseInt(formData.get("termino_pago_id") as string) || 1,
-      activo: true, es_confidencial: false, sucursal_origen: "Puerto Norte",
-      fecha_alta: editingItem?.fecha_alta || new Date().toISOString().split('T')[0],
-      saldo_cuenta_corriente: editingItem?.saldo_cuenta_corriente || 0,
-      total_facturado: editingItem?.total_facturado || 0,
-    }
-    try {
-      const condicion = newCliente.posicion_fiscal === "responsable_inscripto" ? "Responsable Inscripto"
-        : newCliente.posicion_fiscal === "monotributista" ? "Monotributista"
-        : newCliente.posicion_fiscal === "exento" ? "Exento" : "Consumidor Final"
-      if (editingItem) {
-        await apiActualizarCliente(editingItem.id, {
-          nombre: newCliente.nombre, razon_social: newCliente.nombre_fantasia || null,
-          tipo_documento: newCliente.tipo_documento, numero_documento: newCliente.numero_documento || null,
-          condicion_iva: condicion, email: newCliente.email || null, telefono: newCliente.telefono || null,
-          direccion: newCliente.direccion || null, ciudad: newCliente.ciudad || null, provincia: newCliente.provincia || null,
-          termino_pago_id: newCliente.termino_pago_id || null, vendedor_id: newCliente.vendedor_id || null, activo: true,
+    const newCliente = buildClienteFromForm(formData, editingItem, formClienteCategoriaId, categoriasCliente)
+    const payload = buildClientePayload(newCliente)
+
+    const promise = editingItem
+      ? apiActualizarCliente(editingItem.id, payload).then((updated) => {
+          mutateClientes()
+          setSelectedCliente({ ...newCliente, id: updated.id })
         })
-      } else {
-        const maxId = clientesDB.length > 0 ? Math.max(...clientesDB.map(c => c.id)) : 0
-        const codigo = `C0${String(15517 + maxId).padStart(5, "0")}`
-        const created = await apiCrearCliente({
-          codigo, nombre: newCliente.nombre, razon_social: newCliente.nombre_fantasia || null,
-          tipo_documento: newCliente.tipo_documento, numero_documento: newCliente.numero_documento || null,
-          condicion_iva: condicion, email: newCliente.email || null, telefono: newCliente.telefono || null,
-          direccion: newCliente.direccion || null, ciudad: newCliente.ciudad || null, provincia: newCliente.provincia || null,
-          termino_pago_id: newCliente.termino_pago_id || null, vendedor_id: newCliente.vendedor_id || null,
-          activo: true, saldo_cuenta_corriente: 0, total_facturado: 0,
-        })
-        onNuevoCliente?.({ ...newCliente, id: created.id, codigo })
-      }
-      await mutateClientes()
-    } catch (err) {
-      alert("Error al guardar cliente: " + (err as Error).message)
-      return
-    }
-    setShowModal(false)
-    setEditingItem(null)
-  }, [clientes.length, clientesDB, mutateClientes])
+      : ((): Promise<void> => {
+          const maxId = clientesDB.length > 0 ? Math.max(...clientesDB.map(c => c.id)) : 0
+          const codigo = `C0${String(15517 + maxId).padStart(5, "0")}`
+          return apiCrearCliente({ ...payload, codigo, saldo_cuenta_corriente: 0, total_facturado: 0 }).then((created) => {
+            mutateClientes()
+            setSelectedCliente({ ...newCliente, id: created.id, codigo })
+            onNuevoCliente?.({ ...newCliente, id: created.id, codigo })
+          })
+        })()
+
+    promise
+      .then(() => { setCreandoCliente(false); setEditingItem(null) })
+      .catch((err) => alert("Error al guardar cliente: " + (err as Error).message))
+  }, [buildClienteFromForm, clientesDB, mutateClientes])
+
+  // Handler para guardar cliente (modal) — sin await
+  const handleSubmitClienteModal = useCallback((e: React.FormEvent<HTMLFormElement>, editingItem: ClienteVenta | null, formClienteCategoriaId: number | null, categoriasCliente: { id: number, nombre: string }[], setShowModal: (v: boolean) => void, setEditingItem: (v: ClienteVenta | null) => void, onNuevoCliente?: (c: ClienteVenta) => void) => {
+    e.preventDefault()
+    const formData = new FormData(e.currentTarget)
+    const newCliente = buildClienteFromForm(formData, editingItem, formClienteCategoriaId, categoriasCliente)
+    const payload = buildClientePayload(newCliente)
+
+    const promise = editingItem
+      ? apiActualizarCliente(editingItem.id, payload)
+      : ((): Promise<unknown> => {
+          const maxId = clientesDB.length > 0 ? Math.max(...clientesDB.map(c => c.id)) : 0
+          const codigo = `C0${String(15517 + maxId).padStart(5, "0")}`
+          return apiCrearCliente({ ...payload, codigo, saldo_cuenta_corriente: 0, total_facturado: 0 }).then((created) => {
+            onNuevoCliente?.({ ...newCliente, id: created.id, codigo })
+          })
+        })()
+
+    promise
+      .then(() => { mutateClientes(); setShowModal(false); setEditingItem(null) })
+      .catch((err) => alert("Error al guardar cliente: " + (err as Error).message))
+  }, [buildClienteFromForm, clientesDB, mutateClientes])
 
   const [notasVenta, setNotasVenta] = useState<NotaVenta[]>(mockNotasVenta)
   const [ordenesEntrega, setOrdenesEntrega] = useState<OrdenEntrega[]>(mockOrdenesEntrega)
