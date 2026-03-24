@@ -2137,7 +2137,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             setCreandoCliente(false)
             setEditingItem(null)
           }} className="p-4">
-            {/* Sección Identificaci��n */}
+            {/* Sección Identificaci����n */}
             <div className="mb-4">
               <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
                 <Building2 className="w-3.5 h-3.5" /> Identificación
@@ -7416,15 +7416,39 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       setMovimientosCC(prev => [...prev, nuevoMov])
                     }
 
-                    // 4. Marcar el historial de conciliación como revertido
-                    setConciliacionHistorial(prev => prev.map(h => ({
-                      ...h,
-                      aplicaciones: h.aplicaciones.map(a =>
-                        a.credito_numero === selectedRecibo.numero
-                          ? { ...a, revertida: true }
-                          : a
-                      )
-                    })))
+                    // 4. Marcar el historial de conciliación como revertido y agregar entrada de reversión
+                    setConciliacionHistorial(prev => {
+                      const clienteDelRecibo2 = clientes.find(c => c.id === selectedRecibo.cliente_id)
+                      const historialMarcado = prev.map(h => ({
+                        ...h,
+                        aplicaciones: h.aplicaciones.map(a =>
+                          a.credito_numero === selectedRecibo.numero
+                            ? { ...a, revertida: true }
+                            : a
+                        )
+                      }))
+                      // Agregar registro de reversión
+                      const nuevaEntradaReversion = {
+                        id: prev.length + 1,
+                        fecha: fechaISO,
+                        cliente_id: selectedRecibo.cliente_id,
+                        cliente_nombre: clienteDelRecibo2?.nombre || "",
+                        tipo: "reversion" as const,
+                        motivo: `Cancelación de recibo ${selectedRecibo.numero}: ${cancelarReciboDescripcion.trim()}`,
+                        aplicaciones: aplicacionesARevertir.map(a => ({
+                          ...a,
+                          revertida: true,
+                          monto: -a.monto,
+                          debito_tipo: a.debito_tipo,
+                          debito_numero: a.debito_numero,
+                          credito_tipo: a.credito_tipo,
+                          credito_numero: a.credito_numero,
+                        })),
+                        total_conciliado: -aplicacionesARevertir.reduce((sum, a) => sum + a.monto, 0),
+                        usuario: "Admin"
+                      }
+                      return [...historialMarcado, nuevaEntradaReversion]
+                    })
                   }
 
                   // 5. Cancelar el recibo — importe_no_conciliado queda en 0 (no reutilizable)
@@ -8121,14 +8145,30 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </div>
             {historialCliente.length > 0 ? (
               <div className="space-y-4">
-                {historialCliente.map(h => (
-                  <div key={h.id} className="border rounded-lg p-4">
+                {historialCliente.map(h => {
+                  const esReversion = (h as any).tipo === "reversion"
+                  return (
+                  <div key={h.id} className={`border rounded-lg p-4 ${esReversion ? "border-orange-200 bg-orange-50" : ""}`}>
                     <div className="flex justify-between items-start mb-3">
                       <div>
-                        <p className="font-medium text-gray-900">Conciliacion #{h.id}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-gray-900">
+                            {esReversion ? "Reversión de Conciliación" : `Conciliacion #${h.id}`}
+                          </p>
+                          {esReversion && (
+                            <span className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full font-medium">
+                              Revertida
+                            </span>
+                          )}
+                        </div>
                         <p className="text-sm text-gray-500">{formatDateTime(h.fecha)} - {h.usuario}</p>
+                        {esReversion && (h as any).motivo && (
+                          <p className="text-xs text-orange-600 mt-1">{(h as any).motivo}</p>
+                        )}
                       </div>
-                      <p className="text-lg font-bold text-emerald-600">{formatCurrency(h.total_conciliado)}</p>
+                      <p className={`text-lg font-bold ${esReversion ? "text-orange-600" : "text-emerald-600"}`}>
+                        {esReversion ? "- " : ""}{formatCurrency(Math.abs(h.total_conciliado))}
+                      </p>
                     </div>
                     <table className="w-full text-sm">
                       <thead>
@@ -8136,20 +8176,37 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           <th className="text-left py-2 px-3">Debito</th>
                           <th className="text-left py-2 px-3">Credito</th>
                           <th className="text-right py-2 px-3">Monto</th>
+                          {!esReversion && <th className="text-center py-2 px-3">Estado</th>}
                         </tr>
                       </thead>
                       <tbody>
                         {h.aplicaciones.map((a, idx) => (
-                          <tr key={idx} className="border-b">
-                            <td className="py-2 px-3 text-red-700">{a.debito_tipo} {a.debito_numero}</td>
-                            <td className="py-2 px-3 text-green-700">{a.credito_tipo} {a.credito_numero}</td>
-                            <td className="py-2 px-3 text-right font-medium">{formatCurrency(a.monto)}</td>
+                          <tr key={idx} className={`border-b ${(a as any).revertida && !esReversion ? "bg-red-50" : ""}`}>
+                            <td className={`py-2 px-3 ${(a as any).revertida && !esReversion ? "line-through text-gray-400" : "text-red-700"}`}>
+                              {a.debito_tipo} {a.debito_numero}
+                            </td>
+                            <td className={`py-2 px-3 ${(a as any).revertida && !esReversion ? "line-through text-gray-400" : "text-green-700"}`}>
+                              {a.credito_tipo} {a.credito_numero}
+                            </td>
+                            <td className={`py-2 px-3 text-right font-medium ${(a as any).revertida && !esReversion ? "line-through text-gray-400" : ""}`}>
+                              {formatCurrency(Math.abs(a.monto))}
+                            </td>
+                            {!esReversion && (
+                              <td className="py-2 px-3 text-center">
+                                {(a as any).revertida ? (
+                                  <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">Revertida</span>
+                                ) : (
+                                  <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">Activa</span>
+                                )}
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             ) : (
               <div className="text-center py-12 text-gray-500">
