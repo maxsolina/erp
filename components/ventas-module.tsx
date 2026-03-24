@@ -1,7 +1,9 @@
 "use client"
 
 // Modulo de Ventas - Cell Home ERP v3
-import React, { useState, useMemo, useRef, useEffect } from "react"
+import React, { useState, useMemo, useRef, useEffect, useCallback } from "react"
+import { useClientes, crearCliente as apiCrearCliente, actualizarCliente as apiActualizarCliente, eliminarCliente as apiEliminarCliente } from "@/hooks/use-clientes"
+import type { ClienteDB } from "@/hooks/use-clientes"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History } from "lucide-react"
  import BotonVolver from "./ui/boton-volver"
 import ProductoDropdown from "./producto-dropdown"
@@ -1169,14 +1171,47 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     configuracion: true
   })
   
-  // Data states
-  const [clientes, setClientes] = useState<ClienteVenta[]>(() => {
-    if (!clientesIniciales || clientesIniciales.length === 0) return mockClientesVenta
-    // Fusionar mock base + clientes nuevos que no estén en el mock
-    const mockIds = new Set(mockClientesVenta.map(c => c.id))
-    const extras = clientesIniciales.filter(c => !mockIds.has(c.id))
-    return [...mockClientesVenta, ...extras]
-  })
+  // Data states — clientes desde Supabase vía SWR
+  const { clientes: clientesDB, isLoading: clientesLoading, mutate: mutateClientes } = useClientes()
+  // Mapear ClienteDB → ClienteVenta para compatibilidad con el resto del módulo
+  const clientes: ClienteVenta[] = useMemo(() => clientesDB.map(c => ({
+    id: c.id,
+    codigo: c.codigo,
+    nombre: c.nombre,
+    nombre_fantasia: c.razon_social || "",
+    tipo_documento: (c.tipo_documento as "DNI" | "CUIT" | "CUIL") || "DNI",
+    numero_documento: c.numero_documento || "",
+    posicion_fiscal: (c.condicion_iva === "Responsable Inscripto" ? "responsable_inscripto"
+      : c.condicion_iva === "Monotributista" ? "monotributista"
+      : c.condicion_iva === "Exento" ? "exento"
+      : "consumidor_final") as ClienteVenta["posicion_fiscal"],
+    direccion: c.direccion || "",
+    ciudad: c.ciudad || "",
+    provincia: c.provincia || "Santa Fe",
+    codigo_postal: "",
+    zona: "",
+    telefono: c.telefono || "",
+    celular: "",
+    email: c.email || "",
+    categoria: "publico" as ClienteVenta["categoria"],
+    vendedor_id: c.vendedor_id,
+    cobrador_id: null,
+    lista_precios_id: 1,
+    descuento_default: 0,
+    moneda_cuenta_corriente: "ARS" as "ARS" | "USD",
+    termino_pago_id: c.termino_pago_id || 1,
+    activo: c.activo,
+    es_confidencial: false,
+    sucursal_origen: "Puerto Norte",
+    fecha_alta: c.created_at?.split("T")[0] || new Date().toISOString().split("T")[0],
+    saldo_cuenta_corriente: c.saldo_cuenta_corriente,
+    total_facturado: c.total_facturado,
+    seguimiento: []
+  })), [clientesDB])
+  const setClientes = useCallback((_updater: any) => {
+    // Los cambios ahora se persisten via API y se refresca con mutateClientes
+    mutateClientes()
+  }, [mutateClientes])
   const [notasVenta, setNotasVenta] = useState<NotaVenta[]>(mockNotasVenta)
   const [ordenesEntrega, setOrdenesEntrega] = useState<OrdenEntrega[]>(mockOrdenesEntrega)
   const [remitos, setRemitos] = useState<Remito[]>(mockRemitos)
@@ -2012,7 +2047,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </tr>
             </thead>
             <tbody>
-              {clientesFiltrados.map(cliente => (
+              {clientesLoading && (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-sm text-gray-400">
+                    Cargando clientes...
+                  </td>
+                </tr>
+              )}
+              {!clientesLoading && clientesFiltrados.map(cliente => (
                 <tr 
                   key={cliente.id} 
                   className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
@@ -2126,13 +2168,58 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 descripcion: "Cliente creado"
               }]
             }
-            if (editingItem) {
-              setClientes(prev => prev.map(c => c.id === editingItem.id ? newCliente : c))
-              setSelectedCliente(newCliente)
-            } else {
-              setClientes(prev => [...prev, newCliente])
-              setSelectedCliente(newCliente)
-              onNuevoCliente?.(newCliente)
+            try {
+              if (editingItem) {
+                const updated = await apiActualizarCliente(editingItem.id, {
+                  nombre: newCliente.nombre,
+                  razon_social: newCliente.nombre_fantasia || null,
+                  tipo_documento: newCliente.tipo_documento,
+                  numero_documento: newCliente.numero_documento || null,
+                  condicion_iva: newCliente.posicion_fiscal === "responsable_inscripto" ? "Responsable Inscripto"
+                    : newCliente.posicion_fiscal === "monotributista" ? "Monotributista"
+                    : newCliente.posicion_fiscal === "exento" ? "Exento" : "Consumidor Final",
+                  email: newCliente.email || null,
+                  telefono: newCliente.telefono || null,
+                  direccion: newCliente.direccion || null,
+                  ciudad: newCliente.ciudad || null,
+                  provincia: newCliente.provincia || null,
+                  termino_pago_id: newCliente.termino_pago_id || null,
+                  vendedor_id: newCliente.vendedor_id || null,
+                  activo: true,
+                })
+                await mutateClientes()
+                setSelectedCliente({ ...newCliente, id: updated.id })
+              } else {
+                // Generar código único
+                const maxId = clientesDB.length > 0 ? Math.max(...clientesDB.map(c => c.id)) : 0
+                const codigo = `C0${String(15517 + maxId).padStart(5, "0")}`
+                const created = await apiCrearCliente({
+                  codigo,
+                  nombre: newCliente.nombre,
+                  razon_social: newCliente.nombre_fantasia || null,
+                  tipo_documento: newCliente.tipo_documento,
+                  numero_documento: newCliente.numero_documento || null,
+                  condicion_iva: newCliente.posicion_fiscal === "responsable_inscripto" ? "Responsable Inscripto"
+                    : newCliente.posicion_fiscal === "monotributista" ? "Monotributista"
+                    : newCliente.posicion_fiscal === "exento" ? "Exento" : "Consumidor Final",
+                  email: newCliente.email || null,
+                  telefono: newCliente.telefono || null,
+                  direccion: newCliente.direccion || null,
+                  ciudad: newCliente.ciudad || null,
+                  provincia: newCliente.provincia || null,
+                  termino_pago_id: newCliente.termino_pago_id || null,
+                  vendedor_id: newCliente.vendedor_id || null,
+                  activo: true,
+                  saldo_cuenta_corriente: 0,
+                  total_facturado: 0,
+                })
+                await mutateClientes()
+                setSelectedCliente({ ...newCliente, id: created.id, codigo })
+                onNuevoCliente?.({ ...newCliente, id: created.id, codigo })
+              }
+            } catch (err) {
+              alert("Error al guardar cliente: " + (err as Error).message)
+              return
             }
             setCreandoCliente(false)
             setEditingItem(null)
@@ -9817,11 +9904,54 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             saldo_cuenta_corriente: editingItem?.saldo_cuenta_corriente || 0,
             total_facturado: editingItem?.total_facturado || 0
           }
-          if (editingItem) {
-            setClientes(prev => prev.map(c => c.id === editingItem.id ? newCliente : c))
-          } else {
-            setClientes(prev => [...prev, newCliente])
-            onNuevoCliente?.(newCliente)
+          try {
+            if (editingItem) {
+              await apiActualizarCliente(editingItem.id, {
+                nombre: newCliente.nombre,
+                razon_social: newCliente.nombre_fantasia || null,
+                tipo_documento: newCliente.tipo_documento,
+                numero_documento: newCliente.numero_documento || null,
+                condicion_iva: newCliente.posicion_fiscal === "responsable_inscripto" ? "Responsable Inscripto"
+                  : newCliente.posicion_fiscal === "monotributista" ? "Monotributista"
+                  : newCliente.posicion_fiscal === "exento" ? "Exento" : "Consumidor Final",
+                email: newCliente.email || null,
+                telefono: newCliente.telefono || null,
+                direccion: newCliente.direccion || null,
+                ciudad: newCliente.ciudad || null,
+                provincia: newCliente.provincia || null,
+                termino_pago_id: newCliente.termino_pago_id || null,
+                vendedor_id: newCliente.vendedor_id || null,
+                activo: true,
+              })
+            } else {
+              const maxId = clientesDB.length > 0 ? Math.max(...clientesDB.map(c => c.id)) : 0
+              const codigo = `C0${String(15517 + maxId).padStart(5, "0")}`
+              const created = await apiCrearCliente({
+                codigo,
+                nombre: newCliente.nombre,
+                razon_social: newCliente.nombre_fantasia || null,
+                tipo_documento: newCliente.tipo_documento,
+                numero_documento: newCliente.numero_documento || null,
+                condicion_iva: newCliente.posicion_fiscal === "responsable_inscripto" ? "Responsable Inscripto"
+                  : newCliente.posicion_fiscal === "monotributista" ? "Monotributista"
+                  : newCliente.posicion_fiscal === "exento" ? "Exento" : "Consumidor Final",
+                email: newCliente.email || null,
+                telefono: newCliente.telefono || null,
+                direccion: newCliente.direccion || null,
+                ciudad: newCliente.ciudad || null,
+                provincia: newCliente.provincia || null,
+                termino_pago_id: newCliente.termino_pago_id || null,
+                vendedor_id: newCliente.vendedor_id || null,
+                activo: true,
+                saldo_cuenta_corriente: 0,
+                total_facturado: 0,
+              })
+              onNuevoCliente?.({ ...newCliente, id: created.id, codigo })
+            }
+            await mutateClientes()
+          } catch (err) {
+            alert("Error al guardar cliente: " + (err as Error).message)
+            return
           }
           setShowModal(false)
           setEditingItem(null)
