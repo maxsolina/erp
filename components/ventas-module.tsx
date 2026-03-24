@@ -7754,20 +7754,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   )}
                 </div>
               </div>
-              {/* Nota de Venta */}
-              <div className="flex items-center gap-1">
-                <label className="text-xs text-gray-500 shrink-0">NV</label>
-                <select 
-                  value={conciliacionFiltroNV}
-                  onChange={(e) => setConciliacionFiltroNV(e.target.value)}
-                  className="w-28 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="">Todas</option>
-                  {conciliacionClienteId && notasVenta.filter(nv => nv.cliente_id === conciliacionClienteId).map(nv => (
-                    <option key={nv.id} value={nv.numero}>{nv.numero}</option>
-                  ))}
-                </select>
-              </div>
+
               {/* Conciliado */}
               <div className="flex items-center gap-1">
                 <label className="text-xs text-gray-500 shrink-0">Conciliado</label>
