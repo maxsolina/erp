@@ -2,12 +2,8 @@
 
 // Modulo de Ventas - Cell Home ERP v4
 import React, { useState, useMemo, useRef, useEffect, useCallback } from "react"
-import {
-  useClientes,
-  crearCliente as apiCrearCliente,
-  actualizarCliente as apiActualizarCliente,
-  eliminarCliente as apiEliminarCliente,
-} from "@/hooks/use-clientes"
+import { useClientes } from "@/hooks/use-clientes"
+import { crearCliente as apiCrearCliente, actualizarCliente as apiActualizarCliente } from "@/hooks/use-clientes"
 import type { ClienteDB } from "@/hooks/use-clientes"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History } from "lucide-react"
  import BotonVolver from "./ui/boton-volver"
