@@ -1179,7 +1179,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   // Data states — clientes desde Supabase vía SWR
   const { clientes: clientesDB, isLoading: clientesLoading, mutate: mutateClientes } = useClientes()
   // Mapear ClienteDB → ClienteVenta para compatibilidad con el resto del módulo
-  const clientes: ClienteVenta[] = useMemo(() => clientesDB.map(c => ({
+  const clientes: ClienteVenta[] = useMemo(() => (Array.isArray(clientesDB) ? clientesDB : []).map(c => ({
     id: c.id,
     codigo: c.codigo,
     nombre: c.nombre,
