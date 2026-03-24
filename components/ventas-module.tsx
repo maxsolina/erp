@@ -7728,16 +7728,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <div className="px-3 py-2.5 border-b bg-gray-50">
             <div className="flex items-center gap-2 flex-wrap">
               {/* Cliente */}
-              <div className="flex items-center gap-1 flex-1 min-w-0">
+              <div className="flex items-center gap-1">
                 <label className="text-xs text-gray-500 shrink-0">Cliente</label>
-                <div className="flex items-center gap-1 flex-1 min-w-0">
+                <div className="flex items-center gap-1">
                   <select 
                     value={conciliacionClienteId || ""}
                     onChange={(e) => {
                       setConciliacionClienteId(e.target.value ? parseInt(e.target.value) : null)
                       limpiarSeleccion()
                     }}
-                    className="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-52 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="">Seleccionar cliente...</option>
                     {clientes.map(c => (
