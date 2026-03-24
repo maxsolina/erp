@@ -1,6 +1,6 @@
 "use client"
 
-// Modulo de Ventas - Cell Home ERP v4
+// Modulo de Ventas - Cell Home ERP v5
 import React, { useState, useMemo, useRef, useEffect, useCallback } from "react"
 import { useClientes } from "@/hooks/use-clientes"
 import { crearCliente as apiCrearCliente, actualizarCliente as apiActualizarCliente } from "@/hooks/use-clientes"

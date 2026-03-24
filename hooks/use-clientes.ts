@@ -39,35 +39,39 @@ export function useClientes(busqueda?: string, activo?: boolean) {
   const { data, error, isLoading, mutate } = useSWR<ClienteDB[]>(key, fetcher)
 
   return {
-    clientes: data ?? [],
+    clientes: Array.isArray(data) ? data : [],
     isLoading,
     isError: !!error,
     mutate,
   }
 }
 
-export async function crearCliente(cliente: Partial<ClienteDB>) {
-  const res = await fetch("/api/clientes", {
+// Funciones de mutación — retornan Promise, sin await en el cuerpo del módulo
+export function crearCliente(cliente: Partial<ClienteDB>): Promise<ClienteDB> {
+  return fetch("/api/clientes", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(cliente),
+  }).then((res) => {
+    if (!res.ok) return res.text().then((t) => Promise.reject(new Error(t)))
+    return res.json()
   })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
 }
 
-export async function actualizarCliente(id: number, cliente: Partial<ClienteDB>) {
-  const res = await fetch(`/api/clientes/${id}`, {
+export function actualizarCliente(id: number, cliente: Partial<ClienteDB>): Promise<ClienteDB> {
+  return fetch(`/api/clientes/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(cliente),
+  }).then((res) => {
+    if (!res.ok) return res.text().then((t) => Promise.reject(new Error(t)))
+    return res.json()
   })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
 }
 
-export async function eliminarCliente(id: number) {
-  const res = await fetch(`/api/clientes/${id}`, { method: "DELETE" })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+export function eliminarCliente(id: number): Promise<{ ok: boolean }> {
+  return fetch(`/api/clientes/${id}`, { method: "DELETE" }).then((res) => {
+    if (!res.ok) return res.text().then((t) => Promise.reject(new Error(t)))
+    return res.json()
+  })
 }
