@@ -2137,7 +2137,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             setCreandoCliente(false)
             setEditingItem(null)
           }} className="p-4">
-            {/* Sección Identificación */}
+            {/* Sección Identificaci��n */}
             <div className="mb-4">
               <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
                 <Building2 className="w-3.5 h-3.5" /> Identificación
@@ -7371,9 +7371,67 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     return
                   }
                   const fechaHoy = new Date().toLocaleDateString('es-AR')
+                  const fechaISO = new Date().toISOString()
+
+                  // 1. Buscar todas las aplicaciones donde este recibo fue crédito
+                  const aplicacionesARevertir = conciliacionHistorial
+                    .flatMap(h => h.aplicaciones)
+                    .filter(a => a.credito_numero === selectedRecibo.numero)
+
+                  // 2. Revertir saldo de cada factura involucrada
+                  if (aplicacionesARevertir.length > 0) {
+                    setFacturas(prev => prev.map(f => {
+                      const montoRevertir = aplicacionesARevertir
+                        .filter(a => a.debito_numero === f.numero)
+                        .reduce((sum, a) => sum + a.monto, 0)
+                      if (montoRevertir > 0) {
+                        const nuevoSaldo = f.saldo + montoRevertir
+                        return {
+                          ...f,
+                          saldo: nuevoSaldo,
+                          estado: nuevoSaldo > 0 ? "abierta" as const : f.estado
+                        }
+                      }
+                      return f
+                    }))
+
+                    // 3. Generar movimiento de reversión en cuenta corriente
+                    const totalRevertido = aplicacionesARevertir.reduce((sum, a) => sum + a.monto, 0)
+                    const clienteDelRecibo = clientes.find(c => c.id === selectedRecibo.cliente_id)
+                    if (clienteDelRecibo) {
+                      const saldoAnterior = clienteDelRecibo.saldo_cuenta_corriente
+                      const nuevoMov: MovimientoCuentaCorriente = {
+                        id: movimientosCC.length + 1,
+                        cliente_id: clienteDelRecibo.id,
+                        fecha: fechaISO,
+                        tipo: "debito",
+                        concepto: `Reversión por cancelación de recibo ${selectedRecibo.numero}`,
+                        documento_tipo: "recibo_cancelado",
+                        documento_numero: selectedRecibo.numero,
+                        documento_id: selectedRecibo.id,
+                        moneda: selectedRecibo.moneda || "ARS",
+                        importe: totalRevertido,
+                        saldo_posterior: saldoAnterior + totalRevertido
+                      }
+                      setMovimientosCC(prev => [...prev, nuevoMov])
+                    }
+
+                    // 4. Marcar el historial de conciliación como revertido
+                    setConciliacionHistorial(prev => prev.map(h => ({
+                      ...h,
+                      aplicaciones: h.aplicaciones.map(a =>
+                        a.credito_numero === selectedRecibo.numero
+                          ? { ...a, revertida: true }
+                          : a
+                      )
+                    })))
+                  }
+
+                  // 5. Cancelar el recibo — importe_no_conciliado queda en 0 (no reutilizable)
                   const updatedRecibo = {
                     ...selectedRecibo,
                     estado: "cancelado" as const,
+                    importe_no_conciliado: 0,
                     cancelacion: {
                       motivo: cancelarReciboMotivo,
                       descripcion: cancelarReciboDescripcion.trim(),
@@ -7386,7 +7444,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         fecha: fechaHoy,
                         usuario: "Max Solina",
                         accion: "Recibo cancelado",
-                        detalle: `Motivo: ${cancelarReciboMotivo}. ${cancelarReciboDescripcion.trim()}`
+                        detalle: `Motivo: ${cancelarReciboMotivo}. ${cancelarReciboDescripcion.trim()}${aplicacionesARevertir.length > 0 ? `. Se revirtieron ${aplicacionesARevertir.length} aplicación/es de conciliación.` : ""}`
                       }
                     ]
                   }
