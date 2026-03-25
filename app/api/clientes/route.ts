@@ -35,9 +35,16 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const body = await request.json()
 
+  // Sanitizar FKs: si son 0 o inválidos enviar null para evitar FK violations
+  const payload = {
+    ...body,
+    termino_pago_id: body.termino_pago_id && body.termino_pago_id > 0 ? body.termino_pago_id : null,
+    vendedor_id: body.vendedor_id && body.vendedor_id > 0 ? body.vendedor_id : null,
+  }
+
   const { data, error } = await supabase
     .from("clientes")
-    .insert([body])
+    .insert([payload])
     .select()
     .single()
 

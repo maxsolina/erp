@@ -30,7 +30,12 @@ export async function PUT(
   const body = await request.json()
 
   const { updated_at: _, ...rest } = body
-  const updateData = { ...rest, updated_at: new Date().toISOString() }
+  const updateData = {
+    ...rest,
+    termino_pago_id: rest.termino_pago_id && rest.termino_pago_id > 0 ? rest.termino_pago_id : null,
+    vendedor_id: rest.vendedor_id && rest.vendedor_id > 0 ? rest.vendedor_id : null,
+    updated_at: new Date().toISOString(),
+  }
 
   const { data, error } = await supabase
     .from("clientes")
