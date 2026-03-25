@@ -1,10 +1,15 @@
 "use client"
 
-// Modulo de Ventas - Cell Home ERP v3
-import React, { useState, useMemo, useRef } from "react"
+// Modulo de Ventas - Cell Home ERP v5
+import React, { useState, useMemo, useRef, useEffect, useCallback } from "react"
+import { useClientes } from "@/hooks/use-clientes"
+import { crearCliente as apiCrearCliente, actualizarCliente as apiActualizarCliente } from "@/hooks/use-clientes"
+import type { ClienteDB } from "@/hooks/use-clientes"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History } from "lucide-react"
  import BotonVolver from "./ui/boton-volver"
 import ProductoDropdown from "./producto-dropdown"
+import { tarjetasIniciales, gruposIniciales, recargosIniciales } from "./modulo-finanzas"
+import type { Tarjeta as TarjetaFinanzas, GrupoTarjeta as GrupoTarjetaFinanzas, RecargoTarjeta as RecargoTarjetaFinanzas, RecargoTarjeta } from "./modulo-finanzas"
 
 // Types para Ventas
 interface ClienteVenta {
@@ -674,10 +679,10 @@ const mockFacturas: Factura[] = [
   {
     id: 2, numero: "FC C 20000-00023950", tipo: "C", nota_venta_id: 1, nota_venta_numero: "NV X 20000-00023950",
     cliente_id: 1, cliente_nombre: "Alejandra Gallo", cliente_documento: "DNI 32456789",
-    estado: "abierta", fecha: "2024-03-08T10:00:00", vendedor_nombre: "Max Solina",
+    estado: "conciliada", fecha: "2024-03-08T10:00:00", vendedor_nombre: "Max Solina",
     domicilio_facturacion: "Av. Libertador 1234, CABA", moneda: "ARS", tipo_cotizacion: "blue", cotizacion: 1145,
     termino_pago: "Contado", condicion_pago: "Contado", fecha_vencimiento: "2024-03-08",
-    subtotal: 14462.81, descuento: 0, impuestos: 3037.19, total: 17500, saldo: 17500,
+    subtotal: 14462.81, descuento: 0, impuestos: 3037.19, total: 17500, saldo: 0,
     sucursal: "Puerto Norte",
     lineas: [
       { producto_nombre: "iPhone 15 Pro Max", descripcion: "", cantidad: 1, precio_unitario: 14462.81, descuento: 0, subtotal: 14462.81 }
@@ -806,6 +811,344 @@ const mockMovimientosCC: MovimientoCuentaCorriente[] = [
   },
 ]
 
+// ─── Bloque Medios de Pago (dentro de ficha de Factura) ──────────────────────
+
+interface LineaPago {
+  id: number
+  medio: "efectivo" | "transferencia" | "tarjeta"
+  tarjeta_id?: number
+  cuotas?: number
+  monto: number
+}
+
+interface ResultadoCalculo {
+  recargo: RecargoTarjetaFinanzas
+  grupo: GrupoTarjetaFinanzas | undefined
+  tarjeta: TarjetaFinanzas | undefined
+  // recargo principal (monto × recargo_pct%)
+  importeRecargo: number
+  // cargos del grupo (comisión, IVA, IIBB — cada uno sobre el monto base)
+  cargos: { nombre: string; pct: number; importe: number }[]
+  totalRecargo: number
+  totalConRecargo: number
+}
+
+function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEstadoPagoChange }: {
+  factura: Factura
+  onConfirmarCobro?: (lineas: LineaPago[], totalConRecargos: number, totalRecargos: number) => void
+  onCobroConfirmado?: (totalRecargos: number, desglose: { nombre: string; importe: number }[]) => void
+  onEstadoPagoChange?: (estado: { cobrado: boolean; tieneLineas: boolean; diferenciaOk: boolean }) => void
+}) {
+  const [lineas, setLineas] = useState<LineaPago[]>([])
+  const [cobrado, setCobrado] = useState(false)
+  const tarjetas = tarjetasIniciales
+
+  // Notificar estado al padre cada vez que cambie algo relevante
+  useEffect(() => {
+    const totalIngresado = lineas.reduce((s, l) => s + (l.monto || 0), 0)
+    const diferencia = totalIngresado - factura.total
+    onEstadoPagoChange?.({
+      cobrado,
+      tieneLineas: lineas.length > 0 && totalIngresado > 0,
+      diferenciaOk: Math.abs(diferencia) <= 0.5,
+    })
+  }, [lineas, cobrado, factura.total])
+  const grupos = gruposIniciales
+  const recargos = recargosIniciales
+  const CUOTAS_OPTS = [1, 2, 3, 4, 5, 6, 9, 12, 18, 24]
+
+  const formatARS = (n: number) =>
+    new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 }).format(n)
+
+  // Busca el recargo configurado para tarjeta + cuotas + fecha (sin filtro de fecha para demo)
+  const buscarRecargo = (tarjetaId: number, cuotas: number): RecargoTarjetaFinanzas | null => {
+    const hoy = new Date()
+    const diasKeys: (keyof RecargoTarjetaFinanzas["dias"])[] = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"]
+    const diaKey = diasKeys[hoy.getDay()]
+    // Busca primero con vigencia estricta, si no encuentra usa cualquier activo que coincida
+    const candidatos = recargos.filter(r =>
+      r.tarjeta_id === tarjetaId &&
+      r.activo &&
+      cuotas >= r.desde_cuota &&
+      cuotas <= r.hasta_cuota &&
+      r.dias[diaKey]
+    )
+    if (!candidatos.length) return null
+    // Más específico = rango de cuotas más chico
+    return candidatos.sort((a, b) => (a.hasta_cuota - a.desde_cuota) - (b.hasta_cuota - b.desde_cuota))[0]
+  }
+
+  const calcularLinea = (linea: LineaPago): ResultadoCalculo | null => {
+    if (linea.medio !== "tarjeta" || !linea.tarjeta_id || linea.monto <= 0) return null
+    const cuotas = linea.cuotas || 1
+    const rec = buscarRecargo(linea.tarjeta_id, cuotas)
+    if (!rec) return null
+    const grupo = grupos.find(g => g.id === rec.grupo_id)
+    const tarjeta = tarjetas.find(t => t.id === linea.tarjeta_id)
+    // Recargo principal: monto × recargo_pct%
+    const importeRecargo = linea.monto * (rec.recargo_pct / 100)
+    // Cargos del grupo: cada uno sobre el monto base (no sobre el recargo)
+    const cargos = (grupo?.cargos || []).map(c => ({
+      nombre: c.nombre,
+      pct: c.arancel,
+      importe: linea.monto * (c.arancel / 100)
+    }))
+    const totalRecargo = importeRecargo + cargos.reduce((s, c) => s + c.importe, 0)
+    return { recargo: rec, grupo, tarjeta, importeRecargo, cargos, totalRecargo, totalConRecargo: linea.monto + totalRecargo }
+  }
+
+  const agregarLinea = () => {
+    setLineas(prev => [...prev, { id: Date.now(), medio: "efectivo", monto: 0 }])
+  }
+
+  const actualizarLinea = (id: number, cambios: Partial<LineaPago>) => {
+    setLineas(prev => prev.map(l => l.id === id ? { ...l, ...cambios } : l))
+  }
+
+  const eliminarLinea = (id: number) => {
+    setLineas(prev => prev.filter(l => l.id !== id))
+  }
+
+  // Totales
+  const totalRecargos = lineas.reduce((sum, l) => {
+    const c = calcularLinea(l)
+    return sum + (c?.totalRecargo || 0)
+  }, 0)
+  const totalIngresado = lineas.reduce((s, l) => s + (l.monto || 0), 0)
+  const totalConRecargos = totalIngresado + totalRecargos
+  // Diferencia: lo que ingresó el operador vs lo que debería sumar (total factura + recargos)
+  const totalEsperado = factura.total + totalRecargos
+  const diferencia = totalIngresado - factura.total  // cuánto ingresó vs el total de factura sin recargo
+
+  if (cobrado) {
+    return (
+      <div className="mt-6 border-t pt-4">
+        <div className="flex items-center gap-2 text-emerald-700 font-medium text-sm">
+          <CheckCircle className="w-4 h-4" />
+          Cobro registrado — movimientos generados en cuenta corriente.
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-6 border-t pt-5">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold text-gray-900 text-sm uppercase tracking-wide">Medios de Pago</h3>
+        <button onClick={agregarLinea}
+          className="flex items-center gap-1.5 text-sm text-emerald-700 hover:text-emerald-900 font-medium">
+          <Plus className="w-4 h-4" /> Agregar medio de pago
+        </button>
+      </div>
+
+      {lineas.length === 0 && (
+        <p className="text-sm text-gray-400 italic">Sin medios de pago ingresados.</p>
+      )}
+
+      {/* Líneas */}
+      <div className="space-y-3">
+        {lineas.map((linea, idx) => {
+          const calc = calcularLinea(linea)
+          const esPrimeraLineaEfectivo = linea.medio === "efectivo" && lineas.findIndex(l => l.medio === "efectivo") === idx
+          return (
+            <div key={linea.id} className="rounded-lg border border-gray-200 overflow-hidden">
+              {/* Fila de inputs */}
+              <div className="flex flex-wrap items-center gap-2 p-3 bg-gray-50">
+                <select
+                  value={linea.medio}
+                  onChange={e => actualizarLinea(linea.id, { medio: e.target.value as LineaPago["medio"], tarjeta_id: undefined, cuotas: undefined })}
+                  className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                >
+                  <option value="efectivo">Efectivo</option>
+                  <option value="transferencia">Transferencia</option>
+                  <option value="tarjeta">Tarjeta</option>
+                </select>
+
+                {linea.medio === "tarjeta" && (
+                  <>
+                    <select
+                      value={linea.tarjeta_id || ""}
+                      onChange={e => actualizarLinea(linea.id, { tarjeta_id: parseInt(e.target.value), cuotas: 1 })}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    >
+                      <option value="">Tarjeta...</option>
+                      {tarjetas.filter(t => t.activa).map(t => (
+                        <option key={t.id} value={t.id}>{t.nombre} ({t.tipo === "credito" ? "Crédito" : "Débito"})</option>
+                      ))}
+                    </select>
+                    <select
+                      value={linea.cuotas || 1}
+                      onChange={e => actualizarLinea(linea.id, { cuotas: parseInt(e.target.value) })}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none w-24"
+                    >
+                      {CUOTAS_OPTS.map(c => <option key={c} value={c}>{c} cuota{c > 1 ? "s" : ""}</option>)}
+                    </select>
+                  </>
+                )}
+
+                <div className="ml-auto flex items-center gap-2">
+                  {esPrimeraLineaEfectivo && (
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={linea.monto === factura.total}
+                        onChange={e => actualizarLinea(linea.id, { monto: e.target.checked ? factura.total : 0 })}
+                        className="w-3.5 h-3.5 accent-emerald-600"
+                      />
+                      <span className="text-xs text-gray-500 whitespace-nowrap">Todo efectivo</span>
+                    </label>
+                  )}
+                  <input
+                    type="number"
+                    value={linea.monto || ""}
+                    onChange={e => actualizarLinea(linea.id, { monto: parseFloat(e.target.value) || 0 })}
+                    placeholder="0,00"
+                    disabled={linea.medio === "tarjeta" && !linea.tarjeta_id}
+                    title={linea.medio === "tarjeta" && !linea.tarjeta_id ? "Seleccioná una tarjeta primero" : undefined}
+                    className={`border rounded px-2 py-1.5 text-sm text-right w-36 focus:ring-2 focus:ring-emerald-500 focus:outline-none ${linea.medio === "tarjeta" && !linea.tarjeta_id ? "border-red-300 bg-red-50 cursor-not-allowed text-gray-400" : "border-gray-300"}`}
+                  />
+                  <button onClick={() => eliminarLinea(linea.id)} className="p-1 text-gray-400 hover:text-red-600">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Error: tarjeta no seleccionada */}
+              {linea.medio === "tarjeta" && !linea.tarjeta_id && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border-t border-red-100 text-xs text-red-600">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  Seleccioná una tarjeta para poder ingresar el monto.
+                </div>
+              )}
+
+              {/* Desglose de recargo para tarjeta */}
+              {linea.medio === "tarjeta" && linea.tarjeta_id && linea.monto > 0 && (
+                <div className="px-4 pb-3 pt-2.5 bg-white border-t border-gray-100 text-xs">
+                  {calc ? (
+                    <div className="space-y-1">
+                      {/* Header tarjeta */}
+                      <div className="flex items-center gap-1.5 mb-2 text-gray-500 font-medium">
+                        <CreditCard className="w-3.5 h-3.5" />
+                        {calc.tarjeta?.nombre} {calc.tarjeta?.tipo === "credito" ? "Crédito" : "Débito"} — {linea.cuotas} cuota{(linea.cuotas || 1) > 1 ? "s" : ""} · {calc.grupo?.nombre}
+                      </div>
+                      {/* Monto base */}
+                      <div className="flex justify-between text-gray-500">
+                        <span>Monto abonado c/tarjeta:</span>
+                        <span>{formatARS(linea.monto)}</span>
+                      </div>
+                      {/* Recargo principal */}
+                      {calc.recargo.recargo_pct > 0 && (
+                        <div className="flex justify-between text-gray-500">
+                          <span>Recargo ({calc.recargo.recargo_pct}%):</span>
+                          <span>{formatARS(calc.importeRecargo)}</span>
+                        </div>
+                      )}
+                      {/* Cargos del grupo (comisión, IVA, IIBB, etc.) */}
+                      {calc.cargos.map((c, i) => (
+                        <div key={i} className="flex justify-between text-gray-500">
+                          <span>{c.nombre} ({c.pct}%):</span>
+                          <span>{formatARS(c.importe)}</span>
+                        </div>
+                      ))}
+                      {/* Separador */}
+                      <div className="border-t border-gray-200 my-1" />
+                      {/* Total recargo */}
+                      <div className="flex justify-between text-amber-700 font-semibold">
+                        <span>Total recargo:</span>
+                        <span>{formatARS(calc.totalRecargo)}</span>
+                      </div>
+                      {/* Total a acreditar */}
+                      <div className="flex justify-between font-bold text-gray-900">
+                        <span>Total a acreditar:</span>
+                        <span>{formatARS(calc.totalConRecargo)}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-amber-600">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      No hay recargo configurado para esta combinación. Revisá Finanzas → Recargos de Tarjetas.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Resumen pie de página */}
+      {lineas.length > 0 && (
+        <div className="mt-5 border border-gray-200 rounded-lg overflow-hidden">
+          <div className="bg-gray-800 px-4 py-2">
+            <span className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Resumen del cobro</span>
+          </div>
+          <div className="p-4 space-y-1.5 text-sm">
+            <div className="flex justify-between text-gray-600">
+              <span>Total factura (contado):</span>
+              <span>{formatARS(factura.total)}</span>
+            </div>
+            {totalRecargos > 0 && (
+              <div className="flex justify-between text-amber-700">
+                <span>Total recargos tarjeta:</span>
+                <span>+ {formatARS(totalRecargos)}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-bold text-base border-t border-gray-200 pt-2 mt-1">
+              <span>TOTAL CON RECARGO:</span>
+              <span>{formatARS(totalConRecargos)}</span>
+            </div>
+
+            {/* Validación de diferencia */}
+            {totalIngresado > 0 && Math.abs(diferencia) > 0.5 && (
+              <div className={`flex items-center gap-2 text-xs font-medium mt-2 p-2 rounded ${diferencia < 0 ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}>
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                {diferencia < 0
+                  ? `Falta ingresar ${formatARS(Math.abs(diferencia))} para cubrir el total de la factura.`
+                  : `Excedente de ${formatARS(diferencia)} sobre el total de la factura.`
+                }
+              </div>
+            )}
+            {totalIngresado > 0 && Math.abs(diferencia) <= 0.5 && (
+              <div className="flex items-center gap-2 text-xs text-emerald-700 font-medium mt-2 p-2 rounded bg-emerald-50">
+                <CheckCircle className="w-3.5 h-3.5" />
+                Los medios de pago cubren el total correctamente.
+              </div>
+            )}
+
+            {/* Botón confirmar cobro */}
+            {totalIngresado > 0 && Math.abs(diferencia) <= 0.5 && (
+              <button
+                onClick={() => {
+                  // Construir desglose de recargos para mostrar en totales
+                  const desgloseRecargos: { nombre: string; importe: number }[] = []
+                  lineas.forEach(l => {
+                    const c = calcularLinea(l)
+                    if (!c) return
+                    if (c.recargo.recargo_pct > 0) {
+                      desgloseRecargos.push({ nombre: `Recargo tarjeta (${c.tarjeta?.nombre} ${c.recargo.recargo_pct}%)`, importe: c.importeRecargo })
+                    }
+                    c.cargos.forEach(cargo => {
+                      desgloseRecargos.push({ nombre: cargo.nombre, importe: cargo.importe })
+                    })
+                  })
+                  onConfirmarCobro?.(lineas, totalConRecargos, totalRecargos)
+                  onCobroConfirmado?.(totalRecargos, desgloseRecargos)
+                  setCobrado(true)
+                }}
+                className="mt-3 w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg flex items-center justify-center gap-2"
+              >
+                <CheckCircle className="w-4 h-4" />
+                Confirmar cobro y registrar en cuenta corriente
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Componente principal
 export type { ClienteVenta }
 
@@ -829,14 +1172,145 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     configuracion: true
   })
   
-  // Data states
-  const [clientes, setClientes] = useState<ClienteVenta[]>(() => {
-    if (!clientesIniciales || clientesIniciales.length === 0) return mockClientesVenta
-    // Fusionar mock base + clientes nuevos que no estén en el mock
-    const mockIds = new Set(mockClientesVenta.map(c => c.id))
-    const extras = clientesIniciales.filter(c => !mockIds.has(c.id))
-    return [...mockClientesVenta, ...extras]
-  })
+  // Data states — clientes desde Supabase vía SWR
+  const { clientes: clientesDB, isLoading: clientesLoading, mutate: mutateClientes } = useClientes()
+  // Mapear ClienteDB → ClienteVenta para compatibilidad con el resto del módulo
+  const clientes: ClienteVenta[] = useMemo(() => (Array.isArray(clientesDB) ? clientesDB : []).map(c => ({
+    id: c.id,
+    codigo: c.codigo,
+    nombre: c.nombre,
+    nombre_fantasia: c.razon_social || "",
+    tipo_documento: (c.tipo_documento as "DNI" | "CUIT" | "CUIL") || "DNI",
+    numero_documento: c.numero_documento || "",
+    posicion_fiscal: (c.condicion_iva === "Responsable Inscripto" ? "responsable_inscripto"
+      : c.condicion_iva === "Monotributista" ? "monotributista"
+      : c.condicion_iva === "Exento" ? "exento"
+      : "consumidor_final") as ClienteVenta["posicion_fiscal"],
+    direccion: c.direccion || "",
+    ciudad: c.ciudad || "",
+    provincia: c.provincia || "Santa Fe",
+    codigo_postal: "",
+    zona: "",
+    telefono: c.telefono || "",
+    celular: "",
+    email: c.email || "",
+    categoria: "publico" as ClienteVenta["categoria"],
+    vendedor_id: c.vendedor_id,
+    cobrador_id: null,
+    lista_precios_id: 1,
+    descuento_default: 0,
+    moneda_cuenta_corriente: "ARS" as "ARS" | "USD",
+    termino_pago_id: c.termino_pago_id || 1,
+    activo: c.activo,
+    es_confidencial: false,
+    sucursal_origen: "Puerto Norte",
+    fecha_alta: c.created_at?.split("T")[0] || new Date().toISOString().split("T")[0],
+    saldo_cuenta_corriente: c.saldo_cuenta_corriente,
+    total_facturado: c.total_facturado,
+    seguimiento: []
+  })), [clientesDB])
+  const setClientes = useCallback((_updater: any) => {
+    // Los cambios ahora se persisten via API y se refresca con mutateClientes
+    mutateClientes()
+  }, [mutateClientes])
+
+  // Helper para construir ClienteVenta desde form
+  const buildClienteFromForm = useCallback((formData: FormData, editingItem: ClienteVenta | null, formClienteCategoriaId: number | null, categoriasCliente: { id: number, nombre: string }[]): ClienteVenta => {
+    const catNombre = categoriasCliente.find(c => c.id === formClienteCategoriaId)?.nombre?.toLowerCase() as ClienteVenta["categoria"] | undefined
+    return {
+      id: editingItem?.id || clientes.length + 1,
+      codigo: editingItem?.codigo || `C0${15520 + clientes.length}`,
+      nombre: formData.get("nombre") as string,
+      nombre_fantasia: formData.get("nombre_fantasia") as string || "",
+      tipo_documento: formData.get("tipo_documento") as "DNI" | "CUIT" | "CUIL",
+      numero_documento: formData.get("numero_documento") as string,
+      posicion_fiscal: formData.get("posicion_fiscal") as ClienteVenta["posicion_fiscal"],
+      direccion: formData.get("direccion") as string,
+      ciudad: formData.get("ciudad") as string || "Rosario",
+      provincia: formData.get("provincia") as string || "Santa Fe",
+      codigo_postal: formData.get("codigo_postal") as string || "",
+      zona: formData.get("zona") as string || "",
+      telefono: formData.get("telefono") as string || "",
+      celular: formData.get("celular") as string || "",
+      email: formData.get("email") as string || "",
+      categoria: catNombre ?? (editingItem?.categoria ?? null),
+      vendedor_id: parseInt(formData.get("vendedor_id") as string) || null,
+      cobrador_id: null,
+      lista_precios_id: parseInt(formData.get("lista_precios_id") as string) || 1,
+      descuento_default: parseFloat(formData.get("descuento_default") as string) || 0,
+      moneda_cuenta_corriente: formData.get("moneda_cuenta_corriente") as "ARS" | "USD",
+      termino_pago_id: parseInt(formData.get("termino_pago_id") as string) || 1,
+      activo: true, es_confidencial: false, sucursal_origen: "Puerto Norte",
+      fecha_alta: editingItem?.fecha_alta || new Date().toISOString().split('T')[0],
+      saldo_cuenta_corriente: editingItem?.saldo_cuenta_corriente || 0,
+      total_facturado: editingItem?.total_facturado || 0,
+      seguimiento: editingItem?.seguimiento || [{ id: Date.now(), fecha: new Date().toISOString(), usuario: "Max Solina", tipo: "creacion" as const, descripcion: "Cliente creado" }]
+    }
+  }, [clientes.length])
+
+  // Helper para construir payload DB desde ClienteVenta
+  const buildClientePayload = (newCliente: ClienteVenta) => {
+    const condicion = newCliente.posicion_fiscal === "responsable_inscripto" ? "Responsable Inscripto"
+      : newCliente.posicion_fiscal === "monotributista" ? "Monotributista"
+      : newCliente.posicion_fiscal === "exento" ? "Exento" : "Consumidor Final"
+    return {
+      nombre: newCliente.nombre, razon_social: newCliente.nombre_fantasia || null,
+      tipo_documento: newCliente.tipo_documento, numero_documento: newCliente.numero_documento || null,
+      condicion_iva: condicion, email: newCliente.email || null, telefono: newCliente.telefono || null,
+      direccion: newCliente.direccion || null, ciudad: newCliente.ciudad || null, provincia: newCliente.provincia || null,
+      termino_pago_id: newCliente.termino_pago_id || null, vendedor_id: newCliente.vendedor_id || null, activo: true,
+    }
+  }
+
+  // Handler para guardar cliente (formulario página completa) — sin await
+  const handleSubmitClienteForm = useCallback((e: React.FormEvent<HTMLFormElement>, editingItem: ClienteVenta | null, formClienteCategoriaId: number | null, categoriasCliente: { id: number, nombre: string }[], setCreandoCliente: (v: boolean) => void, setEditingItem: (v: ClienteVenta | null) => void, setSelectedCliente: (v: ClienteVenta) => void, onNuevoCliente?: (c: ClienteVenta) => void) => {
+    e.preventDefault()
+    const formData = new FormData(e.currentTarget)
+    const newCliente = buildClienteFromForm(formData, editingItem, formClienteCategoriaId, categoriasCliente)
+    const payload = buildClientePayload(newCliente)
+
+    const promise = editingItem
+      ? apiActualizarCliente(editingItem.id, payload).then((updated) => {
+          mutateClientes()
+          setSelectedCliente({ ...newCliente, id: updated.id })
+        })
+      : ((): Promise<void> => {
+          const maxId = clientesDB.length > 0 ? Math.max(...clientesDB.map(c => c.id)) : 0
+          const codigo = `C0${String(15517 + maxId).padStart(5, "0")}`
+          return apiCrearCliente({ ...payload, codigo, saldo_cuenta_corriente: 0, total_facturado: 0 }).then((created) => {
+            mutateClientes()
+            setSelectedCliente({ ...newCliente, id: created.id, codigo })
+            onNuevoCliente?.({ ...newCliente, id: created.id, codigo })
+          })
+        })()
+
+    promise
+      .then(() => { setCreandoCliente(false); setEditingItem(null) })
+      .catch((err) => alert("Error al guardar cliente: " + (err as Error).message))
+  }, [buildClienteFromForm, clientesDB, mutateClientes])
+
+  // Handler para guardar cliente (modal) — sin await
+  const handleSubmitClienteModal = useCallback((e: React.FormEvent<HTMLFormElement>, editingItem: ClienteVenta | null, formClienteCategoriaId: number | null, categoriasCliente: { id: number, nombre: string }[], setShowModal: (v: boolean) => void, setEditingItem: (v: ClienteVenta | null) => void, onNuevoCliente?: (c: ClienteVenta) => void) => {
+    e.preventDefault()
+    const formData = new FormData(e.currentTarget)
+    const newCliente = buildClienteFromForm(formData, editingItem, formClienteCategoriaId, categoriasCliente)
+    const payload = buildClientePayload(newCliente)
+
+    const promise = editingItem
+      ? apiActualizarCliente(editingItem.id, payload)
+      : ((): Promise<unknown> => {
+          const maxId = clientesDB.length > 0 ? Math.max(...clientesDB.map(c => c.id)) : 0
+          const codigo = `C0${String(15517 + maxId).padStart(5, "0")}`
+          return apiCrearCliente({ ...payload, codigo, saldo_cuenta_corriente: 0, total_facturado: 0 }).then((created) => {
+            onNuevoCliente?.({ ...newCliente, id: created.id, codigo })
+          })
+        })()
+
+    promise
+      .then(() => { mutateClientes(); setShowModal(false); setEditingItem(null) })
+      .catch((err) => alert("Error al guardar cliente: " + (err as Error).message))
+  }, [buildClienteFromForm, clientesDB, mutateClientes])
+
   const [notasVenta, setNotasVenta] = useState<NotaVenta[]>(mockNotasVenta)
   const [ordenesEntrega, setOrdenesEntrega] = useState<OrdenEntrega[]>(mockOrdenesEntrega)
   const [remitos, setRemitos] = useState<Remito[]>(mockRemitos)
@@ -1005,7 +1479,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       evaluacion: [
         { componente: "Pantalla", estado: "Buena", descuento: 0 },
         { componente: "Batería", estado: "Desgastada", descuento: 25000 },
-        { componente: "Cámara", estado: "Buena", descuento: 0 },
+        { componente: "C����mara", estado: "Buena", descuento: 0 },
         { componente: "Carcasa", estado: "Rayada", descuento: 20000 },
       ]
     }
@@ -1672,7 +2146,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </tr>
             </thead>
             <tbody>
-              {clientesFiltrados.map(cliente => (
+              {clientesLoading && (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-sm text-gray-400">
+                    Cargando clientes...
+                  </td>
+                </tr>
+              )}
+              {!clientesLoading && clientesFiltrados.map(cliente => (
                 <tr 
                   key={cliente.id} 
                   className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
@@ -1744,60 +2225,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
         {/* Formulario */}
         <div className="bg-white rounded-lg shadow-sm">
-          <form onSubmit={(e) => {
-            e.preventDefault()
-            const formData = new FormData(e.currentTarget)
-            const catId = formClienteCategoriaId
-            const catNombre = categoriasCliente.find(c => c.id === catId)?.nombre?.toLowerCase() as ClienteVenta["categoria"] | undefined
-            const newCliente: ClienteVenta = {
-              id: editingItem?.id || clientes.length + 1,
-              codigo: editingItem?.codigo || `C0${15520 + clientes.length}`,
-              nombre: formData.get("nombre") as string,
-              nombre_fantasia: formData.get("nombre_fantasia") as string || "",
-              tipo_documento: formData.get("tipo_documento") as "DNI" | "CUIT" | "CUIL",
-              numero_documento: formData.get("numero_documento") as string,
-              posicion_fiscal: formData.get("posicion_fiscal") as ClienteVenta["posicion_fiscal"],
-              direccion: formData.get("direccion") as string,
-              ciudad: formData.get("ciudad") as string || "Rosario",
-              provincia: formData.get("provincia") as string || "Santa Fe",
-              codigo_postal: formData.get("codigo_postal") as string || "",
-              zona: formData.get("zona") as string || "",
-              telefono: formData.get("telefono") as string || "",
-              celular: formData.get("celular") as string || "",
-              email: formData.get("email") as string || "",
-              categoria: catNombre ?? (editingItem?.categoria ?? null),
-              vendedor_id: parseInt(formData.get("vendedor_id") as string) || null,
-              cobrador_id: null,
-              lista_precios_id: parseInt(formData.get("lista_precios_id") as string) || 1,
-              descuento_default: parseFloat(formData.get("descuento_default") as string) || 0,
-              moneda_cuenta_corriente: formData.get("moneda_cuenta_corriente") as "ARS" | "USD",
-              termino_pago_id: parseInt(formData.get("termino_pago_id") as string) || 1,
-              activo: true,
-              es_confidencial: false,
-              sucursal_origen: "Puerto Norte",
-              fecha_alta: editingItem?.fecha_alta || new Date().toISOString().split('T')[0],
-              saldo_cuenta_corriente: editingItem?.saldo_cuenta_corriente || 0,
-              total_facturado: editingItem?.total_facturado || 0,
-              seguimiento: editingItem?.seguimiento || [{
-                id: Date.now(),
-                fecha: new Date().toISOString(),
-                usuario: "Max Solina",
-                tipo: "creacion" as const,
-                descripcion: "Cliente creado"
-              }]
-            }
-            if (editingItem) {
-              setClientes(prev => prev.map(c => c.id === editingItem.id ? newCliente : c))
-              setSelectedCliente(newCliente)
-            } else {
-              setClientes(prev => [...prev, newCliente])
-              setSelectedCliente(newCliente)
-              onNuevoCliente?.(newCliente)
-            }
-            setCreandoCliente(false)
-            setEditingItem(null)
-          }} className="p-4">
-            {/* Sección Identificación */}
+          <form onSubmit={(e) => { handleSubmitClienteForm(e, editingItem, formClienteCategoriaId, categoriasCliente, setCreandoCliente, setEditingItem, setSelectedCliente, onNuevoCliente) }} className="p-4">
+            {/* Sección Identificaci����n */}
             <div className="mb-4">
               <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
                 <Building2 className="w-3.5 h-3.5" /> Identificación
@@ -2019,17 +2448,21 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <X className="w-5 h-5" />
           </button>
           <div className="flex-1">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold text-emerald-900">{selectedCliente.nombre}</h1>
               {selectedCliente.categoria && (
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoriaColor(selectedCliente.categoria)}`}>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getCategoriaColor(selectedCliente.categoria)}`}>
                   {selectedCliente.categoria === "publico" ? "Público"
-                    : selectedCliente.categoria === "mercadolibre" ? "Mercadolibre"
+                    : selectedCliente.categoria === "mercadolibre" ? "MercadoLibre"
                     : selectedCliente.categoria.charAt(0).toUpperCase() + selectedCliente.categoria.slice(1)}
                 </span>
               )}
             </div>
-            <p className="text-sm text-gray-500">{selectedCliente.codigo} | {getPosicionFiscalLabel(selectedCliente.posicion_fiscal)}</p>
+            <p className="text-sm text-gray-500">
+              {selectedCliente.codigo}
+              <span className="mx-1.5 text-gray-300">|</span>
+              {getPosicionFiscalLabel(selectedCliente.posicion_fiscal)}
+            </p>
           </div>
           <div className="flex gap-2">
             <button 
@@ -2518,7 +2951,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         <span>{selectedCliente.tipo_documento}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-500">N����mero:</span>
+                        <span className="text-gray-500">{"N\u00famero"}:</span>
                         <span>{selectedCliente.numero_documento}</span>
                       </div>
                       <div className="flex justify-between">
@@ -3011,7 +3444,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       }
       setRemitos(prev => [...prev, newRemito])
 
-      // Crear Factura
+      // Crear Factura en borrador
       const facturaNumero = `FC X 10000-000${13460 + facturas.length}`
       const facturaId = facturas.length + 1
       const newFactura: Factura = {
@@ -3025,7 +3458,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         cliente_cuit: cliente.numero_documento,
         fecha: fechaHoy,
         fecha_vencimiento: fechaHoy,
-        estado: "pendiente",
+        estado: "borrador",
         moneda: moneda,
         lineas: lineasValidas.map(l => ({
           producto_nombre: l.producto_nombre,
@@ -3042,55 +3475,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         cae: null,
         cae_vencimiento: null,
         sucursal: "Puerto Norte",
-        seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "Factura creada desde venta inmediata" }]
+        seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "Factura creada en borrador desde confirmación de NV" }]
       }
       setFacturas(prev => [...prev, newFactura])
-
-      // Actualizar cuenta corriente del cliente
-      const nuevoMovimiento: MovimientoCuentaCorriente = {
-        id: movimientosCC.length + 1,
-        cliente_id: cliente.id,
-        fecha: fechaHoy,
-        tipo: "debito",
-        concepto: "Factura de venta",
-        documento_tipo: "factura",
-        documento_numero: facturaNumero,
-        documento_id: facturaId,
-        moneda: moneda,
-        importe: totalValido,
-        saldo_posterior: cliente.saldo_cuenta_corriente + totalValido
-      }
-      setMovimientosCC(prev => [...prev, nuevoMovimiento])
-
-      setClientes(prev => prev.map(c =>
-        c.id === cliente.id ? {
-          ...c,
-          saldo_cuenta_corriente: c.saldo_cuenta_corriente + totalValido,
-          total_facturado: c.total_facturado + totalValido
-        } : c
-      ))
-
-      // Crear Recibo en borrador
-      const reciboNumero = `RC X Norte-000${11735 + recibos.length}`
-      const reciboId = recibos.length + 1
-      const newRecibo: Recibo = {
-        id: reciboId,
-        numero: reciboNumero,
-        cliente_id: cliente.id,
-        cliente_nombre: cliente.nombre,
-        estado: "borrador",
-        fecha: fechaHoy,
-        importe: totalValido,
-        importe_no_conciliado: totalValido,
-        moneda: moneda,
-        sucursal: "Puerto Norte",
-        caja: "Caja Principal",
-        cobrador_nombre: vendedorNombre,
-        nota_venta_numero: nvNumero,
-        concepto: `Cobro venta ${nvNumero}`,
-        pagos: []
-      }
-      setRecibos(prev => [...prev, newRecibo])
     }
 
     // Limpiar y abrir la NV creada
@@ -5192,16 +5579,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       return
     }
 
-    const tipoFactura = clienteSeleccionado.posicion_fiscal === "responsable_inscripto" ? "A" :
-      clienteSeleccionado.posicion_fiscal === "monotributista" ? "C" : "B"
-    const facturaNumero = `FC-${tipoFactura} X 10000-000${20050 + facturas.length}`
+    const facturaNumero = `FC X 10000-000${20050 + facturas.length}`
     const facturaId = facturas.length + 1
     const fechaHoy = new Date().toISOString()
 
     const newFactura: Factura = {
       id: facturaId,
       numero: facturaNumero,
-      tipo: tipoFactura as "A" | "B" | "C",
+      tipo: "B",
       nota_venta_id: 0,
       nota_venta_numero: "-",
       cliente_id: clienteSeleccionado.id,
@@ -5217,12 +5602,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       termino_pago: mockTerminosPago.find(tp => tp.id === clienteSeleccionado.termino_pago_id)?.nombre || "Contado",
       subtotal: subtotal,
       descuento: 0,
-      impuestos: subtotal * 0.21,
-      total: total,
-      saldo: total,
+      impuestos: 0,
+      total: subtotal,
+      saldo: subtotal,
       sucursal: "Puerto Norte",
       lineas: lineasValidas,
-      vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: total }]
+      vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: subtotal }]
     }
     setFacturas(prev => [...prev, newFactura])
 
@@ -5238,23 +5623,22 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const handleCrearFacturaFinal = () => {
     const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
     const subtotal = facturaLineas.reduce((sum, l) => sum + l.subtotal, 0)
-    const total = subtotal * 1.21
-    
+    const totalRecargos = prevRecargosConfirmados?.totalRecargos || 0
+    const totalFinal = subtotal + totalRecargos
+
     if (!clienteSeleccionado || facturaLineas.length === 0) {
       alert("Debe seleccionar un cliente y agregar al menos un producto")
       return
     }
 
-    const tipoFactura = clienteSeleccionado.posicion_fiscal === "responsable_inscripto" ? "A" :
-      clienteSeleccionado.posicion_fiscal === "monotributista" ? "C" : "B"
-    const facturaNumero = `FC-${tipoFactura} X 10000-000${20050 + facturas.length}`
+    const facturaNumero = `FC-${String(20050 + facturas.length).padStart(6, "0")}`
     const facturaId = facturas.length + 1
     const fechaHoy = new Date().toISOString()
 
     const newFactura: Factura = {
       id: facturaId,
       numero: facturaNumero,
-      tipo: tipoFactura as "A" | "B" | "C",
+      tipo: "B",
       nota_venta_id: 0,
       nota_venta_numero: "-",
       cliente_id: clienteSeleccionado.id,
@@ -5270,16 +5654,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       termino_pago: mockTerminosPago.find(tp => tp.id === clienteSeleccionado.termino_pago_id)?.nombre || "Contado",
       subtotal: subtotal,
       descuento: 0,
-      impuestos: subtotal * 0.21,
-      total: total,
-      saldo: total,
+      impuestos: totalRecargos,
+      total: totalFinal,
+      saldo: totalFinal,
       sucursal: "Puerto Norte",
       lineas: facturaLineas,
-      vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: total }]
+      vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: totalFinal }]
     }
     setFacturas(prev => [...prev, newFactura])
 
-    // Crear movimiento de debito
+    // Crear movimiento de debito por el total (subtotal + recargos)
     const saldoAnterior = clienteSeleccionado.saldo_cuenta_corriente
     const nuevoMovimiento: MovimientoCuentaCorriente = {
       id: movimientosCC.length + 1,
@@ -5291,8 +5675,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       documento_numero: facturaNumero,
       documento_id: facturaId,
       moneda: "ARS",
-      importe: total,
-      saldo_posterior: saldoAnterior + total
+      importe: totalFinal,
+      saldo_posterior: saldoAnterior + totalFinal
     }
     setMovimientosCC(prev => [...prev, nuevoMovimiento])
 
@@ -5300,11 +5684,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setClientes(prev => prev.map(c =>
       c.id === clienteSeleccionado.id ? {
         ...c,
-        saldo_cuenta_corriente: c.saldo_cuenta_corriente + total,
-        total_facturado: c.total_facturado + total
+        saldo_cuenta_corriente: c.saldo_cuenta_corriente + totalFinal,
+        total_facturado: c.total_facturado + totalFinal
       } : c
     ))
 
+    // Resetear estado de previsualización
+    setPrevRecargosConfirmados(null)
+    setPrevEstadoPago({ cobrado: false, tieneLineas: false, diferenciaOk: false })
     setCreandoFactura(false)
     setFacturaPrevisualizando(false)
     setFacturaClienteId(null)
@@ -5314,25 +5701,25 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   // Vista de previsualización de Factura
+  const [prevRecargosConfirmados, setPrevRecargosConfirmados] = useState<{ totalRecargos: number; desglose: { nombre: string; importe: number }[] } | null>(null)
+  const [prevEstadoPago, setPrevEstadoPago] = useState<{ cobrado: boolean; tieneLineas: boolean; diferenciaOk: boolean }>({ cobrado: false, tieneLineas: false, diferenciaOk: false })
+  const [modalValidacionMsg, setModalValidacionMsg] = useState<string | null>(null)
+
   const renderPrevisualizacionFactura = () => {
     const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
     const lineasValidas = facturaLineas.filter(l => l.producto_nombre.trim() !== "")
     const subtotal = lineasValidas.reduce((sum, l) => sum + l.subtotal, 0)
-    const iva = subtotal * 0.21
-    const total = subtotal + iva
-    const tipoFactura = clienteSeleccionado?.posicion_fiscal === "responsable_inscripto" ? "A" :
-      clienteSeleccionado?.posicion_fiscal === "monotributista" ? "C" : "B"
-
+    const numeroProvisorio = `FC-${String(20050 + facturas.length).padStart(6, "0")}`
     return (
       <div>
         {/* Header con breadcrumb */}
         <div className="text-sm text-gray-500 mb-2">
-          Facturas / <span className="text-gray-700">Nueva Factura</span>
+          Facturas / <span className="text-gray-700">{numeroProvisorio}</span>
         </div>
         <div className="flex items-center gap-4 mb-6">
 <BotonVolver onClick={() => setFacturaPrevisualizando(false)} variant="minimal" texto="" />
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-emerald-900">Nueva Factura Tipo {tipoFactura}</h1>
+            <h1 className="text-2xl font-bold text-emerald-900">{numeroProvisorio}</h1>
             <p className="text-sm text-gray-500">{new Date().toLocaleDateString('es-AR')} | Puerto Norte</p>
           </div>
           <button className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1">
@@ -5353,7 +5740,17 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <Save className="w-4 h-4" /> Guardar Cambios
             </button>
             <button 
-              onClick={handleCrearFacturaFinal}
+              onClick={() => {
+                if (!prevEstadoPago.tieneLineas) {
+                  setModalValidacionMsg("Debés ingresar al menos un medio de pago antes de confirmar la factura.")
+                  return
+                }
+                if (!prevEstadoPago.cobrado) {
+                  setModalValidacionMsg("El cobro no fue confirmado. Completá los medios de pago y presioná \"Confirmar cobro\".")
+                  return
+                }
+                handleCrearFacturaFinal()
+              }}
               className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 flex items-center gap-1"
             >
               <CheckCircle className="w-4 h-4" /> Confirmar Factura
@@ -5380,10 +5777,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <span className="text-gray-500">Pos. Fiscal:</span>
                   <span className="ml-2 font-medium capitalize">{clienteSeleccionado?.posicion_fiscal?.replace("_", " ")}</span>
                 </div>
-                <div>
-                  <span className="text-gray-500">Tipo Factura:</span>
-                  <span className="ml-2 font-medium">{tipoFactura}</span>
-                </div>
+
                 <div>
                   <span className="text-gray-500">Teléfono:</span>
                   <span className="ml-2 font-medium text-emerald-600">{clienteSeleccionado?.telefono || clienteSeleccionado?.celular || "-"}</span>
@@ -5453,19 +5847,74 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <div className="flex justify-end">
             <div className="w-64 space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-500">Subtotal:</span>
+                <span className="text-gray-500">Subtotal (precio contado):</span>
                 <span>{formatCurrency(subtotal)}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">IVA (21%):</span>
-                <span>{formatCurrency(iva)}</span>
-              </div>
+              {prevRecargosConfirmados && prevRecargosConfirmados.desglose.map((d, i) => (
+                <div key={i} className="flex justify-between text-amber-700">
+                  <span>{d.nombre}:</span>
+                  <span>+ {formatCurrency(d.importe)}</span>
+                </div>
+              ))}
+              {prevRecargosConfirmados && prevRecargosConfirmados.totalRecargos > 0 && (
+                <div className="flex justify-between text-amber-700 font-medium">
+                  <span>Total recargos:</span>
+                  <span>+ {formatCurrency(prevRecargosConfirmados.totalRecargos)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-lg font-bold pt-2 border-t">
                 <span>Total:</span>
-                <span className="text-emerald-700">{formatCurrency(total)}</span>
+                <span className="text-emerald-700">
+                  {formatCurrency(subtotal + (prevRecargosConfirmados?.totalRecargos || 0))}
+                </span>
               </div>
             </div>
           </div>
+
+          {/* Modal de validación */}
+          {modalValidacionMsg && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-6">
+                <div className="flex items-start gap-3 mb-4">
+                  <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-1">No se puede confirmar la factura</h3>
+                    <p className="text-sm text-gray-600">{modalValidacionMsg}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setModalValidacionMsg(null)}
+                  className="w-full py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800"
+                >
+                  Entendido
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Medios de Pago — disponible antes de guardar */}
+          <BloquesMediosPago
+            key={`prev-${facturaClienteId}`}
+            onEstadoPagoChange={(estado) => setPrevEstadoPago(estado)}
+            onCobroConfirmado={(totalRecargos, desglose) => {
+              setPrevRecargosConfirmados({ totalRecargos, desglose })
+            }}
+            factura={{
+              id: 0,
+              numero: "",
+              tipo: "B",
+              estado: "borrador",
+              fecha: new Date().toISOString(),
+              cliente_id: facturaClienteId || 0,
+              cliente_nombre: clienteSeleccionado?.nombre || "",
+              moneda: "ARS",
+              subtotal,
+              descuento: 0,
+              impuestos: 0,
+              total: subtotal,
+              saldo: subtotal,
+            } as Factura}
+          />
         </div>
       </div>
     )
@@ -5474,7 +5923,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const renderCrearFactura = () => {
     const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
     const subtotal = facturaLineas.reduce((sum, l) => sum + l.subtotal, 0)
-    const total = subtotal * 1.21
 
     // Si estamos en previsualización, mostrar vista previa
     if (facturaPrevisualizando) {
@@ -5509,9 +5957,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
                   <div><span className="text-gray-500">Documento:</span> <span className="font-medium">{clienteSeleccionado.tipo_documento}: {clienteSeleccionado.numero_documento}</span></div>
                   <div><span className="text-gray-500">Posicion Fiscal:</span> <span className="font-medium capitalize">{clienteSeleccionado.posicion_fiscal.replace('_', ' ')}</span></div>
-                  <div><span className="text-gray-500">Tipo Factura:</span> <span className="font-medium">
-                    {clienteSeleccionado.posicion_fiscal === "responsable_inscripto" ? "A" : clienteSeleccionado.posicion_fiscal === "monotributista" ? "C" : "B"}
-                  </span></div>
+
                   <div>
                     <span className="text-gray-500">Lista de Precios:</span>
                     <select
@@ -5668,9 +6114,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <h3 className="font-semibold text-gray-900 mb-4">Resumen</h3>
               <div className="space-y-3">
                 <div className="flex justify-between text-sm"><span className="text-gray-600">Subtotal:</span><span className="font-medium">{formatCurrency(subtotal)}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-gray-600">IVA (21%):</span><span className="font-medium">{formatCurrency(subtotal * 0.21)}</span></div>
                 <div className="border-t pt-3">
-                  <div className="flex justify-between text-lg font-bold"><span>Total:</span><span className="text-emerald-700">{formatCurrency(total)}</span></div>
+                  <div className="flex justify-between text-lg font-bold"><span>Total:</span><span className="text-emerald-700">{formatCurrency(subtotal)}</span></div>
                 </div>
               </div>
             </div>
@@ -5713,7 +6158,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 <BotonVolver onClick={() => setSelectedFactura(null)} variant="minimal" texto="" />
             <div>
               <h1 className="text-2xl font-bold text-emerald-900">{selectedFactura.numero}</h1>
-              <p className="text-sm text-gray-500">{formatDateTime(selectedFactura.fecha)} | Tipo {selectedFactura.tipo}</p>
+                <p className="text-sm text-gray-500">{formatDateTime(selectedFactura.fecha)}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -5756,6 +6201,58 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
         <div className="bg-gray-800 rounded-t-lg px-4 py-3 flex items-center justify-between mb-0">
           <div className="flex items-center gap-2">
+            {selectedFactura.estado === 'borrador' && (
+              <>
+                <button
+                  onClick={() => setShowCancelarFacturaModal(true)}
+                  className="px-3 py-1.5 text-sm border border-gray-400 text-white rounded-md hover:bg-gray-700 flex items-center gap-1"
+                >
+                  <X className="w-4 h-4" /> Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    const fechaHoy = new Date().toISOString()
+                    const clienteFactura = clientes.find(c => c.id === selectedFactura.cliente_id)
+                    // Generar movimiento de débito en CC
+                    if (clienteFactura) {
+                      const saldoAnterior = clienteFactura.saldo_cuenta_corriente
+                      const nuevoMovimiento: MovimientoCuentaCorriente = {
+                        id: movimientosCC.length + 1,
+                        cliente_id: clienteFactura.id,
+                        fecha: fechaHoy,
+                        tipo: "debito",
+                        concepto: `Factura de venta confirmada`,
+                        documento_tipo: "factura",
+                        documento_numero: selectedFactura.numero,
+                        documento_id: selectedFactura.id,
+                        moneda: selectedFactura.moneda,
+                        importe: selectedFactura.total,
+                        saldo_posterior: saldoAnterior + selectedFactura.total
+                      }
+                      setMovimientosCC(prev => [...prev, nuevoMovimiento])
+                      setClientes(prev => prev.map(c =>
+                        c.id === clienteFactura.id
+                          ? { ...c, saldo_cuenta_corriente: c.saldo_cuenta_corriente + selectedFactura.total, total_facturado: (c.total_facturado || 0) + selectedFactura.total }
+                          : c
+                      ))
+                    }
+                    const updatedFactura = {
+                      ...selectedFactura,
+                      estado: "abierta" as const,
+                      seguimiento: [
+                        ...(selectedFactura.seguimiento || []),
+                        { id: (selectedFactura.seguimiento?.length || 0) + 1, fecha: fechaHoy, usuario: "Max Solina", tipo: "confirmacion" as const, descripcion: "Factura confirmada — pasó de Borrador a Abierta" }
+                      ]
+                    }
+                    setFacturas(prev => prev.map(f => f.id === selectedFactura.id ? updatedFactura : f))
+                    setSelectedFactura(updatedFactura)
+                  }}
+                  className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 flex items-center gap-1"
+                >
+                  <CheckCircle className="w-4 h-4" /> Confirmar Factura
+                </button>
+              </>
+            )}
             {(selectedFactura.estado === 'abierta' || selectedFactura.estado === 'vencida') && (
               <>
                 <button 
@@ -5807,7 +6304,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <h3 className="font-semibold text-gray-900 border-b pb-2">Datos de Factura</h3>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div><span className="text-gray-500">Numero:</span> <span className="font-medium">{selectedFactura.numero}</span></div>
-                <div><span className="text-gray-500">Tipo:</span> <span className="font-medium">Factura {selectedFactura.tipo}</span></div>
+                <div><span className="text-gray-500">Tipo:</span> <span className="font-medium">Factura</span></div>
                 <div><span className="text-gray-500">Fecha:</span> <span className="font-medium">{formatDate(selectedFactura.fecha)}</span></div>
                 <div><span className="text-gray-500">NV:</span> <span className="font-medium text-emerald-700">{selectedFactura.nota_venta_numero}</span></div>
                 <div><span className="text-gray-500">Vendedor:</span> <span className="font-medium">{selectedFactura.vendedor_nombre}</span></div>
@@ -5859,6 +6356,75 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <div className="flex justify-between text-red-600 font-medium"><span>Saldo:</span><span>{formatCurrency(selectedFactura.saldo, selectedFactura.moneda)}</span></div>
             </div>
           </div>
+
+          {/* Bloque Medios de Pago */}
+          <BloquesMediosPago
+            key={selectedFactura.id}
+            factura={selectedFactura}
+            onConfirmarCobro={(lineasPago, totalConRecargos, totalRecargos) => {
+              const fechaHoy = new Date().toISOString()
+              // Generar un movimiento por cada línea de pago
+              const nuevosMovimientos: MovimientoCuentaCorriente[] = lineasPago
+                .filter(l => l.monto > 0)
+                .map((l, i) => {
+                  const esTarjeta = l.medio === "tarjeta"
+                  const tarjetaInfo = tarjetasIniciales.find(t => t.id === l.tarjeta_id)
+                  const recCalc = esTarjeta && l.tarjeta_id
+                    ? (() => {
+                        const hoy = new Date()
+                        const diasKeys = ["dom","lun","mar","mie","jue","vie","sab"] as const
+                        const diaKey = diasKeys[hoy.getDay()]
+                        const rec = recargosIniciales.find(r =>
+                          r.tarjeta_id === l.tarjeta_id && r.activo &&
+                          (l.cuotas||1) >= r.desde_cuota && (l.cuotas||1) <= r.hasta_cuota && r.dias[diaKey]
+                        )
+                        return rec
+                      })()
+                    : null
+                  const importeRecargo = recCalc ? l.monto * (recCalc.recargo_pct / 100) : 0
+                  const grupo = recCalc ? gruposIniciales.find(g => g.id === recCalc.grupo_id) : null
+                  const cargosImporte = grupo ? grupo.cargos.reduce((s, c) => s + l.monto * (c.arancel / 100), 0) : 0
+                  const totalLinea = l.monto + importeRecargo + cargosImporte
+                  const saldoAnterior = clientes.find(c => c.id === selectedFactura.cliente_id)?.saldo_cuenta_corriente || 0
+
+                  return {
+                    id: movimientosCC.length + i + 1,
+                    cliente_id: selectedFactura.cliente_id,
+                    fecha: fechaHoy,
+                    tipo: "credito" as const,
+                    concepto: esTarjeta
+                      ? `Pago con tarjeta — ${tarjetaInfo?.nombre} ${l.cuotas && l.cuotas > 1 ? `${l.cuotas} cuotas` : "1 cuota"}`
+                      : l.medio === "transferencia" ? "Pago por transferencia" : "Pago en efectivo",
+                    documento_tipo: "recibo" as const,
+                    documento_numero: selectedFactura.numero,
+                    documento_id: selectedFactura.id,
+                    moneda: selectedFactura.moneda,
+                    importe: totalLinea,
+                    saldo_posterior: saldoAnterior - totalLinea,
+                    // Campos bancarización
+                    bancarizado: esTarjeta || l.medio === "transferencia",
+                    tarjeta_nombre: tarjetaInfo?.nombre,
+                    cuotas: l.cuotas,
+                    monto_base: l.monto,
+                    recargo_aplicado: importeRecargo + cargosImporte,
+                  } as MovimientoCuentaCorriente
+                })
+              setMovimientosCC(prev => [...prev, ...nuevosMovimientos])
+              // Actualizar saldo del cliente
+              const totalCreditado = lineasPago.reduce((s, l) => s + l.monto, 0)
+              setClientes(prev => prev.map(c =>
+                c.id === selectedFactura.cliente_id
+                  ? { ...c, saldo_cuenta_corriente: c.saldo_cuenta_corriente - totalCreditado }
+                  : c
+              ))
+              // Marcar factura como pagada si el saldo queda en 0
+              setFacturas(prev => prev.map(f =>
+                f.id === selectedFactura.id
+                  ? { ...f, saldo: Math.max(0, (f.saldo || 0) - totalCreditado), estado: Math.max(0, (f.saldo || 0) - totalCreditado) <= 0 ? "pagada" as const : f.estado }
+                  : f
+              ))
+            }}
+          />
 
           {/* Seguimiento */}
           <SeguimientoPanel seguimiento={selectedFactura.seguimiento || []} />
@@ -6898,9 +7464,91 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     return
                   }
                   const fechaHoy = new Date().toLocaleDateString('es-AR')
+                  const fechaISO = new Date().toISOString()
+
+                  // 1. Buscar todas las aplicaciones donde este recibo fue crédito
+                  const aplicacionesARevertir = conciliacionHistorial
+                    .flatMap(h => h.aplicaciones)
+                    .filter(a => a.credito_numero === selectedRecibo.numero)
+
+                  // 2. Revertir saldo de cada factura involucrada
+                  if (aplicacionesARevertir.length > 0) {
+                    setFacturas(prev => prev.map(f => {
+                      const montoRevertir = aplicacionesARevertir
+                        .filter(a => a.debito_numero === f.numero)
+                        .reduce((sum, a) => sum + a.monto, 0)
+                      if (montoRevertir > 0) {
+                        const nuevoSaldo = f.saldo + montoRevertir
+                        return {
+                          ...f,
+                          saldo: nuevoSaldo,
+                          estado: nuevoSaldo > 0 ? "abierta" as const : f.estado
+                        }
+                      }
+                      return f
+                    }))
+
+                    // 3. Generar movimiento de reversión en cuenta corriente
+                    const totalRevertido = aplicacionesARevertir.reduce((sum, a) => sum + a.monto, 0)
+                    const clienteDelRecibo = clientes.find(c => c.id === selectedRecibo.cliente_id)
+                    if (clienteDelRecibo) {
+                      const saldoAnterior = clienteDelRecibo.saldo_cuenta_corriente
+                      const nuevoMov: MovimientoCuentaCorriente = {
+                        id: movimientosCC.length + 1,
+                        cliente_id: clienteDelRecibo.id,
+                        fecha: fechaISO,
+                        tipo: "debito",
+                        concepto: `Reversión por cancelación de recibo ${selectedRecibo.numero}`,
+                        documento_tipo: "recibo_cancelado",
+                        documento_numero: selectedRecibo.numero,
+                        documento_id: selectedRecibo.id,
+                        moneda: selectedRecibo.moneda || "ARS",
+                        importe: totalRevertido,
+                        saldo_posterior: saldoAnterior + totalRevertido
+                      }
+                      setMovimientosCC(prev => [...prev, nuevoMov])
+                    }
+
+                    // 4. Marcar el historial de conciliación como revertido y agregar entrada de reversión
+                    setConciliacionHistorial(prev => {
+                      const clienteDelRecibo2 = clientes.find(c => c.id === selectedRecibo.cliente_id)
+                      const historialMarcado = prev.map(h => ({
+                        ...h,
+                        aplicaciones: h.aplicaciones.map(a =>
+                          a.credito_numero === selectedRecibo.numero
+                            ? { ...a, revertida: true }
+                            : a
+                        )
+                      }))
+                      // Agregar registro de reversión
+                      const nuevaEntradaReversion = {
+                        id: prev.length + 1,
+                        fecha: fechaISO,
+                        cliente_id: selectedRecibo.cliente_id,
+                        cliente_nombre: clienteDelRecibo2?.nombre || "",
+                        tipo: "reversion" as const,
+                        motivo: `Cancelación de recibo ${selectedRecibo.numero}: ${cancelarReciboDescripcion.trim()}`,
+                        aplicaciones: aplicacionesARevertir.map(a => ({
+                          ...a,
+                          revertida: true,
+                          monto: -a.monto,
+                          debito_tipo: a.debito_tipo,
+                          debito_numero: a.debito_numero,
+                          credito_tipo: a.credito_tipo,
+                          credito_numero: a.credito_numero,
+                        })),
+                        total_conciliado: -aplicacionesARevertir.reduce((sum, a) => sum + a.monto, 0),
+                        usuario: "Admin"
+                      }
+                      return [...historialMarcado, nuevaEntradaReversion]
+                    })
+                  }
+
+                  // 5. Cancelar el recibo — importe_no_conciliado queda en 0 (no reutilizable)
                   const updatedRecibo = {
                     ...selectedRecibo,
                     estado: "cancelado" as const,
+                    importe_no_conciliado: 0,
                     cancelacion: {
                       motivo: cancelarReciboMotivo,
                       descripcion: cancelarReciboDescripcion.trim(),
@@ -6913,7 +7561,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         fecha: fechaHoy,
                         usuario: "Max Solina",
                         accion: "Recibo cancelado",
-                        detalle: `Motivo: ${cancelarReciboMotivo}. ${cancelarReciboDescripcion.trim()}`
+                        detalle: `Motivo: ${cancelarReciboMotivo}. ${cancelarReciboDescripcion.trim()}${aplicacionesARevertir.length > 0 ? `. Se revirtieron ${aplicacionesARevertir.length} aplicación/es de conciliación.` : ""}`
                       }
                     ]
                   }
@@ -7028,11 +7676,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       : []
     
     const facturasFiltradas = todasFacturasCliente.filter(f => {
-      // Filtro por conciliado
+      // Filtro por conciliado: "no"=pendientes, "si"=conciliadas, "todos"=todas
       if (conciliacionFiltroConciliado === "no" && f.saldo <= 0) return false
       if (conciliacionFiltroConciliado === "si" && f.saldo > 0) return false
-      // Filtro por checkbox "Todos"
-      if (!conciliacionMostrarTodosDebitos && f.saldo <= 0) return false
+      // Si no hay filtro de conciliado activo ("todos"), aplicar checkbox "Todos" para ocultar conciliadas
+      if (conciliacionFiltroConciliado === "todos" && !conciliacionMostrarTodosDebitos && f.saldo <= 0) return false
       // Filtro por texto
       if (conciliacionFiltroTextoDebitos && !f.numero.toLowerCase().includes(conciliacionFiltroTextoDebitos.toLowerCase()) && 
           !f.nota_venta_numero.toLowerCase().includes(conciliacionFiltroTextoDebitos.toLowerCase())) return false
@@ -7047,11 +7695,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       : []
 
     const recibosFiltrados = todosRecibosCliente.filter(r => {
-      // Filtro por conciliado
+      // Filtro por conciliado: "no"=pendientes, "si"=conciliados, "todos"=todos
       if (conciliacionFiltroConciliado === "no" && r.importe_no_conciliado <= 0) return false
       if (conciliacionFiltroConciliado === "si" && r.importe_no_conciliado > 0) return false
-      // Filtro por checkbox "Todos"
-      if (!conciliacionMostrarTodosCreditos && r.importe_no_conciliado <= 0) return false
+      // Si filtro es "todos", el checkbox controla si se muestran los conciliados
+      if (conciliacionFiltroConciliado === "todos" && !conciliacionMostrarTodosCreditos && r.importe_no_conciliado <= 0) return false
       // Filtro por texto
       if (conciliacionFiltroTextoCreditos && !r.numero.toLowerCase().includes(conciliacionFiltroTextoCreditos.toLowerCase())) return false
       return true
@@ -7252,19 +7900,19 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         {conciliacionTab === "conciliar" ? (
         <div className="bg-white rounded-lg shadow-sm border">
           {/* Header estilo Odoo */}
-          <div className="p-4 border-b bg-gray-50">
-            <div className="flex items-end gap-4">
+          <div className="px-3 py-2.5 border-b bg-gray-50">
+            <div className="flex items-center gap-2 flex-wrap">
               {/* Cliente */}
-              <div className="flex-1">
-                <label className="block text-xs text-gray-500 mb-1">Cliente</label>
-                <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <label className="text-xs text-gray-500 shrink-0">Cliente</label>
+                <div className="flex items-center gap-1">
                   <select 
                     value={conciliacionClienteId || ""}
                     onChange={(e) => {
                       setConciliacionClienteId(e.target.value ? parseInt(e.target.value) : null)
                       limpiarSeleccion()
                     }}
-                    className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-52 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="">Seleccionar cliente...</option>
                     {clientes.map(c => (
@@ -7273,76 +7921,56 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   </select>
                   {clienteSeleccionado && (
                     <button 
-                      onClick={() => {
-                        setClienteSeleccionadoId(clienteSeleccionado.id)
-                        setActiveSubmenu("ficha_cliente")
-                      }}
-                      className="p-1.5 text-gray-400 hover:text-blue-600"
-                      title="Abrir ficha cliente"
+                      onClick={() => { setClienteSeleccionadoId(clienteSeleccionado.id); setActiveSubmenu("ficha_cliente") }}
+                      className="p-1 text-gray-400 hover:text-blue-600 shrink-0"
                     >
-                      <ArrowRight className="w-4 h-4" />
+                      <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
               </div>
-              {/* Nota de Venta */}
-              <div className="w-48">
-                <label className="block text-xs text-gray-500 mb-1">Nota de Venta</label>
-                <select 
-                  value={conciliacionFiltroNV}
-                  onChange={(e) => setConciliacionFiltroNV(e.target.value)}
-                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="">Todas</option>
-                  {conciliacionClienteId && notasVenta.filter(nv => nv.cliente_id === conciliacionClienteId).map(nv => (
-                    <option key={nv.id} value={nv.numero}>{nv.numero}</option>
-                  ))}
-                </select>
-              </div>
+
               {/* Conciliado */}
-              <div className="w-32">
-                <label className="block text-xs text-gray-500 mb-1">Conciliado</label>
+              <div className="flex items-center gap-1">
+                <label className="text-xs text-gray-500 shrink-0">Conciliado</label>
                 <select 
                   value={conciliacionFiltroConciliado}
                   onChange={(e) => setConciliacionFiltroConciliado(e.target.value as typeof conciliacionFiltroConciliado)}
-                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-20 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="no">No</option>
                   <option value="si">Si</option>
                   <option value="todos">Todos</option>
                 </select>
               </div>
-              {/* Balance central */}
-              <div className="px-4 py-1 bg-white border rounded text-center min-w-24">
-                <span className={`text-lg font-bold ${balance === 0 ? 'text-gray-800' : balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
+              {/* Balance */}
+              <div className="px-2 py-1 bg-white border rounded text-center">
+                <span className={`text-sm font-bold ${balance === 0 ? 'text-gray-800' : balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
                   {formatCurrency(Math.abs(balance))}
                 </span>
               </div>
               {/* Opciones de marcado */}
-              <div className="flex items-center gap-4 text-xs">
-                <label className="flex items-center gap-1.5 cursor-pointer">
+              <div className="flex items-center gap-3 text-xs">
+                <label className="flex items-center gap-1 cursor-pointer">
                   <input 
                     type="checkbox" 
                     checked={conciliacionSeleccionDebitos.length === 0 && conciliacionSeleccionCreditos.length === 0}
                     onChange={limpiarSeleccion}
-                    className="w-3.5 h-3.5 rounded border-gray-300"
+                    className="w-3 h-3 rounded border-gray-300"
                   />
                   <span className="text-gray-600">Desmarcar</span>
                 </label>
-                <label className="flex items-center gap-1.5 cursor-pointer">
+                <label className="flex items-center gap-1 cursor-pointer">
                   <input 
                     type="checkbox" 
                     checked={facturasFiltradas.filter(f => f.saldo > 0).length > 0 && 
                              conciliacionSeleccionDebitos.length === facturasFiltradas.filter(f => f.saldo > 0).length}
-                    onChange={() => {
-                      seleccionarTodoDebitos()
-                      seleccionarTodoCreditos()
-                    }}
-                    className="w-3.5 h-3.5 rounded border-gray-300"
+                    onChange={() => { seleccionarTodoDebitos(); seleccionarTodoCreditos() }}
+                    className="w-3 h-3 rounded border-gray-300"
                   />
                   <span className="text-gray-600">Marcar todo</span>
                 </label>
-                <label className="flex items-center gap-1.5 cursor-pointer">
+                <label className="flex items-center gap-1 cursor-pointer">
                   <input 
                     type="checkbox" 
                     onChange={marcarAutomatico}
@@ -7379,12 +8007,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     Todos
                   </label>
                   <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">
-                    {facturasFiltradas.filter(f => f.saldo > 0).length}
+                    {facturasFiltradas.length}
                   </span>
                 </div>
               </div>
               {/* Tabla Debitos */}
-              <div className="flex-1 overflow-auto max-h-96">
+              <div className="flex-1 overflow-auto max-h-64">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-white border-b">
                     <tr className="text-gray-500">
@@ -7451,7 +8079,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     }) : (
                       <tr>
                         <td colSpan={9} className="py-8 text-center text-gray-400">
-                          {conciliacionClienteId ? "No hay facturas pendientes" : "Seleccione un cliente"}
+                          {!conciliacionClienteId ? "Seleccione un cliente" : conciliacionFiltroConciliado === "si" ? "No hay facturas conciliadas" : "No hay facturas pendientes"}
                         </td>
                       </tr>
                     )}
@@ -7488,7 +8116,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </div>
               </div>
               {/* Tabla Creditos */}
-              <div className="flex-1 overflow-auto max-h-96">
+              <div className="flex-1 overflow-auto max-h-64">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-white border-b">
                     <tr className="text-gray-500">
@@ -7558,22 +8186,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
           {/* Barra inferior de acciones */}
           <div className="p-3 border-t bg-gray-50 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={marcarAutomatico}
-                disabled={!conciliacionClienteId || facturasFiltradas.filter(f => f.saldo > 0).length === 0}
-                className="px-3 py-1.5 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-              >
-                <RefreshCw className="w-3 h-3" /> Sugerir (FIFO)
-              </button>
-              <button 
-                onClick={limpiarSeleccion}
-                disabled={conciliacionSeleccionDebitos.length === 0 && conciliacionSeleccionCreditos.length === 0}
-                className="px-3 py-1.5 text-xs border border-gray-300 rounded hover:bg-white disabled:opacity-50"
-              >
-                Limpiar Seleccion
-              </button>
-            </div>
+            <div></div>
             <div className="flex items-center gap-3 text-xs">
               <span className="text-gray-500">Debitos: <span className="text-red-600 font-medium">{formatCurrency(totalDebitosSeleccionados)}</span></span>
               <span className="text-gray-500">Creditos: <span className="text-green-600 font-medium">{formatCurrency(totalCreditosSeleccionados)}</span></span>
@@ -7610,14 +8223,30 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </div>
             {historialCliente.length > 0 ? (
               <div className="space-y-4">
-                {historialCliente.map(h => (
-                  <div key={h.id} className="border rounded-lg p-4">
+                {historialCliente.map(h => {
+                  const esReversion = (h as any).tipo === "reversion"
+                  return (
+                  <div key={h.id} className={`border rounded-lg p-4 ${esReversion ? "border-orange-200 bg-orange-50" : ""}`}>
                     <div className="flex justify-between items-start mb-3">
                       <div>
-                        <p className="font-medium text-gray-900">Conciliacion #{h.id}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-gray-900">
+                            {esReversion ? "Reversión de Conciliación" : `Conciliacion #${h.id}`}
+                          </p>
+                          {esReversion && (
+                            <span className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full font-medium">
+                              Revertida
+                            </span>
+                          )}
+                        </div>
                         <p className="text-sm text-gray-500">{formatDateTime(h.fecha)} - {h.usuario}</p>
+                        {esReversion && (h as any).motivo && (
+                          <p className="text-xs text-orange-600 mt-1">{(h as any).motivo}</p>
+                        )}
                       </div>
-                      <p className="text-lg font-bold text-emerald-600">{formatCurrency(h.total_conciliado)}</p>
+                      <p className={`text-lg font-bold ${esReversion ? "text-orange-600" : "text-emerald-600"}`}>
+                        {esReversion ? "- " : ""}{formatCurrency(Math.abs(h.total_conciliado))}
+                      </p>
                     </div>
                     <table className="w-full text-sm">
                       <thead>
@@ -7625,20 +8254,37 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           <th className="text-left py-2 px-3">Debito</th>
                           <th className="text-left py-2 px-3">Credito</th>
                           <th className="text-right py-2 px-3">Monto</th>
+                          {!esReversion && <th className="text-center py-2 px-3">Estado</th>}
                         </tr>
                       </thead>
                       <tbody>
                         {h.aplicaciones.map((a, idx) => (
-                          <tr key={idx} className="border-b">
-                            <td className="py-2 px-3 text-red-700">{a.debito_tipo} {a.debito_numero}</td>
-                            <td className="py-2 px-3 text-green-700">{a.credito_tipo} {a.credito_numero}</td>
-                            <td className="py-2 px-3 text-right font-medium">{formatCurrency(a.monto)}</td>
+                          <tr key={idx} className={`border-b ${(a as any).revertida && !esReversion ? "bg-red-50" : ""}`}>
+                            <td className={`py-2 px-3 ${(a as any).revertida && !esReversion ? "line-through text-gray-400" : "text-red-700"}`}>
+                              {a.debito_tipo} {a.debito_numero}
+                            </td>
+                            <td className={`py-2 px-3 ${(a as any).revertida && !esReversion ? "line-through text-gray-400" : "text-green-700"}`}>
+                              {a.credito_tipo} {a.credito_numero}
+                            </td>
+                            <td className={`py-2 px-3 text-right font-medium ${(a as any).revertida && !esReversion ? "line-through text-gray-400" : ""}`}>
+                              {formatCurrency(Math.abs(a.monto))}
+                            </td>
+                            {!esReversion && (
+                              <td className="py-2 px-3 text-center">
+                                {(a as any).revertida ? (
+                                  <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">Revertida</span>
+                                ) : (
+                                  <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">Activa</span>
+                                )}
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             ) : (
               <div className="text-center py-12 text-gray-500">
@@ -8707,7 +9353,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <button onClick={() => { setModalNuevaVersionBasada(false); setNuevaVersionBasadaForm({ nombre: "", fecha_inicial: "", fecha_final: "", copiar_lineas: true }) }}
                   className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">Cancelar</button>
                 <button onClick={() => crearVersionBasadaEnOtra(selectedVersion)}
-                  className="px-4 py-2 text-sm bg-emerald-600 text-white rounded hover:bg-emerald-700">Crear Versión</button>
+                  className="px-4 py-2 text-sm bg-emerald-600 text-white rounded hover:bg-emerald-700">Crear Versi��n</button>
               </div>
             </div>
           </div>
@@ -9229,50 +9875,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <X className="w-5 h-5" />
           </button>
         </div>
-        <form onSubmit={(e) => {
-          e.preventDefault()
-          const formData = new FormData(e.currentTarget)
-          const catId2 = formClienteCategoriaId
-          const catNombre2 = categoriasCliente.find(c => c.id === catId2)?.nombre?.toLowerCase() as ClienteVenta["categoria"] | undefined
-          const newCliente: ClienteVenta = {
-            id: editingItem?.id || clientes.length + 1,
-            codigo: editingItem?.codigo || `C0${15520 + clientes.length}`,
-            nombre: formData.get("nombre") as string,
-            nombre_fantasia: formData.get("nombre_fantasia") as string || "",
-            tipo_documento: formData.get("tipo_documento") as "DNI" | "CUIT" | "CUIL",
-            numero_documento: formData.get("numero_documento") as string,
-            posicion_fiscal: formData.get("posicion_fiscal") as ClienteVenta["posicion_fiscal"],
-            direccion: formData.get("direccion") as string,
-            ciudad: formData.get("ciudad") as string || "Rosario",
-            provincia: formData.get("provincia") as string || "Santa Fe",
-            codigo_postal: formData.get("codigo_postal") as string || "",
-            zona: formData.get("zona") as string || "",
-            telefono: formData.get("telefono") as string || "",
-            celular: formData.get("celular") as string || "",
-            email: formData.get("email") as string || "",
-            categoria: catNombre2 ?? (editingItem?.categoria ?? null),
-            vendedor_id: parseInt(formData.get("vendedor_id") as string) || null,
-            cobrador_id: null,
-            lista_precios_id: parseInt(formData.get("lista_precios_id") as string) || 1,
-            descuento_default: parseFloat(formData.get("descuento_default") as string) || 0,
-            moneda_cuenta_corriente: formData.get("moneda_cuenta_corriente") as "ARS" | "USD",
-            termino_pago_id: parseInt(formData.get("termino_pago_id") as string) || 1,
-            activo: true,
-            es_confidencial: false,
-            sucursal_origen: "Puerto Norte",
-            fecha_alta: editingItem?.fecha_alta || new Date().toISOString().split('T')[0],
-            saldo_cuenta_corriente: editingItem?.saldo_cuenta_corriente || 0,
-            total_facturado: editingItem?.total_facturado || 0
-          }
-          if (editingItem) {
-            setClientes(prev => prev.map(c => c.id === editingItem.id ? newCliente : c))
-          } else {
-            setClientes(prev => [...prev, newCliente])
-            onNuevoCliente?.(newCliente)
-          }
-          setShowModal(false)
-          setEditingItem(null)
-        }} className="p-4 space-y-4">
+        <form onSubmit={(e) => { handleSubmitClienteModal(e, editingItem, formClienteCategoriaId, categoriasCliente, setShowModal, setEditingItem, onNuevoCliente) }} className="p-4 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre / Razón Social *</label>
@@ -9470,8 +10073,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               lineas: nvLineas,
               subtotal: subtotal,
               descuento_global: 0,
-              impuestos: subtotal * 0.21,
-              total: total,
+              impuestos: 0,
+              total: subtotal,
               sucursal: "Puerto Norte",
               punto_venta: "10000"
             }
@@ -9546,22 +10149,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 oe.id === oeId ? { ...oe, remito_numero: remitoNumero } : oe
               ))
 
-              const facturaNumero = `FC-A X 10000-000${20050 + facturas.length}`
+              const facturaNumero = `FC X 10000-000${20050 + facturas.length}`
               const facturaId = facturas.length + 1
               
-              // 3. Crear Factura (abierta - genera deuda en cuenta corriente)
-              const tipoFactura = cliente.posicion_fiscal === "responsable_inscripto" ? "A" : 
-                                  cliente.posicion_fiscal === "monotributista" ? "C" : "B"
+              // 3. Crear Factura en borrador
               const newFactura: Factura = {
                 id: facturaId,
                 numero: facturaNumero,
-                tipo: tipoFactura as "A" | "B" | "C",
+                tipo: "B",
                 nota_venta_id: nvId,
                 nota_venta_numero: nvNumero,
                 cliente_id: cliente.id,
                 cliente_nombre: cliente.nombre,
                 cliente_documento: cliente.numero_documento,
-                estado: "abierta",
+                estado: "borrador",
                 fecha: fechaHoy,
                 vendedor_nombre: vendedorNombre,
                 domicilio_facturacion: cliente.direccion,
@@ -9571,9 +10172,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 termino_pago: terminoPagoNombre,
                 subtotal: subtotal,
                 descuento: 0,
-                impuestos: subtotal * 0.21,
-                total: total,
-                saldo: total,
+                impuestos: 0,
+                total: subtotal,
+                saldo: subtotal,
                 sucursal: "Puerto Norte",
                 lineas: nvLineas.map(l => ({
                   producto_nombre: l.producto_nombre,
@@ -9586,62 +10187,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 vencimientos: [{
                   descripcion: "Vencimiento 1",
                   fecha: fechaHoy.split('T')[0],
-                  total: total
+                  total: subtotal
                 }]
               }
               setFacturas(prev => [...prev, newFactura])
 
-              // 3b. Crear movimiento de DEBITO en cuenta corriente
-              const saldoAnteriorCliente2 = cliente.saldo_cuenta_corriente
-              const nuevoMovimientoDebito2: MovimientoCuentaCorriente = {
-                id: movimientosCC.length + 1,
-                cliente_id: cliente.id,
-                fecha: fechaHoy,
-                tipo: "debito",
-                concepto: `Factura de venta - ${nvNumero}`,
-                documento_tipo: "factura",
-                documento_numero: facturaNumero,
-                documento_id: facturaId,
-                moneda: moneda,
-                importe: total,
-                saldo_posterior: saldoAnteriorCliente2 + total
-              }
-              setMovimientosCC(prev => [...prev, nuevoMovimientoDebito2])
-
               // Actualizar Remito con número de factura
               setRemitos(prev => prev.map(r => 
                 r.id === remitoId ? { ...r, factura_numero: facturaNumero } : r
-              ))
-
-              const reciboNumero = `RC X Norte-000${11735 + recibos.length}`
-              
-              // 4. Crear Recibo en borrador
-              const newRecibo: Recibo = {
-                id: recibos.length + 1,
-                numero: reciboNumero,
-                cliente_id: cliente.id,
-                cliente_nombre: cliente.nombre,
-                estado: "borrador",
-                fecha: fechaHoy,
-                importe: total,
-                importe_no_conciliado: total,
-                moneda: moneda,
-                sucursal: "Puerto Norte",
-                caja: "Caja Principal",
-                cobrador_nombre: vendedorNombre,
-                nota_venta_numero: nvNumero,
-                concepto: `Cobro ${nvNumero}`,
-                pagos: []
-              }
-              setRecibos(prev => [...prev, newRecibo])
-
-              // Actualizar saldo del cliente (la factura genera deuda = débito)
-              setClientes(prev => prev.map(c => 
-                c.id === cliente.id ? { 
-                  ...c, 
-                  saldo_cuenta_corriente: c.saldo_cuenta_corriente + total,
-                  total_facturado: c.total_facturado + total
-                } : c
               ))
             }
 
