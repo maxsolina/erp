@@ -2448,17 +2448,21 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <X className="w-5 h-5" />
           </button>
           <div className="flex-1">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold text-emerald-900">{selectedCliente.nombre}</h1>
               {selectedCliente.categoria && (
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoriaColor(selectedCliente.categoria)}`}>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getCategoriaColor(selectedCliente.categoria)}`}>
                   {selectedCliente.categoria === "publico" ? "Público"
-                    : selectedCliente.categoria === "mercadolibre" ? "Mercadolibre"
+                    : selectedCliente.categoria === "mercadolibre" ? "MercadoLibre"
                     : selectedCliente.categoria.charAt(0).toUpperCase() + selectedCliente.categoria.slice(1)}
                 </span>
               )}
             </div>
-            <p className="text-sm text-gray-500">{selectedCliente.codigo} | {getPosicionFiscalLabel(selectedCliente.posicion_fiscal)}</p>
+            <p className="text-sm text-gray-500">
+              {selectedCliente.codigo}
+              <span className="mx-1.5 text-gray-300">|</span>
+              {getPosicionFiscalLabel(selectedCliente.posicion_fiscal)}
+            </p>
           </div>
           <div className="flex gap-2">
             <button 
@@ -2947,7 +2951,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         <span>{selectedCliente.tipo_documento}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-500">N����mero:</span>
+                        <span className="text-gray-500">{"N\u00famero"}:</span>
                         <span>{selectedCliente.numero_documento}</span>
                       </div>
                       <div className="flex justify-between">
