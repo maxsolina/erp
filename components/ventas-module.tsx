@@ -726,6 +726,49 @@ interface ResultadoCalculo {
   totalConRecargo: number
 }
 
+function MontoInputField({ value, onChange, disabled, title, hasError }: {
+  value: number
+  onChange: (val: number) => void
+  disabled?: boolean
+  title?: string
+  hasError?: boolean
+}) {
+  const [editando, setEditando] = React.useState(false)
+  const [rawValue, setRawValue] = React.useState("")
+
+  const formatted = value
+    ? `$ ${value.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : ""
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={editando ? rawValue : formatted}
+      placeholder="$ 0,00"
+      disabled={disabled}
+      title={title}
+      onFocus={() => {
+        setRawValue(value ? String(value) : "")
+        setEditando(true)
+      }}
+      onChange={e => {
+        const v = e.target.value.replace(/[^0-9]/g, "")
+        setRawValue(v)
+        onChange(v ? parseInt(v, 10) : 0)
+      }}
+      onBlur={() => setEditando(false)}
+      className={`border rounded px-2 py-1.5 text-sm text-right w-36 focus:ring-2 focus:outline-none ${
+        disabled
+          ? "border-red-300 bg-red-50 cursor-not-allowed text-gray-400 focus:ring-red-300"
+          : hasError
+          ? "border-red-500 bg-red-50 text-red-700 focus:ring-red-400"
+          : "border-gray-300 focus:ring-emerald-500"
+      }`}
+    />
+  )
+}
+
 function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEstadoPagoChange }: {
   factura: Factura
   onConfirmarCobro?: (lineas: LineaPago[], totalConRecargos: number, totalRecargos: number) => void
@@ -900,34 +943,12 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
                     </label>
                   )}
                   <div className="flex flex-col items-end gap-1">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={
-                        linea.monto
-                          ? `$ ${linea.monto.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                          : ""
-                      }
-                      onChange={e => {
-                        const raw = e.target.value.replace(/[^0-9]/g, "")
-                        actualizarLinea(linea.id, { monto: raw ? parseFloat(raw) : 0 })
-                      }}
-                      onFocus={e => {
-                        const raw = linea.monto ? String(linea.monto) : ""
-                        e.target.value = raw
-                        e.target.setSelectionRange(raw.length, raw.length)
-                      }}
-                      onBlur={() => {}}
-                      placeholder="$ 0,00"
+                    <MontoInputField
+                      value={linea.monto || 0}
+                      onChange={val => actualizarLinea(linea.id, { monto: val })}
                       disabled={linea.medio === "tarjeta" && !linea.tarjeta_id}
                       title={linea.medio === "tarjeta" && !linea.tarjeta_id ? "Seleccioná una tarjeta primero" : undefined}
-                      className={`border rounded px-2 py-1.5 text-sm text-right w-36 focus:ring-2 focus:outline-none ${
-                        linea.medio === "tarjeta" && !linea.tarjeta_id
-                          ? "border-red-300 bg-red-50 cursor-not-allowed text-gray-400 focus:ring-red-300"
-                          : excedeLimite
-                          ? "border-red-500 bg-red-50 text-red-700 focus:ring-red-400"
-                          : "border-gray-300 focus:ring-emerald-500"
-                      }`}
+                      hasError={excedeLimite}
                     />
                     {excedeLimite && (
                       <span className="text-xs text-red-600 font-medium">
