@@ -898,8 +898,9 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
   }
 
   const agregarLinea = () => {
+    const esLaPrimera = lineas.length === 0
     const yaIngresado = lineas.reduce((s, l) => s + (l.monto || 0), 0)
-    const restante = Math.max(0, factura.total - yaIngresado)
+    const restante = esLaPrimera ? 0 : Math.max(0, factura.total - yaIngresado)
     setLineas(prev => [...prev, { id: Date.now(), medio: "efectivo", monto: restante }])
   }
 
