@@ -1053,7 +1053,7 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
   )
 }
 
-// Componente principal
+// === Componente principal ===
 export type { ClienteVenta }
 
 interface ModuloVentasProps {
