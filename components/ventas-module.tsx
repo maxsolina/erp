@@ -7949,6 +7949,22 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       ? recibos.filter(r => r.cliente_id === conciliacionClienteId && r.estado === "publicado").sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
       : []
 
+    // Notas de crédito publicadas del cliente (NC-) como créditos adicionales
+    const notasCredito = conciliacionClienteId
+      ? ajustes.filter(a => a.cliente_id === conciliacionClienteId && a.estado === "publicado" && a.numero.startsWith("NC-"))
+          .map(a => ({
+            id: a.id,
+            numero: a.numero,
+            fecha: a.fecha,
+            cliente_id: a.cliente_id,
+            importe_no_conciliado: a.total,
+            total: a.total,
+            tipo: "nota_credito" as const,
+            concepto: a.concepto,
+            moneda: a.moneda
+          }))
+      : []
+
     const recibosFiltrados = todosRecibosCliente.filter(r => {
       // Filtro por conciliado: "no"=pendientes, "si"=conciliados, "todos"=todos
       if (conciliacionFiltroConciliado === "no" && r.importe_no_conciliado <= 0) return false
@@ -7959,10 +7975,18 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       if (conciliacionFiltroTextoCreditos && !r.numero.toLowerCase().includes(conciliacionFiltroTextoCreditos.toLowerCase())) return false
       return true
     })
-    
+
+    const notasCreditoFiltradas = notasCredito.filter(nc => {
+      if (conciliacionFiltroConciliado === "no" && nc.importe_no_conciliado <= 0) return false
+      if (conciliacionFiltroConciliado === "si" && nc.importe_no_conciliado > 0) return false
+      if (conciliacionFiltroTextoCreditos && !nc.numero.toLowerCase().includes(conciliacionFiltroTextoCreditos.toLowerCase())) return false
+      return true
+    })
+
     // Calcular totales (solo pendientes)
     const totalDebitos = todasFacturasCliente.filter(f => f.saldo > 0).reduce((sum, f) => sum + f.saldo, 0)
     const totalCreditos = todosRecibosCliente.filter(r => r.importe_no_conciliado > 0).reduce((sum, r) => sum + r.importe_no_conciliado, 0)
+      + notasCredito.filter(nc => nc.importe_no_conciliado > 0).reduce((sum, nc) => sum + nc.importe_no_conciliado, 0)
     const balance = totalDebitos - totalCreditos
 
     // Calcular totales seleccionados
@@ -8366,7 +8390,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     Todos
                   </label>
                   <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
-                    {recibosFiltrados.filter(r => r.importe_no_conciliado > 0).length}
+                    {recibosFiltrados.filter(r => r.importe_no_conciliado > 0).length + notasCreditoFiltradas.filter(nc => nc.importe_no_conciliado > 0).length}
                   </span>
                 </div>
               </div>
@@ -8386,47 +8410,67 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     </tr>
                   </thead>
                   <tbody>
-                    {recibosFiltrados.length > 0 ? recibosFiltrados.map(r => {
-                      const seleccionado = conciliacionSeleccionCreditos.find(c => c.id === r.id && c.tipo === "recibo")
-                      const esConciliado = r.importe_no_conciliado <= 0
-                      return (
-                        <tr 
-                          key={r.id} 
-                          className={`border-b hover:bg-gray-50 cursor-pointer ${seleccionado ? 'bg-blue-50' : ''} ${esConciliado ? 'opacity-50' : ''}`}
-                          onClick={() => !esConciliado && toggleCreditoSeleccion(r)}
-                        >
-                          <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
-                            {!esConciliado && (
-                              <div className="flex items-center justify-center gap-1">
-                                <input 
-                                  type="checkbox" 
-                                  checked={!!seleccionado}
-                                  onChange={() => toggleCreditoSeleccion(r)}
-                                  className="w-3.5 h-3.5 rounded border-gray-300"
-                                />
-                                <button className="p-0.5 text-gray-400 hover:text-blue-600">
-                                  <Search className="w-3 h-3" />
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-1.5 px-2 text-right font-medium text-green-600">{formatCurrency(r.importe_no_conciliado, r.moneda)}</td>
-                          <td className="py-1.5 px-2 text-center text-gray-500">{r.moneda === "USD" ? "U$D" : "$"}</td>
-                          <td className="py-1.5 px-2 text-right">{formatCurrency(r.importe, r.moneda)}</td>
-                          <td className="py-1.5 px-2 text-gray-600">{formatDateTime(r.fecha).split(" ")[0]}</td>
-                          <td className="py-1.5 px-2 text-gray-600">-</td>
-                          <td className="py-1.5 px-2">
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); /* navegar a recibo */ }}
-                              className="text-blue-600 hover:underline"
+                    {(recibosFiltrados.length > 0 || notasCreditoFiltradas.length > 0) ? (
+                      <>
+                        {recibosFiltrados.map(r => {
+                          const seleccionado = conciliacionSeleccionCreditos.find(c => c.id === r.id && c.tipo === "recibo")
+                          const esConciliado = r.importe_no_conciliado <= 0
+                          return (
+                            <tr
+                              key={`recibo-${r.id}`}
+                              className={`border-b hover:bg-gray-50 cursor-pointer ${seleccionado ? 'bg-blue-50' : ''} ${esConciliado ? 'opacity-50' : ''}`}
+                              onClick={() => !esConciliado && toggleCreditoSeleccion(r)}
                             >
-                              {r.numero}
-                            </button>
-                          </td>
-                          <td className="py-1.5 px-2 text-gray-600">-</td>
-                        </tr>
-                      )
-                    }) : (
+                              <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                                {!esConciliado && (
+                                  <div className="flex items-center justify-center gap-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={!!seleccionado}
+                                      onChange={() => toggleCreditoSeleccion(r)}
+                                      className="w-3.5 h-3.5 rounded border-gray-300"
+                                    />
+                                    <button className="p-0.5 text-gray-400 hover:text-blue-600">
+                                      <Search className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-1.5 px-2 text-right font-medium text-green-600">{formatCurrency(r.importe_no_conciliado, r.moneda)}</td>
+                              <td className="py-1.5 px-2 text-center text-gray-500">{r.moneda === "USD" ? "U$D" : "$"}</td>
+                              <td className="py-1.5 px-2 text-right">{formatCurrency(r.importe, r.moneda)}</td>
+                              <td className="py-1.5 px-2 text-gray-600">{formatDateTime(r.fecha).split(" ")[0]}</td>
+                              <td className="py-1.5 px-2 text-gray-600">-</td>
+                              <td className="py-1.5 px-2">
+                                <button onClick={(e) => e.stopPropagation()} className="text-blue-600 hover:underline">
+                                  {r.numero}
+                                </button>
+                              </td>
+                              <td className="py-1.5 px-2 text-gray-600">-</td>
+                            </tr>
+                          )
+                        })}
+                        {notasCreditoFiltradas.map(nc => (
+                          <tr
+                            key={`nc-${nc.id}`}
+                            className="border-b hover:bg-emerald-50 cursor-default bg-emerald-50/30"
+                          >
+                            <td className="py-1.5 px-2 text-center">
+                              <span className="text-xs text-emerald-600 font-medium">NC</span>
+                            </td>
+                            <td className="py-1.5 px-2 text-right font-medium text-green-600">{formatCurrency(nc.importe_no_conciliado, nc.moneda)}</td>
+                            <td className="py-1.5 px-2 text-center text-gray-500">{nc.moneda === "USD" ? "U$D" : "$"}</td>
+                            <td className="py-1.5 px-2 text-right">{formatCurrency(nc.total, nc.moneda)}</td>
+                            <td className="py-1.5 px-2 text-gray-600">{formatDateTime(nc.fecha).split(" ")[0]}</td>
+                            <td className="py-1.5 px-2 text-gray-600">-</td>
+                            <td className="py-1.5 px-2">
+                              <span className="text-emerald-700 font-medium">{nc.numero}</span>
+                            </td>
+                            <td className="py-1.5 px-2 text-gray-600 text-xs truncate max-w-[120px]" title={nc.concepto}>{nc.concepto}</td>
+                          </tr>
+                        ))}
+                      </>
+                    ) : (
                       <tr>
                         <td colSpan={8} className="py-8 text-center text-gray-400">
                           {conciliacionClienteId ? "No hay creditos disponibles" : "Seleccione un cliente"}
@@ -8609,19 +8653,71 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     </div>
   )
 
-  // Notas de Débito / Crédito placeholder
-  const renderNotasDebitoCredito = (tipo: "debito" | "credito") => (
-    <div>
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold text-emerald-900">Notas de {tipo === "debito" ? "Débito" : "Crédito"}</h1>
-      </div>
+  // Notas de Débito / Crédito — usa el estado real de ajustes
+  const renderNotasDebitoCredito = (tipo: "debito" | "credito") => {
+    // Las notas de crédito son ajustes cuyo número empieza con "NC-"
+    // Las notas de débito son ajustes cuyo número empieza con "ND-"
+    const prefijo = tipo === "credito" ? "NC-" : "ND-"
+    const notasFiltradas = ajustes.filter(a => a.numero.startsWith(prefijo))
+    const titulo = tipo === "credito" ? "Notas de Crédito" : "Notas de Débito"
 
-      <div className="bg-white rounded-lg shadow-sm p-12 text-center">
-        <Receipt className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-        <p className="text-gray-500">No hay notas de {tipo === "debito" ? "débito" : "crédito"} registradas</p>
+    return (
+      <div>
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h1 className="text-2xl font-bold text-emerald-900">{titulo}</h1>
+            <p className="text-sm text-gray-500 mt-0.5">{notasFiltradas.length} registro{notasFiltradas.length !== 1 ? "s" : ""}</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          {notasFiltradas.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <Receipt className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <p>No hay {titulo.toLowerCase()} registradas</p>
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b-2 border-gray-200">
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cliente</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Concepto</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Sucursal</th>
+                  <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Estado</th>
+                  <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Moneda</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {notasFiltradas.map(nota => (
+                  <tr key={nota.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
+                    <td className="py-3 px-4 font-mono text-sm text-emerald-700 font-medium">{nota.numero}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{formatDate(nota.fecha)}</td>
+                    <td className="py-3 px-4 text-sm">{nota.cliente_nombre}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600 max-w-xs truncate">{nota.concepto}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{nota.sucursal}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
+                        nota.estado === "publicado" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+                      }`}>
+                        {nota.estado === "publicado" ? "Publicada" : "Borrador"}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center text-sm font-medium">{nota.moneda}</td>
+                    <td className="py-3 px-4 text-right font-semibold text-emerald-600">
+                      {formatCurrency(nota.total, nota.moneda)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   // ==================== LISTAS DE PRECIOS ====================
   
