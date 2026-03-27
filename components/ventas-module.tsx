@@ -6456,7 +6456,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     setReciboMontoForm(selectedFactura.saldo)
                     setReciboPagosForm([{ forma_pago: "Efectivo", importe: selectedFactura.saldo, moneda: "ARS" }])
                     setCreandoRecibo(true)
-                    setReciboPrevisualizando(true)
+                    setReciboPrevisualizando(false)
                     setSelectedFactura(null)
                     setActiveView("recibos")
                   }}
