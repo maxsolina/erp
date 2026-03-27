@@ -1058,7 +1058,6 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
               </button>
             )}
       </div>
-      </div>
     </div>
   )
 }
