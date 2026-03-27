@@ -1021,7 +1021,7 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
                 </div>
       )}
 
-      {/* Popup detalle Nota de Crédito */}
+      {/* Popup detalle Nota de Credito */}
       {ncDetallePopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setNcDetallePopup(null)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -1103,6 +1103,7 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
     </div>
   )
 }
+
               </div>
             )}
             {totalIngresado > 0 && Math.abs(diferencia) <= 0.5 && (
