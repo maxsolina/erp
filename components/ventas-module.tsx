@@ -1019,9 +1019,11 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
                     </div>
                   )}
                 </div>
-      )}
-
-      )}
+              )}
+            </div>
+          )
+        })}
+      </div>
 
       {totalIngresado > 0 && Math.abs(diferencia) <= 0.5 && (
         <button
