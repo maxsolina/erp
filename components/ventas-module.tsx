@@ -1023,41 +1023,39 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
             </div>
           )
         })}
-
-            {totalIngresado > 0 && Math.abs(diferencia) <= 0.5 && (
-              <div className="flex items-center gap-2 text-xs text-emerald-700 font-medium mt-2 p-2 rounded bg-emerald-50">
-                <CheckCircle className="w-3.5 h-3.5" />
-                Los medios de pago cubren el total correctamente.
-              </div>
-            )}
-
-            {/* Botón confirmar cobro */}
-            {totalIngresado > 0 && Math.abs(diferencia) <= 0.5 && (
-              <button
-                onClick={() => {
-                  // Construir desglose de recargos para mostrar en totales
-                  const desgloseRecargos: { nombre: string; importe: number }[] = []
-                  lineas.forEach(l => {
-                    const c = calcularLinea(l)
-                    if (!c) return
-                    if (c.recargo.recargo_pct > 0) {
-                      desgloseRecargos.push({ nombre: `Recargo tarjeta (${c.tarjeta?.nombre} ${c.recargo.recargo_pct}%)`, importe: c.importeRecargo })
-                    }
-                    c.cargos.forEach(cargo => {
-                      desgloseRecargos.push({ nombre: cargo.nombre, importe: cargo.importe })
-                    })
-                  })
-                  onConfirmarCobro?.(lineas, totalConRecargos, totalRecargos)
-                  onCobroConfirmado?.(totalRecargos, desgloseRecargos)
-                  setCobrado(true)
-                }}
-                className="mt-3 w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg flex items-center justify-center gap-2"
-              >
-                <CheckCircle className="w-4 h-4" />
-                Confirmar cobro y registrar en cuenta corriente
-              </button>
-            )}
       </div>
+
+      {totalIngresado > 0 && Math.abs(diferencia) <= 0.5 && (
+        <div className="flex items-center gap-2 text-xs text-emerald-700 font-medium mt-2 p-2 rounded bg-emerald-50">
+          <CheckCircle className="w-3.5 h-3.5" />
+          Los medios de pago cubren el total correctamente.
+        </div>
+      )}
+
+      {totalIngresado > 0 && Math.abs(diferencia) <= 0.5 && (
+        <button
+          onClick={() => {
+            const desgloseRecargos: { nombre: string; importe: number }[] = []
+            lineas.forEach(l => {
+              const c = calcularLinea(l)
+              if (!c) return
+              if (c.recargo.recargo_pct > 0) {
+                desgloseRecargos.push({ nombre: `Recargo tarjeta (${c.tarjeta?.nombre} ${c.recargo.recargo_pct}%)`, importe: c.importeRecargo })
+              }
+              c.cargos.forEach(cargo => {
+                desgloseRecargos.push({ nombre: cargo.nombre, importe: cargo.importe })
+              })
+            })
+            onConfirmarCobro?.(lineas, totalConRecargos, totalRecargos)
+            onCobroConfirmado?.(totalRecargos, desgloseRecargos)
+            setCobrado(true)
+          }}
+          className="mt-3 w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg flex items-center justify-center gap-2"
+        >
+          <CheckCircle className="w-4 h-4" />
+          Confirmar cobro y registrar en cuenta corriente
+        </button>
+      )}
     </div>
   )
 }
