@@ -1057,9 +1057,7 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
                 Confirmar cobro y registrar en cuenta corriente
               </button>
             )}
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   )
 }
