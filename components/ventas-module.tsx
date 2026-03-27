@@ -901,10 +901,24 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
                   )}
                   <div className="flex flex-col items-end gap-1">
                     <input
-                      type="number"
-                      value={linea.monto || ""}
-                      onChange={e => actualizarLinea(linea.id, { monto: parseFloat(e.target.value) || 0 })}
-                      placeholder="0,00"
+                      type="text"
+                      inputMode="numeric"
+                      value={
+                        linea.monto
+                          ? `$ ${linea.monto.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : ""
+                      }
+                      onChange={e => {
+                        const raw = e.target.value.replace(/[^0-9]/g, "")
+                        actualizarLinea(linea.id, { monto: raw ? parseFloat(raw) : 0 })
+                      }}
+                      onFocus={e => {
+                        const raw = linea.monto ? String(linea.monto) : ""
+                        e.target.value = raw
+                        e.target.setSelectionRange(raw.length, raw.length)
+                      }}
+                      onBlur={() => {}}
+                      placeholder="$ 0,00"
                       disabled={linea.medio === "tarjeta" && !linea.tarjeta_id}
                       title={linea.medio === "tarjeta" && !linea.tarjeta_id ? "Seleccioná una tarjeta primero" : undefined}
                       className={`border rounded px-2 py-1.5 text-sm text-right w-36 focus:ring-2 focus:outline-none ${
