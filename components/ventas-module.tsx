@@ -1372,31 +1372,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     descuentos: number
     precio_final: number
     estado: "borrador" | "confirmado" | "cancelado"
+    estado_recepcion: "pendiente" | "recibido" | "cancelado"
     recepcion_numero?: string
     nota_credito_numero?: string
     evaluacion: {componente: string; estado: string; descuento: number}[]
-  }[]>([
-    {
-      id: 1,
-      numero: "TE-00001",
-      fecha: "2026-03-10T14:30:00",
-      cliente_id: 1,
-      cliente_nombre: "Alejandra Gallo",
-      modelo_equipo: "iPhone 13 Pro 128GB",
-      precio_base: 350000,
-      descuentos: 45000,
-      precio_final: 305000,
-      estado: "confirmado",
-      recepcion_numero: "REC-00125",
-      nota_credito_numero: "NC-A-00045",
-      evaluacion: [
-        { componente: "Pantalla", estado: "Buena", descuento: 0 },
-        { componente: "Batería", estado: "Desgastada", descuento: 25000 },
-        { componente: "C����mara", estado: "Buena", descuento: 0 },
-        { componente: "Carcasa", estado: "Rayada", descuento: 20000 },
-      ]
-    }
-  ])
+  }[]>([])
+  const [selectedToma, setSelectedToma] = useState<typeof tomasEquipo[0] | null>(null)
   
   // Filters
   const [estadoFilter, setEstadoFilter] = useState<string>("todos")
@@ -4730,6 +4711,145 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     return Math.round(total * 0.7) // 30% menos para 4+ daños
   }
 
+  const renderFichaTomaEquipo = () => {
+    if (!selectedToma) return null
+    const fechaObj = new Date(selectedToma.fecha)
+    const fechaHora = fechaObj.toLocaleDateString('es-AR') + ' ' + fechaObj.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+    const operacionEnCurso = selectedToma.estado_recepcion !== 'recibido'
+
+    return (
+      <div>
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-6">
+          <button onClick={() => setSelectedToma(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{selectedToma.numero}</h1>
+            <p className="text-sm text-gray-500">{fechaHora}</p>
+          </div>
+          <div className="ml-auto flex items-center gap-3">
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              operacionEnCurso ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+            }`}>
+              {operacionEnCurso ? 'Operación en curso' : 'Operación finalizada'}
+            </span>
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              selectedToma.estado === 'confirmado' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+            }`}>
+              {selectedToma.estado.charAt(0).toUpperCase() + selectedToma.estado.slice(1)}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-6 mb-6">
+          {/* Datos de la operación */}
+          <div className="bg-white rounded-lg border p-5">
+            <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Datos de la Operación</h3>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between"><span className="text-gray-500">Número</span><span className="font-medium">{selectedToma.numero}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Fecha y Hora</span><span className="font-medium">{fechaHora}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Cliente</span><span className="font-medium">{selectedToma.cliente_nombre}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Equipo</span><span className="font-medium">{selectedToma.modelo_equipo}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Precio Base</span><span className="font-medium">{formatCurrency(selectedToma.precio_base)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Descuentos</span><span className="font-medium text-red-600">-{formatCurrency(selectedToma.descuentos)}</span></div>
+              <div className="flex justify-between border-t pt-3"><span className="text-gray-700 font-semibold">Precio Final Acordado</span><span className="font-bold text-emerald-600 text-base">{formatCurrency(selectedToma.precio_final)}</span></div>
+            </div>
+          </div>
+
+          {/* Evaluación de componentes */}
+          <div className="bg-white rounded-lg border p-5">
+            <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Evaluación del Equipo</h3>
+            <div className="space-y-2">
+              {selectedToma.evaluacion.map((ev, i) => (
+                <div key={i} className="flex items-center justify-between text-sm py-1.5 border-b border-gray-50 last:border-0">
+                  <span className="text-gray-600">{ev.componente}</span>
+                  <div className="flex items-center gap-3">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                      ev.estado === 'Buena' || ev.estado === 'Excelente' ? 'bg-green-100 text-green-700' :
+                      ev.estado === 'Desgastada' || ev.estado === 'Regular' || ev.estado === 'Rayada' ? 'bg-amber-100 text-amber-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>{ev.estado}</span>
+                    {ev.descuento > 0 && <span className="text-red-600 text-xs">-{formatCurrency(ev.descuento)}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-6">
+          {/* Nota de Crédito generada */}
+          <div className="bg-white rounded-lg border p-5">
+            <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b flex items-center gap-2">
+              <FileText className="w-4 h-4 text-emerald-600" />
+              Nota de Crédito Generada
+            </h3>
+            {selectedToma.nota_credito_numero ? (
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between"><span className="text-gray-500">Número</span><span className="font-medium text-emerald-700">{selectedToma.nota_credito_numero}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Concepto</span><span className="font-medium">Toma de equipo: {selectedToma.modelo_equipo}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Importe</span><span className="font-bold text-emerald-600">{formatCurrency(selectedToma.precio_final)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Estado</span>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Publicada</span>
+                </div>
+                <p className="text-xs text-gray-400 pt-2 border-t">Este crédito fue acreditado en la cuenta corriente del cliente.</p>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">Sin nota de crédito generada</p>
+            )}
+          </div>
+
+          {/* Recepción de Compra generada */}
+          <div className="bg-white rounded-lg border p-5">
+            <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b flex items-center gap-2">
+              <Package className="w-4 h-4 text-blue-600" />
+              Recepción de Compra
+            </h3>
+            {selectedToma.recepcion_numero ? (
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between"><span className="text-gray-500">Número</span><span className="font-medium text-blue-700">{selectedToma.recepcion_numero}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Equipo</span><span className="font-medium">{selectedToma.modelo_equipo}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Valor acordado</span><span className="font-medium">{formatCurrency(selectedToma.precio_final)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Estado</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                    selectedToma.estado_recepcion === 'recibido' ? 'bg-green-100 text-green-700' :
+                    selectedToma.estado_recepcion === 'cancelado' ? 'bg-red-100 text-red-700' :
+                    'bg-amber-100 text-amber-700'
+                  }`}>
+                    {selectedToma.estado_recepcion === 'recibido' ? 'Recibido' :
+                     selectedToma.estado_recepcion === 'cancelado' ? 'Cancelado' : 'Esperando recepción'}
+                  </span>
+                </div>
+                {selectedToma.estado_recepcion === 'pendiente' && (
+                  <div className="pt-2 border-t">
+                    <p className="text-xs text-amber-600 mb-3">El equipo aun no fue recibido fisicamente. Confirma la recepcion una vez que el equipo ingrese al deposito.</p>
+                    <button
+                      onClick={() => {
+                        setTomasEquipo(prev => prev.map(t =>
+                          t.id === selectedToma.id ? { ...t, estado_recepcion: 'recibido' as const } : t
+                        ))
+                        setSelectedToma(prev => prev ? { ...prev, estado_recepcion: 'recibido' as const } : prev)
+                      }}
+                      className="w-full py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700"
+                    >
+                      Confirmar recepcion del equipo
+                    </button>
+                  </div>
+                )}
+                {selectedToma.estado_recepcion === 'recibido' && (
+                  <p className="text-xs text-green-600 pt-2 border-t">Equipo recibido fisicamente en deposito.</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">Sin recepcion de compra generada</p>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const renderCrearTomaEquipo = () => {
     const clienteSeleccionado = clientes.find(c => c.id === tomaEquipoClienteId)
     const modeloSeleccionado = modelosEquipo.find(m => m.id === tomaEquipoModeloId)
@@ -4770,6 +4890,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         descuentos: totalDescuentos,
         precio_final: precioFinal,
         estado: "confirmado" as const,
+        estado_recepcion: "pendiente" as const,
         recepcion_numero: recepcionNumero,
         nota_credito_numero: notaCreditoNumero,
         evaluacion: tomaEquipoComponentes.map(c => ({
@@ -5203,7 +5324,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   const renderTomaEquipo = () => {
-    if (tomaEquipoCreando) return renderCrearTomaEquipo()
+    if (selectedToma) return renderFichaTomaEquipo()
+  if (tomaEquipoCreando) return renderCrearTomaEquipo()
 
     return (
       <div>
@@ -5252,36 +5374,69 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <thead className="bg-gray-50 border-b">
               <tr className="text-xs text-gray-500 uppercase">
                 <th className="text-left py-3 px-4">Número</th>
-                <th className="text-left py-3 px-4">Fecha</th>
+                <th className="text-left py-3 px-4">Fecha y Hora</th>
                 <th className="text-left py-3 px-4">Cliente</th>
                 <th className="text-left py-3 px-4">Equipo</th>
                 <th className="text-right py-3 px-4">Precio Base</th>
                 <th className="text-right py-3 px-4">Descuentos</th>
                 <th className="text-right py-3 px-4">Precio Final</th>
+                <th className="text-center py-3 px-4">Operación</th>
+                <th className="text-center py-3 px-4">Recepción</th>
                 <th className="text-center py-3 px-4">Estado</th>
               </tr>
             </thead>
             <tbody>
-              {tomasEquipo.map(toma => (
-                <tr key={toma.id} className="border-b hover:bg-gray-50 cursor-pointer">
-                  <td className="py-3 px-4 font-medium text-emerald-700">{toma.numero}</td>
-                  <td className="py-3 px-4 text-sm">{new Date(toma.fecha).toLocaleDateString('es-AR')}</td>
-                  <td className="py-3 px-4 text-sm">{toma.cliente_nombre}</td>
-                  <td className="py-3 px-4 text-sm">{toma.modelo_equipo}</td>
-                  <td className="py-3 px-4 text-sm text-right">{formatCurrency(toma.precio_base)}</td>
-                  <td className="py-3 px-4 text-sm text-right text-red-600">-{formatCurrency(toma.descuentos)}</td>
-                  <td className="py-3 px-4 text-sm text-right font-semibold text-emerald-600">{formatCurrency(toma.precio_final)}</td>
-                  <td className="py-3 px-4 text-center">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      toma.estado === 'confirmado' ? 'bg-green-100 text-green-700' :
-                      toma.estado === 'borrador' ? 'bg-amber-100 text-amber-700' :
-                      'bg-red-100 text-red-700'
-                    }`}>
-                      {toma.estado.charAt(0).toUpperCase() + toma.estado.slice(1)}
-                    </span>
-                  </td>
+              {tomasEquipo.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="py-10 text-center text-sm text-gray-400">No hay tomas de equipo registradas</td>
                 </tr>
-              ))}
+              )}
+              {tomasEquipo.map(toma => {
+                const fechaObj = new Date(toma.fecha)
+                const fecha = fechaObj.toLocaleDateString('es-AR')
+                const hora = fechaObj.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+                const operacionEnCurso = toma.estado_recepcion !== 'recibido'
+                return (
+                  <tr key={toma.id} onClick={() => setSelectedToma(toma)} className="border-b hover:bg-gray-50 cursor-pointer">
+                    <td className="py-3 px-4 font-medium text-emerald-700">{toma.numero}</td>
+                    <td className="py-3 px-4 text-sm">
+                      <span>{fecha}</span>
+                      <span className="text-gray-400 ml-1">{hora}</span>
+                    </td>
+                    <td className="py-3 px-4 text-sm">{toma.cliente_nombre}</td>
+                    <td className="py-3 px-4 text-sm">{toma.modelo_equipo}</td>
+                    <td className="py-3 px-4 text-sm text-right">{formatCurrency(toma.precio_base)}</td>
+                    <td className="py-3 px-4 text-sm text-right text-red-600">-{formatCurrency(toma.descuentos)}</td>
+                    <td className="py-3 px-4 text-sm text-right font-semibold text-emerald-600">{formatCurrency(toma.precio_final)}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        operacionEnCurso ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {operacionEnCurso ? 'En curso' : 'Finalizada'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        toma.estado_recepcion === 'recibido' ? 'bg-green-100 text-green-700' :
+                        toma.estado_recepcion === 'cancelado' ? 'bg-red-100 text-red-700' :
+                        'bg-amber-100 text-amber-700'
+                      }`}>
+                        {toma.estado_recepcion === 'recibido' ? 'Recibido' :
+                         toma.estado_recepcion === 'cancelado' ? 'Cancelado' : 'Pendiente'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        toma.estado === 'confirmado' ? 'bg-green-100 text-green-700' :
+                        toma.estado === 'borrador' ? 'bg-amber-100 text-amber-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {toma.estado.charAt(0).toUpperCase() + toma.estado.slice(1)}
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
