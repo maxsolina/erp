@@ -1058,6 +1058,7 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
               </button>
             )}
       </div>
+      </div>
     </div>
   )
 }
@@ -1227,7 +1228,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [notasVenta, setNotasVenta] = useState<NotaVenta[]>(mockNotasVenta)
   const [ordenesEntrega, setOrdenesEntrega] = useState<OrdenEntrega[]>(mockOrdenesEntrega)
   const [remitos, setRemitos] = useState<Remito[]>(mockRemitos)
-  const [facturas, setFacturas] = useState<Factura[]>(mockFacturas)
+  const [facturas, setFacturas] = useState<Factura[]>([])
   const [recibos, setRecibos] = useState<Recibo[]>(mockRecibos)
   const [ajustes, setAjustes] = useState<AjusteCliente[]>(mockAjustes)
   const [movimientosCC, setMovimientosCC] = useState<MovimientoCuentaCorriente[]>(mockMovimientosCC)
