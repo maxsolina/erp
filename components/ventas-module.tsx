@@ -7061,6 +7061,45 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   </div>
                 </div>
               )}
+
+              {/* Créditos sin conciliar del cliente */}
+              {clienteSeleccionado && (() => {
+                const creditosSinConciliar = recibos.filter(
+                  r => r.cliente_id === clienteSeleccionado.id && r.importe_no_conciliado > 0
+                )
+                if (creditosSinConciliar.length === 0) return null
+                const totalAFavor = creditosSinConciliar.reduce((s, r) => s + r.importe_no_conciliado, 0)
+                return (
+                  <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-amber-200">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-amber-500" />
+                        <span className="text-sm font-semibold text-amber-800">Créditos sin conciliar</span>
+                        <span className="text-xs bg-amber-200 text-amber-800 rounded-full px-2 py-0.5 font-medium">{creditosSinConciliar.length}</span>
+                      </div>
+                      <span className="text-sm font-bold text-amber-800">Total a favor: {formatCurrency(totalAFavor)}</span>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-xs text-amber-700 uppercase border-b border-amber-200">
+                          <th className="text-left py-2 px-4">Recibo</th>
+                          <th className="text-left py-2 px-4">Fecha</th>
+                          <th className="text-right py-2 px-4">Disponible</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {creditosSinConciliar.map(r => (
+                          <tr key={r.id} className="border-b border-amber-100 last:border-0">
+                            <td className="py-2 px-4 font-medium text-amber-900">{r.numero}</td>
+                            <td className="py-2 px-4 text-amber-700">{new Date(r.fecha).toLocaleDateString('es-AR')}</td>
+                            <td className="py-2 px-4 text-right font-bold text-green-700">{formatCurrency(r.importe_no_conciliado)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              })()}
             </div>
 
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
