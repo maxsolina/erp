@@ -4860,20 +4860,25 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const handleConfirmar = () => {
       if (!clienteSeleccionado || !modeloSeleccionado) return
 
+      const ahora = new Date().toISOString()
       const nuevoId = tomasEquipo.length + 1
+      const precioFinal = tomaEquipoPrecioFinal || precioSugerido
+      const recepcionNumero = `REC-TE-${String(nuevoId).padStart(5, '0')}`
+      const notaCreditoNumero = `NC-A-${String(45 + nuevoId).padStart(5, '0')}`
+
       const nuevaToma = {
         id: nuevoId,
         numero: `TE-${String(nuevoId).padStart(5, '0')}`,
-        fecha: new Date().toISOString(),
+        fecha: ahora,
         cliente_id: clienteSeleccionado.id,
         cliente_nombre: clienteSeleccionado.nombre,
         modelo_equipo: modeloSeleccionado.nombre,
         precio_base: tomaEquipoPrecioBase,
         descuentos: totalDescuentos,
-        precio_final: tomaEquipoPrecioFinal || precioSugerido,
+        precio_final: precioFinal,
         estado: "confirmado" as const,
-        recepcion_numero: `REC-${String(125 + nuevoId).padStart(5, '0')}`,
-        nota_credito_numero: `NC-A-${String(45 + nuevoId).padStart(5, '0')}`,
+        recepcion_numero: recepcionNumero,
+        nota_credito_numero: notaCreditoNumero,
         evaluacion: tomaEquipoComponentes.map(c => ({
           componente: c.nombre,
           estado: c.estado,
@@ -4881,12 +4886,80 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         }))
       }
 
-      // Actualizar saldo del cliente (la nota de crédito reduce el saldo deudor)
-      setClientes(prev => prev.map(c => 
-        c.id === clienteSeleccionado.id 
-          ? { ...c, saldo: c.saldo - nuevaToma.precio_final }
+      // 1. Crear Nota de Crédito como Ajuste de Cliente (crédito en cuenta corriente)
+      const nuevaNC: AjusteCliente = {
+        id: ajustes.length + nuevoId,
+        numero: notaCreditoNumero,
+        cliente_id: clienteSeleccionado.id,
+        cliente_nombre: clienteSeleccionado.nombre,
+        estado: "publicado",
+        fecha: ahora,
+        concepto: `Nota de Crédito — Toma de equipo: ${modeloSeleccionado.nombre}`,
+        moneda: "ARS",
+        nota_venta_numero: null,
+        sucursal: "Puerto Norte",
+        lineas: [{
+          descripcion: `Toma de equipo usado: ${modeloSeleccionado.nombre}`,
+          fecha_vencimiento: ahora,
+          importe: precioFinal
+        }],
+        total: precioFinal
+      }
+      setAjustes(prev => [...prev, nuevaNC])
+
+      // 2. Registrar movimiento de crédito en cuenta corriente del cliente
+      const saldoActual = movimientosCC
+        .filter(m => m.cliente_id === clienteSeleccionado.id)
+        .reduce((s, m) => m.tipo === "debito" ? s + m.importe : s - m.importe, 0)
+
+      const nuevoMovimiento: MovimientoCuentaCorriente = {
+        id: movimientosCC.length + nuevoId,
+        cliente_id: clienteSeleccionado.id,
+        fecha: ahora,
+        tipo: "credito",
+        concepto: `Nota de Crédito ${notaCreditoNumero} — Toma equipo: ${modeloSeleccionado.nombre}`,
+        documento_tipo: "nota_credito",
+        documento_numero: notaCreditoNumero,
+        documento_id: nuevaNC.id,
+        moneda: "ARS",
+        importe: precioFinal,
+        saldo_posterior: Math.max(0, saldoActual - precioFinal)
+      }
+      setMovimientosCC(prev => [...prev, nuevoMovimiento])
+
+      // 3. Actualizar saldo del cliente
+      setClientes(prev => prev.map(c =>
+        c.id === clienteSeleccionado.id
+          ? { ...c, saldo_cuenta_corriente: Math.max(0, (c.saldo_cuenta_corriente || 0) - precioFinal) }
           : c
       ))
+
+      // 4. Crear Recepción de Compra en estado borrador (en localStorage para que Compras la levante)
+      const nuevaRecepcion = {
+        id: Date.now(),
+        numero: recepcionNumero,
+        fecha: ahora,
+        proveedor_id: 0,
+        proveedor_nombre: `${clienteSeleccionado.nombre} (toma de equipo)`,
+        orden_compra_id: 0,
+        orden_compra_numero: nuevaToma.numero,
+        estado: "borrador",
+        tipo: "total",
+        observaciones: `Equipo tomado en parte de pago. NC generada: ${notaCreditoNumero}. Valor acordado: $${precioFinal.toLocaleString('es-AR')}. Evaluación: ${tomaEquipoComponentes.map(c => `${c.nombre}=${c.estado}`).join(', ')}`,
+        lineas: [{
+          producto_id: 0,
+          producto_nombre: modeloSeleccionado.nombre,
+          cantidad_ordenada: 1,
+          cantidad_recibida: 0,
+          cantidad_esta_recepcion: 1,
+          precio_unitario: precioFinal
+        }]
+      }
+
+      // Guardar en localStorage para que ModuloCompras la levante
+      const recepcionesPendientes = JSON.parse(localStorage.getItem('recepciones_pendientes_toma') || '[]')
+      recepcionesPendientes.push(nuevaRecepcion)
+      localStorage.setItem('recepciones_pendientes_toma', JSON.stringify(recepcionesPendientes))
 
       setTomasEquipo(prev => [...prev, nuevaToma])
       resetForm()
