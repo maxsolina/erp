@@ -6438,31 +6438,32 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             onEstadoPagoChange={(estado) => setFichaEstadoPago(estado)}
           />
 
-          {/* Modal de validación — ficha borrador */}
-          {fichaModalValidacionMsg && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40">
-              <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-6">
-                <div className="flex items-start gap-3 mb-4">
-                  <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                  <div>
-                    <h3 className="font-semibold text-gray-900 mb-1">No se puede confirmar la factura</h3>
-                    <p className="text-sm text-gray-600">{fichaModalValidacionMsg}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setFichaModalValidacionMsg(null)}
-                  className="w-full py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800"
-                >
-                  Entendido
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Seguimiento */}
           <SeguimientoPanel seguimiento={selectedFactura.seguimiento || []} />
         </div>
       </div>
+
+      {/* Modal de validación medios de pago — fuera del scroll container */}
+      {fichaModalValidacionMsg && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-1">No se puede confirmar la factura</h3>
+                <p className="text-sm text-gray-600">{fichaModalValidacionMsg}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setFichaModalValidacionMsg(null)}
+              className="w-full py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Modal Cancelar Factura */}
       {showCancelarFacturaModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
