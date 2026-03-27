@@ -380,116 +380,9 @@ const mockCategoriasCliente: CategoriaCliente[] = [
   },
 ]
 
-const mockListasPrecios: ListaPrecios[] = [
-  { 
-    id: 1, 
-    nombre: "Lista Minorista", 
-    tipo: "Minorista",
-    moneda_base: "ARS", 
-    incluye_iva: true,
-    activa: true,
-    no_visible: false,
-    dias_validez: 30,
-    estado: "activa",
-    usuarios_admin: [1],
-    usuarios_habilitados: [1, 2],
-    observaciones_filtro: "",
-    seguimiento: [
-      { id: 1, fecha: "2024-01-01T10:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Lista de precios creada" }
-    ]
-  },
-  { 
-    id: 2, 
-    nombre: "Lista Mayorista", 
-    tipo: "Mayorista",
-    moneda_base: "ARS", 
-    incluye_iva: false,
-    activa: true,
-    no_visible: false,
-    dias_validez: 15,
-    estado: "activa",
-    usuarios_admin: [1],
-    usuarios_habilitados: [1, 2],
-    observaciones_filtro: "",
-    seguimiento: [
-      { id: 1, fecha: "2024-01-01T10:30:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Lista de precios creada" }
-    ]
-  },
-  { 
-    id: 3, 
-    nombre: "Lista Distribuidor USD", 
-    tipo: "Distribuidor",
-    moneda_base: "USD", 
-    incluye_iva: false,
-    activa: true,
-    no_visible: true,
-    dias_validez: 7,
-    estado: "activa",
-    usuarios_admin: [1],
-    usuarios_habilitados: [1],
-    observaciones_filtro: "Solo para distribuidores autorizados",
-    seguimiento: [
-      { id: 1, fecha: "2024-01-01T11:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Lista de precios creada" }
-    ]
-  },
-]
+const mockListasPrecios: ListaPrecios[] = []
 
-const mockVersionesLista: VersionListaPrecios[] = [
-  {
-    id: 1,
-    lista_precios_id: 1,
-    lista_precios_nombre: "Lista Minorista",
-    nombre: "Versión Marzo 2024",
-    fecha_inicial: "2024-03-01",
-    fecha_final: "2024-03-31",
-    activa: true,
-    estado: "activa",
-    ultima_actualizacion: "2024-03-15T14:30:00",
-    lineas: [
-      { id: 1, producto_id: 1, producto_codigo: "IPH15PM256", producto_nombre: "iPhone 15 Pro Max 256GB", costo_moneda: "USD", costo_importe: 1100, cotizacion_dolar: 1200, markup_porcentaje: 25, markup_nominal: 0, forzar_precio_pesos: false, precio_forzado_ars: null, precio_venta: 1375, precio_venta_moneda: "USD", iva: 21 },
-      { id: 2, producto_id: 2, producto_codigo: "SGS24U", producto_nombre: "Samsung Galaxy S24 Ultra", costo_moneda: "USD", costo_importe: 950, cotizacion_dolar: 1200, markup_porcentaje: 30, markup_nominal: 0, forzar_precio_pesos: false, precio_forzado_ars: null, precio_venta: 1235, precio_venta_moneda: "USD", iva: 21 },
-      { id: 3, producto_id: 3, producto_codigo: "FUNDA-IPH15", producto_nombre: "Funda iPhone 15 Silicona", costo_moneda: "ARS", costo_importe: 15000, cotizacion_dolar: 1200, markup_porcentaje: 50, markup_nominal: 0, forzar_precio_pesos: false, precio_forzado_ars: null, precio_venta: 22500, precio_venta_moneda: "ARS", iva: 21 },
-      { id: 4, producto_id: 4, producto_codigo: "APP2", producto_nombre: "AirPods Pro 2", costo_moneda: "USD", costo_importe: 200, cotizacion_dolar: 1200, markup_porcentaje: 35, markup_nominal: 0, forzar_precio_pesos: true, precio_forzado_ars: 350000, precio_venta: 291.67, precio_venta_moneda: "USD", iva: 21 },
-    ],
-    seguimiento: [
-      { id: 1, fecha: "2024-03-01T09:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Versión creada" },
-      { id: 2, fecha: "2024-03-15T14:30:00", usuario: "Max Solina", tipo: "cambio_campo", campo: "Líneas", valor_anterior: "3", valor_nuevo: "4", descripcion: "Agregada línea AirPods Pro 2" }
-    ]
-  },
-  {
-    id: 2,
-    lista_precios_id: 1,
-    lista_precios_nombre: "Lista Minorista",
-    nombre: "Versión Abril 2024",
-    fecha_inicial: "2024-04-01",
-    fecha_final: null,
-    activa: false,
-    estado: "borrador",
-    ultima_actualizacion: "2024-03-28T10:00:00",
-    lineas: [],
-    seguimiento: [
-      { id: 1, fecha: "2024-03-28T10:00:00", usuario: "Max Solina", tipo: "creacion", descripcion: "Versión creada como borrador" }
-    ]
-  },
-  {
-    id: 3,
-    lista_precios_id: 2,
-    lista_precios_nombre: "Lista Mayorista",
-    nombre: "Versión Q1 2024",
-    fecha_inicial: "2024-01-01",
-    fecha_final: "2024-03-31",
-    activa: true,
-    estado: "activa",
-    ultima_actualizacion: "2024-01-15T11:00:00",
-    lineas: [
-      { id: 1, producto_id: 1, producto_codigo: "IPH15PM256", producto_nombre: "iPhone 15 Pro Max 256GB", costo_moneda: "USD", costo_importe: 1100, cotizacion_dolar: 1200, markup_porcentaje: 15, markup_nominal: 0, forzar_precio_pesos: false, precio_forzado_ars: null, precio_venta: 1265, precio_venta_moneda: "USD", iva: 21 },
-      { id: 2, producto_id: 2, producto_codigo: "SGS24U", producto_nombre: "Samsung Galaxy S24 Ultra", costo_moneda: "USD", costo_importe: 950, cotizacion_dolar: 1200, markup_porcentaje: 18, markup_nominal: 0, forzar_precio_pesos: false, precio_forzado_ars: null, precio_venta: 1121, precio_venta_moneda: "USD", iva: 21 },
-    ],
-    seguimiento: [
-      { id: 1, fecha: "2024-01-01T09:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Versión creada" }
-    ]
-  },
-]
+const mockVersionesLista: VersionListaPrecios[] = []
 
 const mockTiposListaPrecios = ["Minorista", "Mayorista", "Distribuidor", "Especial", "Promocional"]
 
@@ -3065,7 +2958,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     </div>
                     <div>
                       <span className="text-gray-500 block">Lista de Precios:</span>
-                      <span className="font-medium">{mockListasPrecios.find(l => l.id === selectedCliente.lista_precios_id)?.nombre}</span>
+                      <span className="font-medium">{listasPrecios.find(l => l.id === selectedCliente.lista_precios_id)?.nombre}</span>
                     </div>
                     <div>
                       <span className="text-gray-500 block">Descuento Default:</span>
@@ -4274,7 +4167,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </div>
                 <div>
                   <label className="text-gray-500 block">Lista de Precios</label>
-                  <p className="font-medium">{mockListasPrecios.find(l => l.id === selectedNV.lista_precios_id)?.nombre}</p>
+                  <p className="font-medium">{listasPrecios.find(l => l.id === selectedNV.lista_precios_id)?.nombre}</p>
                 </div>
                 <div>
                   <label className="text-gray-500 block">Término de Pago</label>
@@ -6061,7 +5954,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       onChange={(e) => setFacturaListaPreciosId(Number(e.target.value))}
                       className="ml-2 border border-gray-300 rounded px-2 py-1 text-sm font-medium"
                     >
-                      {mockListasPrecios.filter(lp => lp.activa).map(lp => (
+                      {listasPrecios.filter(lp => lp.activa).map(lp => (
                         <option key={lp.id} value={lp.id}>{lp.nombre}</option>
                       ))}
                     </select>
@@ -10174,7 +10067,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Precios</label>
               <select name="lista_precios_id" defaultValue={editingItem?.lista_precios_id || 1}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                {mockListasPrecios.map(lp => (
+                    {listasPrecios.map(lp => (
                   <option key={lp.id} value={lp.id}>{lp.nombre}</option>
                 ))}
               </select>
@@ -10453,7 +10346,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Precios</label>
                 <select name="lista_precios_id" defaultValue={editingItem?.lista_precios_id || selectedCliente?.lista_precios_id || 1}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                  {mockListasPrecios.map(lp => (
+                      {listasPrecios.map(lp => (
                     <option key={lp.id} value={lp.id}>{lp.nombre}</option>
                   ))}
                 </select>
