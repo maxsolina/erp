@@ -898,7 +898,9 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
   }
 
   const agregarLinea = () => {
-    setLineas(prev => [...prev, { id: Date.now(), medio: "efectivo", monto: 0 }])
+    const yaIngresado = lineas.reduce((s, l) => s + (l.monto || 0), 0)
+    const restante = Math.max(0, factura.total - yaIngresado)
+    setLineas(prev => [...prev, { id: Date.now(), medio: "efectivo", monto: restante }])
   }
 
   const actualizarLinea = (id: number, cambios: Partial<LineaPago>) => {
@@ -951,6 +953,10 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
         {lineas.map((linea, idx) => {
           const calc = calcularLinea(linea)
           const esPrimeraLineaEfectivo = linea.medio === "efectivo" && lineas.findIndex(l => l.medio === "efectivo") === idx
+          // Monto ingresado por las OTRAS líneas (excluye esta)
+          const montoOtras = lineas.filter(l => l.id !== linea.id).reduce((s, l) => s + (l.monto || 0), 0)
+          const restanteParaEstaLinea = factura.total - montoOtras
+          const excedeLimite = (linea.monto || 0) > restanteParaEstaLinea + 0.5
           return (
             <div key={linea.id} className="rounded-lg border border-gray-200 overflow-hidden">
               {/* Fila de inputs */}
@@ -999,15 +1005,28 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
                       <span className="text-xs text-gray-500 whitespace-nowrap">Todo efectivo</span>
                     </label>
                   )}
-                  <input
-                    type="number"
-                    value={linea.monto || ""}
-                    onChange={e => actualizarLinea(linea.id, { monto: parseFloat(e.target.value) || 0 })}
-                    placeholder="0,00"
-                    disabled={linea.medio === "tarjeta" && !linea.tarjeta_id}
-                    title={linea.medio === "tarjeta" && !linea.tarjeta_id ? "Seleccioná una tarjeta primero" : undefined}
-                    className={`border rounded px-2 py-1.5 text-sm text-right w-36 focus:ring-2 focus:ring-emerald-500 focus:outline-none ${linea.medio === "tarjeta" && !linea.tarjeta_id ? "border-red-300 bg-red-50 cursor-not-allowed text-gray-400" : "border-gray-300"}`}
-                  />
+                  <div className="flex flex-col items-end gap-1">
+                    <input
+                      type="number"
+                      value={linea.monto || ""}
+                      onChange={e => actualizarLinea(linea.id, { monto: parseFloat(e.target.value) || 0 })}
+                      placeholder="0,00"
+                      disabled={linea.medio === "tarjeta" && !linea.tarjeta_id}
+                      title={linea.medio === "tarjeta" && !linea.tarjeta_id ? "Seleccioná una tarjeta primero" : undefined}
+                      className={`border rounded px-2 py-1.5 text-sm text-right w-36 focus:ring-2 focus:outline-none ${
+                        linea.medio === "tarjeta" && !linea.tarjeta_id
+                          ? "border-red-300 bg-red-50 cursor-not-allowed text-gray-400 focus:ring-red-300"
+                          : excedeLimite
+                          ? "border-red-500 bg-red-50 text-red-700 focus:ring-red-400"
+                          : "border-gray-300 focus:ring-emerald-500"
+                      }`}
+                    />
+                    {excedeLimite && (
+                      <span className="text-xs text-red-600 font-medium">
+                        Supera el total a abonar ({formatARS(restanteParaEstaLinea)})
+                      </span>
+                    )}
+                  </div>
                   <button onClick={() => eliminarLinea(linea.id)} className="p-1 text-gray-400 hover:text-red-600">
                     <X className="w-4 h-4" />
                   </button>
