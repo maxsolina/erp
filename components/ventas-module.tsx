@@ -5704,6 +5704,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [prevRecargosConfirmados, setPrevRecargosConfirmados] = useState<{ totalRecargos: number; desglose: { nombre: string; importe: number }[] } | null>(null)
   const [prevEstadoPago, setPrevEstadoPago] = useState<{ cobrado: boolean; tieneLineas: boolean; diferenciaOk: boolean }>({ cobrado: false, tieneLineas: false, diferenciaOk: false })
   const [modalValidacionMsg, setModalValidacionMsg] = useState<string | null>(null)
+  // Estado de pago para la ficha de factura en estado borrador
+  const [fichaEstadoPago, setFichaEstadoPago] = useState<{ cobrado: boolean; tieneLineas: boolean; diferenciaOk: boolean }>({ cobrado: false, tieneLineas: false, diferenciaOk: false })
+  const [fichaModalValidacionMsg, setFichaModalValidacionMsg] = useState<string | null>(null)
 
   const renderPrevisualizacionFactura = () => {
     const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
@@ -6211,6 +6214,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </button>
                 <button
                   onClick={() => {
+                    if (!fichaEstadoPago.tieneLineas) {
+                      setFichaModalValidacionMsg("Debés ingresar al menos un medio de pago antes de confirmar la factura.")
+                      return
+                    }
+                    if (!fichaEstadoPago.cobrado) {
+                      setFichaModalValidacionMsg("El cobro no fue confirmado. Completá los medios de pago y presioná \"Confirmar cobro\".")
+                      return
+                    }
                     const fechaHoy = new Date().toISOString()
                     const clienteFactura = clientes.find(c => c.id === selectedFactura.cliente_id)
                     // Generar movimiento de débito en CC
@@ -6424,12 +6435,35 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   : f
               ))
             }}
+            onEstadoPagoChange={(estado) => setFichaEstadoPago(estado)}
           />
 
           {/* Seguimiento */}
           <SeguimientoPanel seguimiento={selectedFactura.seguimiento || []} />
         </div>
       </div>
+
+      {/* Modal de validación medios de pago — fuera del scroll container */}
+      {fichaModalValidacionMsg && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-1">No se puede confirmar la factura</h3>
+                <p className="text-sm text-gray-600">{fichaModalValidacionMsg}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setFichaModalValidacionMsg(null)}
+              className="w-full py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Modal Cancelar Factura */}
       {showCancelarFacturaModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
