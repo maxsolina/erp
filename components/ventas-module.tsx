@@ -1023,7 +1023,6 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
             </div>
           )
         })}
-          </div>
 
             {totalIngresado > 0 && Math.abs(diferencia) <= 0.5 && (
               <div className="flex items-center gap-2 text-xs text-emerald-700 font-medium mt-2 p-2 rounded bg-emerald-50">
