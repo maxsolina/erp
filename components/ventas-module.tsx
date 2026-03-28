@@ -1605,7 +1605,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     {
       id: "config_notas_credito",
       label: "Notas de Crédito",
-      icon: ArrowLeft,
+      icon: FileText,
       items: [
         { id: "nc_categorias", label: "Categorías", icon: Tag },
       ]
@@ -1785,13 +1785,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       setSelectedNV(null)
                       setClientePanel("ficha")
                     }}
-                    className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-2 ${
+                    className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center gap-2 ${section.id === "config_notas_credito" ? "text-xs" : "text-sm"} ${
                       activeView === item.id 
                         ? "bg-emerald-100 text-emerald-800 font-medium" 
                         : "text-gray-600 hover:bg-gray-100"
                     }`}
                   >
-                    <item.icon className="w-4 h-4" />
+                    <item.icon className={section.id === "config_notas_credito" ? "w-3.5 h-3.5" : "w-4 h-4"} />
                     {item.label}
                   </button>
                 ))}
