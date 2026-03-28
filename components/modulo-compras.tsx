@@ -333,83 +333,7 @@ export default function ModuloCompras() {
   const [expandedSections, setExpandedSections] = useState<string[]>(["proveedores", "compras", "comprobantes", "pagos", "configuracion"])
 
   // Proveedores
-  const [proveedores, setProveedores] = useState<Proveedor[]>([
-    {
-      id: 1,
-      codigo: "PROV-001",
-      nombre: "Tech Supplies SA",
-      razon_social: "Tech Supplies SA",
-      cuit: "30-12345678-9",
-      tipo_documento: "CUIT",
-      numero_documento: "30-12345678-9",
-      direccion: "Av. Corrientes 1234",
-      ciudad: "Buenos Aires",
-      provincia: "Buenos Aires",
-      codigo_postal: "1043",
-      telefono: "011-4555-1234",
-      email: "compras@techsupplies.com",
-      web: "www.techsupplies.com",
-      contacto_nombre: "Juan Pérez",
-      contacto_telefono: "011-4555-1235",
-      contacto_email: "jperez@techsupplies.com",
-      condicion_pago: "30 días",
-      moneda_habitual: "ARS",
-      categoria: "publico",
-      tipo: "nacional",
-      saldo: 150000,
-      activo: true
-    },
-    {
-      id: 2,
-      codigo: "PROV-002",
-      nombre: "Mobile World Inc",
-      razon_social: "Mobile World Inc",
-      cuit: "30-98765432-1",
-      tipo_documento: "Tax ID",
-      numero_documento: "US-12345678",
-      direccion: "123 Tech Street",
-      ciudad: "Miami",
-      provincia: "Florida",
-      codigo_postal: "33101",
-      telefono: "+1-305-555-1234",
-      email: "sales@mobileworld.com",
-      web: "www.mobileworld.com",
-      contacto_nombre: "John Smith",
-      contacto_telefono: "+1-305-555-1235",
-      contacto_email: "jsmith@mobileworld.com",
-      condicion_pago: "Anticipado",
-      moneda_habitual: "USD",
-      categoria: "publico",
-      tipo: "internacional",
-      saldo: 0,
-      activo: true
-    },
-    {
-      id: 3,
-      codigo: "PROV-003",
-      nombre: "Despachante García",
-      razon_social: "García y Asociados SRL",
-      cuit: "30-55555555-5",
-      tipo_documento: "CUIT",
-      numero_documento: "30-55555555-5",
-      direccion: "Puerto Madero 456",
-      ciudad: "Buenos Aires",
-      provincia: "Buenos Aires",
-      codigo_postal: "1107",
-      telefono: "011-4312-5678",
-      email: "contacto@despachanteg.com",
-      web: "www.despachanteg.com",
-      contacto_nombre: "María García",
-      contacto_telefono: "011-4312-5679",
-      contacto_email: "mgarcia@despachanteg.com",
-      condicion_pago: "Contado",
-      moneda_habitual: "ARS",
-      categoria: "publico",
-      tipo: "despachante",
-      saldo: 25000,
-      activo: true
-    }
-  ])
+  const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [selectedProveedor, setSelectedProveedor] = useState<Proveedor | null>(null)
   const [creandoProveedor, setCreandoProveedor] = useState(false)
   const [editandoProveedor, setEditandoProveedor] = useState(false)
@@ -418,148 +342,12 @@ export default function ModuloCompras() {
   const [proveedorFiltroTipo, setProveedorFiltroTipo] = useState<"todos" | "nacional" | "internacional" | "despachante">("todos")
 
   // Órdenes de Compra
-  const [ordenesCompra, setOrdenesCompra] = useState<OrdenCompra[]>([
-    {
-      id: 1,
-      numero: "OC-00001",
-      fecha: "2026-03-10T10:00:00",
-      proveedor_id: 1,
-      proveedor_nombre: "Tech Supplies SA",
-      estado: "confirmada",
-      tipo_compra: "nacional",
-      fecha_entrega_estimada: "2026-03-15",
-      moneda: "ARS",
-      tipo_cambio: 1,
-      subtotal: 500000,
-      impuestos: 105000,
-      total: 605000,
-      observaciones: "Urgente",
-      lineas: [
-        { producto_id: 1, producto_nombre: "Pantalla iPhone 13", cantidad: 10, cantidad_recibida: 0, precio_unitario: 50000, descuento: 0, subtotal: 500000 }
-      ]
-    },
-    {
-      id: 2,
-      numero: "OC-00002",
-      fecha: "2026-03-08T14:30:00",
-      proveedor_id: 2,
-      proveedor_nombre: "Mobile World Inc",
-      estado: "confirmada",
-      tipo_compra: "importacion",
-      fecha_entrega_estimada: "2026-03-25",
-      moneda: "USD",
-      tipo_cambio: 1050,
-      subtotal: 5000,
-      impuestos: 0,
-      total: 5000,
-      observaciones: "Importación USA",
-      legajo_id: 1,
-      lineas: [
-        { producto_id: 2, producto_nombre: "iPhone 14 Pro 128GB", cantidad: 10, cantidad_recibida: 0, precio_unitario: 500, descuento: 0, subtotal: 5000 }
-      ]
-    }
-  ])
+  const [ordenesCompra, setOrdenesCompra] = useState<OrdenCompra[]>([])
   const [selectedOC, setSelectedOC] = useState<OrdenCompra | null>(null)
   const [creandoOC, setCreandoOC] = useState(false)
 
   // Recepciones
-  const [recepciones, setRecepciones] = useState<Recepcion[]>([
-    {
-      id: 1,
-      numero: "REC-00001",
-      fecha: "2026-03-20T10:00:00",
-      sucursal: "Puerto Norte",
-      proveedor_id: 1,
-      proveedor_nombre: "Tech Supplies SA",
-      deposito_destino: "Depósito Principal",
-      ubicacion_destino: "Estante A1",
-      documento_origen_tipo: "oc",
-      documento_origen_id: 1,
-      documento_origen_ref: "OC-00001",
-      orden_compra_id: 1,
-      orden_compra_numero: "OC-00001",
-      fecha_pedido: "2026-03-10",
-      fecha_entrega_esperada: "2026-03-22",
-      estado: "esperando_recepcion",
-      lineas: [
-        {
-          producto_id: 1,
-          producto_nombre: "Pantalla iPhone 13",
-          producto_sku: "PAN-IPH13",
-          tiene_serie: false,
-          cantidad_pedida: 10,
-          cantidad_recibida: 0,
-          udm: "un",
-          precio_unitario: 50000,
-          estado_linea: "pendiente"
-        }
-      ]
-    },
-    {
-      id: 2,
-      numero: "REC-00002",
-      fecha: "2026-03-15T14:00:00",
-      sucursal: "Puerto Norte",
-      proveedor_id: 2,
-      proveedor_nombre: "Mobile World Inc",
-      deposito_destino: "Depósito Principal",
-      documento_origen_tipo: "oc",
-      documento_origen_id: 2,
-      documento_origen_ref: "OC-00002",
-      orden_compra_id: 2,
-      orden_compra_numero: "OC-00002",
-      fecha_pedido: "2026-03-08",
-      fecha_entrega_esperada: "2026-03-20",
-      fecha_recepcion_real: "2026-03-15T14:22:00",
-      remito_numero: "R-0004521",
-      remito_fecha: "2026-03-14",
-      estado: "recibida",
-      lineas: [
-        {
-          producto_id: 2,
-          producto_nombre: "iPhone 14 Pro 128GB",
-          producto_sku: "IPH14P-128",
-          tiene_serie: true,
-          cantidad_pedida: 10,
-          cantidad_recibida: 10,
-          udm: "un",
-          precio_unitario: 500,
-          estado_linea: "recibido",
-          unidades_serie: [
-            { nro_serie: "355412001234567", lote: "", bateria_pct: 100, color: "Negro", outlet: false, fallas: "" }
-          ]
-        }
-      ]
-    },
-    {
-      id: 3,
-      numero: "REC-00003",
-      fecha: "2026-03-18T09:30:00",
-      sucursal: "Puerto Norte",
-      proveedor_nombre: "Toma en Parte de Pago",
-      deposito_destino: "Depósito Usados",
-      documento_origen_tipo: "toma_equipo",
-      documento_origen_ref: "TOMA-00012",
-      fecha_recepcion_real: "2026-03-18T09:30:00",
-      estado: "recibida",
-      lineas: [
-        {
-          producto_id: 10,
-          producto_nombre: "iPhone 12 Usado",
-          producto_sku: "IPH12U",
-          tiene_serie: true,
-          cantidad_pedida: 1,
-          cantidad_recibida: 1,
-          udm: "un",
-          precio_unitario: 180000,
-          estado_linea: "recibido",
-          unidades_serie: [
-            { nro_serie: "356789009876543", lote: "", bateria_pct: 78, color: "Negro", outlet: true, fallas: "Rayones leves en pantalla" }
-          ]
-        }
-      ]
-    }
-  ])
+  const [recepciones, setRecepciones] = useState<Recepcion[]>([])
   const [selectedRecepcion, setSelectedRecepcion] = useState<Recepcion | null>(null)
   const [creandoRecepcion, setCreandoRecepcion] = useState(false)
   // UI state recepciones
@@ -591,29 +379,7 @@ export default function ModuloCompras() {
   }, [])
 
   // Facturas de Compra
-  const [facturasCompra, setFacturasCompra] = useState<FacturaCompra[]>([
-    {
-      id: 1,
-      numero: "FC-A-00001",
-      tipo: "A",
-      fecha: "2026-03-12T10:00:00",
-      fecha_vencimiento: "2026-04-12",
-      proveedor_id: 1,
-      proveedor_nombre: "Tech Supplies SA",
-      estado: "pendiente",
-      orden_compra_id: 1,
-      recepcion_id: 1,
-      moneda: "ARS",
-      tipo_cambio: 1,
-      subtotal: 500000,
-      impuestos: 105000,
-      total: 605000,
-      saldo: 605000,
-      lineas: [
-        { producto_id: 1, producto_nombre: "Pantalla iPhone 13", cantidad: 10, precio_unitario: 50000, subtotal: 500000 }
-      ]
-    }
-  ])
+  const [facturasCompra, setFacturasCompra] = useState<FacturaCompra[]>([])
   const [selectedFacturaCompra, setSelectedFacturaCompra] = useState<FacturaCompra | null>(null)
   const [creandoFacturaCompra, setCreandoFacturaCompra] = useState(false)
 
@@ -633,120 +399,21 @@ export default function ModuloCompras() {
   const [creandoOP, setCreandoOP] = useState(false)
 
   // Legajos de Importación
-  const [legajosImportacion, setLegajosImportacion] = useState<LegajoImportacion[]>([
-    {
-      id: 1,
-      numero: "LEG-2026-001",
-      nombre: "Importación iPhone USA Marzo",
-      responsable: "Admin",
-      despachante_id: 3,
-      despachante_nombre: "Despachante García",
-      fecha_apertura: "2026-03-01",
-      estado: "abierto",
-      subcompania: "Cell Home",
-      sucursal: "Puerto Norte",
-      tc_referencia: 1050,
-      total_compras: 5250000,
-      total_gastos: 525000,
-      ordenes_compra_ids: [2],
-      recepciones_ids: [],
-      facturas_ids: [],
-      notas_credito_ids: [],
-      notas_debito_ids: [],
-      gastos: [
-        {
-          id: 1,
-          tipo_gasto_id: 1,
-          tipo_gasto_nombre: "Flete Internacional",
-          proveedor_id: 2,
-          proveedor_nombre: "Mobile World Inc",
-          importe: 300,
-          moneda: "USD",
-          tipo_cambio_tipo: "dia_factura",
-          tipo_cambio: 1050,
-          importe_base: 315000,
-          clasificacion: "activable",
-          criterio_distribucion: "peso",
-          estado: "pendiente"
-        },
-        {
-          id: 2,
-          tipo_gasto_id: 2,
-          tipo_gasto_nombre: "Gastos de Despachante",
-          proveedor_id: 3,
-          proveedor_nombre: "Despachante García",
-          importe: 200000,
-          moneda: "ARS",
-          tipo_cambio_tipo: "dia_factura",
-          tipo_cambio: 1,
-          importe_base: 200000,
-          clasificacion: "activable",
-          criterio_distribucion: "fob",
-          estado: "pendiente"
-        }
-      ],
-      observaciones: "Importación de equipos nuevos para stock"
-    }
-  ])
+  const [legajosImportacion, setLegajosImportacion] = useState<LegajoImportacion[]>([])
   const [selectedLegajo, setSelectedLegajo] = useState<LegajoImportacion | null>(null)
   const [creandoLegajo, setCreandoLegajo] = useState(false)
   const [legajoTab, setLegajoTab] = useState<"compras" | "gastos" | "distribucion" | "observaciones">("compras")
 
   // Despachos Simples
-  const [despachosSimples, setDespachosSimples] = useState<DespachoSimple[]>([
-    {
-      id: 1,
-      numero: "DS-2026-001",
-      nombre: "Despacho USA Telefonía",
-      proveedor_id: 2,
-      proveedor_nombre: "Mobile World Inc",
-      responsable: "Admin",
-      fecha: "2026-03-05",
-      estado: "abierto",
-      subcompania: "Cell Home",
-      sucursal: "Puerto Norte",
-      total_mercaderia: 2500000,
-      total_fletes: 157500,
-      flete_internacional: {
-        importe: 100,
-        moneda: "USD",
-        tipo_cambio: 1050,
-        importe_base: 105000
-      },
-      flete_nacional: {
-        importe: 50000,
-        moneda: "ARS",
-        tipo_cambio: 1,
-        importe_base: 50000
-      },
-      productos: [
-        { producto_id: 3, producto_nombre: "iPhone 13 128GB", cantidad: 5, peso_unitario: 0.2, peso_total: 1, precio_fob_unitario: 400, total_fob: 2000 },
-        { producto_id: 4, producto_nombre: "iPhone 13 Pro 128GB", cantidad: 3, peso_unitario: 0.21, peso_total: 0.63, precio_fob_unitario: 500, total_fob: 1500 }
-      ],
-      ordenes_compra_ids: [],
-      recepciones_ids: [],
-      facturas_ids: []
-    }
-  ])
+  const [despachosSimples, setDespachosSimples] = useState<DespachoSimple[]>([])
   const [selectedDespachoSimple, setSelectedDespachoSimple] = useState<DespachoSimple | null>(null)
   const [creandoDespachoSimple, setCreandoDespachoSimple] = useState(false)
 
   // Tipos de Gasto (Configuración)
-  const [tiposGasto, setTiposGasto] = useState<TipoGasto[]>([
-    { id: 1, nombre: "Flete Internacional", clasificacion_defecto: "activable", cuenta_debe: "1.1.3.01", cuenta_haber: "2.1.1.01", criterio_sugerido: "peso", moneda_habitual: "USD", tc_defecto: "dia_factura" },
-    { id: 2, nombre: "Gastos de Despachante", clasificacion_defecto: "activable", cuenta_debe: "1.1.3.01", cuenta_haber: "2.1.1.01", criterio_sugerido: "fob", moneda_habitual: "ARS", tc_defecto: "dia_factura" },
-    { id: 3, nombre: "Seguro", clasificacion_defecto: "activable", cuenta_debe: "1.1.3.01", cuenta_haber: "2.1.1.01", criterio_sugerido: "fob", moneda_habitual: "USD", tc_defecto: "dia_factura" },
-    { id: 4, nombre: "Derechos de Importación", clasificacion_defecto: "activable", cuenta_debe: "1.1.3.01", cuenta_haber: "2.1.1.01", criterio_sugerido: "posicion_arancelaria", moneda_habitual: "ARS", tc_defecto: "dia_dji" },
-    { id: 5, nombre: "Tasa de Estadística", clasificacion_defecto: "activable", cuenta_debe: "1.1.3.01", cuenta_haber: "2.1.1.01", criterio_sugerido: "fob", moneda_habitual: "ARS", tc_defecto: "dia_dji" },
-    { id: 6, nombre: "IVA Importación", clasificacion_defecto: "resultado", cuenta_debe: "1.1.5.01", cuenta_haber: "2.1.1.01", criterio_sugerido: "fob", moneda_habitual: "ARS", tc_defecto: "dia_dji" },
-    { id: 7, nombre: "Percepciones IIBB", clasificacion_defecto: "resultado", cuenta_debe: "1.1.5.02", cuenta_haber: "2.1.1.01", criterio_sugerido: "fob", moneda_habitual: "ARS", tc_defecto: "dia_dji" },
-    { id: 8, nombre: "Percepciones Ganancias", clasificacion_defecto: "resultado", cuenta_debe: "1.1.5.03", cuenta_haber: "2.1.1.01", criterio_sugerido: "fob", moneda_habitual: "ARS", tc_defecto: "dia_dji" },
-  ])
+  const [tiposGasto, setTiposGasto] = useState<TipoGasto[]>([])
 
   // Movimientos Cuenta Corriente Proveedores
-  const [movimientosCtaCte, setMovimientosCtaCte] = useState<MovimientoCtaCteProveedor[]>([
-    { id: 1, proveedor_id: 1, tipo: "factura", numero: "FC-A-00001", fecha: "2026-03-12", concepto: "Compra repuestos", debe: 605000, haber: 0, saldo: 605000 }
-  ])
+  const [movimientosCtaCte, setMovimientosCtaCte] = useState<MovimientoCtaCteProveedor[]>([])
 
   // Helpers
   const formatCurrency = (amount: number, currency: "ARS" | "USD" = "ARS") => {
@@ -2755,11 +2422,7 @@ export default function ModuloCompras() {
   // RENDER FACTURAS DE COMPRA
   // =====================================================
   const renderFacturasCompra = () => {
-    const facturasMock = [
-      { id: 1, numero: "FC-A-00001", fecha: "2026-03-10", proveedor: "Tech Import SA", recepcion: "REC-00001", subtotal: 2500000, iva: 525000, total: 3025000, estado: "pendiente" },
-      { id: 2, numero: "FC-A-00002", fecha: "2026-03-12", proveedor: "Distribuidora Norte", recepcion: "REC-00002", subtotal: 890000, iva: 186900, total: 1076900, estado: "pagada" },
-      { id: 3, numero: "FC-B-00001", fecha: "2026-03-14", proveedor: "Mayorista Sur", recepcion: "REC-00003", subtotal: 1200000, iva: 0, total: 1200000, estado: "vencida" },
-    ]
+    const facturasMock: { id: number; numero: string; fecha: string; proveedor: string; recepcion: string; subtotal: number; iva: number; total: number; estado: string }[] = []
 
     return (
       <div>
@@ -2840,10 +2503,7 @@ export default function ModuloCompras() {
   // RENDER NOTAS DE CRÉDITO DE COMPRA
   // =====================================================
   const renderNotasCreditoCompra = () => {
-    const ncMock = [
-      { id: 1, numero: "NC-A-00001", fecha: "2026-03-11", proveedor: "Tech Import SA", factura_origen: "FC-A-00001", motivo: "Devolución mercadería", total: 150000, estado: "aplicada" },
-      { id: 2, numero: "NC-A-00002", fecha: "2026-03-13", proveedor: "Distribuidora Norte", factura_origen: "FC-A-00002", motivo: "Diferencia de precio", total: 25000, estado: "pendiente" },
-    ]
+    const ncMock: { id: number; numero: string; fecha: string; proveedor: string; factura_origen: string; motivo: string; total: number; estado: string }[] = []
 
     return (
       <div>
@@ -2899,9 +2559,7 @@ export default function ModuloCompras() {
   // RENDER NOTAS DE DÉBITO DE COMPRA
   // =====================================================
   const renderNotasDebitoCompra = () => {
-    const ndMock = [
-      { id: 1, numero: "ND-A-00001", fecha: "2026-03-12", proveedor: "Tech Import SA", factura_origen: "FC-A-00001", motivo: "Intereses por mora", total: 35000, estado: "pendiente" },
-    ]
+    const ndMock: { id: number; numero: string; fecha: string; proveedor: string; factura_origen: string; motivo: string; total: number; estado: string }[] = []
 
     return (
       <div>
@@ -2957,11 +2615,7 @@ export default function ModuloCompras() {
   // RENDER ÓRDENES DE PAGO
   // =====================================================
   const renderOrdenesPago = () => {
-    const ordenesPagoMock = [
-      { id: 1, numero: "OP-00001", fecha: "2026-03-10", proveedor: "Tech Import SA", facturas: ["FC-A-00001"], monto: 3025000, forma_pago: "Transferencia", estado: "pagada" },
-      { id: 2, numero: "OP-00002", fecha: "2026-03-12", proveedor: "Distribuidora Norte", facturas: ["FC-A-00002"], monto: 1051900, forma_pago: "Cheque", estado: "emitida" },
-      { id: 3, numero: "OP-00003", fecha: "2026-03-14", proveedor: "Mayorista Sur", facturas: ["FC-B-00001"], monto: 600000, forma_pago: "Efectivo", estado: "borrador" },
-    ]
+    const ordenesPagoMock: { id: number; numero: string; fecha: string; proveedor: string; facturas: string[]; monto: number; forma_pago: string; estado: string }[] = []
 
     return (
       <div>
@@ -3040,13 +2694,7 @@ export default function ModuloCompras() {
   // RENDER CTA CTE PROVEEDORES
   // =====================================================
   const renderCtaCteProveedores = () => {
-    const movimientosMock = [
-      { id: 1, fecha: "2026-03-10", proveedor: "Tech Import SA", tipo: "factura", numero: "FC-A-00001", debe: 3025000, haber: 0 },
-      { id: 2, fecha: "2026-03-11", proveedor: "Tech Import SA", tipo: "nc", numero: "NC-A-00001", debe: 0, haber: 150000 },
-      { id: 3, fecha: "2026-03-10", proveedor: "Tech Import SA", tipo: "pago", numero: "OP-00001", debe: 0, haber: 3025000 },
-      { id: 4, fecha: "2026-03-12", proveedor: "Distribuidora Norte", tipo: "factura", numero: "FC-A-00002", debe: 1076900, haber: 0 },
-      { id: 5, fecha: "2026-03-12", proveedor: "Distribuidora Norte", tipo: "pago", numero: "OP-00002", debe: 0, haber: 1051900 },
-    ]
+    const movimientosMock: { id: number; fecha: string; proveedor: string; tipo: string; numero: string; debe: number; haber: number }[] = []
 
     return (
       <div>
@@ -3114,13 +2762,7 @@ export default function ModuloCompras() {
   // RENDER TIPOS DE GASTO
   // =====================================================
   const renderTiposGasto = () => {
-    const tiposGastoMock = [
-      { id: 1, codigo: "FLE", nombre: "Flete Internacional", activa_costo: true, criterio_distribucion: "peso" },
-      { id: 2, codigo: "SEG", nombre: "Seguro de Carga", activa_costo: true, criterio_distribucion: "valor" },
-      { id: 3, codigo: "DES", nombre: "Despacho Aduanero", activa_costo: true, criterio_distribucion: "valor" },
-      { id: 4, codigo: "ALM", nombre: "Almacenaje", activa_costo: false, criterio_distribucion: "unidades" },
-      { id: 5, codigo: "COM", nombre: "Comisión Despachante", activa_costo: true, criterio_distribucion: "valor" },
-    ]
+    const tiposGastoMock: { id: number; codigo: string; nombre: string; activa_costo: boolean; criterio_distribucion: string }[] = []
 
     return (
       <div>
