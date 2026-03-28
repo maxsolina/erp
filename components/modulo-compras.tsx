@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Settings, Lock, Unlock, FileBox, Ship, Plane } from "lucide-react"
 import BotonVolver from "./ui/boton-volver"
+import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
 
 // Types
 interface Proveedor {
@@ -385,6 +386,34 @@ export default function ModuloCompras() {
     lineas: []
   })
 
+  // OdooFilterBar states
+  const [savedFiltersOC, setSavedFiltersOC] = useState<SavedFilter[]>([])
+  const [activeFiltersOC, setActiveFiltersOC] = useState<FilterOption[]>([])
+  const [activeGroupByOC, setActiveGroupByOC] = useState<GroupByOption[]>([])
+
+  const [savedFiltersRec, setSavedFiltersRec] = useState<SavedFilter[]>([])
+  const [activeFiltersRec, setActiveFiltersRec] = useState<FilterOption[]>([])
+  const [activeGroupByRec, setActiveGroupByRec] = useState<GroupByOption[]>([])
+
+  const [savedFiltersFC, setSavedFiltersFC] = useState<SavedFilter[]>([])
+  const [activeFiltersFC, setActiveFiltersFC] = useState<FilterOption[]>([])
+  const [activeGroupByFC, setActiveGroupByFC] = useState<GroupByOption[]>([])
+
+  const [savedFiltersProv, setSavedFiltersProv] = useState<SavedFilter[]>([])
+  const [activeFiltersProv, setActiveFiltersProv] = useState<FilterOption[]>([])
+  const [activeGroupByProv, setActiveGroupByProv] = useState<GroupByOption[]>([])
+
+  const makeSavedFilterHandlersC = (
+    setter: React.Dispatch<React.SetStateAction<SavedFilter[]>>,
+    setActiveFilters: React.Dispatch<React.SetStateAction<FilterOption[]>>,
+    setActiveGroupBy: React.Dispatch<React.SetStateAction<GroupByOption[]>>,
+    setSearch: (s: string) => void
+  ) => ({
+    onSaveFilter: (f: Omit<SavedFilter, "id" | "createdBy">) => setter(prev => [...prev, { ...f, id: Date.now().toString(), createdBy: "Admin" }]),
+    onDeleteFilter: (id: string) => setter(prev => prev.filter(sf => sf.id !== id)),
+    onApplyFilter: (f: SavedFilter) => { setActiveFilters(f.filters); setActiveGroupBy(f.groupBy); setSearch("") }
+  })
+
   // Recepciones
   const [recepciones, setRecepciones] = useState<Recepcion[]>([])
   const [selectedRecepcion, setSelectedRecepcion] = useState<Recepcion | null>(null)
@@ -604,36 +633,40 @@ export default function ModuloCompras() {
         </div>
 
         {/* Filters */}
-        <div className="flex items-center gap-4 mb-6">
-          <div className="flex-1 relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por nombre, código o CUIT..."
-              value={proveedorSearchText}
-              onChange={(e) => setProveedorSearchText(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          <select
-            value={proveedorFiltroCategoria}
-            onChange={(e) => setProveedorFiltroCategoria(e.target.value as "todos" | "publico" | "privado")}
-            className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="todos">Todas las categorías</option>
-            <option value="publico">Públicos</option>
-            <option value="privado">Privados</option>
-          </select>
-          <select
-            value={proveedorFiltroTipo}
-            onChange={(e) => setProveedorFiltroTipo(e.target.value as "todos" | "nacional" | "internacional" | "despachante")}
-            className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="todos">Todos los tipos</option>
-            <option value="nacional">Nacional</option>
-            <option value="internacional">Internacional</option>
-            <option value="despachante">Despachante</option>
-          </select>
+        <div className="mb-6">
+          <OdooFilterBar
+            moduleName="proveedores"
+            filterOptions={[
+              { field: "categoria", label: "Categoría", values: [
+                { value: "publico", label: "Público" },
+                { value: "privado", label: "Privado" },
+              ]},
+              { field: "tipo", label: "Tipo", values: [
+                { value: "nacional", label: "Nacional" },
+                { value: "internacional", label: "Internacional" },
+                { value: "despachante", label: "Despachante" },
+              ]},
+            ]}
+            groupByOptions={[
+              { id: "categoria", label: "Categoría", field: "categoria" },
+              { id: "tipo", label: "Tipo", field: "tipo" },
+              { id: "moneda_habitual", label: "Moneda", field: "moneda_habitual" },
+            ]}
+            activeFilters={activeFiltersProv}
+            activeGroupBy={activeGroupByProv}
+            searchTerm={proveedorSearchText}
+            onFiltersChange={f => {
+              setActiveFiltersProv(f)
+              setProveedorFiltroCategoria((f.find(x => x.field === "categoria")?.value as any) ?? "todos")
+              setProveedorFiltroTipo((f.find(x => x.field === "tipo")?.value as any) ?? "todos")
+            }}
+            onGroupByChange={setActiveGroupByProv}
+            onSearchChange={setProveedorSearchText}
+            savedFilters={savedFiltersProv}
+            {...makeSavedFilterHandlersC(setSavedFiltersProv, setActiveFiltersProv, setActiveGroupByProv, setProveedorSearchText)}
+            totalCount={proveedores.length}
+            filteredCount={filteredProveedores.length}
+          />
         </div>
 
         {/* Stats */}
@@ -1019,39 +1052,48 @@ export default function ModuloCompras() {
         </div>
 
         {/* Filtros */}
-        <div className="flex items-center gap-3 mb-4 flex-wrap">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por N° OC, proveedor, producto..."
-              value={ocBusqueda}
-              onChange={e => setOcBusqueda(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1">
-            {(["todos", "borrador", "confirmada", "cancelada"] as const).map(est => (
-              <button
-                key={est}
-                onClick={() => setOcFiltroEstado(est)}
-                className={`px-3 py-1.5 text-xs rounded-md transition-colors ${ocFiltroEstado === est ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                {est === "todos" ? "Todos" : estadoLabel[est]}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1">
-            {(["todos", "estandar", "inmediato"] as const).map(met => (
-              <button
-                key={met}
-                onClick={() => setOcFiltroMetodo(met)}
-                className={`px-3 py-1.5 text-xs rounded-md transition-colors ${ocFiltroMetodo === met ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                {met === "todos" ? "Todos" : met === "estandar" ? "Estándar" : "Inmediato"}
-              </button>
-            ))}
-          </div>
+        <div className="mb-4">
+          <OdooFilterBar
+            moduleName="ordenes-compra"
+            filterOptions={[
+              { field: "estado", label: "Estado", values: [
+                { value: "borrador", label: "Borrador" },
+                { value: "confirmada", label: "Confirmada" },
+                { value: "recibida_parcial", label: "Recibida parcial" },
+                { value: "recibida", label: "Recibida" },
+                { value: "cancelada", label: "Cancelada" },
+              ]},
+              { field: "metodo_compra", label: "Método", values: [
+                { value: "estandar", label: "Estándar" },
+                { value: "inmediato", label: "Inmediato" },
+              ]},
+              { field: "moneda", label: "Moneda", values: [
+                { value: "ARS", label: "ARS" },
+                { value: "USD", label: "USD" },
+                { value: "EUR", label: "EUR" },
+              ]},
+            ]}
+            groupByOptions={[
+              { id: "estado", label: "Estado", field: "estado" },
+              { id: "proveedor", label: "Proveedor", field: "proveedor" },
+              { id: "sucursal", label: "Sucursal", field: "sucursal" },
+              { id: "metodo_compra", label: "Método de Compra", field: "metodo_compra" },
+            ]}
+            activeFilters={activeFiltersOC}
+            activeGroupBy={activeGroupByOC}
+            searchTerm={ocBusqueda}
+            onFiltersChange={f => {
+              setActiveFiltersOC(f)
+              setOcFiltroEstado((f.find(x => x.field === "estado")?.value as any) ?? "todos")
+              setOcFiltroMetodo((f.find(x => x.field === "metodo_compra")?.value as any) ?? "todos")
+            }}
+            onGroupByChange={setActiveGroupByOC}
+            onSearchChange={setOcBusqueda}
+            savedFilters={savedFiltersOC}
+            {...makeSavedFilterHandlersC(setSavedFiltersOC, setActiveFiltersOC, setActiveGroupByOC, setOcBusqueda)}
+            totalCount={ordenesCompra.length}
+            filteredCount={ocsFiltradas.length}
+          />
         </div>
 
         {/* Tabla */}
@@ -2780,32 +2822,41 @@ export default function ModuloCompras() {
         </div>
 
         {/* Filtros */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por N° recepción, OC, IMEI, producto..."
-              value={recepcionBusqueda}
-              onChange={e => setRecepcionBusqueda(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-          </div>
-          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1">
-            {(["todos", "esperando_recepcion", "recibida", "cancelada"] as const).map(est => (
-              <button
-                key={est}
-                onClick={() => setRecepcionFiltroEstado(est)}
-                className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                  recepcionFiltroEstado === est
-                    ? 'bg-emerald-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                {est === "todos" ? "Todos" : estadoLabel[est]}
-              </button>
-            ))}
-          </div>
+        <div className="mb-4">
+          <OdooFilterBar
+            moduleName="recepciones"
+            filterOptions={[
+              { field: "estado", label: "Estado", values: [
+                { value: "esperando_recepcion", label: "Esperando recepción" },
+                { value: "recibida", label: "Recibida" },
+                { value: "cancelada", label: "Cancelada" },
+              ]},
+              { field: "origen", label: "Origen", values: [
+                { value: "oc", label: "Orden de Compra" },
+                { value: "devolucion", label: "Devolución" },
+                { value: "toma_equipo", label: "Toma de Equipo" },
+              ]},
+            ]}
+            groupByOptions={[
+              { id: "estado", label: "Estado", field: "estado" },
+              { id: "proveedor", label: "Proveedor", field: "proveedor" },
+              { id: "sucursal", label: "Sucursal", field: "sucursal" },
+              { id: "origen", label: "Origen", field: "origen" },
+            ]}
+            activeFilters={activeFiltersRec}
+            activeGroupBy={activeGroupByRec}
+            searchTerm={recepcionBusqueda}
+            onFiltersChange={f => {
+              setActiveFiltersRec(f)
+              setRecepcionFiltroEstado((f.find(x => x.field === "estado")?.value as any) ?? "todos")
+            }}
+            onGroupByChange={setActiveGroupByRec}
+            onSearchChange={setRecepcionBusqueda}
+            savedFilters={savedFiltersRec}
+            {...makeSavedFilterHandlersC(setSavedFiltersRec, setActiveFiltersRec, setActiveGroupByRec, setRecepcionBusqueda)}
+            totalCount={recepciones.length}
+            filteredCount={recepcionesFiltradas.length}
+          />
         </div>
 
         {/* Tabla */}
@@ -3252,6 +3303,33 @@ export default function ModuloCompras() {
               {formatCurrency(facturasMock.filter(f => f.estado !== 'pagada').reduce((s, f) => s + f.total, 0))}
             </p>
           </div>
+        </div>
+
+        <div className="mb-4">
+          <OdooFilterBar
+            moduleName="facturas-compra"
+            filterOptions={[
+              { field: "estado", label: "Estado", values: [
+                { value: "pendiente", label: "Pendiente" },
+                { value: "pagada", label: "Pagada" },
+                { value: "vencida", label: "Vencida" },
+              ]},
+            ]}
+            groupByOptions={[
+              { id: "estado", label: "Estado", field: "estado" },
+              { id: "proveedor", label: "Proveedor", field: "proveedor" },
+            ]}
+            activeFilters={activeFiltersFC}
+            activeGroupBy={activeGroupByFC}
+            searchTerm=""
+            onFiltersChange={setActiveFiltersFC}
+            onGroupByChange={setActiveGroupByFC}
+            onSearchChange={() => {}}
+            savedFilters={savedFiltersFC}
+            {...makeSavedFilterHandlersC(setSavedFiltersFC, setActiveFiltersFC, setActiveGroupByFC, () => {})}
+            totalCount={facturasMock.length}
+            filteredCount={facturasMock.length}
+          />
         </div>
 
         <div className="bg-white rounded-lg border overflow-hidden">

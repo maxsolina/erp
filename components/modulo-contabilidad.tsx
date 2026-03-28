@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState } from "react"
+import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
 import { 
   Search, 
   ChevronDown, 
@@ -640,40 +641,36 @@ export default function ModuloContabilidad() {
     return (
       <div>
         {/* Barra superior */}
-        <div className="flex items-center justify-between mb-4 bg-white border-b border-gray-200 py-2 px-4 -mx-6 -mt-6">
+        <div className="flex items-center gap-3 mb-4">
           <button 
             onClick={crearNuevaMoneda}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 transition-colors text-sm font-medium"
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex-shrink-0"
           >
             Crear
           </button>
-          
-          <div className="flex-1 flex items-center justify-center gap-4">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar..."
-                value={monedaSearchText}
-                onChange={(e) => setMonedaSearchText(e.target.value)}
-                className="pl-9 pr-4 py-1.5 border border-gray-300 rounded text-sm w-64 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
-              Filtros
-            </button>
-            <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
-              Agrupar
-            </button>
-            <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
-              Favoritos
-            </button>
-            <span className="text-sm text-gray-500 ml-4">
-              1-{filteredMonedas.length} de {filteredMonedas.length}
-            </span>
+          <div className="flex-1">
+            <OdooFilterBar
+              moduleName="monedas"
+              filterOptions={[
+                { field: "activa", label: "Estado", values: [
+                  { value: "true", label: "Activa" },
+                  { value: "false", label: "Inactiva" },
+                ]},
+              ]}
+              groupByOptions={[]}
+              activeFilters={[]}
+              activeGroupBy={[]}
+              searchTerm={monedaSearchText}
+              onFiltersChange={() => {}}
+              onGroupByChange={() => {}}
+              onSearchChange={setMonedaSearchText}
+              savedFilters={[]}
+              onSaveFilter={() => {}}
+              onDeleteFilter={() => {}}
+              onApplyFilter={() => {}}
+              totalCount={monedas.length}
+              filteredCount={filteredMonedas.length}
+            />
           </div>
         </div>
 
@@ -1182,40 +1179,36 @@ export default function ModuloContabilidad() {
     return (
       <div>
         {/* Barra superior */}
-        <div className="flex items-center justify-between mb-4 bg-white border-b border-gray-200 py-2 px-4 -mx-6 -mt-6">
+        <div className="flex items-center gap-3 mb-4">
           <button 
             onClick={crearNuevoTipoCotizacion}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 transition-colors text-sm font-medium"
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex-shrink-0"
           >
             Crear
           </button>
-          
-          <div className="flex-1 flex items-center justify-center gap-4">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar..."
-                value={tipoCotizacionSearchText}
-                onChange={(e) => setTipoCotizacionSearchText(e.target.value)}
-                className="pl-9 pr-4 py-1.5 border border-gray-300 rounded text-sm w-64 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
-              Filtros
-            </button>
-            <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
-              Agrupar
-            </button>
-            <button className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
-              Favoritos
-            </button>
-            <span className="text-sm text-gray-500 ml-4">
-              1-{filteredTipos.length} de {filteredTipos.length}
-            </span>
+          <div className="flex-1">
+            <OdooFilterBar
+              moduleName="tipos-cotizacion"
+              filterOptions={[
+                { field: "activo", label: "Estado", values: [
+                  { value: "true", label: "Activo" },
+                  { value: "false", label: "Inactivo" },
+                ]},
+              ]}
+              groupByOptions={[]}
+              activeFilters={[]}
+              activeGroupBy={[]}
+              searchTerm={tipoCotizacionSearchText}
+              onFiltersChange={() => {}}
+              onGroupByChange={() => {}}
+              onSearchChange={setTipoCotizacionSearchText}
+              savedFilters={[]}
+              onSaveFilter={() => {}}
+              onDeleteFilter={() => {}}
+              onApplyFilter={() => {}}
+              totalCount={filteredTipos.length}
+              filteredCount={filteredTipos.length}
+            />
           </div>
         </div>
 
