@@ -10314,9 +10314,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                             className="w-28 px-1 py-1 border border-amber-400 bg-amber-50 rounded text-xs text-right text-amber-800 placeholder-amber-400 focus:ring-1 focus:ring-amber-400"
                             placeholder="Precio ARS"
                           />
-                        ) : (
-                          <span className="text-gray-400 text-xs">Auto</span>
-                        )}
+                        ) : (() => {
+                          const costo = nuevaLineaVersion.costo_importe || 0
+                          const mkPct = nuevaLineaVersion.markup_porcentaje || 0
+                          const mkNom = nuevaLineaVersion.markup_nominal || 0
+                          const pvCalc = costo * (1 + mkPct / 100) + mkNom
+                          return pvCalc > 0
+                            ? <span className="text-emerald-700 text-xs font-medium">{formatCurrency(Math.round(pvCalc * 100) / 100, nuevaLineaVersion.costo_moneda || "ARS")}</span>
+                            : <span className="text-gray-400 text-xs">Auto</span>
+                        })()}
                       </td>
                       <td className="py-1.5 px-2">
                         <select value={nuevaLineaVersion.iva || 21} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, iva: Number(e.target.value) as 0 | 10.5 | 21 })}
