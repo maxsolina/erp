@@ -4953,7 +4953,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         moneda: "ARS",
         nota_venta_numero: null,
         sucursal: "Puerto Norte",
-        categoria: "equipos en parte de pago",
+              categoria: "Equipos en parte de pago",
         lineas: [{
           descripcion: `Toma de equipo usado: ${modeloSeleccionado.nombre}`,
           fecha_vencimiento: ahora,
@@ -10598,7 +10598,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   </td>
                   <td className="py-3 px-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      {cat.nombre.toLowerCase() === "equipos en parte de pago" ? (
+                      {cat.nombre.toLowerCase() === "equipos en parte de pago" || cat.nombre === "Equipos en parte de pago" ? (
                         <span className="text-xs text-gray-400 italic px-1">del sistema</span>
                       ) : (
                         <>
