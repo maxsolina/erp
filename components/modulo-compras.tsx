@@ -60,28 +60,58 @@ interface OrdenCompra {
   seguimiento?: SeguimientoEntry[]
 }
 
+interface UnidadSerie {
+  nro_serie: string
+  lote?: string
+  bateria_pct?: number
+  color?: string
+  outlet: boolean
+  fallas?: string
+}
+
+interface RecepcionLinea {
+  producto_id: number
+  producto_nombre: string
+  producto_sku: string
+  tiene_serie: boolean
+  cantidad_pedida: number
+  cantidad_recibida: number
+  udm: string
+  precio_unitario: number
+  estado_linea: "pendiente" | "recibido" | "recibido_parcial"
+  unidades_serie?: UnidadSerie[]
+}
+
 interface Recepcion {
   id: number
   numero: string
   fecha: string
-  proveedor_id: number
-  proveedor_nombre: string
-  orden_compra_id: number
-  orden_compra_numero: string
-  estado: "borrador" | "confirmada" | "cancelada"
-  tipo: "total" | "parcial"
-  observaciones: string
-  legajo_id?: number
-  despacho_simple_id?: number
-  lineas: {
-    producto_id: number
-    producto_nombre: string
-    cantidad_ordenada: number
-    cantidad_recibida: number
-    cantidad_esta_recepcion: number
-    precio_unitario: number
-  }[]
-  seguimiento?: SeguimientoEntry[]
+  sucursal: string
+  proveedor_id?: number
+  proveedor_nombre?: string
+  deposito_destino: string
+  ubicacion_destino?: string
+  documento_origen_tipo: "oc" | "toma_equipo" | "transferencia"
+  documento_origen_id?: number
+  documento_origen_ref: string
+  fecha_pedido?: string
+  fecha_entrega_esperada?: string
+  fecha_recepcion_real?: string
+  remito_numero?: string
+  remito_fecha?: string
+  observaciones?: string
+  estado: "esperando_recepcion" | "recibida" | "cancelada"
+  recepcion_anterior_id?: number
+  recepcion_complementaria_id?: number
+  lineas: RecepcionLinea[]
+  cancelacion?: {
+    usuario: string
+    fecha: string
+    motivo: string
+  }
+  // backward compat para legajo
+  orden_compra_id?: number
+  orden_compra_numero?: string
 }
 
 interface FacturaCompra {
@@ -433,9 +463,119 @@ export default function ModuloCompras() {
   const [creandoOC, setCreandoOC] = useState(false)
 
   // Recepciones
-  const [recepciones, setRecepciones] = useState<Recepcion[]>([])
+  const [recepciones, setRecepciones] = useState<Recepcion[]>([
+    {
+      id: 1,
+      numero: "REC-00001",
+      fecha: "2026-03-20T10:00:00",
+      sucursal: "Puerto Norte",
+      proveedor_id: 1,
+      proveedor_nombre: "Tech Supplies SA",
+      deposito_destino: "Depósito Principal",
+      ubicacion_destino: "Estante A1",
+      documento_origen_tipo: "oc",
+      documento_origen_id: 1,
+      documento_origen_ref: "OC-00001",
+      orden_compra_id: 1,
+      orden_compra_numero: "OC-00001",
+      fecha_pedido: "2026-03-10",
+      fecha_entrega_esperada: "2026-03-22",
+      estado: "esperando_recepcion",
+      lineas: [
+        {
+          producto_id: 1,
+          producto_nombre: "Pantalla iPhone 13",
+          producto_sku: "PAN-IPH13",
+          tiene_serie: false,
+          cantidad_pedida: 10,
+          cantidad_recibida: 0,
+          udm: "un",
+          precio_unitario: 50000,
+          estado_linea: "pendiente"
+        }
+      ]
+    },
+    {
+      id: 2,
+      numero: "REC-00002",
+      fecha: "2026-03-15T14:00:00",
+      sucursal: "Puerto Norte",
+      proveedor_id: 2,
+      proveedor_nombre: "Mobile World Inc",
+      deposito_destino: "Depósito Principal",
+      documento_origen_tipo: "oc",
+      documento_origen_id: 2,
+      documento_origen_ref: "OC-00002",
+      orden_compra_id: 2,
+      orden_compra_numero: "OC-00002",
+      fecha_pedido: "2026-03-08",
+      fecha_entrega_esperada: "2026-03-20",
+      fecha_recepcion_real: "2026-03-15T14:22:00",
+      remito_numero: "R-0004521",
+      remito_fecha: "2026-03-14",
+      estado: "recibida",
+      lineas: [
+        {
+          producto_id: 2,
+          producto_nombre: "iPhone 14 Pro 128GB",
+          producto_sku: "IPH14P-128",
+          tiene_serie: true,
+          cantidad_pedida: 10,
+          cantidad_recibida: 10,
+          udm: "un",
+          precio_unitario: 500,
+          estado_linea: "recibido",
+          unidades_serie: [
+            { nro_serie: "355412001234567", lote: "", bateria_pct: 100, color: "Negro", outlet: false, fallas: "" }
+          ]
+        }
+      ]
+    },
+    {
+      id: 3,
+      numero: "REC-00003",
+      fecha: "2026-03-18T09:30:00",
+      sucursal: "Puerto Norte",
+      proveedor_nombre: "Toma en Parte de Pago",
+      deposito_destino: "Depósito Usados",
+      documento_origen_tipo: "toma_equipo",
+      documento_origen_ref: "TOMA-00012",
+      fecha_recepcion_real: "2026-03-18T09:30:00",
+      estado: "recibida",
+      lineas: [
+        {
+          producto_id: 10,
+          producto_nombre: "iPhone 12 Usado",
+          producto_sku: "IPH12U",
+          tiene_serie: true,
+          cantidad_pedida: 1,
+          cantidad_recibida: 1,
+          udm: "un",
+          precio_unitario: 180000,
+          estado_linea: "recibido",
+          unidades_serie: [
+            { nro_serie: "356789009876543", lote: "", bateria_pct: 78, color: "Negro", outlet: true, fallas: "Rayones leves en pantalla" }
+          ]
+        }
+      ]
+    }
+  ])
   const [selectedRecepcion, setSelectedRecepcion] = useState<Recepcion | null>(null)
   const [creandoRecepcion, setCreandoRecepcion] = useState(false)
+  // UI state recepciones
+  const [recepcionFiltroEstado, setRecepcionFiltroEstado] = useState<"todos" | "esperando_recepcion" | "recibida" | "cancelada">("todos")
+  const [recepcionBusqueda, setRecepcionBusqueda] = useState("")
+  // Cantidades editadas en la ficha (producto_id → cantidad recibida)
+  const [recepcionCantidades, setRecepcionCantidades] = useState<Record<number, number>>({})
+  // Modal de N° serie
+  const [modalSerieOpen, setModalSerieOpen] = useState(false)
+  const [modalSerieProducto, setModalSerieProducto] = useState<RecepcionLinea | null>(null)
+  const [modalSerieUnidades, setModalSerieUnidades] = useState<UnidadSerie[]>([])
+  // Modal de cancelación
+  const [modalCancelacionOpen, setModalCancelacionOpen] = useState(false)
+  const [cancelacionMotivo, setCancelacionMotivo] = useState("")
+  // Unidades serie acumuladas durante confirmación (producto_id → lista)
+  const [seriesConfirmadas, setSeriesConfirmadas] = useState<Record<number, UnidadSerie[]>>({})
 
   // Cargar recepciones pendientes generadas desde Toma de Equipo (ventas)
   useEffect(() => {
@@ -1212,14 +1352,95 @@ export default function ModuloCompras() {
               <p className="text-sm text-gray-500">{formatDate(selectedOC.fecha)} | {selectedOC.proveedor_nombre}</p>
             </div>
           </div>
-          <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
-            selectedOC.estado === 'confirmada' ? 'bg-blue-100 text-blue-700' :
-            selectedOC.estado === 'recibida' ? 'bg-green-100 text-green-700' :
-            'bg-gray-100 text-gray-700'
-          }`}>
-            {selectedOC.estado.charAt(0).toUpperCase() + selectedOC.estado.slice(1)}
-          </span>
+          <div className="flex items-center gap-3">
+            {(selectedOC.estado === 'confirmada' || selectedOC.estado === 'recibida_parcial') && (
+              <button
+                onClick={() => {
+                  const nuevoId = Math.max(...recepciones.map(r => r.id), 0) + 1
+                  const nuevaRec: Recepcion = {
+                    id: nuevoId,
+                    numero: `REC-${String(nuevoId).padStart(5, '0')}`,
+                    fecha: new Date().toISOString(),
+                    sucursal: "Puerto Norte",
+                    proveedor_id: selectedOC.proveedor_id,
+                    proveedor_nombre: selectedOC.proveedor_nombre,
+                    deposito_destino: "Depósito Principal",
+                    documento_origen_tipo: "oc",
+                    documento_origen_id: selectedOC.id,
+                    documento_origen_ref: selectedOC.numero,
+                    orden_compra_id: selectedOC.id,
+                    orden_compra_numero: selectedOC.numero,
+                    fecha_pedido: selectedOC.fecha.slice(0, 10),
+                    fecha_entrega_esperada: selectedOC.fecha_entrega_estimada,
+                    estado: "esperando_recepcion",
+                    lineas: selectedOC.lineas.map(l => ({
+                      producto_id: l.producto_id,
+                      producto_nombre: l.producto_nombre,
+                      producto_sku: l.producto_nombre.substring(0, 8).toUpperCase().replace(' ', '-'),
+                      tiene_serie: false,
+                      cantidad_pedida: l.cantidad - l.cantidad_recibida,
+                      cantidad_recibida: 0,
+                      udm: "un",
+                      precio_unitario: l.precio_unitario,
+                      estado_linea: "pendiente"
+                    })).filter(l => l.cantidad_pedida > 0)
+                  }
+                  setRecepciones(prev => [...prev, nuevaRec])
+                  setSelectedOC(null)
+                  setSelectedRecepcion(nuevaRec)
+                  setRecepcionCantidades(Object.fromEntries(nuevaRec.lineas.map(l => [l.producto_id, 0])))
+                  setActiveView("recepciones")
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700"
+              >
+                <Truck className="w-4 h-4" />
+                Generar Recepción
+              </button>
+            )}
+            <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
+              selectedOC.estado === 'confirmada' ? 'bg-blue-100 text-blue-700' :
+              selectedOC.estado === 'recibida' ? 'bg-green-100 text-green-700' :
+              selectedOC.estado === 'recibida_parcial' ? 'bg-amber-100 text-amber-700' :
+              'bg-gray-100 text-gray-700'
+            }`}>
+              {selectedOC.estado.replace('_', ' ').charAt(0).toUpperCase() + selectedOC.estado.replace('_', ' ').slice(1)}
+            </span>
+          </div>
         </div>
+
+        {/* Sección recepciones vinculadas */}
+        {recepciones.filter(r => r.documento_origen_id === selectedOC.id).length > 0 && (
+          <div className="bg-white rounded-lg border p-4 mb-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">
+              Recepciones ({recepciones.filter(r => r.documento_origen_id === selectedOC.id).length})
+            </h3>
+            <div className="space-y-2">
+              {recepciones.filter(r => r.documento_origen_id === selectedOC.id).map(r => (
+                <div
+                  key={r.id}
+                  onClick={() => {
+                    setSelectedRecepcion(r)
+                    setRecepcionCantidades(Object.fromEntries(r.lineas.map(l => [l.producto_id, l.cantidad_recibida])))
+                    setSelectedOC(null)
+                    setActiveView("recepciones")
+                  }}
+                  className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 text-sm"
+                >
+                  <span className="font-medium text-emerald-700">{r.numero}</span>
+                  <span className="text-gray-500">{new Date(r.fecha).toLocaleDateString('es-AR')}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                    r.estado === 'recibida' ? 'bg-green-100 text-green-700' :
+                    r.estado === 'esperando_recepcion' ? 'bg-amber-100 text-amber-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>
+                    {r.estado === 'recibida' ? 'Recibida' : r.estado === 'esperando_recepcion' ? 'Esperando' : 'Cancelada'}
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="bg-white rounded-lg border p-6">
           <h3 className="font-semibold mb-4">Líneas de la Orden</h3>
@@ -1910,83 +2131,619 @@ export default function ModuloCompras() {
   }
 
   // =====================================================
+  // LÓGICA CONFIRMAR RECEPCIÓN
+  // =====================================================
+  const handleConfirmarRecepcion = () => {
+    if (!selectedRecepcion) return
+    const rec = selectedRecepcion
+
+    // Validación: cantidades > 0
+    const lineasConCantidad = rec.lineas.filter(l => (recepcionCantidades[l.producto_id] ?? 0) > 0)
+    if (lineasConCantidad.length === 0) {
+      alert("Debe ingresar al menos una cantidad recibida mayor a 0.")
+      return
+    }
+
+    // Validación: series registradas para productos con serie
+    for (const linea of rec.lineas) {
+      if (!linea.tiene_serie) continue
+      const cantRequerida = recepcionCantidades[linea.producto_id] ?? 0
+      if (cantRequerida === 0) continue
+      const seriesDelProducto = seriesConfirmadas[linea.producto_id] || []
+      if (seriesDelProducto.length < cantRequerida) {
+        alert(`Debe registrar los N° de serie para: ${linea.producto_nombre}`)
+        setModalSerieProducto(linea)
+        setModalSerieUnidades(seriesDelProducto.length > 0 ? seriesDelProducto : Array.from({ length: cantRequerida }, () => ({ nro_serie: '', outlet: false })))
+        setModalSerieOpen(true)
+        return
+      }
+    }
+
+    const ahora = new Date().toISOString()
+    const lineasActualizadas: RecepcionLinea[] = rec.lineas.map(l => {
+      const cantRec = recepcionCantidades[l.producto_id] ?? 0
+      const estadoLinea: RecepcionLinea['estado_linea'] = cantRec === 0
+        ? 'pendiente'
+        : cantRec < l.cantidad_pedida
+        ? 'recibido_parcial'
+        : 'recibido'
+      return {
+        ...l,
+        cantidad_recibida: cantRec,
+        estado_linea: estadoLinea,
+        unidades_serie: l.tiene_serie ? (seriesConfirmadas[l.producto_id] || []) : l.unidades_serie
+      }
+    })
+
+    // Determinar si hay recepción parcial
+    const hayParcial = lineasActualizadas.some(l => l.estado_linea === 'recibido_parcial')
+
+    // Generar recepción complementaria si hay parcial
+    let recCompId: number | undefined = undefined
+    if (hayParcial) {
+      const lineasPendientes: RecepcionLinea[] = lineasActualizadas
+        .filter(l => l.cantidad_pedida - l.cantidad_recibida > 0)
+        .map(l => ({
+          ...l,
+          cantidad_pedida: l.cantidad_pedida - l.cantidad_recibida,
+          cantidad_recibida: 0,
+          estado_linea: 'pendiente' as const,
+          unidades_serie: []
+        }))
+
+      if (lineasPendientes.length > 0) {
+        const nuevoId = Math.max(...recepciones.map(r => r.id)) + 1
+        recCompId = nuevoId
+        const recComp: Recepcion = {
+          ...rec,
+          id: nuevoId,
+          numero: `REC-${String(nuevoId).padStart(5, '0')}`,
+          fecha: ahora,
+          estado: 'esperando_recepcion',
+          fecha_recepcion_real: undefined,
+          remito_numero: undefined,
+          remito_fecha: undefined,
+          recepcion_anterior_id: rec.id,
+          recepcion_complementaria_id: undefined,
+          lineas: lineasPendientes,
+          cancelacion: undefined
+        }
+        setRecepciones(prev => [...prev, recComp])
+      }
+    }
+
+    // Actualizar la recepción actual
+    const recActualizada: Recepcion = {
+      ...rec,
+      estado: 'recibida',
+      fecha_recepcion_real: ahora,
+      lineas: lineasActualizadas,
+      recepcion_complementaria_id: recCompId
+    }
+    setRecepciones(prev => prev.map(r => r.id === rec.id ? recActualizada : r))
+    setSelectedRecepcion(recActualizada)
+
+    // Actualizar OC vinculada
+    if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
+      setOrdenesCompra(prev => prev.map(oc => {
+        if (oc.id !== rec.documento_origen_id) return oc
+        const todasRecibidas = lineasActualizadas.every(l => l.estado_linea === 'recibido')
+        return {
+          ...oc,
+          estado: todasRecibidas && !hayParcial ? 'recibida' : 'recibida_parcial',
+          lineas: oc.lineas.map(ol => {
+            const linRec = lineasActualizadas.find(l => l.producto_id === ol.producto_id)
+            return linRec ? { ...ol, cantidad_recibida: ol.cantidad_recibida + linRec.cantidad_recibida } : ol
+          })
+        }
+      }))
+    }
+
+    // Limpiar estado temporal
+    setSeriesConfirmadas({})
+    setRecepcionCantidades({})
+  }
+
+  // =====================================================
   // RENDER RECEPCIONES
   // =====================================================
   const renderRecepciones = () => {
+    if (selectedRecepcion) return renderFichaRecepcion()
+
     const estadoColor: Record<string, string> = {
-      confirmada: 'bg-green-100 text-green-700',
-      borrador:   'bg-amber-100 text-amber-700',
-      cancelada:  'bg-red-100 text-red-700',
+      recibida:             'bg-green-100 text-green-700',
+      esperando_recepcion:  'bg-amber-100 text-amber-700',
+      cancelada:            'bg-red-100 text-red-700',
     }
     const estadoLabel: Record<string, string> = {
-      confirmada: 'Confirmada',
-      borrador:   'Esperando Recepción',
-      cancelada:  'Cancelada',
+      recibida:             'Recibida',
+      esperando_recepcion:  'Esperando Recepción',
+      cancelada:            'Cancelada',
     }
+    const origenLabel: Record<string, string> = {
+      oc:           'Orden de Compra',
+      toma_equipo:  'Toma de Equipo',
+      transferencia:'Transferencia',
+    }
+
+    const recepcionesFiltradas = recepciones.filter(r => {
+      const matchEstado = recepcionFiltroEstado === "todos" || r.estado === recepcionFiltroEstado
+      const q = recepcionBusqueda.toLowerCase()
+      const matchBusqueda = !q ||
+        r.numero.toLowerCase().includes(q) ||
+        (r.proveedor_nombre || '').toLowerCase().includes(q) ||
+        r.documento_origen_ref.toLowerCase().includes(q) ||
+        r.lineas.some(l =>
+          l.producto_nombre.toLowerCase().includes(q) ||
+          l.producto_sku.toLowerCase().includes(q) ||
+          (l.unidades_serie || []).some(u => u.nro_serie.toLowerCase().includes(q))
+        )
+      return matchEstado && matchBusqueda
+    })
 
     return (
       <div>
-        <div className="flex items-center justify-between mb-6">
+        {/* Cabecera */}
+        <div className="flex items-start justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-emerald-900">Recepciones de Compra</h1>
-            <p className="text-gray-500 mt-1">Gestione las recepciones de mercadería</p>
+            <h1 className="text-2xl font-bold text-gray-900">Recepciones de Compra</h1>
+            <p className="text-gray-500 mt-1 text-sm">Las recepciones se generan automáticamente desde Órdenes de Compra, Tomas de Equipo y Transferencias.</p>
           </div>
-          <button className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700">
-            <Plus className="w-4 h-4" /> Nueva Recepción
-          </button>
+          <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>No se crean manualmente</span>
+          </div>
         </div>
 
+        {/* Estadísticas */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Total Recepciones</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Total</p>
             <p className="text-2xl font-bold text-gray-900">{recepciones.length}</p>
           </div>
           <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Confirmadas</p>
-            <p className="text-2xl font-bold text-emerald-600">{recepciones.filter(r => r.estado === 'confirmada').length}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Esperando Recepción</p>
+            <p className="text-2xl font-bold text-amber-600">{recepciones.filter(r => r.estado === 'esperando_recepcion').length}</p>
           </div>
           <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Esperando Recepción</p>
-            <p className="text-2xl font-bold text-amber-600">{recepciones.filter(r => r.estado === 'borrador').length}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Recibidas</p>
+            <p className="text-2xl font-bold text-green-600">{recepciones.filter(r => r.estado === 'recibida').length}</p>
           </div>
           <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Valor Total</p>
-            <p className="text-2xl font-bold text-blue-600">{formatCurrency(recepciones.reduce((s, r) => s + r.lineas.reduce((ls, l) => ls + l.cantidad_esta_recepcion * l.precio_unitario, 0), 0))}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Canceladas</p>
+            <p className="text-2xl font-bold text-red-600">{recepciones.filter(r => r.estado === 'cancelada').length}</p>
           </div>
         </div>
 
+        {/* Filtros */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar por N° recepción, OC, IMEI, producto..."
+              value={recepcionBusqueda}
+              onChange={e => setRecepcionBusqueda(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1">
+            {(["todos", "esperando_recepcion", "recibida", "cancelada"] as const).map(est => (
+              <button
+                key={est}
+                onClick={() => setRecepcionFiltroEstado(est)}
+                className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                  recepcionFiltroEstado === est
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {est === "todos" ? "Todos" : estadoLabel[est]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tabla */}
         <div className="bg-white rounded-lg border overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
-              <tr className="text-xs text-gray-500 uppercase">
-                <th className="text-left py-3 px-4">Número</th>
+              <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                <th className="text-left py-3 px-4">N° Recepción</th>
                 <th className="text-left py-3 px-4">Fecha</th>
                 <th className="text-left py-3 px-4">Proveedor / Origen</th>
-                <th className="text-left py-3 px-4">Ref.</th>
-                <th className="text-center py-3 px-4">Items</th>
-                <th className="text-right py-3 px-4">Total</th>
+                <th className="text-left py-3 px-4">Sucursal / Depósito</th>
+                <th className="text-left py-3 px-4">Doc. Origen</th>
+                <th className="text-center py-3 px-4">Productos</th>
                 <th className="text-center py-3 px-4">Estado</th>
+                <th className="py-3 px-4"></th>
               </tr>
             </thead>
-            <tbody>
-              {recepciones.length === 0 && (
-                <tr><td colSpan={7} className="py-10 text-center text-sm text-gray-400">No hay recepciones registradas</td></tr>
+            <tbody className="divide-y divide-gray-100">
+              {recepcionesFiltradas.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-sm text-gray-400">
+                    No se encontraron recepciones
+                  </td>
+                </tr>
               )}
-              {recepciones.map(rec => (
-                <tr key={rec.id} className="border-b hover:bg-gray-50 cursor-pointer">
+              {recepcionesFiltradas.map(rec => (
+                <tr
+                  key={rec.id}
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => {
+                    setSelectedRecepcion(rec)
+                    setRecepcionCantidades(
+                      Object.fromEntries(rec.lineas.map(l => [l.producto_id, l.cantidad_recibida]))
+                    )
+                  }}
+                >
                   <td className="py-3 px-4 font-medium text-emerald-700">{rec.numero}</td>
-                  <td className="py-3 px-4 text-sm">{new Date(rec.fecha).toLocaleDateString('es-AR')}</td>
-                  <td className="py-3 px-4 text-sm">{rec.proveedor_nombre}</td>
-                  <td className="py-3 px-4 text-sm text-blue-600">{rec.orden_compra_numero || '-'}</td>
-                  <td className="py-3 px-4 text-sm text-center">{rec.lineas.length}</td>
-                  <td className="py-3 px-4 text-sm text-right font-medium">{formatCurrency(rec.lineas.reduce((s, l) => s + l.cantidad_esta_recepcion * l.precio_unitario, 0))}</td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{new Date(rec.fecha).toLocaleDateString('es-AR')}</td>
+                  <td className="py-3 px-4 text-sm">
+                    <span className="font-medium">{rec.proveedor_nombre || '-'}</span>
+                    <span className="ml-2 text-xs text-gray-400">{origenLabel[rec.documento_origen_tipo]}</span>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-600">
+                    <span>{rec.sucursal}</span>
+                    <span className="text-gray-400 mx-1">/</span>
+                    <span>{rec.deposito_destino}</span>
+                  </td>
+                  <td className="py-3 px-4">
+                    <span className="text-sm text-blue-600 font-medium">{rec.documento_origen_ref}</span>
+                  </td>
+                  <td className="py-3 px-4 text-center text-sm">{rec.lineas.length}</td>
                   <td className="py-3 px-4 text-center">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${estadoColor[rec.estado] || 'bg-gray-100 text-gray-600'}`}>
                       {estadoLabel[rec.estado] || rec.estado}
                     </span>
                   </td>
+                  <td className="py-3 px-4">
+                    <ChevronRight className="w-4 h-4 text-gray-400" />
+                  </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
+  // =====================================================
+  // RENDER FICHA RECEPCION
+  // =====================================================
+  const renderFichaRecepcion = () => {
+    if (!selectedRecepcion) return null
+    const rec = selectedRecepcion
+    const editable = rec.estado === "esperando_recepcion"
+
+    const estadoColor: Record<string, string> = {
+      recibida:             'bg-green-100 text-green-700',
+      esperando_recepcion:  'bg-amber-100 text-amber-700',
+      cancelada:            'bg-red-100 text-red-700',
+    }
+    const estadoLabel: Record<string, string> = {
+      recibida:             'Recibida',
+      esperando_recepcion:  'Esperando Recepción',
+      cancelada:            'Cancelada',
+    }
+    const estadoLineaColor: Record<string, string> = {
+      pendiente:        'bg-gray-100 text-gray-600',
+      recibido:         'bg-green-100 text-green-700',
+      recibido_parcial: 'bg-amber-100 text-amber-700',
+    }
+    const estadoLineaLabel: Record<string, string> = {
+      pendiente:        'Pendiente',
+      recibido:         'Recibido',
+      recibido_parcial: 'Parcial',
+    }
+    const origenLabel: Record<string, string> = {
+      oc:           'Orden de Compra',
+      toma_equipo:  'Toma de Equipo',
+      transferencia:'Transferencia',
+    }
+
+    // Check si todas las cantidades recibidas = pedidas (para "Recibir todo")
+    const todasCompletas = rec.lineas.every(l => (recepcionCantidades[l.producto_id] ?? l.cantidad_recibida) >= l.cantidad_pedida)
+
+    const ocVinculada = rec.documento_origen_tipo === "oc" && rec.documento_origen_id
+      ? ordenesCompra.find(o => o.id === rec.documento_origen_id)
+      : null
+
+    const recAnterior = rec.recepcion_anterior_id
+      ? recepciones.find(r => r.id === rec.recepcion_anterior_id)
+      : null
+
+    const recComplementaria = rec.recepcion_complementaria_id
+      ? recepciones.find(r => r.id === rec.recepcion_complementaria_id)
+      : null
+
+    return (
+      <div>
+        {/* Breadcrumb */}
+        <div className="text-sm text-gray-500 mb-4 flex items-center gap-2">
+          <button onClick={() => setSelectedRecepcion(null)} className="hover:text-emerald-600">
+            Recepciones
+          </button>
+          <ChevronRight className="w-4 h-4" />
+          <span className="text-gray-900 font-medium">{rec.numero}</span>
+        </div>
+
+        {/* Smart buttons de navegación cruzada */}
+        {(ocVinculada || recAnterior || recComplementaria) && (
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
+            {ocVinculada && (
+              <button
+                onClick={() => { setSelectedOC(ocVinculada); setActiveView("ordenes_compra") }}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded-full hover:bg-blue-100 transition-colors"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Ver OC: {ocVinculada.numero}
+              </button>
+            )}
+            {recAnterior && (
+              <button
+                onClick={() => {
+                  setSelectedRecepcion(recAnterior)
+                  setRecepcionCantidades(Object.fromEntries(recAnterior.lineas.map(l => [l.producto_id, l.cantidad_recibida])))
+                }}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs bg-gray-50 border border-gray-200 text-gray-700 rounded-full hover:bg-gray-100 transition-colors"
+              >
+                <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+                Recepción anterior: {recAnterior.numero}
+              </button>
+            )}
+            {recComplementaria && (
+              <button
+                onClick={() => {
+                  setSelectedRecepcion(recComplementaria)
+                  setRecepcionCantidades(Object.fromEntries(recComplementaria.lineas.map(l => [l.producto_id, l.cantidad_recibida])))
+                }}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs bg-amber-50 border border-amber-200 text-amber-700 rounded-full hover:bg-amber-100 transition-colors"
+              >
+                <ArrowRight className="w-3.5 h-3.5" />
+                Recepción complementaria: {recComplementaria.numero}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Header */}
+        <div className="flex items-start justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <BotonVolver onClick={() => setSelectedRecepcion(null)} variant="minimal" texto="" />
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">{rec.numero}</h1>
+              <p className="text-sm text-gray-500">
+                {new Date(rec.fecha).toLocaleDateString('es-AR')} | {rec.proveedor_nombre || 'Sin proveedor'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {editable && (
+              <button
+                onClick={handleConfirmarRecepcion}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700"
+              >
+                <CheckCircle className="w-4 h-4" />
+                Confirmar Recepción
+              </button>
+            )}
+            {rec.estado === 'recibida' && (
+              <button
+                onClick={() => setModalCancelacionOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50"
+              >
+                <XCircle className="w-4 h-4" />
+                Cancelar
+              </button>
+            )}
+            <span className={`px-3 py-1.5 rounded-full text-sm font-semibold ${estadoColor[rec.estado]}`}>
+              {estadoLabel[rec.estado]}
+            </span>
+          </div>
+        </div>
+
+        {/* Cabecera datos */}
+        <div className="bg-white rounded-lg border p-6 mb-6">
+          <div className="grid grid-cols-3 gap-x-8 gap-y-4 text-sm">
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Sucursal</p>
+              <p className="font-medium">{rec.sucursal}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Depósito Destino</p>
+              <p className="font-medium">{rec.deposito_destino}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Ubicación</p>
+              <p className="font-medium">{rec.ubicacion_destino || '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Documento Origen</p>
+              {ocVinculada ? (
+                <button
+                  onClick={() => { setSelectedOC(ocVinculada); setActiveView("ordenes_compra") }}
+                  className="text-blue-600 font-medium hover:underline"
+                >
+                  {origenLabel[rec.documento_origen_tipo]}: {rec.documento_origen_ref}
+                </button>
+              ) : (
+                <p className="font-medium">{origenLabel[rec.documento_origen_tipo]}: {rec.documento_origen_ref}</p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Fecha Pedido</p>
+              <p className="font-medium">{rec.fecha_pedido ? new Date(rec.fecha_pedido).toLocaleDateString('es-AR') : '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Entrega Esperada</p>
+              <p className="font-medium">{rec.fecha_entrega_esperada ? new Date(rec.fecha_entrega_esperada).toLocaleDateString('es-AR') : '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Fecha Recepción Real</p>
+              <p className={`font-medium ${rec.fecha_recepcion_real ? 'text-green-700' : 'text-gray-400'}`}>
+                {rec.fecha_recepcion_real ? new Date(rec.fecha_recepcion_real).toLocaleString('es-AR') : 'Pendiente'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Remito N°</p>
+              {editable ? (
+                <input
+                  type="text"
+                  defaultValue={rec.remito_numero || ''}
+                  placeholder="Ingrese N° de remito"
+                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-emerald-500"
+                  onChange={e => setSelectedRecepcion({ ...rec, remito_numero: e.target.value })}
+                />
+              ) : (
+                <p className="font-medium">{rec.remito_numero || '-'}</p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Fecha Remito</p>
+              {editable ? (
+                <input
+                  type="date"
+                  defaultValue={rec.remito_fecha || ''}
+                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-emerald-500"
+                  onChange={e => setSelectedRecepcion({ ...rec, remito_fecha: e.target.value })}
+                />
+              ) : (
+                <p className="font-medium">{rec.remito_fecha ? new Date(rec.remito_fecha).toLocaleDateString('es-AR') : '-'}</p>
+              )}
+            </div>
+          </div>
+          {(editable || rec.observaciones) && (
+            <div className="mt-4 pt-4 border-t">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Observaciones</p>
+              {editable ? (
+                <textarea
+                  defaultValue={rec.observaciones || ''}
+                  rows={2}
+                  placeholder="Observaciones sobre la recepción..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-emerald-500 resize-none"
+                  onChange={e => setSelectedRecepcion({ ...rec, observaciones: e.target.value })}
+                />
+              ) : (
+                <p className="text-sm text-gray-700">{rec.observaciones || '-'}</p>
+              )}
+            </div>
+          )}
+          {rec.cancelacion && (
+            <div className="mt-4 pt-4 border-t border-red-200 bg-red-50 rounded-lg p-3">
+              <p className="text-xs text-red-500 font-semibold uppercase tracking-wide mb-1">Cancelación</p>
+              <p className="text-sm text-red-700">
+                <span className="font-medium">{rec.cancelacion.usuario}</span> — {new Date(rec.cancelacion.fecha).toLocaleString('es-AR')}
+              </p>
+              <p className="text-sm text-red-600 mt-1">{rec.cancelacion.motivo}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Grilla de productos */}
+        <div className="bg-white rounded-lg border overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
+            <h3 className="font-semibold text-gray-900 text-sm">Líneas de Recepción</h3>
+            {editable && (
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={todasCompletas}
+                  onChange={e => {
+                    if (e.target.checked) {
+                      const nuevo: Record<number, number> = {}
+                      rec.lineas.forEach(l => { nuevo[l.producto_id] = l.cantidad_pedida })
+                      setRecepcionCantidades(nuevo)
+                    } else {
+                      const nuevo: Record<number, number> = {}
+                      rec.lineas.forEach(l => { nuevo[l.producto_id] = 0 })
+                      setRecepcionCantidades(nuevo)
+                    }
+                  }}
+                  className="rounded border-gray-300 text-emerald-600"
+                />
+                Recibir todo
+              </label>
+            )}
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b">
+              <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                <th className="text-left py-2.5 px-4">Producto</th>
+                <th className="text-left py-2.5 px-4">SKU</th>
+                <th className="text-center py-2.5 px-4">Cant. Pedida</th>
+                <th className="text-center py-2.5 px-4">Cant. Recibida</th>
+                <th className="text-center py-2.5 px-4">UdM</th>
+                <th className="text-center py-2.5 px-4">Estado</th>
+                {editable && <th className="text-center py-2.5 px-4">Serie/IMEI</th>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {rec.lineas.map((linea, idx) => {
+                const cantRec = recepcionCantidades[linea.producto_id] ?? linea.cantidad_recibida
+                const estadoLinea = editable
+                  ? (cantRec === 0 ? 'pendiente' : cantRec < linea.cantidad_pedida ? 'recibido_parcial' : 'recibido')
+                  : linea.estado_linea
+                const seriesRegistradas = (seriesConfirmadas[linea.producto_id] || []).length
+
+                return (
+                  <tr key={idx} className="hover:bg-gray-50">
+                    <td className="py-3 px-4 font-medium text-gray-900">{linea.producto_nombre}</td>
+                    <td className="py-3 px-4 text-gray-500">{linea.producto_sku}</td>
+                    <td className="py-3 px-4 text-center">{linea.cantidad_pedida}</td>
+                    <td className="py-3 px-4 text-center">
+                      {editable ? (
+                        <input
+                          type="number"
+                          min={0}
+                          max={linea.cantidad_pedida}
+                          value={cantRec}
+                          onChange={e => setRecepcionCantidades(prev => ({
+                            ...prev,
+                            [linea.producto_id]: Math.min(linea.cantidad_pedida, Math.max(0, Number(e.target.value)))
+                          }))}
+                          className="w-16 text-center px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-emerald-500"
+                        />
+                      ) : (
+                        <span className="font-medium">{linea.cantidad_recibida}</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-center text-gray-500">{linea.udm}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${estadoLineaColor[estadoLinea]}`}>
+                        {estadoLineaLabel[estadoLinea]}
+                      </span>
+                    </td>
+                    {editable && (
+                      <td className="py-3 px-4 text-center">
+                        {linea.tiene_serie ? (
+                          <button
+                            onClick={() => {
+                              setModalSerieProducto(linea)
+                              setModalSerieUnidades(seriesConfirmadas[linea.producto_id] || Array.from({ length: cantRec }, () => ({ nro_serie: '', outlet: false })))
+                              setModalSerieOpen(true)
+                            }}
+                            className={`px-2 py-1 text-xs rounded border transition-colors ${
+                              seriesRegistradas >= cantRec && cantRec > 0
+                                ? 'border-green-300 bg-green-50 text-green-700'
+                                : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                            }`}
+                          >
+                            {seriesRegistradas >= cantRec && cantRec > 0
+                              ? `${seriesRegistradas} registradas`
+                              : `Registrar (${seriesRegistradas}/${cantRec})`
+                            }
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-400">-</span>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -2476,6 +3233,239 @@ export default function ModuloCompras() {
       <main className="flex-1 ml-56 p-6 bg-gray-50 min-h-screen">
         {renderContent()}
       </main>
+
+      {/* ===== MODAL REGISTRO N° SERIE ===== */}
+      {modalSerieOpen && modalSerieProducto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl mx-4 flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">
+                  Registrar unidades — {modalSerieProducto.producto_nombre}
+                </h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {modalSerieUnidades.filter(u => u.nro_serie.trim() !== '').length} de {recepcionCantidades[modalSerieProducto.producto_id] ?? modalSerieProducto.cantidad_pedida} unidades registradas
+                </p>
+              </div>
+              <button onClick={() => setModalSerieOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {/* Tabla unidades */}
+            <div className="overflow-auto flex-1 p-6">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-gray-500 uppercase tracking-wider border-b">
+                    <th className="text-left py-2 pr-3">#</th>
+                    <th className="text-left py-2 pr-3">N° Serie / IMEI *</th>
+                    <th className="text-left py-2 pr-3">Lote</th>
+                    <th className="text-left py-2 pr-3">% Batería</th>
+                    <th className="text-left py-2 pr-3">Color</th>
+                    <th className="text-center py-2 pr-3">Outlet</th>
+                    <th className="text-left py-2">Fallas / Obs.</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {modalSerieUnidades.map((u, idx) => (
+                    <tr key={idx}>
+                      <td className="py-2 pr-3 text-gray-400 text-xs">{idx + 1}</td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="text"
+                          value={u.nro_serie}
+                          placeholder="IMEI / N° serie"
+                          onChange={e => {
+                            const updated = [...modalSerieUnidades]
+                            updated[idx] = { ...updated[idx], nro_serie: e.target.value }
+                            setModalSerieUnidades(updated)
+                          }}
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="text"
+                          value={u.lote || ''}
+                          placeholder="Lote"
+                          onChange={e => {
+                            const updated = [...modalSerieUnidades]
+                            updated[idx] = { ...updated[idx], lote: e.target.value }
+                            setModalSerieUnidades(updated)
+                          }}
+                          className="w-24 px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={u.bateria_pct ?? ''}
+                          placeholder="%"
+                          onChange={e => {
+                            const updated = [...modalSerieUnidades]
+                            updated[idx] = { ...updated[idx], bateria_pct: Number(e.target.value) }
+                            setModalSerieUnidades(updated)
+                          }}
+                          className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <select
+                          value={u.color || ''}
+                          onChange={e => {
+                            const updated = [...modalSerieUnidades]
+                            updated[idx] = { ...updated[idx], color: e.target.value }
+                            setModalSerieUnidades(updated)
+                          }}
+                          className="w-28 px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500"
+                        >
+                          <option value="">-</option>
+                          {['Negro', 'Blanco', 'Azul', 'Rojo', 'Verde', 'Amarillo', 'Gris', 'Plata', 'Oro', 'Morado'].map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-2 pr-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={u.outlet}
+                          onChange={e => {
+                            const updated = [...modalSerieUnidades]
+                            updated[idx] = { ...updated[idx], outlet: e.target.checked }
+                            setModalSerieUnidades(updated)
+                          }}
+                          className="rounded border-gray-300 text-emerald-600"
+                        />
+                      </td>
+                      <td className="py-2">
+                        <input
+                          type="text"
+                          value={u.fallas || ''}
+                          placeholder="Fallas u observaciones..."
+                          onChange={e => {
+                            const updated = [...modalSerieUnidades]
+                            updated[idx] = { ...updated[idx], fallas: e.target.value }
+                            setModalSerieUnidades(updated)
+                          }}
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <button
+                onClick={() => setModalSerieUnidades(prev => [...prev, { nro_serie: '', outlet: false }])}
+                className="mt-3 flex items-center gap-1.5 text-sm text-emerald-600 hover:text-emerald-700"
+              >
+                <Plus className="w-4 h-4" /> Añadir unidad
+              </button>
+            </div>
+            {/* Footer */}
+            <div className="flex items-center justify-between px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+              <p className="text-xs text-gray-500">
+                * N° Serie / IMEI obligatorio. No puede repetirse dentro de la misma recepción.
+              </p>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setModalSerieOpen(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    if (!modalSerieProducto) return
+                    const cantRequerida = recepcionCantidades[modalSerieProducto.producto_id] ?? modalSerieProducto.cantidad_pedida
+                    const validas = modalSerieUnidades.filter(u => u.nro_serie.trim() !== '')
+                    if (validas.length < cantRequerida) {
+                      alert(`Debe registrar ${cantRequerida} unidades. Registradas: ${validas.length}`)
+                      return
+                    }
+                    const series = validas.map(u => u.nro_serie.trim())
+                    const duplicados = series.filter((s, i) => series.indexOf(s) !== i)
+                    if (duplicados.length > 0) {
+                      alert(`N° de serie duplicado: ${duplicados[0]}`)
+                      return
+                    }
+                    setSeriesConfirmadas(prev => ({
+                      ...prev,
+                      [modalSerieProducto.producto_id]: validas.slice(0, cantRequerida)
+                    }))
+                    setModalSerieOpen(false)
+                  }}
+                  className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium"
+                >
+                  Confirmar Series
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== MODAL CANCELACIÓN ===== */}
+      {modalCancelacionOpen && selectedRecepcion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h2 className="text-lg font-bold text-gray-900">Cancelar Recepción</h2>
+              <button onClick={() => { setModalCancelacionOpen(false); setCancelacionMotivo("") }} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-6 py-4">
+              <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-red-700">
+                  <p className="font-medium">Esta acción revierte el stock recibido.</p>
+                  <p className="mt-1 text-red-600">Solo es posible si el stock no fue consumido (vendido o transferido).</p>
+                </div>
+              </div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Motivo de cancelación <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={cancelacionMotivo}
+                onChange={e => setCancelacionMotivo(e.target.value)}
+                rows={4}
+                placeholder="Describa el motivo de la cancelación..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 resize-none"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+              <button
+                onClick={() => { setModalCancelacionOpen(false); setCancelacionMotivo("") }}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Volver
+              </button>
+              <button
+                disabled={!cancelacionMotivo.trim()}
+                onClick={() => {
+                  if (!cancelacionMotivo.trim() || !selectedRecepcion) return
+                  const rec = selectedRecepcion
+                  const recActualizada: Recepcion = {
+                    ...rec,
+                    estado: "cancelada",
+                    cancelacion: {
+                      usuario: "Admin",
+                      fecha: new Date().toISOString(),
+                      motivo: cancelacionMotivo.trim()
+                    }
+                  }
+                  setRecepciones(prev => prev.map(r => r.id === rec.id ? recActualizada : r))
+                  setSelectedRecepcion(recActualizada)
+                  setModalCancelacionOpen(false)
+                  setCancelacionMotivo("")
+                }}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Confirmar Cancelación
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
