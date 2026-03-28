@@ -6712,7 +6712,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   )
 }
 
-
   // Facturas
   const renderFacturas = () => {
     if (selectedFactura) return renderFichaFactura()
