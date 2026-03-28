@@ -324,12 +324,20 @@ interface AjusteCliente {
   moneda: "ARS" | "USD"
   nota_venta_numero: string | null
   sucursal: string
+  categoria: string | null
   lineas: {
     descripcion: string
     fecha_vencimiento: string
     importe: number
   }[]
   total: number
+}
+
+interface NcCategoria {
+  id: number
+  nombre: string
+  activa: boolean
+  created_at: string
 }
 
 interface MovimientoCuentaCorriente {
@@ -1294,6 +1302,25 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [reciboMontoForm, setReciboMontoForm] = useState<number>(0)
   const [reciboPrevisualizando, setReciboPrevisualizando] = useState(false)
   
+  // Estados para Categorías de NC
+  const [ncCategorias, setNcCategorias] = useState<NcCategoria[]>([])
+  const [ncCategoriaNombre, setNcCategoriaNombre] = useState("")
+  const [ncCategoriaCreando, setNcCategoriaCreando] = useState(false)
+  const [ncCategoriaLoading, setNcCategoriaLoading] = useState(false)
+  const [ncCategoriaEditId, setNcCategoriaEditId] = useState<number | null>(null)
+  const [ncCategoriaEditNombre, setNcCategoriaEditNombre] = useState("")
+
+  // Cargar nc_categorias desde Supabase
+  useEffect(() => {
+    const cargar = async () => {
+      const { createClient } = await import("@/lib/supabase/client")
+      const supabase = createClient()
+      const { data } = await supabase.from("nc_categorias").select("*").order("nombre")
+      if (data) setNcCategorias(data)
+    }
+    cargar()
+  }, [])
+
   // Estados para Categorías de Clientes
   const [categoriasCliente, setCategoriasCliente] = useState<CategoriaCliente[]>(mockCategoriasCliente)
   const [selectedCategoria, setSelectedCategoria] = useState<CategoriaCliente | null>(null)
@@ -1573,6 +1600,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         { id: "listas_precios", label: "Listas de Precios", icon: Tag },
         { id: "versiones_lista", label: "Versiones de Lista", icon: Layers },
         { id: "categorias_cliente", label: "Categorías de Clientes", icon: Users },
+        { id: "nc_categorias", label: "Notas de Crédito — Categorías", icon: ArrowLeft },
       ]
     },
   ]
@@ -10287,6 +10315,164 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     )
   }
 
+  // Configuración: Categorías de NC
+  const renderNcCategorias = () => {
+    const guardarCategoria = async () => {
+      const nombre = ncCategoriaNombre.trim()
+      if (!nombre) return
+      setNcCategoriaLoading(true)
+      const { createClient } = await import("@/lib/supabase/client")
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from("nc_categorias")
+        .insert({ nombre })
+        .select()
+        .single()
+      if (!error && data) {
+        setNcCategorias(prev => [...prev, data].sort((a, b) => a.nombre.localeCompare(b.nombre)))
+        setNcCategoriaNombre("")
+        setNcCategoriaCreando(false)
+      }
+      setNcCategoriaLoading(false)
+    }
+
+    const guardarEdicion = async (id: number) => {
+      const nombre = ncCategoriaEditNombre.trim()
+      if (!nombre) return
+      setNcCategoriaLoading(true)
+      const { createClient } = await import("@/lib/supabase/client")
+      const supabase = createClient()
+      const { error } = await supabase.from("nc_categorias").update({ nombre }).eq("id", id)
+      if (!error) {
+        setNcCategorias(prev => prev.map(c => c.id === id ? { ...c, nombre } : c).sort((a, b) => a.nombre.localeCompare(b.nombre)))
+        setNcCategoriaEditId(null)
+        setNcCategoriaEditNombre("")
+      }
+      setNcCategoriaLoading(false)
+    }
+
+    const toggleActiva = async (cat: NcCategoria) => {
+      const { createClient } = await import("@/lib/supabase/client")
+      const supabase = createClient()
+      const { error } = await supabase.from("nc_categorias").update({ activa: !cat.activa }).eq("id", cat.id)
+      if (!error) setNcCategorias(prev => prev.map(c => c.id === cat.id ? { ...c, activa: !c.activa } : c))
+    }
+
+    const eliminar = async (id: number) => {
+      if (!confirm("¿Eliminar esta categoría?")) return
+      const { createClient } = await import("@/lib/supabase/client")
+      const supabase = createClient()
+      const { error } = await supabase.from("nc_categorias").delete().eq("id", id)
+      if (!error) setNcCategorias(prev => prev.filter(c => c.id !== id))
+    }
+
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-4 bg-white border-b border-gray-200 py-3 px-4 -mx-6 -mt-6">
+          <div>
+            <h1 className="text-xl font-bold text-emerald-900">Notas de Crédito — Categorías</h1>
+            <p className="text-sm text-gray-500 mt-0.5">{ncCategorias.length} categoría{ncCategorias.length !== 1 ? "s" : ""}</p>
+          </div>
+          <button
+            onClick={() => { setNcCategoriaCreando(true); setNcCategoriaNombre("") }}
+            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" /> Nueva Categoría
+          </button>
+        </div>
+
+        {ncCategoriaCreando && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 mb-4 flex items-center gap-3">
+            <input
+              type="text"
+              value={ncCategoriaNombre}
+              onChange={e => setNcCategoriaNombre(e.target.value)}
+              placeholder="Nombre de la categoría..."
+              className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              autoFocus
+              onKeyDown={e => { if (e.key === "Enter") guardarCategoria(); if (e.key === "Escape") setNcCategoriaCreando(false) }}
+            />
+            <button
+              onClick={guardarCategoria}
+              disabled={ncCategoriaLoading || !ncCategoriaNombre.trim()}
+              className="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {ncCategoriaLoading ? "Guardando..." : "Guardar"}
+            </button>
+            <button
+              onClick={() => { setNcCategoriaCreando(false); setNcCategoriaNombre("") }}
+              className="px-3 py-2 text-gray-600 text-sm rounded hover:bg-gray-100"
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
+
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                <th className="text-left py-3 px-4 font-medium">Nombre</th>
+                <th className="text-center py-3 px-4 font-medium">Activa</th>
+                <th className="py-3 px-4"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {ncCategorias.length === 0 && (
+                <tr><td colSpan={3} className="py-10 text-center text-gray-400 text-sm">No hay categorías creadas</td></tr>
+              )}
+              {ncCategorias.map((cat, idx) => (
+                <tr key={cat.id} className={`border-b border-gray-100 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}>
+                  <td className="py-3 px-4">
+                    {ncCategoriaEditId === cat.id ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={ncCategoriaEditNombre}
+                          onChange={e => setNcCategoriaEditNombre(e.target.value)}
+                          className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          autoFocus
+                          onKeyDown={e => { if (e.key === "Enter") guardarEdicion(cat.id); if (e.key === "Escape") { setNcCategoriaEditId(null) } }}
+                        />
+                        <button onClick={() => guardarEdicion(cat.id)} className="text-emerald-600 hover:text-emerald-800 text-sm font-medium">Guardar</button>
+                        <button onClick={() => setNcCategoriaEditId(null)} className="text-gray-500 hover:text-gray-700 text-sm">Cancelar</button>
+                      </div>
+                    ) : (
+                      <span className="font-medium text-gray-900">{cat.nombre}</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <button onClick={() => toggleActiva(cat)} className="focus:outline-none">
+                      {cat.activa
+                        ? <CheckCircle className="w-4 h-4 text-green-500 mx-auto" />
+                        : <X className="w-4 h-4 text-gray-400 mx-auto" />}
+                    </button>
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => { setNcCategoriaEditId(cat.id); setNcCategoriaEditNombre(cat.nombre) }}
+                        className="text-gray-400 hover:text-emerald-600 text-xs"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => eliminar(cat.id)}
+                        className="text-gray-400 hover:text-red-500"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
   // Main content render
   const renderContent = () => {
     switch (activeView) {
@@ -10318,6 +10504,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         return renderVersionesLista()
       case "categorias_cliente":
         return renderCategoriasCliente()
+      case "nc_categorias":
+        return renderNcCategorias()
       default:
         return renderDashboard()
     }
@@ -11103,6 +11291,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               moneda: formData.get("moneda") as "ARS" | "USD",
               nota_venta_numero: null,
               sucursal: "Puerto Norte",
+              categoria: (formData.get("categoria") as string) || null,
               lineas: ajusteLineas,
               total: totalAjuste
             }
@@ -11135,6 +11324,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <label className="block text-sm font-medium text-gray-700 mb-1">Concepto *</label>
               <input type="text" name="concepto" required placeholder="Ej: Bonificación especial, Ajuste de saldo..."
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+              <select name="categoria" className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <option value="">Sin categoría</option>
+                {ncCategorias.filter(c => c.activa).map(c => (
+                  <option key={c.id} value={c.nombre}>{c.nombre}</option>
+                ))}
+              </select>
             </div>
 
             {/* Líneas */}
