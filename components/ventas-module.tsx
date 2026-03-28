@@ -777,6 +777,7 @@ function MontoInputField({ value, onChange, disabled, title, hasError }: {
   )
 }
 
+// BloquesMediosPago fue movido a bloques-medios-pago.tsx
 function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEstadoPagoChange }: {
   factura: Factura
   onConfirmarCobro?: (lineas: LineaPago[], totalConRecargos: number, totalRecargos: number) => void
@@ -1061,7 +1062,7 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
   )
 }
 
-// === Componente principal ===
+// === Componente ModuloVentas ===
 export type { ClienteVenta }
 
 interface ModuloVentasProps {
