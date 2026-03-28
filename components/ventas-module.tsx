@@ -7259,6 +7259,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         <tr className="text-xs text-amber-700 uppercase border-b border-amber-200">
                           <th className="text-left py-2 px-4">Comprobante</th>
                           <th className="text-left py-2 px-4">Fecha</th>
+                          <th className="text-left py-2 px-4">Categoría</th>
                           <th className="text-right py-2 px-4">Disponible</th>
                         </tr>
                       </thead>
@@ -7267,6 +7268,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           <tr key={`r-${r.id}`} className="border-b border-amber-100 last:border-0">
                             <td className="py-2 px-4 font-medium text-amber-900">{r.numero}</td>
                             <td className="py-2 px-4 text-amber-700">{new Date(r.fecha).toLocaleDateString('es-AR')}</td>
+                            <td className="py-2 px-4 text-amber-700">—</td>
                             <td className="py-2 px-4 text-right font-bold text-green-700">{formatCurrency(r.importe_no_conciliado)}</td>
                           </tr>
                         ))}
@@ -7277,6 +7279,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                               {nc.numero}
                             </td>
                             <td className="py-2 px-4 text-amber-700">{new Date(nc.fecha).toLocaleDateString('es-AR')}</td>
+                            <td className="py-2 px-4">
+                              {nc.ajuste?.categoria
+                                ? <span className="text-xs bg-emerald-100 text-emerald-700 font-medium px-2 py-0.5 rounded">{nc.ajuste.categoria}</span>
+                                : <span className="text-amber-600 text-xs">—</span>}
+                            </td>
                             <td className="py-2 px-4 text-right font-bold text-green-700">{formatCurrency(nc.disponible)}</td>
                           </tr>
                         ))}
@@ -7604,6 +7611,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <tr className="text-xs text-amber-700 uppercase border-b border-amber-200">
                       <th className="text-left py-2 px-4">Comprobante</th>
                       <th className="text-left py-2 px-4">Fecha</th>
+                      <th className="text-left py-2 px-4">Categoría</th>
                       <th className="text-right py-2 px-4">Disponible</th>
                     </tr>
                   </thead>
@@ -7612,6 +7620,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       <tr key={`r-${r.id}`} className="border-b border-amber-100 last:border-0">
                         <td className="py-2 px-4 font-medium text-amber-900">{r.numero}</td>
                         <td className="py-2 px-4 text-amber-700">{new Date(r.fecha).toLocaleDateString('es-AR')}</td>
+                        <td className="py-2 px-4 text-amber-700">—</td>
                         <td className="py-2 px-4 text-right font-bold text-green-700">{formatCurrency(r.importe_no_conciliado)}</td>
                       </tr>
                     ))}
@@ -7622,6 +7631,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           {nc.numero}
                         </td>
                         <td className="py-2 px-4 text-amber-700">{new Date(nc.fecha).toLocaleDateString('es-AR')}</td>
+                        <td className="py-2 px-4">
+                          {nc.ajuste?.categoria
+                            ? <span className="text-xs bg-emerald-100 text-emerald-700 font-medium px-2 py-0.5 rounded">{nc.ajuste.categoria}</span>
+                            : <span className="text-amber-600 text-xs">—</span>}
+                        </td>
                         <td className="py-2 px-4 text-right font-bold text-green-700">{formatCurrency(nc.disponible)}</td>
                       </tr>
                     ))}
