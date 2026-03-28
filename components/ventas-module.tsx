@@ -712,7 +712,7 @@ const mockMovimientosCC: MovimientoCuentaCorriente[] = [
   },
 ]
 
-// ─── Bloque Medios de Pago (dentro de ficha de Factura) ────────────────�����─────
+// ─── Bloque Medios de Pago (dentro de ficha de Factura) ────────────────������─────
 
 interface LineaPago {
   id: number
@@ -7281,7 +7281,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                             <td className="py-2 px-4 text-amber-700">{new Date(nc.fecha).toLocaleDateString('es-AR')}</td>
                             <td className="py-2 px-4">
                               {nc.ajuste?.categoria
-                                ? <span className="text-xs bg-emerald-100 text-emerald-700 font-medium px-2 py-0.5 rounded">{nc.ajuste.categoria}</span>
+                                ? <span className="text-xs bg-emerald-100 text-emerald-700 font-medium px-2 py-0.5 rounded">{nc.ajuste.categoria.charAt(0).toUpperCase() + nc.ajuste.categoria.slice(1)}</span>
                                 : <span className="text-amber-600 text-xs">—</span>}
                             </td>
                             <td className="py-2 px-4 text-right font-bold text-green-700">{formatCurrency(nc.disponible)}</td>
@@ -7633,7 +7633,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         <td className="py-2 px-4 text-amber-700">{new Date(nc.fecha).toLocaleDateString('es-AR')}</td>
                         <td className="py-2 px-4">
                           {nc.ajuste?.categoria
-                            ? <span className="text-xs bg-emerald-100 text-emerald-700 font-medium px-2 py-0.5 rounded">{nc.ajuste.categoria}</span>
+                            ? <span className="text-xs bg-emerald-100 text-emerald-700 font-medium px-2 py-0.5 rounded">{nc.ajuste.categoria.charAt(0).toUpperCase() + nc.ajuste.categoria.slice(1)}</span>
                             : <span className="text-amber-600 text-xs">—</span>}
                         </td>
                         <td className="py-2 px-4 text-right font-bold text-green-700">{formatCurrency(nc.disponible)}</td>
