@@ -359,32 +359,7 @@ const mockVendedores: Vendedor[] = [
   { id: 1, nombre: "Max Solina", activo: true },
 ]
 
-const mockCategoriasCliente: CategoriaCliente[] = [
-  {
-    id: 1,
-    nombre: "Público General",
-    lista_precios_defecto_id: 1,
-    descripcion: "Clientes minoristas en general",
-    activa: true,
-    seguimiento: [{ id: 1, fecha: "2024-01-01T10:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Categoría creada" }]
-  },
-  {
-    id: 2,
-    nombre: "Mayorista",
-    lista_precios_defecto_id: 2,
-    descripcion: "Clientes mayoristas y distribuidores",
-    activa: true,
-    seguimiento: [{ id: 1, fecha: "2024-01-01T10:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Categoría creada" }]
-  },
-  {
-    id: 3,
-    nombre: "MercadoLibre",
-    lista_precios_defecto_id: 1,
-    descripcion: "Compradores a través de MercadoLibre",
-    activa: true,
-    seguimiento: [{ id: 1, fecha: "2024-01-01T10:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Categoría creada" }]
-  },
-]
+const mockCategoriasCliente: CategoriaCliente[] = []
 
 const mockListasPrecios: ListaPrecios[] = []
 
