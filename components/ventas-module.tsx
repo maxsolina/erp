@@ -10217,7 +10217,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </div>
 
             <div className="border border-gray-200 rounded overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full text-xs table-fixed">
+                <colgroup>
+                  <col className="w-[18%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[7%]" />
+                  <col className="w-[7%]" />
+                  <col className="w-[6%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[6%]" />
+                  {(editandoLineas || creandoVersion) && <col className="w-[2%]" />}
+                </colgroup>
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr className="text-gray-500 uppercase tracking-wider">
                     <th className="text-left py-2 px-2 font-medium">Código</th>
@@ -10237,7 +10250,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   {/* Fila para agregar nueva línea */}
                   {(editandoLineas || creandoVersion) && (
                     <tr className="border-b border-gray-200 bg-emerald-50/50">
-                      <td className="py-1.5 px-2" colSpan={2}>
+                      <td className="py-1.5 px-2 text-gray-500 text-xs truncate">
+                        {nuevaLineaVersion.producto_codigo || <span className="text-gray-300">-</span>}
+                      </td>
+                      <td className="py-1.5 px-2">
                         <select value={nuevaLineaVersion.producto_id || ""} onChange={(e) => {
                           const prod = productosConSerie.find(p => p.id === Number(e.target.value))
                           if (prod) setNuevaLineaVersion({ ...nuevaLineaVersion, producto_id: prod.id, producto_codigo: prod.sku, producto_nombre: prod.nombre, costo_importe: prod.costo || 0 })
@@ -10298,9 +10314,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                             className="w-28 px-1 py-1 border border-amber-400 bg-amber-50 rounded text-xs text-right text-amber-800 placeholder-amber-400 focus:ring-1 focus:ring-amber-400"
                             placeholder="Precio ARS"
                           />
-                        ) : (
-                          <span className="text-gray-400 text-xs">Auto</span>
-                        )}
+                        ) : (() => {
+                          const costo = nuevaLineaVersion.costo_importe || 0
+                          const mkPct = nuevaLineaVersion.markup_porcentaje || 0
+                          const mkNom = nuevaLineaVersion.markup_nominal || 0
+                          const pvCalc = costo * (1 + mkPct / 100) + mkNom
+                          return pvCalc > 0
+                            ? <span className="text-emerald-700 text-xs font-medium">{formatCurrency(Math.round(pvCalc * 100) / 100, nuevaLineaVersion.costo_moneda || "ARS")}</span>
+                            : <span className="text-gray-400 text-xs">Auto</span>
+                        })()}
                       </td>
                       <td className="py-1.5 px-2">
                         <select value={nuevaLineaVersion.iva || 21} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, iva: Number(e.target.value) as 0 | 10.5 | 21 })}
