@@ -712,7 +712,7 @@ const mockMovimientosCC: MovimientoCuentaCorriente[] = [
   },
 ]
 
-// ─── Bloque Medios de Pago (dentro de ficha de Factura) ────────────────��─────
+// ─── Bloque Medios de Pago (dentro de ficha de Factura) ────────────────���─────
 
 interface LineaPago {
   id: number
@@ -4796,8 +4796,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <span className="text-gray-600">{ev.componente}</span>
                   <div className="flex items-center gap-3">
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                      ev.estado === 'Buena' || ev.estado === 'Excelente' ? 'bg-green-100 text-green-700' :
-                      ev.estado === 'Desgastada' || ev.estado === 'Regular' || ev.estado === 'Rayada' ? 'bg-amber-100 text-amber-700' :
+                      ['Buena', 'Excelente', 'Funciona', 'Funcionan', 'Funciona correctamente'].includes(ev.estado) ? 'bg-green-100 text-green-700' :
+                      ['Desgastada', 'Regular', 'Rayada'].includes(ev.estado) ? 'bg-amber-100 text-amber-700' :
                       'bg-red-100 text-red-700'
                     }`}>{ev.estado}</span>
                     {ev.descuento > 0 && <span className="text-red-600 text-xs">-{formatCurrency(ev.descuento)}</span>}
