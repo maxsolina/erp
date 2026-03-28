@@ -357,8 +357,6 @@ interface MovimientoCuentaCorriente {
 // Mock data
 const mockVendedores: Vendedor[] = [
   { id: 1, nombre: "Max Solina", activo: true },
-  { id: 2, nombre: "Laura García", activo: true },
-  { id: 3, nombre: "Carlos Pérez", activo: true },
 ]
 
 const mockCategoriasCliente: CategoriaCliente[] = [
@@ -1303,6 +1301,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [reciboMontoForm, setReciboMontoForm] = useState<number>(0)
   const [reciboPrevisualizando, setReciboPrevisualizando] = useState(false)
   
+  // Vendedores cargados desde Supabase
+  const [vendedores, setVendedores] = useState<Vendedor[]>(mockVendedores)
+
   // Estados para Categorías de NC
   const [ncCategorias, setNcCategorias] = useState<NcCategoria[]>([])
   const [ncCategoriaNombre, setNcCategoriaNombre] = useState("")
@@ -1311,13 +1312,17 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [ncCategoriaEditId, setNcCategoriaEditId] = useState<number | null>(null)
   const [ncCategoriaEditNombre, setNcCategoriaEditNombre] = useState("")
 
-  // Cargar nc_categorias desde Supabase
+  // Cargar vendedores y nc_categorias desde Supabase
   useEffect(() => {
     const cargar = async () => {
       const { createClient } = await import("@/lib/supabase/client")
       const supabase = createClient()
-      const { data } = await supabase.from("nc_categorias").select("*").order("nombre")
-      if (data) setNcCategorias(data)
+      const [{ data: vData }, { data: ncData }] = await Promise.all([
+        supabase.from("vendedores").select("id, nombre, activo").order("nombre"),
+        supabase.from("nc_categorias").select("*").order("nombre"),
+      ])
+      if (vData && vData.length > 0) setVendedores(vData)
+      if (ncData) setNcCategorias(ncData)
     }
     cargar()
   }, [])
@@ -2283,7 +2288,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <select name="vendedor_id" defaultValue={editingItem?.vendedor_id || ""}
                     className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
                     <option value="">Sin asignar</option>
-                    {mockVendedores.map(v => (
+                    {vendedores.map(v => (
                       <option key={v.id} value={v.id}>{v.nombre}</option>
                     ))}
                   </select>
@@ -2965,7 +2970,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <div className="grid grid-cols-3 gap-6 text-sm">
                     <div>
                       <span className="text-gray-500 block">Vendedor Asignado:</span>
-                      <span className="font-medium">{mockVendedores.find(v => v.id === selectedCliente.vendedor_id)?.nombre || "-"}</span>
+                      <span className="font-medium">{vendedores.find(v => v.id === selectedCliente.vendedor_id)?.nombre || "-"}</span>
                     </div>
                     <div>
                       <span className="text-gray-500 block">Lista de Precios:</span>
@@ -3163,7 +3168,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
               <option value="">Todos los vendedores</option>
-              {mockVendedores.map(v => (
+              {vendedores.map(v => (
                 <option key={v.id} value={v.id}>{v.nombre}</option>
               ))}
             </select>
@@ -3248,7 +3253,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const nvId = existingNV ? existingNV.id : notasVenta.length + 1
     const fechaHoy = existingNV ? existingNV.fecha : new Date().toISOString()
     const vendedorId = 1
-    const vendedorNombre = mockVendedores[0]?.nombre || "Max Solina"
+    const vendedorNombre = vendedores[0]?.nombre || "Max Solina"
     const terminoPagoId = cliente.termino_pago_id || 1
     const terminoPagoNombre = mockTerminosPago.find(tp => tp.id === terminoPagoId)?.nombre || "Contado Efectivo"
     const deposito = "Puerto Norte"
@@ -5777,7 +5782,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       cliente_documento: `${clienteSeleccionado.tipo_documento} ${clienteSeleccionado.numero_documento}`,
       estado: "borrador",
       fecha: fechaHoy,
-      vendedor_nombre: mockVendedores[0]?.nombre || "Max Solina",
+      vendedor_nombre: vendedores[0]?.nombre || "Max Solina",
       domicilio_facturacion: clienteSeleccionado.direccion,
       moneda: "ARS",
       tipo_cotizacion: "blue",
@@ -5829,7 +5834,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       cliente_documento: `${clienteSeleccionado.tipo_documento} ${clienteSeleccionado.numero_documento}`,
       estado: "abierta",
       fecha: fechaHoy,
-      vendedor_nombre: mockVendedores[0]?.nombre || "Max Solina",
+      vendedor_nombre: vendedores[0]?.nombre || "Max Solina",
       domicilio_facturacion: clienteSeleccionado.direccion,
       moneda: "ARS",
       tipo_cotizacion: "blue",
@@ -6920,7 +6925,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   moneda: "ARS",
                   sucursal: "Puerto Norte",
                   caja: "Caja Principal",
-                  cobrador_nombre: mockVendedores[0]?.nombre || "Max Solina",
+                  cobrador_nombre: vendedores[0]?.nombre || "Max Solina",
                   nota_venta_numero: facturaVinculada?.nota_venta_numero || null,
                   concepto: facturaVinculada ? `Cobro Factura ${facturaVinculada.numero}` : "Cobro de venta",
                   pagos: reciboPagosForm,
@@ -6965,7 +6970,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   moneda: "ARS",
                   sucursal: "Puerto Norte",
                   caja: "Caja Principal",
-                  cobrador_nombre: mockVendedores[0]?.nombre || "Max Solina",
+                  cobrador_nombre: vendedores[0]?.nombre || "Max Solina",
                   nota_venta_numero: facturaVinculada?.nota_venta_numero || null,
                   concepto: facturaVinculada ? `Cobro Factura ${facturaVinculada.numero}` : "Cobro de venta",
                   pagos: reciboPagosForm,
@@ -7151,7 +7156,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         moneda: "ARS",
         sucursal: "Puerto Norte",
         caja: "Caja Principal",
-        cobrador_nombre: mockVendedores[0]?.nombre || "Max Solina",
+        cobrador_nombre: vendedores[0]?.nombre || "Max Solina",
         nota_venta_numero: null,
         concepto: "Cobro de venta",
         pagos: reciboPagosForm
@@ -10762,7 +10767,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <select name="vendedor_id" defaultValue={editingItem?.vendedor_id || ""}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                 <option value="">Sin asignar</option>
-                {mockVendedores.map(v => (
+                {vendedores.map(v => (
                   <option key={v.id} value={v.id}>{v.nombre}</option>
                 ))}
               </select>
@@ -10849,7 +10854,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             const moneda = formData.get("moneda") as "ARS" | "USD"
             const deposito = formData.get("deposito") as string || "Puerto Norte"
             const vendedorId = parseInt(formData.get("vendedor_id") as string) || 1
-            const vendedorNombre = mockVendedores.find(v => v.id === vendedorId)?.nombre || "Max Solina"
+            const vendedorNombre = vendedores.find(v => v.id === vendedorId)?.nombre || "Max Solina"
             const terminoPagoId = parseInt(formData.get("termino_pago_id") as string) || 1
             const terminoPagoNombre = mockTerminosPago.find(tp => tp.id === terminoPagoId)?.nombre || "Contado Efectivo"
             const nvNumero = editingItem?.numero || `NV X 10000-000${10737 + notasVenta.length}`
@@ -11023,7 +11028,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <label className="block text-sm font-medium text-gray-700 mb-1">Vendedor</label>
                 <select name="vendedor_id" defaultValue={editingItem?.vendedor_id || 1}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                  {mockVendedores.map(v => (
+                  {vendedores.map(v => (
                     <option key={v.id} value={v.id}>{v.nombre}</option>
                   ))}
                 </select>
@@ -11245,7 +11250,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               moneda: "ARS",
               sucursal: "Puerto Norte",
               caja: formData.get("caja") as string || "Caja Principal",
-              cobrador_nombre: mockVendedores.find(v => v.id === parseInt(formData.get("cobrador_id") as string))?.nombre || "Max Solina",
+              cobrador_nombre: vendedores.find(v => v.id === parseInt(formData.get("cobrador_id") as string))?.nombre || "Max Solina",
               nota_venta_numero: null,
               concepto: formData.get("concepto") as string || "Cobro de venta",
               pagos: reciboPagos
@@ -11296,7 +11301,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cobrador</label>
                 <select name="cobrador_id" defaultValue="1"
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                  {mockVendedores.map(v => (
+                  {vendedores.map(v => (
                     <option key={v.id} value={v.id}>{v.nombre}</option>
                   ))}
                 </select>
