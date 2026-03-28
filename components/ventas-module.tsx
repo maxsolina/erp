@@ -324,12 +324,20 @@ interface AjusteCliente {
   moneda: "ARS" | "USD"
   nota_venta_numero: string | null
   sucursal: string
+  categoria: string | null
   lineas: {
     descripcion: string
     fecha_vencimiento: string
     importe: number
   }[]
   total: number
+}
+
+interface NcCategoria {
+  id: number
+  nombre: string
+  activa: boolean
+  created_at: string
 }
 
 interface MovimientoCuentaCorriente {
@@ -380,116 +388,9 @@ const mockCategoriasCliente: CategoriaCliente[] = [
   },
 ]
 
-const mockListasPrecios: ListaPrecios[] = [
-  { 
-    id: 1, 
-    nombre: "Lista Minorista", 
-    tipo: "Minorista",
-    moneda_base: "ARS", 
-    incluye_iva: true,
-    activa: true,
-    no_visible: false,
-    dias_validez: 30,
-    estado: "activa",
-    usuarios_admin: [1],
-    usuarios_habilitados: [1, 2],
-    observaciones_filtro: "",
-    seguimiento: [
-      { id: 1, fecha: "2024-01-01T10:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Lista de precios creada" }
-    ]
-  },
-  { 
-    id: 2, 
-    nombre: "Lista Mayorista", 
-    tipo: "Mayorista",
-    moneda_base: "ARS", 
-    incluye_iva: false,
-    activa: true,
-    no_visible: false,
-    dias_validez: 15,
-    estado: "activa",
-    usuarios_admin: [1],
-    usuarios_habilitados: [1, 2],
-    observaciones_filtro: "",
-    seguimiento: [
-      { id: 1, fecha: "2024-01-01T10:30:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Lista de precios creada" }
-    ]
-  },
-  { 
-    id: 3, 
-    nombre: "Lista Distribuidor USD", 
-    tipo: "Distribuidor",
-    moneda_base: "USD", 
-    incluye_iva: false,
-    activa: true,
-    no_visible: true,
-    dias_validez: 7,
-    estado: "activa",
-    usuarios_admin: [1],
-    usuarios_habilitados: [1],
-    observaciones_filtro: "Solo para distribuidores autorizados",
-    seguimiento: [
-      { id: 1, fecha: "2024-01-01T11:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Lista de precios creada" }
-    ]
-  },
-]
+const mockListasPrecios: ListaPrecios[] = []
 
-const mockVersionesLista: VersionListaPrecios[] = [
-  {
-    id: 1,
-    lista_precios_id: 1,
-    lista_precios_nombre: "Lista Minorista",
-    nombre: "Versión Marzo 2024",
-    fecha_inicial: "2024-03-01",
-    fecha_final: "2024-03-31",
-    activa: true,
-    estado: "activa",
-    ultima_actualizacion: "2024-03-15T14:30:00",
-    lineas: [
-      { id: 1, producto_id: 1, producto_codigo: "IPH15PM256", producto_nombre: "iPhone 15 Pro Max 256GB", costo_moneda: "USD", costo_importe: 1100, cotizacion_dolar: 1200, markup_porcentaje: 25, markup_nominal: 0, forzar_precio_pesos: false, precio_forzado_ars: null, precio_venta: 1375, precio_venta_moneda: "USD", iva: 21 },
-      { id: 2, producto_id: 2, producto_codigo: "SGS24U", producto_nombre: "Samsung Galaxy S24 Ultra", costo_moneda: "USD", costo_importe: 950, cotizacion_dolar: 1200, markup_porcentaje: 30, markup_nominal: 0, forzar_precio_pesos: false, precio_forzado_ars: null, precio_venta: 1235, precio_venta_moneda: "USD", iva: 21 },
-      { id: 3, producto_id: 3, producto_codigo: "FUNDA-IPH15", producto_nombre: "Funda iPhone 15 Silicona", costo_moneda: "ARS", costo_importe: 15000, cotizacion_dolar: 1200, markup_porcentaje: 50, markup_nominal: 0, forzar_precio_pesos: false, precio_forzado_ars: null, precio_venta: 22500, precio_venta_moneda: "ARS", iva: 21 },
-      { id: 4, producto_id: 4, producto_codigo: "APP2", producto_nombre: "AirPods Pro 2", costo_moneda: "USD", costo_importe: 200, cotizacion_dolar: 1200, markup_porcentaje: 35, markup_nominal: 0, forzar_precio_pesos: true, precio_forzado_ars: 350000, precio_venta: 291.67, precio_venta_moneda: "USD", iva: 21 },
-    ],
-    seguimiento: [
-      { id: 1, fecha: "2024-03-01T09:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Versión creada" },
-      { id: 2, fecha: "2024-03-15T14:30:00", usuario: "Max Solina", tipo: "cambio_campo", campo: "Líneas", valor_anterior: "3", valor_nuevo: "4", descripcion: "Agregada línea AirPods Pro 2" }
-    ]
-  },
-  {
-    id: 2,
-    lista_precios_id: 1,
-    lista_precios_nombre: "Lista Minorista",
-    nombre: "Versión Abril 2024",
-    fecha_inicial: "2024-04-01",
-    fecha_final: null,
-    activa: false,
-    estado: "borrador",
-    ultima_actualizacion: "2024-03-28T10:00:00",
-    lineas: [],
-    seguimiento: [
-      { id: 1, fecha: "2024-03-28T10:00:00", usuario: "Max Solina", tipo: "creacion", descripcion: "Versión creada como borrador" }
-    ]
-  },
-  {
-    id: 3,
-    lista_precios_id: 2,
-    lista_precios_nombre: "Lista Mayorista",
-    nombre: "Versión Q1 2024",
-    fecha_inicial: "2024-01-01",
-    fecha_final: "2024-03-31",
-    activa: true,
-    estado: "activa",
-    ultima_actualizacion: "2024-01-15T11:00:00",
-    lineas: [
-      { id: 1, producto_id: 1, producto_codigo: "IPH15PM256", producto_nombre: "iPhone 15 Pro Max 256GB", costo_moneda: "USD", costo_importe: 1100, cotizacion_dolar: 1200, markup_porcentaje: 15, markup_nominal: 0, forzar_precio_pesos: false, precio_forzado_ars: null, precio_venta: 1265, precio_venta_moneda: "USD", iva: 21 },
-      { id: 2, producto_id: 2, producto_codigo: "SGS24U", producto_nombre: "Samsung Galaxy S24 Ultra", costo_moneda: "USD", costo_importe: 950, cotizacion_dolar: 1200, markup_porcentaje: 18, markup_nominal: 0, forzar_precio_pesos: false, precio_forzado_ars: null, precio_venta: 1121, precio_venta_moneda: "USD", iva: 21 },
-    ],
-    seguimiento: [
-      { id: 1, fecha: "2024-01-01T09:00:00", usuario: "Admin Sistema", tipo: "creacion", descripcion: "Versión creada" }
-    ]
-  },
-]
+const mockVersionesLista: VersionListaPrecios[] = []
 
 const mockTiposListaPrecios = ["Minorista", "Mayorista", "Distribuidor", "Especial", "Promocional"]
 
@@ -811,7 +712,7 @@ const mockMovimientosCC: MovimientoCuentaCorriente[] = [
   },
 ]
 
-// ─── Bloque Medios de Pago (dentro de ficha de Factura) ──────────────────────
+// ─── Bloque Medios de Pago (dentro de ficha de Factura) ────────────────������─────
 
 interface LineaPago {
   id: number
@@ -833,6 +734,50 @@ interface ResultadoCalculo {
   totalConRecargo: number
 }
 
+function MontoInputField({ value, onChange, disabled, title, hasError }: {
+  value: number
+  onChange: (val: number) => void
+  disabled?: boolean
+  title?: string
+  hasError?: boolean
+}) {
+  const [editando, setEditando] = React.useState(false)
+  const [rawValue, setRawValue] = React.useState("")
+
+  const formatted = value
+    ? `$ ${value.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : ""
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={editando ? rawValue : formatted}
+      placeholder="$ 0,00"
+      disabled={disabled}
+      title={title}
+      onFocus={() => {
+        setRawValue(value ? String(value) : "")
+        setEditando(true)
+      }}
+      onChange={e => {
+        const v = e.target.value.replace(/[^0-9]/g, "")
+        setRawValue(v)
+        onChange(v ? parseInt(v, 10) : 0)
+      }}
+      onBlur={() => setEditando(false)}
+      className={`border rounded px-2 py-1.5 text-sm text-right w-36 focus:ring-2 focus:outline-none ${
+        disabled
+          ? "border-red-300 bg-red-50 cursor-not-allowed text-gray-400 focus:ring-red-300"
+          : hasError
+          ? "border-red-500 bg-red-50 text-red-700 focus:ring-red-400"
+          : "border-gray-300 focus:ring-emerald-500"
+      }`}
+    />
+  )
+}
+
+// BloquesMediosPago fue movido a bloques-medios-pago.tsx
 function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEstadoPagoChange }: {
   factura: Factura
   onConfirmarCobro?: (lineas: LineaPago[], totalConRecargos: number, totalRecargos: number) => void
@@ -898,7 +843,10 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
   }
 
   const agregarLinea = () => {
-    setLineas(prev => [...prev, { id: Date.now(), medio: "efectivo", monto: 0 }])
+    const esLaPrimera = lineas.length === 0
+    const yaIngresado = lineas.reduce((s, l) => s + (l.monto || 0), 0)
+    const restante = esLaPrimera ? 0 : Math.max(0, factura.total - yaIngresado)
+    setLineas(prev => [...prev, { id: Date.now(), medio: "efectivo", monto: restante }])
   }
 
   const actualizarLinea = (id: number, cambios: Partial<LineaPago>) => {
@@ -951,6 +899,10 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
         {lineas.map((linea, idx) => {
           const calc = calcularLinea(linea)
           const esPrimeraLineaEfectivo = linea.medio === "efectivo" && lineas.findIndex(l => l.medio === "efectivo") === idx
+          // Monto ingresado por las OTRAS líneas (excluye esta)
+          const montoOtras = lineas.filter(l => l.id !== linea.id).reduce((s, l) => s + (l.monto || 0), 0)
+          const restanteParaEstaLinea = factura.total - montoOtras
+          const excedeLimite = (linea.monto || 0) > restanteParaEstaLinea + 0.5
           return (
             <div key={linea.id} className="rounded-lg border border-gray-200 overflow-hidden">
               {/* Fila de inputs */}
@@ -999,15 +951,20 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
                       <span className="text-xs text-gray-500 whitespace-nowrap">Todo efectivo</span>
                     </label>
                   )}
-                  <input
-                    type="number"
-                    value={linea.monto || ""}
-                    onChange={e => actualizarLinea(linea.id, { monto: parseFloat(e.target.value) || 0 })}
-                    placeholder="0,00"
-                    disabled={linea.medio === "tarjeta" && !linea.tarjeta_id}
-                    title={linea.medio === "tarjeta" && !linea.tarjeta_id ? "Seleccioná una tarjeta primero" : undefined}
-                    className={`border rounded px-2 py-1.5 text-sm text-right w-36 focus:ring-2 focus:ring-emerald-500 focus:outline-none ${linea.medio === "tarjeta" && !linea.tarjeta_id ? "border-red-300 bg-red-50 cursor-not-allowed text-gray-400" : "border-gray-300"}`}
-                  />
+                  <div className="flex flex-col items-end gap-1">
+                    <MontoInputField
+                      value={linea.monto || 0}
+                      onChange={val => actualizarLinea(linea.id, { monto: val })}
+                      disabled={linea.medio === "tarjeta" && !linea.tarjeta_id}
+                      title={linea.medio === "tarjeta" && !linea.tarjeta_id ? "Seleccioná una tarjeta primero" : undefined}
+                      hasError={excedeLimite}
+                    />
+                    {excedeLimite && (
+                      <span className="text-xs text-red-600 font-medium">
+                        Supera el total a abonar ({formatARS(restanteParaEstaLinea)})
+                      </span>
+                    )}
+                  </div>
                   <button onClick={() => eliminarLinea(linea.id)} className="p-1 text-gray-400 hover:text-red-600">
                     <X className="w-4 h-4" />
                   </button>
@@ -1077,79 +1034,35 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
         })}
       </div>
 
-      {/* Resumen pie de página */}
-      {lineas.length > 0 && (
-        <div className="mt-5 border border-gray-200 rounded-lg overflow-hidden">
-          <div className="bg-gray-800 px-4 py-2">
-            <span className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Resumen del cobro</span>
-          </div>
-          <div className="p-4 space-y-1.5 text-sm">
-            <div className="flex justify-between text-gray-600">
-              <span>Total factura (contado):</span>
-              <span>{formatARS(factura.total)}</span>
-            </div>
-            {totalRecargos > 0 && (
-              <div className="flex justify-between text-amber-700">
-                <span>Total recargos tarjeta:</span>
-                <span>+ {formatARS(totalRecargos)}</span>
-              </div>
-            )}
-            <div className="flex justify-between font-bold text-base border-t border-gray-200 pt-2 mt-1">
-              <span>TOTAL CON RECARGO:</span>
-              <span>{formatARS(totalConRecargos)}</span>
-            </div>
-
-            {/* Validación de diferencia */}
-            {totalIngresado > 0 && Math.abs(diferencia) > 0.5 && (
-              <div className={`flex items-center gap-2 text-xs font-medium mt-2 p-2 rounded ${diferencia < 0 ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}>
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                {diferencia < 0
-                  ? `Falta ingresar ${formatARS(Math.abs(diferencia))} para cubrir el total de la factura.`
-                  : `Excedente de ${formatARS(diferencia)} sobre el total de la factura.`
-                }
-              </div>
-            )}
-            {totalIngresado > 0 && Math.abs(diferencia) <= 0.5 && (
-              <div className="flex items-center gap-2 text-xs text-emerald-700 font-medium mt-2 p-2 rounded bg-emerald-50">
-                <CheckCircle className="w-3.5 h-3.5" />
-                Los medios de pago cubren el total correctamente.
-              </div>
-            )}
-
-            {/* Botón confirmar cobro */}
-            {totalIngresado > 0 && Math.abs(diferencia) <= 0.5 && (
-              <button
-                onClick={() => {
-                  // Construir desglose de recargos para mostrar en totales
-                  const desgloseRecargos: { nombre: string; importe: number }[] = []
-                  lineas.forEach(l => {
-                    const c = calcularLinea(l)
-                    if (!c) return
-                    if (c.recargo.recargo_pct > 0) {
-                      desgloseRecargos.push({ nombre: `Recargo tarjeta (${c.tarjeta?.nombre} ${c.recargo.recargo_pct}%)`, importe: c.importeRecargo })
-                    }
-                    c.cargos.forEach(cargo => {
-                      desgloseRecargos.push({ nombre: cargo.nombre, importe: cargo.importe })
-                    })
-                  })
-                  onConfirmarCobro?.(lineas, totalConRecargos, totalRecargos)
-                  onCobroConfirmado?.(totalRecargos, desgloseRecargos)
-                  setCobrado(true)
-                }}
-                className="mt-3 w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg flex items-center justify-center gap-2"
-              >
-                <CheckCircle className="w-4 h-4" />
-                Confirmar cobro y registrar en cuenta corriente
-              </button>
-            )}
-          </div>
-        </div>
+      {totalIngresado > 0 && Math.abs(diferencia) <= 0.5 && (
+        <button
+          onClick={() => {
+            const desgloseRecargos: { nombre: string; importe: number }[] = []
+            lineas.forEach(l => {
+              const c = calcularLinea(l)
+              if (!c) return
+              if (c.recargo.recargo_pct > 0) {
+                desgloseRecargos.push({ nombre: `Recargo tarjeta (${c.tarjeta?.nombre} ${c.recargo.recargo_pct}%)`, importe: c.importeRecargo })
+              }
+              c.cargos.forEach(cargo => {
+                desgloseRecargos.push({ nombre: cargo.nombre, importe: cargo.importe })
+              })
+            })
+            onConfirmarCobro?.(lineas, totalConRecargos, totalRecargos)
+            onCobroConfirmado?.(totalRecargos, desgloseRecargos)
+            setCobrado(true)
+          }}
+          className="mt-3 w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg flex items-center justify-center gap-2"
+        >
+          <CheckCircle className="w-4 h-4" />
+          Confirmar cobro y registrar en cuenta corriente
+        </button>
       )}
     </div>
   )
 }
 
-// Componente principal
+// === Componente ModuloVentas ===
 export type { ClienteVenta }
 
 interface ModuloVentasProps {
@@ -1314,7 +1227,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [notasVenta, setNotasVenta] = useState<NotaVenta[]>(mockNotasVenta)
   const [ordenesEntrega, setOrdenesEntrega] = useState<OrdenEntrega[]>(mockOrdenesEntrega)
   const [remitos, setRemitos] = useState<Remito[]>(mockRemitos)
-  const [facturas, setFacturas] = useState<Factura[]>(mockFacturas)
+  const [facturas, setFacturas] = useState<Factura[]>([])
   const [recibos, setRecibos] = useState<Recibo[]>(mockRecibos)
   const [ajustes, setAjustes] = useState<AjusteCliente[]>(mockAjustes)
   const [movimientosCC, setMovimientosCC] = useState<MovimientoCuentaCorriente[]>(mockMovimientosCC)
@@ -1390,6 +1303,25 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [reciboMontoForm, setReciboMontoForm] = useState<number>(0)
   const [reciboPrevisualizando, setReciboPrevisualizando] = useState(false)
   
+  // Estados para Categorías de NC
+  const [ncCategorias, setNcCategorias] = useState<NcCategoria[]>([])
+  const [ncCategoriaNombre, setNcCategoriaNombre] = useState("")
+  const [ncCategoriaCreando, setNcCategoriaCreando] = useState(false)
+  const [ncCategoriaLoading, setNcCategoriaLoading] = useState(false)
+  const [ncCategoriaEditId, setNcCategoriaEditId] = useState<number | null>(null)
+  const [ncCategoriaEditNombre, setNcCategoriaEditNombre] = useState("")
+
+  // Cargar nc_categorias desde Supabase
+  useEffect(() => {
+    const cargar = async () => {
+      const { createClient } = await import("@/lib/supabase/client")
+      const supabase = createClient()
+      const { data } = await supabase.from("nc_categorias").select("*").order("nombre")
+      if (data) setNcCategorias(data)
+    }
+    cargar()
+  }, [])
+
   // Estados para Categorías de Clientes
   const [categoriasCliente, setCategoriasCliente] = useState<CategoriaCliente[]>(mockCategoriasCliente)
   const [selectedCategoria, setSelectedCategoria] = useState<CategoriaCliente | null>(null)
@@ -1459,31 +1391,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     descuentos: number
     precio_final: number
     estado: "borrador" | "confirmado" | "cancelado"
+    estado_recepcion: "pendiente" | "recibido" | "cancelado"
     recepcion_numero?: string
     nota_credito_numero?: string
     evaluacion: {componente: string; estado: string; descuento: number}[]
-  }[]>([
-    {
-      id: 1,
-      numero: "TE-00001",
-      fecha: "2026-03-10T14:30:00",
-      cliente_id: 1,
-      cliente_nombre: "Alejandra Gallo",
-      modelo_equipo: "iPhone 13 Pro 128GB",
-      precio_base: 350000,
-      descuentos: 45000,
-      precio_final: 305000,
-      estado: "confirmado",
-      recepcion_numero: "REC-00125",
-      nota_credito_numero: "NC-A-00045",
-      evaluacion: [
-        { componente: "Pantalla", estado: "Buena", descuento: 0 },
-        { componente: "Batería", estado: "Desgastada", descuento: 25000 },
-        { componente: "C����mara", estado: "Buena", descuento: 0 },
-        { componente: "Carcasa", estado: "Rayada", descuento: 20000 },
-      ]
-    }
-  ])
+  }[]>([])
+  const [selectedToma, setSelectedToma] = useState<typeof tomasEquipo[0] | null>(null)
+  const [ncDetallePopup, setNcDetallePopup] = useState<AjusteCliente | null>(null)
+  const [selectedAjuste, setSelectedAjuste] = useState<AjusteCliente | null>(null)
   
   // Filters
   const [estadoFilter, setEstadoFilter] = useState<string>("todos")
@@ -1689,6 +1604,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         { id: "categorias_cliente", label: "Categorías de Clientes", icon: Users },
       ]
     },
+    {
+      id: "config_notas_credito",
+      label: "Notas de Crédito",
+      icon: FileText,
+      items: [
+        { id: "nc_categorias", label: "Categorías", icon: Tag },
+      ]
+    },
   ]
 
   // Componente de Seguimiento (tracking de cambios estilo Odoo)
@@ -1862,15 +1785,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       setSearchQuery("")
                       setSelectedCliente(null)
                       setSelectedNV(null)
+                      setSelectedAjuste(null)
                       setClientePanel("ficha")
                     }}
-                    className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-2 ${
+                    className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center gap-2 ${section.id === "config_notas_credito" ? "text-xs" : "text-sm"} ${
                       activeView === item.id 
                         ? "bg-emerald-100 text-emerald-800 font-medium" 
                         : "text-gray-600 hover:bg-gray-100"
                     }`}
                   >
-                    <item.icon className="w-4 h-4" />
+                    <item.icon className={section.id === "config_notas_credito" ? "w-3.5 h-3.5" : "w-4 h-4"} />
                     {item.label}
                   </button>
                 ))}
@@ -3045,7 +2969,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     </div>
                     <div>
                       <span className="text-gray-500 block">Lista de Precios:</span>
-                      <span className="font-medium">{mockListasPrecios.find(l => l.id === selectedCliente.lista_precios_id)?.nombre}</span>
+                      <span className="font-medium">{listasPrecios.find(l => l.id === selectedCliente.lista_precios_id)?.nombre}</span>
                     </div>
                     <div>
                       <span className="text-gray-500 block">Descuento Default:</span>
@@ -4254,7 +4178,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </div>
                 <div>
                   <label className="text-gray-500 block">Lista de Precios</label>
-                  <p className="font-medium">{mockListasPrecios.find(l => l.id === selectedNV.lista_precios_id)?.nombre}</p>
+                  <p className="font-medium">{listasPrecios.find(l => l.id === selectedNV.lista_precios_id)?.nombre}</p>
                 </div>
                 <div>
                   <label className="text-gray-500 block">Término de Pago</label>
@@ -4817,6 +4741,156 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     return Math.round(total * 0.7) // 30% menos para 4+ daños
   }
 
+  const renderFichaTomaEquipo = () => {
+    if (!selectedToma) return null
+    const fechaObj = new Date(selectedToma.fecha)
+    const fechaHora = fechaObj.toLocaleDateString('es-AR') + ' ' + fechaObj.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+    const operacionEnCurso = selectedToma.estado_recepcion !== 'recibido'
+
+    return (
+      <div>
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-6">
+          <button onClick={() => setSelectedToma(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{selectedToma.numero}</h1>
+            <p className="text-sm text-gray-500">{fechaHora}</p>
+          </div>
+          <div className="ml-auto flex items-center gap-3">
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              operacionEnCurso ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+            }`}>
+              {operacionEnCurso ? 'Operación en curso' : 'Operación finalizada'}
+            </span>
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              selectedToma.estado === 'confirmado' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+            }`}>
+              {selectedToma.estado.charAt(0).toUpperCase() + selectedToma.estado.slice(1)}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-6 mb-6">
+          {/* Datos de la operación */}
+          <div className="bg-white rounded-lg border p-5">
+            <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Datos de la Operación</h3>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between"><span className="text-gray-500">Número</span><span className="font-medium">{selectedToma.numero}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Fecha y Hora</span><span className="font-medium">{fechaHora}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Cliente</span><span className="font-medium">{selectedToma.cliente_nombre}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Equipo</span><span className="font-medium">{selectedToma.modelo_equipo}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Precio Base</span><span className="font-medium">{formatCurrency(selectedToma.precio_base)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Descuentos</span><span className="font-medium text-red-600">-{formatCurrency(selectedToma.descuentos)}</span></div>
+              <div className="flex justify-between border-t pt-3"><span className="text-gray-700 font-semibold">Precio Final Acordado</span><span className="font-bold text-emerald-600 text-base">{formatCurrency(selectedToma.precio_final)}</span></div>
+            </div>
+          </div>
+
+          {/* Evaluación de componentes */}
+          <div className="bg-white rounded-lg border p-5">
+            <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Evaluación del Equipo</h3>
+            <div className="space-y-2">
+              {selectedToma.evaluacion.map((ev, i) => (
+                <div key={i} className="flex items-center justify-between text-sm py-1.5 border-b border-gray-50 last:border-0">
+                  <span className="text-gray-600">{ev.componente}</span>
+                  <div className="flex items-center gap-3">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                      ['Buena', 'Excelente', 'Funciona', 'Funcionan', 'Funciona correctamente'].includes(ev.estado) ? 'bg-green-100 text-green-700' :
+                      ['Desgastada', 'Regular', 'Rayada'].includes(ev.estado) ? 'bg-amber-100 text-amber-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>{ev.estado}</span>
+                    {ev.descuento > 0 && <span className="text-red-600 text-xs">-{formatCurrency(ev.descuento)}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-6">
+          {/* Nota de Crédito generada */}
+          <div className="bg-white rounded-lg border p-5">
+            <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b flex items-center gap-2">
+              <FileText className="w-4 h-4 text-emerald-600" />
+              Nota de Crédito Generada
+            </h3>
+            {selectedToma.nota_credito_numero ? (
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Número</span>
+                  <button
+                    onClick={() => {
+                      const nc = ajustes.find(a => a.numero === selectedToma.nota_credito_numero)
+                      if (nc) setNcDetallePopup(nc)
+                    }}
+                    className="font-medium text-emerald-700 hover:underline hover:text-emerald-900 cursor-pointer"
+                  >
+                    {selectedToma.nota_credito_numero}
+                  </button>
+                </div>
+                <div className="flex justify-between"><span className="text-gray-500">Concepto</span><span className="font-medium">Toma de equipo: {selectedToma.modelo_equipo}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Importe</span><span className="font-bold text-emerald-600">{formatCurrency(selectedToma.precio_final)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Estado</span>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Publicada</span>
+                </div>
+                <p className="text-xs text-gray-400 pt-2 border-t">Este crédito fue acreditado en la cuenta corriente del cliente.</p>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">Sin nota de crédito generada</p>
+            )}
+          </div>
+
+          {/* Recepción de Compra generada */}
+          <div className="bg-white rounded-lg border p-5">
+            <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b flex items-center gap-2">
+              <Package className="w-4 h-4 text-blue-600" />
+              Recepción de Compra
+            </h3>
+            {selectedToma.recepcion_numero ? (
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between"><span className="text-gray-500">Número</span><span className="font-medium text-blue-700">{selectedToma.recepcion_numero}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Equipo</span><span className="font-medium">{selectedToma.modelo_equipo}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Valor acordado</span><span className="font-medium">{formatCurrency(selectedToma.precio_final)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Estado</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                    selectedToma.estado_recepcion === 'recibido' ? 'bg-green-100 text-green-700' :
+                    selectedToma.estado_recepcion === 'cancelado' ? 'bg-red-100 text-red-700' :
+                    'bg-amber-100 text-amber-700'
+                  }`}>
+                    {selectedToma.estado_recepcion === 'recibido' ? 'Recibido' :
+                     selectedToma.estado_recepcion === 'cancelado' ? 'Cancelado' : 'Esperando recepción'}
+                  </span>
+                </div>
+                {selectedToma.estado_recepcion === 'pendiente' && (
+                  <div className="pt-2 border-t">
+                    <p className="text-xs text-amber-600 mb-3">El equipo aun no fue recibido fisicamente. Confirma la recepcion una vez que el equipo ingrese al deposito.</p>
+                    <button
+                      onClick={() => {
+                        setTomasEquipo(prev => prev.map(t =>
+                          t.id === selectedToma.id ? { ...t, estado_recepcion: 'recibido' as const } : t
+                        ))
+                        setSelectedToma(prev => prev ? { ...prev, estado_recepcion: 'recibido' as const } : prev)
+                      }}
+                      className="w-full py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700"
+                    >
+                      Confirmar recepcion del equipo
+                    </button>
+                  </div>
+                )}
+                {selectedToma.estado_recepcion === 'recibido' && (
+                  <p className="text-xs text-green-600 pt-2 border-t">Equipo recibido fisicamente en deposito.</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">Sin recepcion de compra generada</p>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const renderCrearTomaEquipo = () => {
     const clienteSeleccionado = clientes.find(c => c.id === tomaEquipoClienteId)
     const modeloSeleccionado = modelosEquipo.find(m => m.id === tomaEquipoModeloId)
@@ -4840,20 +4914,26 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const handleConfirmar = () => {
       if (!clienteSeleccionado || !modeloSeleccionado) return
 
+      const ahora = new Date().toISOString()
       const nuevoId = tomasEquipo.length + 1
+      const precioFinal = tomaEquipoPrecioFinal || precioSugerido
+      const recepcionNumero = `REC-TE-${String(nuevoId).padStart(5, '0')}`
+      const notaCreditoNumero = `NC-A-${String(45 + nuevoId).padStart(5, '0')}`
+
       const nuevaToma = {
         id: nuevoId,
         numero: `TE-${String(nuevoId).padStart(5, '0')}`,
-        fecha: new Date().toISOString(),
+        fecha: ahora,
         cliente_id: clienteSeleccionado.id,
         cliente_nombre: clienteSeleccionado.nombre,
         modelo_equipo: modeloSeleccionado.nombre,
         precio_base: tomaEquipoPrecioBase,
         descuentos: totalDescuentos,
-        precio_final: tomaEquipoPrecioFinal || precioSugerido,
+        precio_final: precioFinal,
         estado: "confirmado" as const,
-        recepcion_numero: `REC-${String(125 + nuevoId).padStart(5, '0')}`,
-        nota_credito_numero: `NC-A-${String(45 + nuevoId).padStart(5, '0')}`,
+        estado_recepcion: "pendiente" as const,
+        recepcion_numero: recepcionNumero,
+        nota_credito_numero: notaCreditoNumero,
         evaluacion: tomaEquipoComponentes.map(c => ({
           componente: c.nombre,
           estado: c.estado,
@@ -4861,12 +4941,81 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         }))
       }
 
-      // Actualizar saldo del cliente (la nota de crédito reduce el saldo deudor)
-      setClientes(prev => prev.map(c => 
-        c.id === clienteSeleccionado.id 
-          ? { ...c, saldo: c.saldo - nuevaToma.precio_final }
+      // 1. Crear Nota de Crédito como Ajuste de Cliente (crédito en cuenta corriente)
+      const nuevaNC: AjusteCliente = {
+        id: ajustes.length + nuevoId,
+        numero: notaCreditoNumero,
+        cliente_id: clienteSeleccionado.id,
+        cliente_nombre: clienteSeleccionado.nombre,
+        estado: "publicado",
+        fecha: ahora,
+        concepto: `Nota de Crédito — Toma de equipo: ${modeloSeleccionado.nombre}`,
+        moneda: "ARS",
+        nota_venta_numero: null,
+        sucursal: "Puerto Norte",
+              categoria: "Equipos en parte de pago",
+        lineas: [{
+          descripcion: `Toma de equipo usado: ${modeloSeleccionado.nombre}`,
+          fecha_vencimiento: ahora,
+          importe: precioFinal
+        }],
+        total: precioFinal
+      }
+      setAjustes(prev => [...prev, nuevaNC])
+
+      // 2. Registrar movimiento de crédito en cuenta corriente del cliente
+      const saldoActual = movimientosCC
+        .filter(m => m.cliente_id === clienteSeleccionado.id)
+        .reduce((s, m) => m.tipo === "debito" ? s + m.importe : s - m.importe, 0)
+
+      const nuevoMovimiento: MovimientoCuentaCorriente = {
+        id: movimientosCC.length + nuevoId,
+        cliente_id: clienteSeleccionado.id,
+        fecha: ahora,
+        tipo: "credito",
+        concepto: `Nota de Crédito ${notaCreditoNumero} — Toma equipo: ${modeloSeleccionado.nombre}`,
+        documento_tipo: "nota_credito",
+        documento_numero: notaCreditoNumero,
+        documento_id: nuevaNC.id,
+        moneda: "ARS",
+        importe: precioFinal,
+        saldo_posterior: Math.max(0, saldoActual - precioFinal)
+      }
+      setMovimientosCC(prev => [...prev, nuevoMovimiento])
+
+      // 3. Actualizar saldo del cliente
+      setClientes(prev => prev.map(c =>
+        c.id === clienteSeleccionado.id
+          ? { ...c, saldo_cuenta_corriente: Math.max(0, (c.saldo_cuenta_corriente || 0) - precioFinal) }
           : c
       ))
+
+      // 4. Crear Recepción de Compra en estado borrador (en localStorage para que Compras la levante)
+      const nuevaRecepcion = {
+        id: Date.now(),
+        numero: recepcionNumero,
+        fecha: ahora,
+        proveedor_id: 0,
+        proveedor_nombre: `${clienteSeleccionado.nombre} (toma de equipo)`,
+        orden_compra_id: 0,
+        orden_compra_numero: nuevaToma.numero,
+        estado: "borrador",
+        tipo: "total",
+        observaciones: `Equipo tomado en parte de pago. NC generada: ${notaCreditoNumero}. Valor acordado: $${precioFinal.toLocaleString('es-AR')}. Evaluación: ${tomaEquipoComponentes.map(c => `${c.nombre}=${c.estado}`).join(', ')}`,
+        lineas: [{
+          producto_id: 0,
+          producto_nombre: modeloSeleccionado.nombre,
+          cantidad_ordenada: 1,
+          cantidad_recibida: 0,
+          cantidad_esta_recepcion: 1,
+          precio_unitario: precioFinal
+        }]
+      }
+
+      // Guardar en localStorage para que ModuloCompras la levante
+      const recepcionesPendientes = JSON.parse(localStorage.getItem('recepciones_pendientes_toma') || '[]')
+      recepcionesPendientes.push(nuevaRecepcion)
+      localStorage.setItem('recepciones_pendientes_toma', JSON.stringify(recepcionesPendientes))
 
       setTomasEquipo(prev => [...prev, nuevaToma])
       resetForm()
@@ -5217,7 +5366,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   const renderTomaEquipo = () => {
-    if (tomaEquipoCreando) return renderCrearTomaEquipo()
+    if (selectedToma) return renderFichaTomaEquipo()
+  if (tomaEquipoCreando) return renderCrearTomaEquipo()
 
     return (
       <div>
@@ -5266,36 +5416,69 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <thead className="bg-gray-50 border-b">
               <tr className="text-xs text-gray-500 uppercase">
                 <th className="text-left py-3 px-4">Número</th>
-                <th className="text-left py-3 px-4">Fecha</th>
+                <th className="text-left py-3 px-4">Fecha y Hora</th>
                 <th className="text-left py-3 px-4">Cliente</th>
                 <th className="text-left py-3 px-4">Equipo</th>
                 <th className="text-right py-3 px-4">Precio Base</th>
                 <th className="text-right py-3 px-4">Descuentos</th>
                 <th className="text-right py-3 px-4">Precio Final</th>
+                <th className="text-center py-3 px-4">Operación</th>
+                <th className="text-center py-3 px-4">Recepción</th>
                 <th className="text-center py-3 px-4">Estado</th>
               </tr>
             </thead>
             <tbody>
-              {tomasEquipo.map(toma => (
-                <tr key={toma.id} className="border-b hover:bg-gray-50 cursor-pointer">
-                  <td className="py-3 px-4 font-medium text-emerald-700">{toma.numero}</td>
-                  <td className="py-3 px-4 text-sm">{new Date(toma.fecha).toLocaleDateString('es-AR')}</td>
-                  <td className="py-3 px-4 text-sm">{toma.cliente_nombre}</td>
-                  <td className="py-3 px-4 text-sm">{toma.modelo_equipo}</td>
-                  <td className="py-3 px-4 text-sm text-right">{formatCurrency(toma.precio_base)}</td>
-                  <td className="py-3 px-4 text-sm text-right text-red-600">-{formatCurrency(toma.descuentos)}</td>
-                  <td className="py-3 px-4 text-sm text-right font-semibold text-emerald-600">{formatCurrency(toma.precio_final)}</td>
-                  <td className="py-3 px-4 text-center">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      toma.estado === 'confirmado' ? 'bg-green-100 text-green-700' :
-                      toma.estado === 'borrador' ? 'bg-amber-100 text-amber-700' :
-                      'bg-red-100 text-red-700'
-                    }`}>
-                      {toma.estado.charAt(0).toUpperCase() + toma.estado.slice(1)}
-                    </span>
-                  </td>
+              {tomasEquipo.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="py-10 text-center text-sm text-gray-400">No hay tomas de equipo registradas</td>
                 </tr>
-              ))}
+              )}
+              {tomasEquipo.map(toma => {
+                const fechaObj = new Date(toma.fecha)
+                const fecha = fechaObj.toLocaleDateString('es-AR')
+                const hora = fechaObj.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+                const operacionEnCurso = toma.estado_recepcion !== 'recibido'
+                return (
+                  <tr key={toma.id} onClick={() => setSelectedToma(toma)} className="border-b hover:bg-gray-50 cursor-pointer">
+                    <td className="py-3 px-4 font-medium text-emerald-700">{toma.numero}</td>
+                    <td className="py-3 px-4 text-sm">
+                      <span>{fecha}</span>
+                      <span className="text-gray-400 ml-1">{hora}</span>
+                    </td>
+                    <td className="py-3 px-4 text-sm">{toma.cliente_nombre}</td>
+                    <td className="py-3 px-4 text-sm">{toma.modelo_equipo}</td>
+                    <td className="py-3 px-4 text-sm text-right">{formatCurrency(toma.precio_base)}</td>
+                    <td className="py-3 px-4 text-sm text-right text-red-600">-{formatCurrency(toma.descuentos)}</td>
+                    <td className="py-3 px-4 text-sm text-right font-semibold text-emerald-600">{formatCurrency(toma.precio_final)}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        operacionEnCurso ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {operacionEnCurso ? 'En curso' : 'Finalizada'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        toma.estado_recepcion === 'recibido' ? 'bg-green-100 text-green-700' :
+                        toma.estado_recepcion === 'cancelado' ? 'bg-red-100 text-red-700' :
+                        'bg-amber-100 text-amber-700'
+                      }`}>
+                        {toma.estado_recepcion === 'recibido' ? 'Recibido' :
+                         toma.estado_recepcion === 'cancelado' ? 'Cancelado' : 'Pendiente'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        toma.estado === 'confirmado' ? 'bg-green-100 text-green-700' :
+                        toma.estado === 'borrador' ? 'bg-amber-100 text-amber-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {toma.estado.charAt(0).toUpperCase() + toma.estado.slice(1)}
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -5968,7 +6151,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       onChange={(e) => setFacturaListaPreciosId(Number(e.target.value))}
                       className="ml-2 border border-gray-300 rounded px-2 py-1 text-sm font-medium"
                     >
-                      {mockListasPrecios.filter(lp => lp.activa).map(lp => (
+                      {listasPrecios.filter(lp => lp.activa).map(lp => (
                         <option key={lp.id} value={lp.id}>{lp.nombre}</option>
                       ))}
                     </select>
@@ -6280,7 +6463,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     setReciboMontoForm(selectedFactura.saldo)
                     setReciboPagosForm([{ forma_pago: "Efectivo", importe: selectedFactura.saldo, moneda: "ARS" }])
                     setCreandoRecibo(true)
-                    setReciboPrevisualizando(true)
+                    setReciboPrevisualizando(false)
                     setSelectedFactura(null)
                     setActiveView("recibos")
                   }}
@@ -7041,6 +7224,74 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   </div>
                 </div>
               )}
+
+              {/* Créditos sin conciliar del cliente (recibos + notas de crédito) */}
+              {clienteSeleccionado && (() => {
+                const recibosSinConciliar = recibos.filter(
+                  r => r.cliente_id === clienteSeleccionado.id && r.importe_no_conciliado > 0
+                )
+                const ncSinConciliar = ajustes.filter(
+                  a => a.cliente_id === clienteSeleccionado.id &&
+                       a.estado === "publicado" &&
+                       a.numero.startsWith("NC-") &&
+                       a.total > 0
+                ).map(a => ({ id: a.id, numero: a.numero, fecha: a.fecha, disponible: a.total, esNC: true, ajuste: a }))
+
+                const totalItems = recibosSinConciliar.length + ncSinConciliar.length
+                if (totalItems === 0) return null
+
+                const totalAFavor =
+                  recibosSinConciliar.reduce((s, r) => s + r.importe_no_conciliado, 0) +
+                  ncSinConciliar.reduce((s, nc) => s + nc.disponible, 0)
+
+                return (
+                  <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-amber-200">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-amber-500" />
+                        <span className="text-sm font-semibold text-amber-800">Creditos disponibles</span>
+                        <span className="text-xs bg-amber-200 text-amber-800 rounded-full px-2 py-0.5 font-medium">{totalItems}</span>
+                      </div>
+                      <span className="text-sm font-bold text-amber-800">Total a favor: {formatCurrency(totalAFavor)}</span>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-xs text-amber-700 uppercase border-b border-amber-200">
+                          <th className="text-left py-2 px-4">Comprobante</th>
+                          <th className="text-left py-2 px-4">Fecha</th>
+                          <th className="text-left py-2 px-4">Categoría</th>
+                          <th className="text-right py-2 px-4">Disponible</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recibosSinConciliar.map(r => (
+                          <tr key={`r-${r.id}`} className="border-b border-amber-100 last:border-0">
+                            <td className="py-2 px-4 font-medium text-amber-900">{r.numero}</td>
+                            <td className="py-2 px-4 text-amber-700">{new Date(r.fecha).toLocaleDateString('es-AR')}</td>
+                            <td className="py-2 px-4 text-amber-700">—</td>
+                            <td className="py-2 px-4 text-right font-bold text-green-700">{formatCurrency(r.importe_no_conciliado)}</td>
+                          </tr>
+                        ))}
+                        {ncSinConciliar.map(nc => (
+                          <tr key={`nc-${nc.id}`} onClick={() => setNcDetallePopup(nc.ajuste)} className="border-b border-amber-100 last:border-0 bg-emerald-50/40 cursor-pointer hover:bg-emerald-100/60">
+                            <td className="py-2 px-4 font-medium text-emerald-800">
+                              <span className="text-xs bg-emerald-100 text-emerald-700 rounded px-1 mr-1">NC</span>
+                              {nc.numero}
+                            </td>
+                            <td className="py-2 px-4 text-amber-700">{new Date(nc.fecha).toLocaleDateString('es-AR')}</td>
+                            <td className="py-2 px-4">
+                              {nc.ajuste?.categoria
+                                ? <span className="text-xs bg-emerald-100 text-emerald-700 font-medium px-2 py-0.5 rounded">{nc.ajuste.categoria.charAt(0).toUpperCase() + nc.ajuste.categoria.slice(1)}</span>
+                                : <span className="text-amber-600 text-xs">—</span>}
+                            </td>
+                            <td className="py-2 px-4 text-right font-bold text-green-700">{formatCurrency(nc.disponible)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              })()}
             </div>
 
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -7323,6 +7574,76 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               )}
             </div>
           </div>
+
+          {/* Créditos sin conciliar del cliente */}
+          {clienteRecibo && (() => {
+            const recibosSinConciliar = recibos.filter(
+              r => r.cliente_id === clienteRecibo.id &&
+                   r.id !== selectedRecibo.id &&
+                   r.importe_no_conciliado > 0
+            )
+            const ncSinConciliar = ajustes.filter(
+              a => a.cliente_id === clienteRecibo.id &&
+                   a.estado === "publicado" &&
+                   a.numero.startsWith("NC-") &&
+                   a.total > 0
+            ).map(a => ({ id: a.id, numero: a.numero, fecha: a.fecha, disponible: a.total, ajuste: a }))
+
+            const totalItems = recibosSinConciliar.length + ncSinConciliar.length
+            if (totalItems === 0) return null
+
+            const totalAFavor =
+              recibosSinConciliar.reduce((s, r) => s + r.importe_no_conciliado, 0) +
+              ncSinConciliar.reduce((s, nc) => s + nc.disponible, 0)
+
+            return (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 overflow-hidden mb-4">
+                <div className="flex items-center justify-between px-4 py-2.5 border-b border-amber-200">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span className="text-sm font-semibold text-amber-800">Creditos disponibles</span>
+                    <span className="text-xs bg-amber-200 text-amber-800 rounded-full px-2 py-0.5 font-medium">{totalItems}</span>
+                  </div>
+                  <span className="text-sm font-bold text-amber-800">Total a favor: {formatCurrency(totalAFavor)}</span>
+                </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-amber-700 uppercase border-b border-amber-200">
+                      <th className="text-left py-2 px-4">Comprobante</th>
+                      <th className="text-left py-2 px-4">Fecha</th>
+                      <th className="text-left py-2 px-4">Categoría</th>
+                      <th className="text-right py-2 px-4">Disponible</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recibosSinConciliar.map(r => (
+                      <tr key={`r-${r.id}`} className="border-b border-amber-100 last:border-0">
+                        <td className="py-2 px-4 font-medium text-amber-900">{r.numero}</td>
+                        <td className="py-2 px-4 text-amber-700">{new Date(r.fecha).toLocaleDateString('es-AR')}</td>
+                        <td className="py-2 px-4 text-amber-700">—</td>
+                        <td className="py-2 px-4 text-right font-bold text-green-700">{formatCurrency(r.importe_no_conciliado)}</td>
+                      </tr>
+                    ))}
+                    {ncSinConciliar.map(nc => (
+                      <tr key={`nc-${nc.id}`} onClick={() => setNcDetallePopup(nc.ajuste)} className="border-b border-amber-100 last:border-0 bg-emerald-50/40 cursor-pointer hover:bg-emerald-100/60">
+                        <td className="py-2 px-4 font-medium text-emerald-800">
+                          <span className="text-xs bg-emerald-100 text-emerald-700 rounded px-1 mr-1">NC</span>
+                          {nc.numero}
+                        </td>
+                        <td className="py-2 px-4 text-amber-700">{new Date(nc.fecha).toLocaleDateString('es-AR')}</td>
+                        <td className="py-2 px-4">
+                          {nc.ajuste?.categoria
+                            ? <span className="text-xs bg-emerald-100 text-emerald-700 font-medium px-2 py-0.5 rounded">{nc.ajuste.categoria.charAt(0).toUpperCase() + nc.ajuste.categoria.slice(1)}</span>
+                            : <span className="text-amber-600 text-xs">—</span>}
+                        </td>
+                        <td className="py-2 px-4 text-right font-bold text-green-700">{formatCurrency(nc.disponible)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          })()}
 
           <div className="border-b pb-2 mb-4">
             <h3 className="font-semibold text-gray-900">Formas de Pago</h3>
@@ -7728,6 +8049,22 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       ? recibos.filter(r => r.cliente_id === conciliacionClienteId && r.estado === "publicado").sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
       : []
 
+    // Notas de crédito publicadas del cliente (NC-) como créditos adicionales
+    const notasCredito = conciliacionClienteId
+      ? ajustes.filter(a => a.cliente_id === conciliacionClienteId && a.estado === "publicado" && a.numero.startsWith("NC-"))
+          .map(a => ({
+            id: a.id,
+            numero: a.numero,
+            fecha: a.fecha,
+            cliente_id: a.cliente_id,
+            importe_no_conciliado: a.total,
+            total: a.total,
+            tipo: "nota_credito" as const,
+            concepto: a.concepto,
+            moneda: a.moneda
+          }))
+      : []
+
     const recibosFiltrados = todosRecibosCliente.filter(r => {
       // Filtro por conciliado: "no"=pendientes, "si"=conciliados, "todos"=todos
       if (conciliacionFiltroConciliado === "no" && r.importe_no_conciliado <= 0) return false
@@ -7738,10 +8075,18 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       if (conciliacionFiltroTextoCreditos && !r.numero.toLowerCase().includes(conciliacionFiltroTextoCreditos.toLowerCase())) return false
       return true
     })
-    
+
+    const notasCreditoFiltradas = notasCredito.filter(nc => {
+      if (conciliacionFiltroConciliado === "no" && nc.importe_no_conciliado <= 0) return false
+      if (conciliacionFiltroConciliado === "si" && nc.importe_no_conciliado > 0) return false
+      if (conciliacionFiltroTextoCreditos && !nc.numero.toLowerCase().includes(conciliacionFiltroTextoCreditos.toLowerCase())) return false
+      return true
+    })
+
     // Calcular totales (solo pendientes)
     const totalDebitos = todasFacturasCliente.filter(f => f.saldo > 0).reduce((sum, f) => sum + f.saldo, 0)
     const totalCreditos = todosRecibosCliente.filter(r => r.importe_no_conciliado > 0).reduce((sum, r) => sum + r.importe_no_conciliado, 0)
+      + notasCredito.filter(nc => nc.importe_no_conciliado > 0).reduce((sum, nc) => sum + nc.importe_no_conciliado, 0)
     const balance = totalDebitos - totalCreditos
 
     // Calcular totales seleccionados
@@ -8145,7 +8490,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     Todos
                   </label>
                   <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
-                    {recibosFiltrados.filter(r => r.importe_no_conciliado > 0).length}
+                    {recibosFiltrados.filter(r => r.importe_no_conciliado > 0).length + notasCreditoFiltradas.filter(nc => nc.importe_no_conciliado > 0).length}
                   </span>
                 </div>
               </div>
@@ -8165,47 +8510,67 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     </tr>
                   </thead>
                   <tbody>
-                    {recibosFiltrados.length > 0 ? recibosFiltrados.map(r => {
-                      const seleccionado = conciliacionSeleccionCreditos.find(c => c.id === r.id && c.tipo === "recibo")
-                      const esConciliado = r.importe_no_conciliado <= 0
-                      return (
-                        <tr 
-                          key={r.id} 
-                          className={`border-b hover:bg-gray-50 cursor-pointer ${seleccionado ? 'bg-blue-50' : ''} ${esConciliado ? 'opacity-50' : ''}`}
-                          onClick={() => !esConciliado && toggleCreditoSeleccion(r)}
-                        >
-                          <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
-                            {!esConciliado && (
-                              <div className="flex items-center justify-center gap-1">
-                                <input 
-                                  type="checkbox" 
-                                  checked={!!seleccionado}
-                                  onChange={() => toggleCreditoSeleccion(r)}
-                                  className="w-3.5 h-3.5 rounded border-gray-300"
-                                />
-                                <button className="p-0.5 text-gray-400 hover:text-blue-600">
-                                  <Search className="w-3 h-3" />
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-1.5 px-2 text-right font-medium text-green-600">{formatCurrency(r.importe_no_conciliado, r.moneda)}</td>
-                          <td className="py-1.5 px-2 text-center text-gray-500">{r.moneda === "USD" ? "U$D" : "$"}</td>
-                          <td className="py-1.5 px-2 text-right">{formatCurrency(r.importe, r.moneda)}</td>
-                          <td className="py-1.5 px-2 text-gray-600">{formatDateTime(r.fecha).split(" ")[0]}</td>
-                          <td className="py-1.5 px-2 text-gray-600">-</td>
-                          <td className="py-1.5 px-2">
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); /* navegar a recibo */ }}
-                              className="text-blue-600 hover:underline"
+                    {(recibosFiltrados.length > 0 || notasCreditoFiltradas.length > 0) ? (
+                      <>
+                        {recibosFiltrados.map(r => {
+                          const seleccionado = conciliacionSeleccionCreditos.find(c => c.id === r.id && c.tipo === "recibo")
+                          const esConciliado = r.importe_no_conciliado <= 0
+                          return (
+                            <tr
+                              key={`recibo-${r.id}`}
+                              className={`border-b hover:bg-gray-50 cursor-pointer ${seleccionado ? 'bg-blue-50' : ''} ${esConciliado ? 'opacity-50' : ''}`}
+                              onClick={() => !esConciliado && toggleCreditoSeleccion(r)}
                             >
-                              {r.numero}
-                            </button>
-                          </td>
-                          <td className="py-1.5 px-2 text-gray-600">-</td>
-                        </tr>
-                      )
-                    }) : (
+                              <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                                {!esConciliado && (
+                                  <div className="flex items-center justify-center gap-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={!!seleccionado}
+                                      onChange={() => toggleCreditoSeleccion(r)}
+                                      className="w-3.5 h-3.5 rounded border-gray-300"
+                                    />
+                                    <button className="p-0.5 text-gray-400 hover:text-blue-600">
+                                      <Search className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-1.5 px-2 text-right font-medium text-green-600">{formatCurrency(r.importe_no_conciliado, r.moneda)}</td>
+                              <td className="py-1.5 px-2 text-center text-gray-500">{r.moneda === "USD" ? "U$D" : "$"}</td>
+                              <td className="py-1.5 px-2 text-right">{formatCurrency(r.importe, r.moneda)}</td>
+                              <td className="py-1.5 px-2 text-gray-600">{formatDateTime(r.fecha).split(" ")[0]}</td>
+                              <td className="py-1.5 px-2 text-gray-600">-</td>
+                              <td className="py-1.5 px-2">
+                                <button onClick={(e) => e.stopPropagation()} className="text-blue-600 hover:underline">
+                                  {r.numero}
+                                </button>
+                              </td>
+                              <td className="py-1.5 px-2 text-gray-600">-</td>
+                            </tr>
+                          )
+                        })}
+                        {notasCreditoFiltradas.map(nc => (
+                          <tr
+                            key={`nc-${nc.id}`}
+                            className="border-b hover:bg-emerald-50 cursor-default bg-emerald-50/30"
+                          >
+                            <td className="py-1.5 px-2 text-center">
+                              <span className="text-xs text-emerald-600 font-medium">NC</span>
+                            </td>
+                            <td className="py-1.5 px-2 text-right font-medium text-green-600">{formatCurrency(nc.importe_no_conciliado, nc.moneda)}</td>
+                            <td className="py-1.5 px-2 text-center text-gray-500">{nc.moneda === "USD" ? "U$D" : "$"}</td>
+                            <td className="py-1.5 px-2 text-right">{formatCurrency(nc.total, nc.moneda)}</td>
+                            <td className="py-1.5 px-2 text-gray-600">{formatDateTime(nc.fecha).split(" ")[0]}</td>
+                            <td className="py-1.5 px-2 text-gray-600">-</td>
+                            <td className="py-1.5 px-2">
+                              <span className="text-emerald-700 font-medium">{nc.numero}</span>
+                            </td>
+                            <td className="py-1.5 px-2 text-gray-600 text-xs truncate max-w-[120px]" title={nc.concepto}>{nc.concepto}</td>
+                          </tr>
+                        ))}
+                      </>
+                    ) : (
                       <tr>
                         <td colSpan={8} className="py-8 text-center text-gray-400">
                           {conciliacionClienteId ? "No hay creditos disponibles" : "Seleccione un cliente"}
@@ -8326,11 +8691,84 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </div>
             )}
           </div>
-        )}
-      </div>
-    )
-  }
-  
+      )}
+
+      {/* Popup detalle Nota de Credito */}
+      {ncDetallePopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setNcDetallePopup(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b bg-emerald-50">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold bg-emerald-100 text-emerald-700 rounded px-2 py-0.5">NOTA DE CREDITO</span>
+                  <span className="font-mono font-bold text-emerald-800 text-lg">{ncDetallePopup.numero}</span>
+                </div>
+                <p className="text-sm text-gray-500 mt-0.5">{new Date(ncDetallePopup.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`text-xs font-semibold px-2 py-1 rounded-full ${ncDetallePopup.estado === 'publicado' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                  {ncDetallePopup.estado === 'publicado' ? 'Publicada' : 'Borrador'}
+                </span>
+                <button onClick={() => setNcDetallePopup(null)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-b grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <span className="text-gray-400 text-xs uppercase font-medium">Cliente</span>
+                <p className="font-semibold text-gray-900 mt-0.5">{ncDetallePopup.cliente_nombre}</p>
+              </div>
+              <div>
+                <span className="text-gray-400 text-xs uppercase font-medium">Sucursal</span>
+                <p className="font-semibold text-gray-900 mt-0.5">{ncDetallePopup.sucursal}</p>
+              </div>
+              <div>
+                <span className="text-gray-400 text-xs uppercase font-medium">Concepto</span>
+                <p className="font-semibold text-gray-900 mt-0.5">{ncDetallePopup.concepto}</p>
+              </div>
+              {ncDetallePopup.nota_venta_numero && (
+                <div>
+                  <span className="text-gray-400 text-xs uppercase font-medium">Nota de Venta</span>
+                  <p className="font-semibold text-emerald-700 mt-0.5">{ncDetallePopup.nota_venta_numero}</p>
+                </div>
+              )}
+            </div>
+            {ncDetallePopup.lineas && ncDetallePopup.lineas.length > 0 && (
+              <div className="px-6 py-4 border-b">
+                <p className="text-xs uppercase font-semibold text-gray-400 mb-3">Detalle</p>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-gray-400 uppercase border-b">
+                      <th className="text-left pb-2">Descripcion</th>
+                      <th className="text-right pb-2">Importe</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ncDetallePopup.lineas.map((l, i) => (
+                      <tr key={i} className="border-b border-gray-50 last:border-0">
+                        <td className="py-2 text-gray-700">{l.descripcion}</td>
+                        <td className="py-2 text-right font-medium">{formatCurrency(l.importe, ncDetallePopup.moneda)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="px-6 py-4 flex items-center justify-between">
+              <span className="text-sm text-gray-500">Moneda: <span className="font-semibold text-gray-800">{ncDetallePopup.moneda}</span></span>
+              <div className="text-right">
+                <p className="text-xs text-gray-400 uppercase font-medium">Total Nota de Credito</p>
+                <p className="text-2xl font-bold text-emerald-600">{formatCurrency(ncDetallePopup.total, ncDetallePopup.moneda)}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
   // Ajustes de Cliente
   const renderAjustes = () => (
     <div>
@@ -8388,19 +8826,183 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     </div>
   )
 
-  // Notas de Débito / Crédito placeholder
-  const renderNotasDebitoCredito = (tipo: "debito" | "credito") => (
-    <div>
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold text-emerald-900">Notas de {tipo === "debito" ? "Débito" : "Crédito"}</h1>
-      </div>
+  // Notas de Débito / Crédito — usa el estado real de ajustes
+  const renderFichaAjuste = () => {
+    const ajuste = selectedAjuste
+    if (!ajuste) return null
+    const esNC = ajuste.numero.startsWith("NC-")
+    const titulo = esNC ? "Nota de Crédito" : "Nota de Débito"
+    const listadoLabel = esNC ? "Notas de Crédito" : "Notas de Débito"
 
-      <div className="bg-white rounded-lg shadow-sm p-12 text-center">
-        <Receipt className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-        <p className="text-gray-500">No hay notas de {tipo === "debito" ? "débito" : "crédito"} registradas</p>
+    return (
+      <div>
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+          <button onClick={() => setSelectedAjuste(null)} className="hover:text-emerald-700">{listadoLabel}</button>
+          <span>/</span>
+          <span className="font-medium text-gray-900">{ajuste.numero}</span>
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setSelectedAjuste(null)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-emerald-900">{ajuste.numero}</h1>
+              <p className="text-sm text-gray-500">{formatDate(ajuste.fecha)}</p>
+            </div>
+          </div>
+          <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+            ajuste.estado === "publicado" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+          }`}>
+            {ajuste.estado === "publicado" ? "Publicada" : "Borrador"}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-3 gap-4">
+          {/* Columna principal */}
+          <div className="col-span-2 space-y-4">
+
+            {/* Datos generales */}
+            <div className="bg-white rounded-lg shadow-sm p-5">
+              <h3 className="font-semibold text-gray-900 mb-4">{titulo}</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-400 text-xs uppercase font-medium block mb-0.5">Cliente</span>
+                  <span className="font-semibold text-gray-900">{ajuste.cliente_nombre}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 text-xs uppercase font-medium block mb-0.5">Sucursal</span>
+                  <span className="font-semibold text-gray-900">{ajuste.sucursal}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 text-xs uppercase font-medium block mb-0.5">Concepto</span>
+                  <span className="font-semibold text-gray-900">{ajuste.concepto}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 text-xs uppercase font-medium block mb-0.5">Moneda</span>
+                  <span className="font-semibold text-gray-900">{ajuste.moneda}</span>
+                </div>
+                {ajuste.nota_venta_numero && (
+                  <div>
+                    <span className="text-gray-400 text-xs uppercase font-medium block mb-0.5">Nota de Venta</span>
+                    <span className="font-semibold text-emerald-700">{ajuste.nota_venta_numero}</span>
+                  </div>
+                )}
+                {ajuste.categoria && (
+                  <div>
+                    <span className="text-gray-400 text-xs uppercase font-medium block mb-0.5">Categoría</span>
+                    <span className="inline-block bg-emerald-50 text-emerald-700 text-xs font-semibold px-2 py-0.5 rounded">{ajuste.categoria}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Líneas */}
+            {ajuste.lineas && ajuste.lineas.length > 0 && (
+              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div className="px-5 py-3 border-b bg-gray-50">
+                  <h3 className="font-semibold text-gray-900 text-sm">Detalle</h3>
+                </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-gray-500 uppercase border-b bg-gray-50/50">
+                      <th className="text-left py-3 px-5 font-medium">Descripción</th>
+                      <th className="text-right py-3 px-5 font-medium">Importe</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ajuste.lineas.map((linea, i) => (
+                      <tr key={i} className="border-b border-gray-50 last:border-0">
+                        <td className="py-3 px-5 text-gray-700">{linea.descripcion}</td>
+                        <td className="py-3 px-5 text-right font-medium">{formatCurrency(linea.importe, ajuste.moneda)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Columna lateral */}
+          <div className="space-y-4">
+            <div className="bg-white rounded-lg shadow-sm p-5">
+              <h3 className="font-semibold text-gray-900 mb-4 text-sm">Total</h3>
+              <div className="text-3xl font-bold text-emerald-600">{formatCurrency(ajuste.total, ajuste.moneda)}</div>
+              <div className="text-xs text-gray-400 mt-1">{ajuste.moneda}</div>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
+
+  const renderNotasDebitoCredito = (tipo: "debito" | "credito") => {
+    // Las notas de crédito son ajustes cuyo número empieza con "NC-"
+    // Las notas de débito son ajustes cuyo número empieza con "ND-"
+    const prefijo = tipo === "credito" ? "NC-" : "ND-"
+    const notasFiltradas = ajustes.filter(a => a.numero.startsWith(prefijo))
+    const titulo = tipo === "credito" ? "Notas de Crédito" : "Notas de Débito"
+
+    return (
+      <div>
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h1 className="text-2xl font-bold text-emerald-900">{titulo}</h1>
+            <p className="text-sm text-gray-500 mt-0.5">{notasFiltradas.length} registro{notasFiltradas.length !== 1 ? "s" : ""}</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          {notasFiltradas.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <Receipt className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <p>No hay {titulo.toLowerCase()} registradas</p>
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b-2 border-gray-200">
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cliente</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Concepto</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Sucursal</th>
+                  <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Estado</th>
+                  <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Moneda</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {notasFiltradas.map(nota => (
+                  <tr key={nota.id} onClick={() => setSelectedAjuste(nota)} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
+                    <td className="py-3 px-4 font-mono text-sm text-emerald-700 font-medium">{nota.numero}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{formatDate(nota.fecha)}</td>
+                    <td className="py-3 px-4 text-sm">{nota.cliente_nombre}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600 max-w-xs truncate">{nota.concepto}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{nota.sucursal}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
+                        nota.estado === "publicado" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+                      }`}>
+                        {nota.estado === "publicado" ? "Publicada" : "Borrador"}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center text-sm font-medium">{nota.moneda}</td>
+                    <td className="py-3 px-4 text-right font-semibold text-emerald-600">
+                      {formatCurrency(nota.total, nota.moneda)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   // ==================== LISTAS DE PRECIOS ====================
   
@@ -9861,6 +10463,170 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     )
   }
 
+  // Configuración: Categorías de NC
+  const renderNcCategorias = () => {
+    const guardarCategoria = async () => {
+      const nombre = ncCategoriaNombre.trim()
+      if (!nombre) return
+      setNcCategoriaLoading(true)
+      const { createClient } = await import("@/lib/supabase/client")
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from("nc_categorias")
+        .insert({ nombre })
+        .select()
+        .single()
+      if (!error && data) {
+        setNcCategorias(prev => [...prev, data].sort((a, b) => a.nombre.localeCompare(b.nombre)))
+        setNcCategoriaNombre("")
+        setNcCategoriaCreando(false)
+      }
+      setNcCategoriaLoading(false)
+    }
+
+    const guardarEdicion = async (id: number) => {
+      const nombre = ncCategoriaEditNombre.trim()
+      if (!nombre) return
+      setNcCategoriaLoading(true)
+      const { createClient } = await import("@/lib/supabase/client")
+      const supabase = createClient()
+      const { error } = await supabase.from("nc_categorias").update({ nombre }).eq("id", id)
+      if (!error) {
+        setNcCategorias(prev => prev.map(c => c.id === id ? { ...c, nombre } : c).sort((a, b) => a.nombre.localeCompare(b.nombre)))
+        setNcCategoriaEditId(null)
+        setNcCategoriaEditNombre("")
+      }
+      setNcCategoriaLoading(false)
+    }
+
+    const toggleActiva = async (cat: NcCategoria) => {
+      const { createClient } = await import("@/lib/supabase/client")
+      const supabase = createClient()
+      const { error } = await supabase.from("nc_categorias").update({ activa: !cat.activa }).eq("id", cat.id)
+      if (!error) setNcCategorias(prev => prev.map(c => c.id === cat.id ? { ...c, activa: !c.activa } : c))
+    }
+
+    const eliminar = async (id: number) => {
+      if (!confirm("¿Eliminar esta categoría?")) return
+      const { createClient } = await import("@/lib/supabase/client")
+      const supabase = createClient()
+      const { error } = await supabase.from("nc_categorias").delete().eq("id", id)
+      if (!error) setNcCategorias(prev => prev.filter(c => c.id !== id))
+    }
+
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-4 bg-white border-b border-gray-200 py-3 px-4 -mx-6 -mt-6">
+          <div>
+            <h1 className="text-xl font-bold text-emerald-900">Notas de Crédito — Categorías</h1>
+            <p className="text-sm text-gray-500 mt-0.5">{ncCategorias.length} categoría{ncCategorias.length !== 1 ? "s" : ""}</p>
+          </div>
+          <button
+            onClick={() => { setNcCategoriaCreando(true); setNcCategoriaNombre("") }}
+            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" /> Nueva Categoría
+          </button>
+        </div>
+
+        {ncCategoriaCreando && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 mb-4 flex items-center gap-3">
+            <input
+              type="text"
+              value={ncCategoriaNombre}
+              onChange={e => setNcCategoriaNombre(e.target.value)}
+              placeholder="Nombre de la categoría..."
+              className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              autoFocus
+              onKeyDown={e => { if (e.key === "Enter") guardarCategoria(); if (e.key === "Escape") setNcCategoriaCreando(false) }}
+            />
+            <button
+              onClick={guardarCategoria}
+              disabled={ncCategoriaLoading || !ncCategoriaNombre.trim()}
+              className="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {ncCategoriaLoading ? "Guardando..." : "Guardar"}
+            </button>
+            <button
+              onClick={() => { setNcCategoriaCreando(false); setNcCategoriaNombre("") }}
+              className="px-3 py-2 text-gray-600 text-sm rounded hover:bg-gray-100"
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
+
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                <th className="text-left py-3 px-4 font-medium">Nombre</th>
+                <th className="text-center py-3 px-4 font-medium">Activa</th>
+                <th className="py-3 px-4"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {ncCategorias.length === 0 && (
+                <tr><td colSpan={3} className="py-10 text-center text-gray-400 text-sm">No hay categorías creadas</td></tr>
+              )}
+              {ncCategorias.map((cat, idx) => (
+                <tr key={cat.id} className={`border-b border-gray-100 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}>
+                  <td className="py-3 px-4">
+                    {ncCategoriaEditId === cat.id ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={ncCategoriaEditNombre}
+                          onChange={e => setNcCategoriaEditNombre(e.target.value)}
+                          className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          autoFocus
+                          onKeyDown={e => { if (e.key === "Enter") guardarEdicion(cat.id); if (e.key === "Escape") { setNcCategoriaEditId(null) } }}
+                        />
+                        <button onClick={() => guardarEdicion(cat.id)} className="text-emerald-600 hover:text-emerald-800 text-sm font-medium">Guardar</button>
+                        <button onClick={() => setNcCategoriaEditId(null)} className="text-gray-500 hover:text-gray-700 text-sm">Cancelar</button>
+                      </div>
+                    ) : (
+                      <span className="font-medium text-gray-900">{cat.nombre}</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <button onClick={() => toggleActiva(cat)} className="focus:outline-none">
+                      {cat.activa
+                        ? <CheckCircle className="w-4 h-4 text-green-500 mx-auto" />
+                        : <X className="w-4 h-4 text-gray-400 mx-auto" />}
+                    </button>
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      {cat.nombre.toLowerCase() === "equipos en parte de pago" || cat.nombre === "Equipos en parte de pago" ? (
+                        <span className="text-xs text-gray-400 italic px-1">del sistema</span>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => { setNcCategoriaEditId(cat.id); setNcCategoriaEditNombre(cat.nombre) }}
+                            className="text-gray-400 hover:text-emerald-600 text-xs"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => eliminar(cat.id)}
+                            className="text-gray-400 hover:text-red-500"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
   // Main content render
   const renderContent = () => {
     switch (activeView) {
@@ -9881,8 +10647,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       case "facturas":
         return renderFacturas()
       case "notas_debito":
+        if (selectedAjuste) return renderFichaAjuste()
         return renderNotasDebitoCredito("debito")
       case "notas_credito":
+        if (selectedAjuste) return renderFichaAjuste()
         return renderNotasDebitoCredito("credito")
       case "recibos":
         return renderRecibos()
@@ -9892,6 +10660,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         return renderVersionesLista()
       case "categorias_cliente":
         return renderCategoriasCliente()
+      case "nc_categorias":
+        return renderNcCategorias()
       default:
         return renderDashboard()
     }
@@ -10001,7 +10771,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Precios</label>
               <select name="lista_precios_id" defaultValue={editingItem?.lista_precios_id || 1}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                {mockListasPrecios.map(lp => (
+                    {listasPrecios.map(lp => (
                   <option key={lp.id} value={lp.id}>{lp.nombre}</option>
                 ))}
               </select>
@@ -10280,7 +11050,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Precios</label>
                 <select name="lista_precios_id" defaultValue={editingItem?.lista_precios_id || selectedCliente?.lista_precios_id || 1}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                  {mockListasPrecios.map(lp => (
+                      {listasPrecios.map(lp => (
                     <option key={lp.id} value={lp.id}>{lp.nombre}</option>
                   ))}
                 </select>
@@ -10677,6 +11447,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               moneda: formData.get("moneda") as "ARS" | "USD",
               nota_venta_numero: null,
               sucursal: "Puerto Norte",
+              categoria: (formData.get("categoria") as string) || null,
               lineas: ajusteLineas,
               total: totalAjuste
             }
@@ -10709,6 +11480,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <label className="block text-sm font-medium text-gray-700 mb-1">Concepto *</label>
               <input type="text" name="concepto" required placeholder="Ej: Bonificación especial, Ajuste de saldo..."
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+              <select name="categoria" className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <option value="">Sin categoría</option>
+                {ncCategorias.filter(c => c.activa).map(c => (
+                  <option key={c.id} value={c.nombre}>{c.nombre}</option>
+                ))}
+              </select>
             </div>
 
             {/* Líneas */}

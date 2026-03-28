@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Settings, Lock, Unlock, FileBox, Ship, Plane } from "lucide-react"
 import BotonVolver from "./ui/boton-volver"
 
@@ -433,25 +433,22 @@ export default function ModuloCompras() {
   const [creandoOC, setCreandoOC] = useState(false)
 
   // Recepciones
-  const [recepciones, setRecepciones] = useState<Recepcion[]>([
-    {
-      id: 1,
-      numero: "REC-00001",
-      fecha: "2026-03-12T09:00:00",
-      proveedor_id: 1,
-      proveedor_nombre: "Tech Supplies SA",
-      orden_compra_id: 1,
-      orden_compra_numero: "OC-00001",
-      estado: "confirmada",
-      tipo: "total",
-      observaciones: "",
-      lineas: [
-        { producto_id: 1, producto_nombre: "Pantalla iPhone 13", cantidad_ordenada: 10, cantidad_recibida: 10, cantidad_esta_recepcion: 10, precio_unitario: 50000 }
-      ]
-    }
-  ])
+  const [recepciones, setRecepciones] = useState<Recepcion[]>([])
   const [selectedRecepcion, setSelectedRecepcion] = useState<Recepcion | null>(null)
   const [creandoRecepcion, setCreandoRecepcion] = useState(false)
+
+  // Cargar recepciones pendientes generadas desde Toma de Equipo (ventas)
+  useEffect(() => {
+    const pendientes = JSON.parse(localStorage.getItem('recepciones_pendientes_toma') || '[]') as Recepcion[]
+    if (pendientes.length === 0) return
+    setRecepciones(prev => {
+      const idsExistentes = new Set(prev.map(r => r.id))
+      const nuevas = pendientes.filter((r: Recepcion) => !idsExistentes.has(r.id))
+      return nuevas.length > 0 ? [...prev, ...nuevas] : prev
+    })
+    // Limpiar el storage una vez leído
+    localStorage.removeItem('recepciones_pendientes_toma')
+  }, [])
 
   // Facturas de Compra
   const [facturasCompra, setFacturasCompra] = useState<FacturaCompra[]>([
@@ -1916,11 +1913,16 @@ export default function ModuloCompras() {
   // RENDER RECEPCIONES
   // =====================================================
   const renderRecepciones = () => {
-    const recepcionesMock = [
-      { id: 1, numero: "REC-00001", fecha: "2026-03-10", proveedor: "Tech Import SA", oc_numero: "OC-00001", estado: "completa", items: 5, total: 2500000 },
-      { id: 2, numero: "REC-00002", fecha: "2026-03-12", proveedor: "Distribuidora Norte", oc_numero: "OC-00002", estado: "parcial", items: 3, total: 890000 },
-      { id: 3, numero: "REC-00003", fecha: "2026-03-14", proveedor: "Tech Import SA", oc_numero: "OC-00003", estado: "completa", items: 10, total: 4200000 },
-    ]
+    const estadoColor: Record<string, string> = {
+      confirmada: 'bg-green-100 text-green-700',
+      borrador:   'bg-amber-100 text-amber-700',
+      cancelada:  'bg-red-100 text-red-700',
+    }
+    const estadoLabel: Record<string, string> = {
+      confirmada: 'Confirmada',
+      borrador:   'Esperando Recepción',
+      cancelada:  'Cancelada',
+    }
 
     return (
       <div>
@@ -1937,19 +1939,19 @@ export default function ModuloCompras() {
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
             <p className="text-sm text-gray-500">Total Recepciones</p>
-            <p className="text-2xl font-bold text-gray-900">{recepcionesMock.length}</p>
+            <p className="text-2xl font-bold text-gray-900">{recepciones.length}</p>
           </div>
           <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Completas</p>
-            <p className="text-2xl font-bold text-emerald-600">{recepcionesMock.filter(r => r.estado === 'completa').length}</p>
+            <p className="text-sm text-gray-500">Confirmadas</p>
+            <p className="text-2xl font-bold text-emerald-600">{recepciones.filter(r => r.estado === 'confirmada').length}</p>
           </div>
           <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Parciales</p>
-            <p className="text-2xl font-bold text-amber-600">{recepcionesMock.filter(r => r.estado === 'parcial').length}</p>
+            <p className="text-sm text-gray-500">Esperando Recepción</p>
+            <p className="text-2xl font-bold text-amber-600">{recepciones.filter(r => r.estado === 'borrador').length}</p>
           </div>
           <div className="bg-white rounded-lg border p-4">
             <p className="text-sm text-gray-500">Valor Total</p>
-            <p className="text-2xl font-bold text-blue-600">{formatCurrency(recepcionesMock.reduce((s, r) => s + r.total, 0))}</p>
+            <p className="text-2xl font-bold text-blue-600">{formatCurrency(recepciones.reduce((s, r) => s + r.lineas.reduce((ls, l) => ls + l.cantidad_esta_recepcion * l.precio_unitario, 0), 0))}</p>
           </div>
         </div>
 
@@ -1959,27 +1961,28 @@ export default function ModuloCompras() {
               <tr className="text-xs text-gray-500 uppercase">
                 <th className="text-left py-3 px-4">Número</th>
                 <th className="text-left py-3 px-4">Fecha</th>
-                <th className="text-left py-3 px-4">Proveedor</th>
-                <th className="text-left py-3 px-4">OC Origen</th>
+                <th className="text-left py-3 px-4">Proveedor / Origen</th>
+                <th className="text-left py-3 px-4">Ref.</th>
                 <th className="text-center py-3 px-4">Items</th>
                 <th className="text-right py-3 px-4">Total</th>
                 <th className="text-center py-3 px-4">Estado</th>
               </tr>
             </thead>
             <tbody>
-              {recepcionesMock.map(rec => (
+              {recepciones.length === 0 && (
+                <tr><td colSpan={7} className="py-10 text-center text-sm text-gray-400">No hay recepciones registradas</td></tr>
+              )}
+              {recepciones.map(rec => (
                 <tr key={rec.id} className="border-b hover:bg-gray-50 cursor-pointer">
                   <td className="py-3 px-4 font-medium text-emerald-700">{rec.numero}</td>
                   <td className="py-3 px-4 text-sm">{new Date(rec.fecha).toLocaleDateString('es-AR')}</td>
-                  <td className="py-3 px-4 text-sm">{rec.proveedor}</td>
-                  <td className="py-3 px-4 text-sm text-blue-600">{rec.oc_numero}</td>
-                  <td className="py-3 px-4 text-sm text-center">{rec.items}</td>
-                  <td className="py-3 px-4 text-sm text-right font-medium">{formatCurrency(rec.total)}</td>
+                  <td className="py-3 px-4 text-sm">{rec.proveedor_nombre}</td>
+                  <td className="py-3 px-4 text-sm text-blue-600">{rec.orden_compra_numero || '-'}</td>
+                  <td className="py-3 px-4 text-sm text-center">{rec.lineas.length}</td>
+                  <td className="py-3 px-4 text-sm text-right font-medium">{formatCurrency(rec.lineas.reduce((s, l) => s + l.cantidad_esta_recepcion * l.precio_unitario, 0))}</td>
                   <td className="py-3 px-4 text-center">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      rec.estado === 'completa' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                    }`}>
-                      {rec.estado.charAt(0).toUpperCase() + rec.estado.slice(1)}
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${estadoColor[rec.estado] || 'bg-gray-100 text-gray-600'}`}>
+                      {estadoLabel[rec.estado] || rec.estado}
                     </span>
                   </td>
                 </tr>
