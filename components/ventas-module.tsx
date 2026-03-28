@@ -10217,7 +10217,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </div>
 
             <div className="border border-gray-200 rounded overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full text-xs table-fixed">
+                <colgroup>
+                  <col className="w-[18%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[7%]" />
+                  <col className="w-[7%]" />
+                  <col className="w-[6%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[6%]" />
+                  {(editandoLineas || creandoVersion) && <col className="w-[2%]" />}
+                </colgroup>
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr className="text-gray-500 uppercase tracking-wider">
                     <th className="text-left py-2 px-2 font-medium">Código</th>
@@ -10237,7 +10250,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   {/* Fila para agregar nueva línea */}
                   {(editandoLineas || creandoVersion) && (
                     <tr className="border-b border-gray-200 bg-emerald-50/50">
-                      <td className="py-1.5 px-2" colSpan={2}>
+                      <td className="py-1.5 px-2 text-gray-500 text-xs truncate">
+                        {nuevaLineaVersion.producto_codigo || <span className="text-gray-300">-</span>}
+                      </td>
+                      <td className="py-1.5 px-2">
                         <select value={nuevaLineaVersion.producto_id || ""} onChange={(e) => {
                           const prod = productosConSerie.find(p => p.id === Number(e.target.value))
                           if (prod) setNuevaLineaVersion({ ...nuevaLineaVersion, producto_id: prod.id, producto_codigo: prod.sku, producto_nombre: prod.nombre, costo_importe: prod.costo || 0 })
