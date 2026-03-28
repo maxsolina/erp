@@ -1785,28 +1785,14 @@ export default function ModuloCompras() {
               </div>
               <div>
                 <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Metodo de Compra <span className="text-red-500">*</span></label>
-                <div className="flex gap-3">
-                  {(['estandar', 'inmediato'] as const).map(met => (
-                    <label key={met} className={`flex-1 flex items-start gap-3 px-4 py-3 border-2 rounded-lg cursor-pointer transition-colors ${
-                      oc.metodo_compra === met ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="metodo_compra"
-                        value={met}
-                        checked={oc.metodo_compra === met}
-                        onChange={() => setNuevaOC(prev => ({ ...prev, metodo_compra: met }))}
-                        className="mt-0.5"
-                      />
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{met === 'estandar' ? 'Estandar' : 'Inmediato'}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {met === 'estandar' ? 'Mercaderia llega en fecha futura' : 'Mercaderia ingresa en el momento'}
-                        </p>
-                      </div>
-                    </label>
-                  ))}
-                </div>
+                <select
+                  value={oc.metodo_compra}
+                  onChange={(e) => setNuevaOC(prev => ({ ...prev, metodo_compra: e.target.value as "estandar" | "inmediato" }))}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="estandar">Estándar — Mercadería llega en fecha futura</option>
+                  <option value="inmediato">Inmediato — Mercadería ingresa en el momento</option>
+                </select>
               </div>
             </div>
 
