@@ -712,7 +712,7 @@ const mockMovimientosCC: MovimientoCuentaCorriente[] = [
   },
 ]
 
-// ─── Bloque Medios de Pago (dentro de ficha de Factura) ────────────────���─────
+// ─── Bloque Medios de Pago (dentro de ficha de Factura) ────────────────�����─────
 
 interface LineaPago {
   id: number
@@ -4817,7 +4817,18 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </h3>
             {selectedToma.nota_credito_numero ? (
               <div className="space-y-3 text-sm">
-                <div className="flex justify-between"><span className="text-gray-500">Número</span><span className="font-medium text-emerald-700">{selectedToma.nota_credito_numero}</span></div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Número</span>
+                  <button
+                    onClick={() => {
+                      const nc = ajustes.find(a => a.numero === selectedToma.nota_credito_numero)
+                      if (nc) setNcDetallePopup(nc)
+                    }}
+                    className="font-medium text-emerald-700 hover:underline hover:text-emerald-900 cursor-pointer"
+                  >
+                    {selectedToma.nota_credito_numero}
+                  </button>
+                </div>
                 <div className="flex justify-between"><span className="text-gray-500">Concepto</span><span className="font-medium">Toma de equipo: {selectedToma.modelo_equipo}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Importe</span><span className="font-bold text-emerald-600">{formatCurrency(selectedToma.precio_final)}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Estado</span>
