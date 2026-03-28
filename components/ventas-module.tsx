@@ -1398,6 +1398,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }[]>([])
   const [selectedToma, setSelectedToma] = useState<typeof tomasEquipo[0] | null>(null)
   const [ncDetallePopup, setNcDetallePopup] = useState<AjusteCliente | null>(null)
+  const [selectedAjuste, setSelectedAjuste] = useState<AjusteCliente | null>(null)
   
   // Filters
   const [estadoFilter, setEstadoFilter] = useState<string>("todos")
@@ -1784,6 +1785,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       setSearchQuery("")
                       setSelectedCliente(null)
                       setSelectedNV(null)
+                      setSelectedAjuste(null)
                       setClientePanel("ficha")
                     }}
                     className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center gap-2 ${section.id === "config_notas_credito" ? "text-xs" : "text-sm"} ${
@@ -8800,6 +8802,118 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   )
 
   // Notas de Débito / Crédito — usa el estado real de ajustes
+  const renderFichaAjuste = () => {
+    const ajuste = selectedAjuste
+    if (!ajuste) return null
+    const esNC = ajuste.numero.startsWith("NC-")
+    const titulo = esNC ? "Nota de Crédito" : "Nota de Débito"
+    const listadoLabel = esNC ? "Notas de Crédito" : "Notas de Débito"
+
+    return (
+      <div>
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+          <button onClick={() => setSelectedAjuste(null)} className="hover:text-emerald-700">{listadoLabel}</button>
+          <span>/</span>
+          <span className="font-medium text-gray-900">{ajuste.numero}</span>
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setSelectedAjuste(null)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-emerald-900">{ajuste.numero}</h1>
+              <p className="text-sm text-gray-500">{formatDate(ajuste.fecha)}</p>
+            </div>
+          </div>
+          <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+            ajuste.estado === "publicado" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+          }`}>
+            {ajuste.estado === "publicado" ? "Publicada" : "Borrador"}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-3 gap-4">
+          {/* Columna principal */}
+          <div className="col-span-2 space-y-4">
+
+            {/* Datos generales */}
+            <div className="bg-white rounded-lg shadow-sm p-5">
+              <h3 className="font-semibold text-gray-900 mb-4">{titulo}</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-400 text-xs uppercase font-medium block mb-0.5">Cliente</span>
+                  <span className="font-semibold text-gray-900">{ajuste.cliente_nombre}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 text-xs uppercase font-medium block mb-0.5">Sucursal</span>
+                  <span className="font-semibold text-gray-900">{ajuste.sucursal}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 text-xs uppercase font-medium block mb-0.5">Concepto</span>
+                  <span className="font-semibold text-gray-900">{ajuste.concepto}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 text-xs uppercase font-medium block mb-0.5">Moneda</span>
+                  <span className="font-semibold text-gray-900">{ajuste.moneda}</span>
+                </div>
+                {ajuste.nota_venta_numero && (
+                  <div>
+                    <span className="text-gray-400 text-xs uppercase font-medium block mb-0.5">Nota de Venta</span>
+                    <span className="font-semibold text-emerald-700">{ajuste.nota_venta_numero}</span>
+                  </div>
+                )}
+                {ajuste.categoria && (
+                  <div>
+                    <span className="text-gray-400 text-xs uppercase font-medium block mb-0.5">Categoría</span>
+                    <span className="inline-block bg-emerald-50 text-emerald-700 text-xs font-semibold px-2 py-0.5 rounded">{ajuste.categoria}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Líneas */}
+            {ajuste.lineas && ajuste.lineas.length > 0 && (
+              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div className="px-5 py-3 border-b bg-gray-50">
+                  <h3 className="font-semibold text-gray-900 text-sm">Detalle</h3>
+                </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-gray-500 uppercase border-b bg-gray-50/50">
+                      <th className="text-left py-3 px-5 font-medium">Descripción</th>
+                      <th className="text-right py-3 px-5 font-medium">Importe</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ajuste.lineas.map((linea, i) => (
+                      <tr key={i} className="border-b border-gray-50 last:border-0">
+                        <td className="py-3 px-5 text-gray-700">{linea.descripcion}</td>
+                        <td className="py-3 px-5 text-right font-medium">{formatCurrency(linea.importe, ajuste.moneda)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Columna lateral */}
+          <div className="space-y-4">
+            <div className="bg-white rounded-lg shadow-sm p-5">
+              <h3 className="font-semibold text-gray-900 mb-4 text-sm">Total</h3>
+              <div className="text-3xl font-bold text-emerald-600">{formatCurrency(ajuste.total, ajuste.moneda)}</div>
+              <div className="text-xs text-gray-400 mt-1">{ajuste.moneda}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const renderNotasDebitoCredito = (tipo: "debito" | "credito") => {
     // Las notas de crédito son ajustes cuyo número empieza con "NC-"
     // Las notas de débito son ajustes cuyo número empieza con "ND-"
@@ -8838,7 +8952,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </thead>
               <tbody>
                 {notasFiltradas.map(nota => (
-                  <tr key={nota.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
+                  <tr key={nota.id} onClick={() => setSelectedAjuste(nota)} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
                     <td className="py-3 px-4 font-mono text-sm text-emerald-700 font-medium">{nota.numero}</td>
                     <td className="py-3 px-4 text-sm text-gray-600">{formatDate(nota.fecha)}</td>
                     <td className="py-3 px-4 text-sm">{nota.cliente_nombre}</td>
@@ -10508,8 +10622,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       case "facturas":
         return renderFacturas()
       case "notas_debito":
+        if (selectedAjuste) return renderFichaAjuste()
         return renderNotasDebitoCredito("debito")
       case "notas_credito":
+        if (selectedAjuste) return renderFichaAjuste()
         return renderNotasDebitoCredito("credito")
       case "recibos":
         return renderRecibos()
