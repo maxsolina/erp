@@ -4939,6 +4939,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         moneda: "ARS",
         nota_venta_numero: null,
         sucursal: "Puerto Norte",
+        categoria: "equipos en parte de pago",
         lineas: [{
           descripcion: `Toma de equipo usado: ${modeloSeleccionado.nombre}`,
           fecha_vencimiento: ahora,
@@ -10457,18 +10458,24 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   </td>
                   <td className="py-3 px-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => { setNcCategoriaEditId(cat.id); setNcCategoriaEditNombre(cat.nombre) }}
-                        className="text-gray-400 hover:text-emerald-600 text-xs"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        onClick={() => eliminar(cat.id)}
-                        className="text-gray-400 hover:text-red-500"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {cat.nombre.toLowerCase() === "equipos en parte de pago" ? (
+                        <span className="text-xs text-gray-400 italic px-1">del sistema</span>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => { setNcCategoriaEditId(cat.id); setNcCategoriaEditNombre(cat.nombre) }}
+                            className="text-gray-400 hover:text-emerald-600 text-xs"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => eliminar(cat.id)}
+                            className="text-gray-400 hover:text-red-500"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
