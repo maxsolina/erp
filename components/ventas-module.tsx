@@ -712,7 +712,7 @@ const mockMovimientosCC: MovimientoCuentaCorriente[] = [
   },
 ]
 
-// ─── Bloque Medios de Pago (dentro de ficha de Factura) ──────────────────────
+// ─── Bloque Medios de Pago (dentro de ficha de Factura) ────────────────��─────
 
 interface LineaPago {
   id: number
@@ -1600,7 +1600,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         { id: "listas_precios", label: "Listas de Precios", icon: Tag },
         { id: "versiones_lista", label: "Versiones de Lista", icon: Layers },
         { id: "categorias_cliente", label: "Categorías de Clientes", icon: Users },
-        { id: "nc_categorias", label: "Notas de Crédito — Categorías", icon: ArrowLeft },
+      ]
+    },
+    {
+      id: "config_notas_credito",
+      label: "Notas de Crédito",
+      icon: ArrowLeft,
+      items: [
+        { id: "nc_categorias", label: "Categorías", icon: Tag },
       ]
     },
   ]
