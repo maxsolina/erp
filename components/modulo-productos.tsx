@@ -1,12 +1,14 @@
 "use client"
 
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useEffect, useCallback } from "react"
 import {
   Search, Plus, Edit2, Eye, ChevronDown, ChevronRight, X, Upload, Package,
   History, AlertCircle, CheckCircle, XCircle, Settings, ToggleLeft, ToggleRight,
   DollarSign, Tag, BarChart2, ShoppingBag, ShoppingCart, BookOpen, MessageSquare,
   Camera, Filter, MoreHorizontal
 } from "lucide-react"
+
+import { fetchProductos, guardarProductoEnDB } from "@/lib/productos-actions"
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -99,227 +101,6 @@ const CUENTAS_CONTABLES = [
 ]
 
 // ─── Datos mock ───────────────────────────────────────────────────────────────
-
-const productosIniciales: Producto[] = [
-  {
-    id: 1,
-    imagen_url: null,
-    nombre: "iPhone 15 Pro Max 256GB Negro",
-    codigo_interno: "IP15PM-256-BLK",
-    categoria: "Celulares",
-    marca: "Apple",
-    modelo: "iPhone 15 Pro Max",
-    color: "Negro",
-    tipo: "almacenable",
-    puede_venderse: true,
-    puede_comprarse: true,
-    activo: true,
-    stock_real: 15,
-    stock_minimo: 3,
-    stock_maximo: 30,
-    stock_critico: 1,
-    tiene_numero_serie: true,
-    requiere_color: true,
-    requiere_bateria: false,
-    requiere_outlet: false,
-    requiere_observaciones: false,
-    costo_manual: 1200000,
-    moneda_costo: "ARS",
-    costo_contable: 1200000,
-    historial_costos: [
-      { fecha: "2026-01-10T10:00:00", valor_anterior: 1100000, valor_nuevo: 1200000, moneda: "ARS", usuario: "admin", origen: "recepcion", referencia: "REC-00021" }
-    ],
-    garantia_propia_valor: 6,
-    garantia_propia_unidad: "meses",
-    garantia_fabricante_valor: 12,
-    garantia_fabricante_unidad: "meses",
-    iva_venta: 21,
-    iva_compra: 21,
-    cuenta_ventas: "4.1.01 - Ventas de mercadería",
-    cuenta_existencias: "1.1.03 - Mercaderías",
-    observaciones: ""
-  },
-  {
-    id: 2,
-    imagen_url: null,
-    nombre: "iPhone 13 Usado 128GB",
-    codigo_interno: "IP13-128-USA",
-    categoria: "Usados",
-    marca: "Apple",
-    modelo: "iPhone 13",
-    color: "",
-    tipo: "almacenable",
-    puede_venderse: true,
-    puede_comprarse: true,
-    activo: true,
-    stock_real: 8,
-    stock_minimo: 2,
-    stock_maximo: 20,
-    stock_critico: 1,
-    tiene_numero_serie: true,
-    requiere_color: true,
-    requiere_bateria: true,
-    requiere_outlet: true,
-    requiere_observaciones: true,
-    costo_manual: 480000,
-    moneda_costo: "ARS",
-    costo_contable: 480000,
-    historial_costos: [],
-    garantia_propia_valor: 3,
-    garantia_propia_unidad: "meses",
-    garantia_fabricante_valor: 0,
-    garantia_fabricante_unidad: "meses",
-    iva_venta: 21,
-    iva_compra: 21,
-    cuenta_ventas: "4.1.01 - Ventas de mercadería",
-    cuenta_existencias: "1.1.03 - Mercaderías",
-    observaciones: "Equipos usados — verificar estado antes de publicar."
-  },
-  {
-    id: 3,
-    imagen_url: null,
-    nombre: "Funda iPhone 15 Transparente",
-    codigo_interno: "CASE-IP15-CLR",
-    categoria: "Fundas y Protectores",
-    marca: "Genérica",
-    modelo: "Clear Case iPhone 15",
-    color: "Transparente",
-    tipo: "consumible",
-    puede_venderse: true,
-    puede_comprarse: true,
-    activo: true,
-    stock_real: 200,
-    stock_minimo: 30,
-    stock_maximo: 300,
-    stock_critico: 10,
-    tiene_numero_serie: false,
-    requiere_color: false,
-    requiere_bateria: false,
-    requiere_outlet: false,
-    requiere_observaciones: false,
-    costo_manual: 2500,
-    moneda_costo: "ARS",
-    costo_contable: 2500,
-    historial_costos: [],
-    garantia_propia_valor: 0,
-    garantia_propia_unidad: "meses",
-    garantia_fabricante_valor: 0,
-    garantia_fabricante_unidad: "meses",
-    iva_venta: 21,
-    iva_compra: 21,
-    cuenta_ventas: "4.1.01 - Ventas de mercadería",
-    cuenta_existencias: "1.1.03 - Mercaderías",
-    observaciones: ""
-  },
-  {
-    id: 4,
-    imagen_url: null,
-    nombre: "Servicio de Pantalla iPhone",
-    codigo_interno: "SRV-PAN-IP",
-    categoria: "Servicios",
-    marca: "Apple",
-    modelo: "",
-    color: "",
-    tipo: "servicio",
-    puede_venderse: true,
-    puede_comprarse: false,
-    activo: true,
-    stock_real: 0,
-    stock_minimo: 0,
-    stock_maximo: 0,
-    stock_critico: 0,
-    tiene_numero_serie: false,
-    requiere_color: false,
-    requiere_bateria: false,
-    requiere_outlet: false,
-    requiere_observaciones: false,
-    costo_manual: 0,
-    moneda_costo: "ARS",
-    costo_contable: 0,
-    historial_costos: [],
-    garantia_propia_valor: 90,
-    garantia_propia_unidad: "dias",
-    garantia_fabricante_valor: 0,
-    garantia_fabricante_unidad: "dias",
-    iva_venta: 21,
-    iva_compra: 0,
-    cuenta_ventas: "4.1.02 - Ventas de servicios",
-    cuenta_existencias: "",
-    observaciones: ""
-  },
-  {
-    id: 5,
-    imagen_url: null,
-    nombre: "AirPods Pro 2da Gen",
-    codigo_interno: "AIRPODS-PRO2",
-    categoria: "Accesorios",
-    marca: "Apple",
-    modelo: "AirPods Pro 2",
-    color: "Blanco",
-    tipo: "almacenable",
-    puede_venderse: true,
-    puede_comprarse: true,
-    activo: true,
-    stock_real: 50,
-    stock_minimo: 8,
-    stock_maximo: 80,
-    stock_critico: 3,
-    tiene_numero_serie: true,
-    requiere_color: false,
-    requiere_bateria: false,
-    requiere_outlet: false,
-    requiere_observaciones: false,
-    costo_manual: 180000,
-    moneda_costo: "ARS",
-    costo_contable: 180000,
-    historial_costos: [],
-    garantia_propia_valor: 6,
-    garantia_propia_unidad: "meses",
-    garantia_fabricante_valor: 12,
-    garantia_fabricante_unidad: "meses",
-    iva_venta: 21,
-    iva_compra: 21,
-    cuenta_ventas: "4.1.01 - Ventas de mercadería",
-    cuenta_existencias: "1.1.03 - Mercaderías",
-    observaciones: ""
-  },
-  {
-    id: 6,
-    imagen_url: null,
-    nombre: "Samsung Galaxy S24 Ultra 256GB Verde",
-    codigo_interno: "SS24U-256-GRN",
-    categoria: "Celulares",
-    marca: "Samsung",
-    modelo: "Galaxy S24 Ultra",
-    color: "Verde",
-    tipo: "almacenable",
-    puede_venderse: true,
-    puede_comprarse: true,
-    activo: false,
-    stock_real: 0,
-    stock_minimo: 2,
-    stock_maximo: 15,
-    stock_critico: 1,
-    tiene_numero_serie: true,
-    requiere_color: true,
-    requiere_bateria: false,
-    requiere_outlet: false,
-    requiere_observaciones: false,
-    costo_manual: 1100000,
-    moneda_costo: "ARS",
-    costo_contable: 1100000,
-    historial_costos: [],
-    garantia_propia_valor: 6,
-    garantia_propia_unidad: "meses",
-    garantia_fabricante_valor: 12,
-    garantia_fabricante_unidad: "meses",
-    iva_venta: 21,
-    iva_compra: 21,
-    cuenta_ventas: "4.1.01 - Ventas de mercadería",
-    cuenta_existencias: "1.1.03 - Mercaderías",
-    observaciones: ""
-  },
-]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -943,9 +724,28 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
 // ─── Módulo principal ─────────────────────────────────────────────────────────
 
 export default function ModuloProductos() {
-  const [productos, setProductos] = useState<Producto[]>(productosIniciales)
+  const [productos, setProductos] = useState<Producto[]>([])
+  const [cargando, setCargando] = useState(true)
+  const [errorCarga, setErrorCarga] = useState<string | null>(null)
   const [vista, setVista] = useState<"listado" | "nuevo" | "editar" | "ver">("listado")
   const [productoSeleccionado, setProductoSeleccionado] = useState<Producto | null>(null)
+
+  const cargarProductos = useCallback(async () => {
+    setCargando(true)
+    setErrorCarga(null)
+    try {
+      const data = await fetchProductos()
+      setProductos(data as Producto[])
+    } catch (e: any) {
+      setErrorCarga(e.message ?? "Error al cargar productos")
+    } finally {
+      setCargando(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    cargarProductos()
+  }, [])
 
   // Filtros
   const [busqueda, setBusqueda] = useState("")
@@ -978,21 +778,16 @@ export default function ModuloProductos() {
     })
   }, [productos, busqueda, filtroActivo, filtroCategoria, filtroMarca, filtroTipo, filtroSN])
 
-  function handleGuardar(form: FormProducto) {
-    if (form.id) {
-      // Editar
-      setProductos(prev => prev.map(p => p.id === form.id ? { ...p, ...form } as Producto : p))
-    } else {
-      // Nuevo
-      const nuevo: Producto = {
-        ...form,
-        id: Math.max(...productos.map(p => p.id), 0) + 1,
-        historial_costos: [],
-      }
-      setProductos(prev => [...prev, nuevo])
+  async function handleGuardar(form: FormProducto) {
+    try {
+      const { id: productoId, historial_costos: _hc, ...payload } = form
+      await guardarProductoEnDB(payload, productoId ?? undefined)
+      await cargarProductos()
+      setVista("listado")
+      setProductoSeleccionado(null)
+    } catch (e: any) {
+      alert(e.message ?? "Error al guardar el producto")
     }
-    setVista("listado")
-    setProductoSeleccionado(null)
   }
 
   // ── Vistas de formulario ──────────────────────────────────────────────────

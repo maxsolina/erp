@@ -5,6 +5,7 @@ import { Search, Filter, ChevronDown, X, Plus, FileText, Truck, Package, ArrowRi
 import OdooFilterBar, { FilterOption, GroupByOption, SavedFilter } from "./odoo-filter-bar"
 import BotonVolver from "./ui/boton-volver"
 import { FormularioProducto, type FormProducto } from "./modulo-productos"
+import { guardarProductoEnDB } from "@/lib/productos-actions"
 
 // Types para Stock/Deposito
 interface Deposito {
@@ -947,8 +948,14 @@ export default function ModuloStock() {
           </div>
           <FormularioProducto
             inicial={null}
-            onGuardar={(p: FormProducto) => {
-              setCreandoProducto(false)
+            onGuardar={async (p: FormProducto) => {
+              try {
+                const { id: _id, historial_costos: _hc, ...payload } = p
+                await guardarProductoEnDB(payload)
+                setCreandoProducto(false)
+              } catch (e: any) {
+                alert(e.message ?? "Error al guardar el producto")
+              }
             }}
             onCancelar={() => setCreandoProducto(false)}
           />
