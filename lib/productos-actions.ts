@@ -3,15 +3,16 @@ export async function fetchProductos(params?: {
   activo?: boolean | null
   tipo?: string
 }): Promise<any[]> {
-  const url = new URL("/api/productos", window.location.origin)
-  if (params?.busqueda) url.searchParams.set("busqueda", params.busqueda)
+  const searchParams = new URLSearchParams()
+  if (params?.busqueda) searchParams.set("busqueda", params.busqueda)
   if (params?.activo !== undefined && params.activo !== null)
-    url.searchParams.set("activo", String(params.activo))
-  if (params?.tipo) url.searchParams.set("tipo", params.tipo)
+    searchParams.set("activo", String(params.activo))
+  if (params?.tipo) searchParams.set("tipo", params.tipo)
 
-  const res = await fetch(url.toString())
+  const qs = searchParams.toString()
+  const res = await fetch(`/api/productos${qs ? `?${qs}` : ""}`, { cache: "no-store" })
   if (!res.ok) {
-    const err = await res.json()
+    const err = await res.json().catch(() => ({}))
     throw new Error(err.error || "Error al obtener productos")
   }
   return res.json()
