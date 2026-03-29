@@ -4725,7 +4725,14 @@ export default function ModuloCompras() {
     if (selectedCatProv && !creandoCatProv) {
       const c = selectedCatProv
       return (
-        <div className="max-w-3xl mx-auto">
+        <div>
+          {/* Breadcrumb */}
+          <div className="text-sm text-gray-500 mb-4 flex items-center gap-2">
+            <button onClick={() => setSelectedCatProv(null)} className="hover:text-blue-600">Categorías de Proveedores</button>
+            <span>/</span>
+            <span className="text-gray-900">{c.nombre}</span>
+          </div>
+
           {/* Header */}
           <div className="flex items-start justify-between mb-6">
             <div className="flex items-center gap-4">
@@ -4743,50 +4750,75 @@ export default function ModuloCompras() {
             </button>
           </div>
 
-          <div className="bg-white rounded-lg border p-6 space-y-4">
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sm">
-                  <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${c.disponible_clientes ? "bg-blue-600 border-blue-600" : "border-gray-300"}`}>
-                    {c.disponible_clientes && <span className="text-white text-xs">✓</span>}
-                  </span>
-                  <span className="text-gray-700">Disponible para clientes</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${c.disponible_proveedores ? "bg-blue-600 border-blue-600" : "border-gray-300"}`}>
-                    {c.disponible_proveedores && <span className="text-white text-xs">✓</span>}
-                  </span>
-                  <span className="text-gray-700">Disponible para proveedores</span>
-                </div>
-                <div className="flex items-center gap-3 text-sm">
-                  <span className="text-gray-500">Tipo de Control:</span>
-                  <span className="font-medium text-gray-800">{c.tipo_control}</span>
+          {/* Content */}
+          <div className="grid grid-cols-3 gap-6">
+            <div className="col-span-2 space-y-6">
+              <div className="bg-white rounded-lg border p-6">
+                <h3 className="font-semibold text-gray-900 mb-4">Configuración</h3>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500">Disponible para clientes:</span>
+                    <span className={`ml-2 font-medium ${c.disponible_clientes ? "text-green-600" : "text-gray-400"}`}>
+                      {c.disponible_clientes ? "Sí" : "No"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Disponible para proveedores:</span>
+                    <span className={`ml-2 font-medium ${c.disponible_proveedores ? "text-green-600" : "text-gray-400"}`}>
+                      {c.disponible_proveedores ? "Sí" : "No"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Tipo de Control:</span>
+                    <span className="ml-2 font-medium">{c.tipo_control}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Req. OC para facturar:</span>
+                    <span className={`ml-2 font-medium ${c.requiere_oc_para_facturar ? "text-green-600" : "text-gray-400"}`}>
+                      {c.requiere_oc_para_facturar ? "Sí" : "No"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Comprobantes confidenciales:</span>
+                    <span className={`ml-2 font-medium ${c.comprobantes_confidenciales ? "text-red-600" : "text-gray-400"}`}>
+                      {c.comprobantes_confidenciales ? "Sí" : "No"}
+                    </span>
+                  </div>
                 </div>
               </div>
-              <div className="space-y-3">
-                {c.cuenta_cobrar_defecto && (
-                  <div className="flex items-center gap-3 text-sm">
-                    <span className="text-gray-500">Cuenta a cobrar:</span>
-                    <span className="font-medium text-gray-800">{c.cuenta_cobrar_defecto}</span>
+
+              {(c.cuenta_cobrar_defecto || c.cuenta_pagar_defecto) && (
+                <div className="bg-white rounded-lg border p-6">
+                  <h3 className="font-semibold text-gray-900 mb-4">Cuentas Contables</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    {c.cuenta_cobrar_defecto && (
+                      <div>
+                        <span className="text-gray-500">Cuenta a cobrar por defecto:</span>
+                        <span className="ml-2 font-medium">{c.cuenta_cobrar_defecto}</span>
+                      </div>
+                    )}
+                    {c.cuenta_pagar_defecto && (
+                      <div>
+                        <span className="text-gray-500">Cuenta a pagar por defecto:</span>
+                        <span className="ml-2 font-medium">{c.cuenta_pagar_defecto}</span>
+                      </div>
+                    )}
                   </div>
-                )}
-                {c.cuenta_pagar_defecto && (
-                  <div className="flex items-center gap-3 text-sm">
-                    <span className="text-gray-500">Cuenta a pagar:</span>
-                    <span className="font-medium text-gray-800">{c.cuenta_pagar_defecto}</span>
-                  </div>
-                )}
-                <div className="flex items-center gap-2 text-sm">
-                  <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${c.requiere_oc_para_facturar ? "bg-blue-600 border-blue-600" : "border-gray-300"}`}>
-                    {c.requiere_oc_para_facturar && <span className="text-white text-xs">✓</span>}
-                  </span>
-                  <span className="text-gray-700">Requiere OC para facturar</span>
                 </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${c.comprobantes_confidenciales ? "bg-blue-600 border-blue-600" : "border-gray-300"}`}>
-                    {c.comprobantes_confidenciales && <span className="text-white text-xs">✓</span>}
-                  </span>
-                  <span className="font-medium text-gray-700">Comprobantes confidenciales</span>
+              )}
+            </div>
+
+            {/* Panel lateral */}
+            <div className="space-y-6">
+              <div className="bg-white rounded-lg border p-6">
+                <h3 className="font-semibold text-gray-900 mb-4">Resumen</h3>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Proveedores con esta categoría:</span>
+                    <span className="font-bold text-gray-900">
+                      {proveedores.filter(p => p.categoria_proveedor === c.nombre).length}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
