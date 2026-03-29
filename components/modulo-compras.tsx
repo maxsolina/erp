@@ -4945,26 +4945,29 @@ export default function ModuloCompras() {
                 <th className="text-left py-3 px-4">Tipo Control</th>
                 <th className="text-center py-3 px-4">Req. OC</th>
                 <th className="text-center py-3 px-4">Confidencial</th>
-                <th className="text-center py-3 px-4">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {loadingCatProv && (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-gray-400 text-sm">
+                  <td colSpan={6} className="py-10 text-center text-gray-400 text-sm">
                     Cargando categorías...
                   </td>
                 </tr>
               )}
               {!loadingCatProv && categoriasProveedor.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-gray-400 text-sm">
+                  <td colSpan={6} className="py-10 text-center text-gray-400 text-sm">
                     No hay categorías configuradas. Hacé clic en &quot;Nueva Categoría&quot; para crear una.
                   </td>
                 </tr>
               )}
               {categoriasProveedor.map(c => (
-                <tr key={c.id} className="border-b hover:bg-gray-50">
+                <tr
+                  key={c.id}
+                  onClick={() => handleEditar(c)}
+                  className="border-b hover:bg-gray-50 cursor-pointer"
+                >
                   <td className="py-3 px-4 font-medium text-gray-900">{c.nombre}</td>
                   <td className="py-3 px-4 text-center">
                     {c.disponible_clientes ? <CheckCircle className="w-4 h-4 text-green-500 mx-auto" /> : <span className="text-gray-300">—</span>}
@@ -4978,16 +4981,6 @@ export default function ModuloCompras() {
                   </td>
                   <td className="py-3 px-4 text-center">
                     {c.comprobantes_confidenciales ? <Lock className="w-4 h-4 text-red-500 mx-auto" /> : <span className="text-gray-300">—</span>}
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <div className="flex items-center justify-center gap-2">
-                      <button onClick={() => handleEditar(c)} className="text-gray-400 hover:text-blue-600">
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => handleEliminarCat(c.id)} className="text-gray-400 hover:text-red-600">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
                   </td>
                 </tr>
               ))}
