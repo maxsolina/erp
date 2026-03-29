@@ -734,8 +734,10 @@ export default function ModuloProductos() {
     setCargando(true)
     setErrorCarga(null)
     try {
-      const data = await fetchProductos()
-      setProductos(data as Producto[])
+      const res = await fetch("/api/productos", { cache: "no-store" })
+      if (!res.ok) throw new Error("Error al cargar productos")
+      const data = await res.json()
+      setProductos(Array.isArray(data) ? data : [])
     } catch (e: any) {
       setErrorCarga(e.message ?? "Error al cargar productos")
     } finally {
@@ -745,7 +747,7 @@ export default function ModuloProductos() {
 
   useEffect(() => {
     cargarProductos()
-  }, [])
+  }, [cargarProductos])
 
   // Filtros
   const [busqueda, setBusqueda] = useState("")
@@ -780,8 +782,18 @@ export default function ModuloProductos() {
 
   async function handleGuardar(form: FormProducto) {
     try {
-      const { id: productoId, historial_costos: _hc, imagen_url: _img, ...payload } = form
-      await guardarProductoEnDB(payload, productoId ?? undefined)
+      const { id: productoId, historial_costos: _hc, ...payload } = form
+      const url = productoId ? `/api/productos/${productoId}` : "/api/productos"
+      const method = productoId ? "PUT" : "POST"
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error ?? "Error al guardar")
+      }
       await cargarProductos()
       setVista("listado")
       setProductoSeleccionado(null)
