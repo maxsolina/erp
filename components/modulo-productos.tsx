@@ -508,7 +508,6 @@ function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura = fals
     const e = validar()
     if (Object.keys(e).length > 0) {
       setErrors(e)
-      // Ir al tab con error
       if (e.nombre || e.codigo_interno || e.categoria) setTab("informacion")
       return
     }
@@ -518,30 +517,30 @@ function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura = fals
   const inventarioDeshabilitado = form.tipo === "servicio"
   const snForzadoDesactivado = form.tipo === "consumible"
 
-  const labelClass = "block text-xs font-medium text-gray-600 mb-1"
+  const labelClass = "block text-xs font-medium text-gray-700 mb-1"
   const inputClass = (field?: string) =>
-    `w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+    `w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
       field && errors[field] ? "border-red-400 bg-red-50" : "border-gray-300 bg-white"
     } ${soloLectura ? "bg-gray-50 cursor-default" : ""}`
   const selectClass = (field?: string) =>
-    `w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+    `w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
       field && errors[field] ? "border-red-400 bg-red-50" : "border-gray-300 bg-white"
     } ${soloLectura ? "bg-gray-50 cursor-default" : ""}`
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Cabecera formulario */}
-      <div className="bg-gray-50 border-b border-gray-200 px-6 py-5">
-        <div className="flex gap-5 items-start">
+    <div className="space-y-4">
+      {/* Datos principales */}
+      <div className="bg-white rounded-lg border p-6">
+        <div className="flex items-center gap-4 mb-5">
           {/* Imagen */}
           <div className="flex-shrink-0">
-            <div className="w-20 h-20 bg-white border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors relative">
+            <div className="w-16 h-16 bg-gray-100 border border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors relative overflow-hidden">
               {form.imagen_url ? (
-                <img src={form.imagen_url} alt="Producto" className="w-full h-full object-cover rounded-lg" />
+                <img src={form.imagen_url} alt="Producto" className="w-full h-full object-cover" />
               ) : (
                 <>
                   <Camera className="w-5 h-5 text-gray-400" />
-                  <span className="text-xs text-gray-400 mt-1">Foto</span>
+                  <span className="text-xs text-gray-400 mt-0.5">Foto</span>
                 </>
               )}
               {!soloLectura && (
@@ -551,192 +550,152 @@ function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura = fals
                   className="absolute inset-0 opacity-0 cursor-pointer"
                   onChange={e => {
                     const file = e.target.files?.[0]
-                    if (file) {
-                      const url = URL.createObjectURL(file)
-                      set("imagen_url", url)
-                    }
+                    if (file) set("imagen_url", URL.createObjectURL(file))
                   }}
                 />
               )}
             </div>
           </div>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              {form.nombre || (esNuevo ? "Nuevo producto" : "Producto")}
+            </h2>
+            {form.codigo_interno && (
+              <p className="text-sm text-gray-500">{form.codigo_interno}</p>
+            )}
+          </div>
+        </div>
 
-          {/* Campos principales */}
-          <div className="flex-1 grid grid-cols-3 gap-4">
-            {/* Nombre */}
-            <div className="col-span-2">
-              <label className={labelClass}>Nombre del producto *</label>
-              <input
-                type="text"
-                value={form.nombre}
-                onChange={e => set("nombre", e.target.value)}
-                readOnly={soloLectura}
-                className={inputClass("nombre")}
-                placeholder="ej: iPhone 15 Pro Max 256GB Negro"
-              />
-              {errors.nombre && <p className="text-red-500 text-xs mt-1">{errors.nombre}</p>}
-            </div>
-
-            {/* Código interno */}
-            <div>
-              <label className={labelClass}>Código interno *</label>
-              <input
-                type="text"
-                value={form.codigo_interno}
-                onChange={e => set("codigo_interno", e.target.value.toUpperCase().replace(/\s/g, ""))}
-                readOnly={soloLectura}
-                className={inputClass("codigo_interno")}
-                placeholder="ej: IP15PM-256-BLK"
-              />
-              {errors.codigo_interno && <p className="text-red-500 text-xs mt-1">{errors.codigo_interno}</p>}
-            </div>
-
-            {/* Categoría */}
-            <div>
-              <label className={labelClass}>Categoría *</label>
-              <select
-                value={form.categoria}
-                disabled={soloLectura}
-                onChange={e => set("categoria", e.target.value)}
-                className={selectClass("categoria")}
-              >
-                <option value="">Seleccionar...</option>
-                {CATEGORIAS_MAESTRAS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              {errors.categoria && <p className="text-red-500 text-xs mt-1">{errors.categoria}</p>}
-            </div>
-
-            {/* Marca */}
-            <div>
-              <label className={labelClass}>Marca</label>
-              <select value={form.marca} disabled={soloLectura} onChange={e => set("marca", e.target.value)} className={selectClass()}>
-                <option value="">Sin marca</option>
-                {MARCAS_MAESTRAS.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-
-            {/* Modelo */}
-            <div>
-              <label className={labelClass}>Modelo</label>
-              <input
-                type="text"
-                value={form.modelo}
-                onChange={e => set("modelo", e.target.value)}
-                readOnly={soloLectura}
-                className={inputClass()}
-                placeholder="ej: iPhone 15 Pro Max"
-              />
-            </div>
-
-            {/* Color */}
-            <div>
-              <label className={labelClass}>Color del producto</label>
-              <select value={form.color} disabled={soloLectura} onChange={e => set("color", e.target.value)} className={selectClass()}>
-                <option value="">Sin color</option>
-                {COLORES_MAESTROS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-
-            {/* Tipo */}
-            <div>
-              <label className={labelClass}>Tipo de producto</label>
-              <select value={form.tipo} disabled={soloLectura} onChange={e => set("tipo", e.target.value as TipoProducto)} className={selectClass()}>
-                <option value="almacenable">Almacenable</option>
-                <option value="servicio">Servicio</option>
-                <option value="consumible">Consumible</option>
-              </select>
-            </div>
-
-            {/* Checkboxes */}
-            <div className="col-span-2 flex items-center gap-6 pt-5">
-              {(["puede_venderse", "puede_comprarse", "activo"] as const).map(key => (
-                <label key={key} className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={form[key] as boolean}
-                    disabled={soloLectura}
-                    onChange={e => set(key, e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <span className="text-sm text-gray-700">
-                    {key === "puede_venderse" ? "Puede venderse" : key === "puede_comprarse" ? "Puede comprarse" : "Activo"}
-                  </span>
-                </label>
-              ))}
-            </div>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="col-span-2">
+            <label className={labelClass}>Nombre del producto <span className="text-red-500">*</span></label>
+            <input
+              type="text"
+              value={form.nombre}
+              onChange={e => set("nombre", e.target.value)}
+              readOnly={soloLectura}
+              className={inputClass("nombre")}
+              placeholder="ej: iPhone 15 Pro Max 256GB Negro"
+            />
+            {errors.nombre && <p className="text-red-500 text-xs mt-1">{errors.nombre}</p>}
+          </div>
+          <div>
+            <label className={labelClass}>Código interno <span className="text-red-500">*</span></label>
+            <input
+              type="text"
+              value={form.codigo_interno}
+              onChange={e => set("codigo_interno", e.target.value.toUpperCase().replace(/\s/g, ""))}
+              readOnly={soloLectura}
+              className={inputClass("codigo_interno")}
+              placeholder="ej: IP15PM-256"
+            />
+            {errors.codigo_interno && <p className="text-red-500 text-xs mt-1">{errors.codigo_interno}</p>}
+          </div>
+          <div>
+            <label className={labelClass}>Categoría <span className="text-red-500">*</span></label>
+            <select value={form.categoria} disabled={soloLectura} onChange={e => set("categoria", e.target.value)} className={selectClass("categoria")}>
+              <option value="">Seleccionar...</option>
+              {CATEGORIAS_MAESTRAS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            {errors.categoria && <p className="text-red-500 text-xs mt-1">{errors.categoria}</p>}
+          </div>
+          <div>
+            <label className={labelClass}>Marca</label>
+            <select value={form.marca} disabled={soloLectura} onChange={e => set("marca", e.target.value)} className={selectClass()}>
+              <option value="">Sin marca</option>
+              {MARCAS_MAESTRAS.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Modelo</label>
+            <input
+              type="text"
+              value={form.modelo}
+              onChange={e => set("modelo", e.target.value)}
+              readOnly={soloLectura}
+              className={inputClass()}
+              placeholder="ej: iPhone 15 Pro Max"
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Color</label>
+            <select value={form.color} disabled={soloLectura} onChange={e => set("color", e.target.value)} className={selectClass()}>
+              <option value="">Sin color</option>
+              {COLORES_MAESTROS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Tipo de producto</label>
+            <select value={form.tipo} disabled={soloLectura} onChange={e => set("tipo", e.target.value as TipoProducto)} className={selectClass()}>
+              <option value="almacenable">Almacenable</option>
+              <option value="servicio">Servicio</option>
+              <option value="consumible">Consumible</option>
+            </select>
+          </div>
+          <div className="col-span-2 flex items-center gap-6 pt-4">
+            {(["puede_venderse", "puede_comprarse", "activo"] as const).map(key => (
+              <label key={key} className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={form[key] as boolean}
+                  disabled={soloLectura}
+                  onChange={e => set(key, e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">
+                  {key === "puede_venderse" ? "Puede venderse" : key === "puede_comprarse" ? "Puede comprarse" : "Activo"}
+                </span>
+              </label>
+            ))}
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200 bg-white">
-        <div className="flex">
-          {TABS.map(t => {
-            const Icon = t.icon
-            const deshabilitado = inventarioDeshabilitado && t.id === "inventario"
-            return (
-              <button
-                key={t.id}
-                onClick={() => !deshabilitado && setTab(t.id)}
-                className={`flex items-center gap-1.5 px-4 py-3 text-sm border-b-2 transition-colors ${
-                  tab === t.id
-                    ? "border-indigo-600 text-indigo-600 font-medium"
-                    : deshabilitado
-                    ? "border-transparent text-gray-300 cursor-not-allowed"
-                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {t.label}
-              </button>
-            )
-          })}
+      <div className="bg-white rounded-lg border overflow-hidden">
+        <div className="border-b border-gray-200">
+          <div className="flex">
+            {TABS.map(t => {
+              const Icon = t.icon
+              const deshabilitado = inventarioDeshabilitado && t.id === "inventario"
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => !deshabilitado && setTab(t.id)}
+                  className={`flex items-center gap-1.5 px-4 py-3 text-sm border-b-2 transition-colors ${
+                    tab === t.id
+                      ? "border-blue-600 text-blue-600 font-medium"
+                      : deshabilitado
+                      ? "border-transparent text-gray-300 cursor-not-allowed"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {t.label}
+                </button>
+              )
+            })}
+          </div>
         </div>
-      </div>
 
-      {/* Contenido del tab */}
-      <div className="flex-1 overflow-y-auto p-6">
-        {/* TAB: Información */}
-        {tab === "informacion" && (
-          <div className="space-y-6">
-            {/* Precios e IVA */}
-            <div>
-              <h4 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Precios e impuestos</h4>
+        <div className="p-6">
+          {/* TAB: Información */}
+          {tab === "informacion" && (
+            <div className="space-y-6">
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className={labelClass}>IVA de venta (%)</label>
-                  <select
-                    value={form.iva_venta}
-                    disabled={soloLectura}
-                    onChange={e => set("iva_venta", Number(e.target.value))}
-                    className={selectClass()}
-                  >
-                    <option value={0}>Exento (0%)</option>
-                    <option value={10.5}>10.5%</option>
-                    <option value={21}>21%</option>
-                    <option value={27}>27%</option>
+                  <label className={labelClass}>IVA de venta</label>
+                  <select value={form.iva_venta} disabled={soloLectura} onChange={e => set("iva_venta", Number(e.target.value))} className={selectClass()}>
+                    {OPCIONES_IVA.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className={labelClass}>IVA de compra (%)</label>
-                  <select
-                    value={form.iva_compra}
-                    disabled={soloLectura}
-                    onChange={e => set("iva_compra", Number(e.target.value))}
-                    className={selectClass()}
-                  >
-                    <option value={0}>Exento (0%)</option>
-                    <option value={10.5}>10.5%</option>
-                    <option value={21}>21%</option>
-                    <option value={27}>27%</option>
+                  <label className={labelClass}>IVA de compra</label>
+                  <select value={form.iva_compra} disabled={soloLectura} onChange={e => set("iva_compra", Number(e.target.value))} className={selectClass()}>
+                    {OPCIONES_IVA.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
               </div>
-            </div>
-
-            {/* Descripción */}
-            <div>
-              <h4 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Descripción</h4>
               <div>
                 <label className={labelClass}>Descripción interna</label>
                 <textarea
@@ -745,253 +704,166 @@ function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura = fals
                   onChange={e => set("observaciones", e.target.value)}
                   rows={4}
                   placeholder="Descripción del producto para uso interno..."
-                  className={`w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 border-gray-300 bg-white resize-none ${soloLectura ? "bg-gray-50 cursor-default" : ""}`}
+                  className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-300 resize-none ${soloLectura ? "bg-gray-50 cursor-default" : "bg-white"}`}
                 />
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* TAB: Inventario */}
-        {tab === "inventario" && (
-          inventarioDeshabilitado ? (
-            <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-              <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0" />
-              <p className="text-sm text-amber-700">
-                Los productos de tipo <strong>Servicio</strong> no tienen inventario ni stock físico.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Stock y niveles */}
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Stock y niveles</h4>
-                <div className="grid grid-cols-4 gap-4">
-                  <div>
-                    <label className={labelClass}>Stock real</label>
-                    <input
-                      type="number"
-                      value={form.stock_real}
-                      readOnly
-                      className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50 text-gray-500 cursor-default"
-                    />
-                    <p className="text-xs text-gray-400 mt-1">Calculado automáticamente</p>
-                  </div>
-                  <div>
-                    <label className={labelClass}>Stock mínimo</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={form.stock_minimo}
-                      onChange={e => set("stock_minimo", Number(e.target.value))}
-                      readOnly={soloLectura}
-                      className={inputClass()}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Stock máximo</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={form.stock_maximo}
-                      onChange={e => set("stock_maximo", Number(e.target.value))}
-                      readOnly={soloLectura}
-                      className={inputClass()}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Stock crítico</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={form.stock_critico}
-                      onChange={e => set("stock_critico", Number(e.target.value))}
-                      readOnly={soloLectura}
-                      className={inputClass()}
-                    />
+          {/* TAB: Inventario */}
+          {tab === "inventario" && (
+            inventarioDeshabilitado ? (
+              <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+                <p className="text-sm text-amber-700">Los productos de tipo <strong>Servicio</strong> no tienen inventario ni stock físico.</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="font-semibold text-gray-900 mb-4">Stock y niveles</h3>
+                  <div className="grid grid-cols-4 gap-4">
+                    <div>
+                      <label className={labelClass}>Stock real</label>
+                      <input type="number" value={form.stock_real} readOnly className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500 cursor-default" />
+                      <p className="text-xs text-gray-400 mt-1">Calculado automáticamente</p>
+                    </div>
+                    <div>
+                      <label className={labelClass}>Stock mínimo</label>
+                      <input type="number" min={0} value={form.stock_minimo} onChange={e => set("stock_minimo", Number(e.target.value))} readOnly={soloLectura} className={inputClass()} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Stock máximo</label>
+                      <input type="number" min={0} value={form.stock_maximo} onChange={e => set("stock_maximo", Number(e.target.value))} readOnly={soloLectura} className={inputClass()} />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Stock crítico</label>
+                      <input type="number" min={0} value={form.stock_critico} onChange={e => set("stock_critico", Number(e.target.value))} readOnly={soloLectura} className={inputClass()} />
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Tracking por número de serie */}
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Tracking por número de serie</h4>
-                <div className="border border-gray-200 rounded-lg p-4 space-y-4">
-                  <label className={`flex items-center gap-3 cursor-pointer select-none ${snForzadoDesactivado ? "opacity-50 cursor-not-allowed" : ""}`}>
-                    <input
-                      type="checkbox"
-                      checked={snForzadoDesactivado ? false : form.tiene_numero_serie}
-                      disabled={soloLectura || snForzadoDesactivado}
-                      onChange={e => set("tiene_numero_serie", e.target.checked)}
-                      className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <div>
-                      <span className="text-sm font-medium text-gray-800">Número de serie único</span>
-                      <p className="text-xs text-gray-500">
-                        {snForzadoDesactivado
-                          ? "Los consumibles no se trackean por número de serie."
-                          : "Activa el tracking individual por unidad (IMEI, SN, etc.)"}
-                      </p>
-                    </div>
-                  </label>
+                <div>
+                  <h3 className="font-semibold text-gray-900 mb-4">Tracking por número de serie</h3>
+                  <div className="border border-gray-200 rounded-lg p-4 space-y-4">
+                    <label className={`flex items-center gap-3 cursor-pointer select-none ${snForzadoDesactivado ? "opacity-50 cursor-not-allowed" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={snForzadoDesactivado ? false : form.tiene_numero_serie}
+                        disabled={soloLectura || snForzadoDesactivado}
+                        onChange={e => set("tiene_numero_serie", e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-gray-800">Número de serie único</span>
+                        <p className="text-xs text-gray-500">{snForzadoDesactivado ? "Los consumibles no se trackean por número de serie." : "Activa el tracking individual por unidad (IMEI, SN, etc.)"}</p>
+                      </div>
+                    </label>
 
-                  {!snForzadoDesactivado && form.tiene_numero_serie && (
-                    <div className="pl-7 space-y-2 border-t border-gray-100 pt-4">
-                      <p className="text-xs font-medium text-gray-600 mb-3 uppercase tracking-wide">
-                        Atributos requeridos por unidad
-                      </p>
-                      {/* SN/IMEI — siempre */}
-                      <label className="flex items-center gap-3 cursor-not-allowed opacity-70">
-                        <input type="checkbox" checked disabled className="w-4 h-4 rounded border-gray-300" />
-                        <span className="text-sm text-gray-700">Número de serie / IMEI <span className="text-xs text-gray-400">(siempre requerido)</span></span>
-                      </label>
-                      {(
-                        [
+                    {!snForzadoDesactivado && form.tiene_numero_serie && (
+                      <div className="pl-7 space-y-2 border-t border-gray-100 pt-4">
+                        <p className="text-xs font-medium text-gray-600 mb-3 uppercase tracking-wide">Atributos requeridos por unidad</p>
+                        <label className="flex items-center gap-3 opacity-70 cursor-not-allowed">
+                          <input type="checkbox" checked disabled className="w-4 h-4 rounded border-gray-300" />
+                          <span className="text-sm text-gray-700">Número de serie / IMEI <span className="text-xs text-gray-400">(siempre requerido)</span></span>
+                        </label>
+                        {([
                           { key: "requiere_color", label: "Color" },
                           { key: "requiere_bateria", label: "% Batería" },
                           { key: "requiere_outlet", label: "Outlet (sí/no)" },
                           { key: "requiere_observaciones", label: "Observaciones / Fallas" },
-                        ] as { key: keyof FormProducto; label: string }[]
-                      ).map(({ key, label }) => (
-                        <label key={key} className={`flex items-center gap-3 cursor-pointer select-none ${soloLectura ? "cursor-default" : ""}`}>
-                          <input
-                            type="checkbox"
-                            checked={form[key] as boolean}
-                            disabled={soloLectura}
-                            onChange={e => set(key, e.target.checked)}
-                            className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span className="text-sm text-gray-700">{label}</span>
-                        </label>
-                      ))}
+                        ] as { key: keyof FormProducto; label: string }[]).map(({ key, label }) => (
+                          <label key={key} className="flex items-center gap-3 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={form[key] as boolean}
+                              disabled={soloLectura}
+                              onChange={e => set(key, e.target.checked)}
+                              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-sm text-gray-700">{label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          )}
+
+          {/* TAB: Abastecimiento */}
+          {tab === "abastecimiento" && (
+            <div className="space-y-6">
+              <h3 className="font-semibold text-gray-900 mb-4">Costos</h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className={labelClass}>Costo manual</label>
+                  <input type="number" min={0} value={form.costo_manual} onChange={e => set("costo_manual", Number(e.target.value))} readOnly={soloLectura} className={inputClass()} />
+                </div>
+                <div>
+                  <label className={labelClass}>Moneda del costo</label>
+                  <select value={form.moneda_costo} disabled={soloLectura} onChange={e => set("moneda_costo", e.target.value)} className={selectClass()}>
+                    {MONEDAS.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Costo contable</label>
+                  <input type="number" min={0} value={form.costo_contable} onChange={e => set("costo_contable", Number(e.target.value))} readOnly={soloLectura} className={inputClass()} />
+                  <p className="text-xs text-gray-400 mt-1">Usado en valuación de inventario</p>
+                </div>
+              </div>
+              <div>
+                <button onClick={() => setShowHistorial(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
+                  <History className="w-4 h-4" />
+                  Ver historial de costos
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: Ventas */}
+          {tab === "ventas" && (
+            <div className="space-y-4">
+              <h3 className="font-semibold text-gray-900 mb-4">Garantías</h3>
+              <div className="grid grid-cols-2 gap-6">
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <p className="text-sm font-medium text-gray-700 mb-3">Garantía propia</p>
+                  <div className="flex gap-3">
+                    <div className="flex-1">
+                      <label className={labelClass}>Valor</label>
+                      <input type="number" min={0} value={form.garantia_propia_valor} onChange={e => set("garantia_propia_valor", Number(e.target.value))} readOnly={soloLectura} className={inputClass()} />
                     </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )
-        )}
-
-        {/* TAB: Abastecimiento */}
-        {tab === "abastecimiento" && (
-          <div className="space-y-6">
-            <h4 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Costos</h4>
-            <div className="grid grid-cols-3 gap-4">
-              {/* Costo manual */}
-              <div>
-                <label className={labelClass}>Costo manual</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={form.costo_manual}
-                  onChange={e => set("costo_manual", Number(e.target.value))}
-                  readOnly={soloLectura}
-                  className={inputClass()}
-                />
-              </div>
-
-              {/* Moneda */}
-              <div>
-                <label className={labelClass}>Moneda del costo</label>
-                <select value={form.moneda_costo} disabled={soloLectura} onChange={e => set("moneda_costo", e.target.value)} className={selectClass()}>
-                  {MONEDAS.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
-
-              {/* Costo contable */}
-              <div>
-                <label className={labelClass}>Costo contable</label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min={0}
-                    value={form.costo_contable}
-                    onChange={e => set("costo_contable", Number(e.target.value))}
-                    readOnly={soloLectura}
-                    className={inputClass()}
-                  />
-                </div>
-                <p className="text-xs text-gray-400 mt-1">Usado en valuación de inventario y listas de precios</p>
-              </div>
-            </div>
-
-            {/* Ver historial */}
-            <div>
-              <button
-                onClick={() => setShowHistorial(true)}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm text-indigo-600 border border-indigo-200 rounded-md hover:bg-indigo-50 transition-colors"
-              >
-                <History className="w-4 h-4" />
-                Ver historial de costos
-              </button>
-              <p className="text-xs text-gray-400 mt-1">
-                El costo contable se actualiza automáticamente cuando se confirma una recepción vinculada a una OC.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* TAB: Ventas */}
-        {tab === "ventas" && (
-          <div className="space-y-4">
-            <h4 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Garantías</h4>
-            <div className="grid grid-cols-2 gap-6">
-              {/* Garantía propia */}
-              <div className="border border-gray-200 rounded-lg p-4">
-                <p className="text-sm font-medium text-gray-700 mb-3">Garantía propia</p>
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <label className={labelClass}>Valor</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={form.garantia_propia_valor}
-                      onChange={e => set("garantia_propia_valor", Number(e.target.value))}
-                      readOnly={soloLectura}
-                      className={inputClass()}
-                    />
-                  </div>
-                  <div className="w-28">
-                    <label className={labelClass}>Unidad</label>
-                    <select value={form.garantia_propia_unidad} disabled={soloLectura} onChange={e => set("garantia_propia_unidad", e.target.value as "meses" | "dias")} className={selectClass()}>
-                      <option value="meses">Meses</option>
-                      <option value="dias">Días</option>
-                    </select>
+                    <div className="w-28">
+                      <label className={labelClass}>Unidad</label>
+                      <select value={form.garantia_propia_unidad} disabled={soloLectura} onChange={e => set("garantia_propia_unidad", e.target.value as "meses" | "dias")} className={selectClass()}>
+                        <option value="meses">Meses</option>
+                        <option value="dias">Días</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              {/* Garantía fabricante */}
-              <div className="border border-gray-200 rounded-lg p-4">
-                <p className="text-sm font-medium text-gray-700 mb-3">Garantía del fabricante</p>
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <label className={labelClass}>Valor</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={form.garantia_fabricante_valor}
-                      onChange={e => set("garantia_fabricante_valor", Number(e.target.value))}
-                      readOnly={soloLectura}
-                      className={inputClass()}
-                    />
-                  </div>
-                  <div className="w-28">
-                    <label className={labelClass}>Unidad</label>
-                    <select value={form.garantia_fabricante_unidad} disabled={soloLectura} onChange={e => set("garantia_fabricante_unidad", e.target.value as "meses" | "dias")} className={selectClass()}>
-                      <option value="meses">Meses</option>
-                      <option value="dias">Días</option>
-                    </select>
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <p className="text-sm font-medium text-gray-700 mb-3">Garantía del fabricante</p>
+                  <div className="flex gap-3">
+                    <div className="flex-1">
+                      <label className={labelClass}>Valor</label>
+                      <input type="number" min={0} value={form.garantia_fabricante_valor} onChange={e => set("garantia_fabricante_valor", Number(e.target.value))} readOnly={soloLectura} className={inputClass()} />
+                    </div>
+                    <div className="w-28">
+                      <label className={labelClass}>Unidad</label>
+                      <select value={form.garantia_fabricante_unidad} disabled={soloLectura} onChange={e => set("garantia_fabricante_unidad", e.target.value as "meses" | "dias")} className={selectClass()}>
+                        <option value="meses">Meses</option>
+                        <option value="dias">Días</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* TAB: Contabilidad */}
-        {tab === "contabilidad" && (
-          <div className="space-y-4">
+          {/* TAB: Contabilidad */}
+          {tab === "contabilidad" && (
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={labelClass}>IVA de venta</label>
@@ -1022,54 +894,47 @@ function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura = fals
                 </div>
               )}
             </div>
-          </div>
-        )}
+          )}
 
-        {/* TAB: Observaciones */}
-        {tab === "observaciones" && (
-          <div>
-            <label className={labelClass}>Notas internas</label>
-            <textarea
-              value={form.observaciones}
-              onChange={e => set("observaciones", e.target.value)}
-              readOnly={soloLectura}
-              rows={8}
-              className={`w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 border-gray-300 resize-none ${soloLectura ? "bg-gray-50" : "bg-white"}`}
-              placeholder="Notas internas para uso del equipo. No se imprime ni se muestra al cliente."
-            />
-            <p className="text-xs text-gray-400 mt-1">Este campo es solo para uso interno y no aparece en ningún comprobante.</p>
-          </div>
-        )}
+          {/* TAB: Observaciones */}
+          {tab === "observaciones" && (
+            <div>
+              <label className={labelClass}>Notas internas</label>
+              <textarea
+                value={form.observaciones}
+                onChange={e => set("observaciones", e.target.value)}
+                readOnly={soloLectura}
+                rows={8}
+                className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-300 resize-none ${soloLectura ? "bg-gray-50" : "bg-white"}`}
+                placeholder="Notas internas para uso del equipo. No se imprime ni se muestra al cliente."
+              />
+              <p className="text-xs text-gray-400 mt-1">Este campo es solo para uso interno y no aparece en ningún comprobante.</p>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Footer */}
+      {/* Botones de acción */}
       {!soloLectura && (
-        <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center justify-between py-2">
           <button onClick={onCancelar} className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors">
             Cancelar
           </button>
-          <button
-            onClick={handleGuardar}
-            className="px-5 py-2 text-sm font-medium text-white bg-indigo-900 rounded-md hover:bg-indigo-800 transition-colors"
-          >
+          <button onClick={handleGuardar} className="px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
             {esNuevo ? "Crear producto" : "Guardar cambios"}
           </button>
         </div>
       )}
-
       {soloLectura && (
-        <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end">
-          <button onClick={onCancelar} className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
+        <div className="flex justify-end py-2">
+          <button onClick={onCancelar} className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
             Cerrar
           </button>
         </div>
       )}
 
       {showHistorial && (
-        <ModalHistorialCostos
-          historial={form.historial_costos ?? []}
-          onClose={() => setShowHistorial(false)}
-        />
+        <ModalHistorialCostos historial={form.historial_costos ?? []} onClose={() => setShowHistorial(false)} />
       )}
     </div>
   )
@@ -1136,33 +1001,42 @@ export default function ModuloProductos() {
     const titulo = vista === "nuevo" ? "Nuevo Producto" : vista === "ver" ? productoSeleccionado?.nombre : `Editar: ${productoSeleccionado?.nombre}`
 
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
-        {/* Top bar */}
-        <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between sticky top-11 z-10">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => { setVista("listado"); setProductoSeleccionado(null) }}
-              className="inline-flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-800 transition-colors"
-            >
-              <ChevronRight className="w-4 h-4 rotate-180" />
+      <div className="min-h-screen bg-gray-50">
+        {/* Breadcrumb + acciones */}
+        <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+          <div className="text-sm text-gray-500 flex items-center gap-2">
+            <button onClick={() => { setVista("listado"); setProductoSeleccionado(null) }} className="hover:text-blue-600">
               Productos
             </button>
-            <ChevronRight className="w-4 h-4 text-gray-400" />
-            <span className="text-sm font-medium text-gray-800 max-w-xs truncate">{titulo}</span>
+            <span>/</span>
+            <span className="text-gray-900 font-medium">{titulo}</span>
           </div>
           {esVer && productoSeleccionado && (
             <button
               onClick={() => setVista("editar")}
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-indigo-600 border border-indigo-200 rounded-md hover:bg-indigo-50 transition-colors"
+              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1"
             >
-              <Edit2 className="w-3.5 h-3.5" />
-              Editar
+              <Edit2 className="w-4 h-4" /> Editar
             </button>
           )}
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-4xl mx-auto bg-white shadow-sm rounded-lg my-6 overflow-hidden border border-gray-200">
+          <div className="max-w-5xl mx-auto p-6">
+            <div className="flex items-center gap-4 mb-6">
+              <button
+                onClick={() => { setVista("listado"); setProductoSeleccionado(null) }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <ChevronRight className="w-5 h-5 rotate-180" />
+              </button>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">{titulo}</h1>
+                <p className="text-sm text-gray-500">
+                  {vista === "nuevo" ? "Complete los datos del nuevo producto" : productoSeleccionado?.codigo_interno ?? ""}
+                </p>
+              </div>
+            </div>
             <FormularioProducto
               inicial={productoSeleccionado ? { ...productoSeleccionado } : null}
               onGuardar={handleGuardar}
@@ -1175,7 +1049,7 @@ export default function ModuloProductos() {
     )
   }
 
-  // ── Vista de listado ──────────────────────────────────────────────────────
+  // ── Vista de listado ───────────────��──────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
