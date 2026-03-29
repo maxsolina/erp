@@ -2,17 +2,17 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from "react"
 import { createClient } from "@supabase/supabase-js"
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
 import {
   Search, Plus, Edit2, Eye, ChevronDown, ChevronRight, X, Upload, Package,
   History, AlertCircle, CheckCircle, XCircle, Settings, ToggleLeft, ToggleRight,
   DollarSign, Tag, BarChart2, ShoppingBag, ShoppingCart, BookOpen, MessageSquare,
   Camera, Filter, MoreHorizontal
 } from "lucide-react"
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
