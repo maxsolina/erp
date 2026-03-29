@@ -1,6 +1,24 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
+const COLUMNAS = new Set([
+  "imagen_url", "nombre", "codigo_interno", "categoria", "marca", "modelo",
+  "color", "tipo", "puede_venderse", "puede_comprarse", "activo",
+  "stock_real", "stock_minimo", "stock_maximo", "stock_critico",
+  "tiene_numero_serie", "requiere_color", "requiere_bateria",
+  "requiere_outlet", "requiere_observaciones",
+  "costo_manual", "moneda_costo", "costo_contable", "historial_costos",
+  "garantia_propia_valor", "garantia_propia_unidad",
+  "garantia_fabricante_valor", "garantia_fabricante_unidad",
+  "iva_venta", "iva_compra", "cuenta_ventas", "cuenta_existencias", "observaciones",
+])
+
+function filtrarPayload(body: Record<string, any>) {
+  return Object.fromEntries(
+    Object.entries(body).filter(([key]) => COLUMNAS.has(key))
+  )
+}
+
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
   const { id } = await params
@@ -22,8 +40,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   const supabase = await createClient()
   const { id } = await params
   const body = await request.json()
-
-  const { id: _id, created_at: _ca, updated_at: _ua, ...payload } = body
+  const payload = filtrarPayload(body)
 
   const { data, error } = await supabase
     .from("productos")
