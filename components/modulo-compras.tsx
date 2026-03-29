@@ -114,6 +114,27 @@ const CIUDADES_POR_PROVINCIA: Record<string, string[]> = {
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+interface ListaPrecioPermitida {
+  id: number
+  nombre: string
+  tipo: string
+  moneda: "ARS" | "USD" | "EUR"
+}
+
+interface CategoriaProveedor {
+  id: number
+  nombre: string
+  disponible_clientes: boolean
+  disponible_proveedores: boolean
+  tipo_control: "Ninguno" | "Por Avisos" | "Por Bloqueo"
+  cuenta_cobrar_defecto: string
+  cuenta_pagar_defecto: string
+  requiere_oc_para_facturar: boolean
+  comprobantes_confidenciales: boolean
+  listas_precios: ListaPrecioPermitida[]
+}
+
 interface ContactoProveedor {
   id: number
   nombre: string
@@ -508,7 +529,7 @@ const UBICACIONES_OC = [
 export default function ModuloCompras() {
   // Active view state
   const [activeView, setActiveView] = useState("proveedores")
-  const [expandedSections, setExpandedSections] = useState<string[]>(["proveedores", "compras", "comprobantes", "pagos", "configuracion"])
+  const [expandedSections, setExpandedSections] = useState<string[]>(["proveedores", "compras", "comprobantes", "pagos", "configuracion", "categorias"])
 
   // Proveedores
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
@@ -521,14 +542,26 @@ export default function ModuloCompras() {
   const [proveedorTabActivo, setProveedorTabActivo] = useState<"contactos" | "ventas_compras" | "contabilidad" | "observaciones">("contactos")
   const [confirmandoConfidencial, setConfirmandoConfidencial] = useState(false)
 
-  const CATEGORIAS_PROVEEDOR = [
-    "Proveedor Nacional",
-    "Proveedor Exterior",
-    "Despachante de Aduana",
-    "Transportista / Flete",
-    "Servicios",
-    "Toma en Parte de Pago",
-  ]
+  const [categoriasProveedor, setCategoriasProveedor] = useState<CategoriaProveedor[]>([])
+  const [selectedCatProv, setSelectedCatProv] = useState<CategoriaProveedor | null>(null)
+  const [creandoCatProv, setCreandoCatProv] = useState(false)
+  const [catProvTabActivo, setCatProvTabActivo] = useState<"listas_precios" | "grupos_descuentos" | "cuentas_perm" | "leyenda" | "grupos">("listas_precios")
+
+  const catProvFormVacio: Omit<CategoriaProveedor, "id"> = {
+    nombre: "",
+    disponible_clientes: true,
+    disponible_proveedores: true,
+    tipo_control: "Ninguno",
+    cuenta_cobrar_defecto: "",
+    cuenta_pagar_defecto: "",
+    requiere_oc_para_facturar: false,
+    comprobantes_confidenciales: false,
+    listas_precios: [],
+  }
+  const [nuevaCatProv, setNuevaCatProv] = useState<Omit<CategoriaProveedor, "id">>(catProvFormVacio)
+
+  // CATEGORIAS_PROVEEDOR es ahora dinámico
+  const CATEGORIAS_PROVEEDOR = categoriasProveedor.map(c => c.nombre)
 
   const SUCURSALES_LISTA = ["Puerto Norte", "Centro", "Sur"]
   const MONEDAS_LISTA: Array<"ARS" | "USD" | "EUR"> = ["ARS", "USD", "EUR"]
@@ -766,6 +799,14 @@ export default function ModuloCompras() {
         { id: "tipos_gasto", label: "Tipos de Gasto", icon: Tag },
         { id: "componentes_evaluacion", label: "Componentes Evaluación", icon: CheckCircle },
         { id: "rangos_precio", label: "Rangos de Precio por Rol", icon: Percent },
+      ]
+    },
+    {
+      id: "categorias",
+      label: "Categorías",
+      icon: Tag,
+      items: [
+        { id: "cat_proveedores", label: "Proveedores", icon: Building2 },
       ]
     },
   ]
@@ -4469,6 +4510,346 @@ export default function ModuloCompras() {
   }
 
   // =====================================================
+  // RENDER CATEGORÍAS PROVEEDORES
+  // =====================================================
+  const renderCatProveedores = () => {
+    const cat = nuevaCatProv
+    const setCat = (patch: Partial<typeof cat>) => setNuevaCatProv(prev => ({ ...prev, ...patch }))
+
+    const CUENTAS_COBRAR = ["1.1.1 - Clientes", "1.1.2 - Documentos a Cobrar", "1.1.3 - Cheques en Cartera"]
+    const CUENTAS_PAGAR = ["2.1.1 - Proveedores", "2.1.2 - Documentos a Pagar", "2.1.3 - Anticipo Proveedores"]
+
+    const handleGuardarCat = () => {
+      if (!cat.nombre.trim()) return
+      if (selectedCatProv) {
+        setCategoriasProveedor(prev => prev.map(c =>
+          c.id === selectedCatProv.id ? { ...c, ...cat } : c
+        ))
+        setSelectedCatProv(null)
+      } else {
+        setCategoriasProveedor(prev => [...prev, { ...cat, id: Date.now() }])
+        setCreandoCatProv(false)
+        setNuevaCatProv(catProvFormVacio)
+        setCatProvTabActivo("listas_precios")
+      }
+    }
+
+    const handleNueva = () => {
+      setSelectedCatProv(null)
+      setNuevaCatProv(catProvFormVacio)
+      setCatProvTabActivo("listas_precios")
+      setCreandoCatProv(true)
+    }
+
+    const handleEditar = (c: CategoriaProveedor) => {
+      setNuevaCatProv({
+        nombre: c.nombre,
+        disponible_clientes: c.disponible_clientes,
+        disponible_proveedores: c.disponible_proveedores,
+        tipo_control: c.tipo_control,
+        cuenta_cobrar_defecto: c.cuenta_cobrar_defecto,
+        cuenta_pagar_defecto: c.cuenta_pagar_defecto,
+        requiere_oc_para_facturar: c.requiere_oc_para_facturar,
+        comprobantes_confidenciales: c.comprobantes_confidenciales,
+        listas_precios: c.listas_precios,
+      })
+      setSelectedCatProv(c)
+      setCatProvTabActivo("listas_precios")
+      setCreandoCatProv(true)
+    }
+
+    const handleEliminarCat = (id: number) => {
+      setCategoriasProveedor(prev => prev.filter(c => c.id !== id))
+    }
+
+    const addListaPrecio = () => {
+      setCat({ listas_precios: [...cat.listas_precios, { id: Date.now(), nombre: "", tipo: "", moneda: "ARS" }] })
+    }
+
+    const removeListaPrecio = (id: number) => {
+      setCat({ listas_precios: cat.listas_precios.filter(l => l.id !== id) })
+    }
+
+    const updateListaPrecio = (id: number, patch: Partial<ListaPrecioPermitida>) => {
+      setCat({ listas_precios: cat.listas_precios.map(l => l.id === id ? { ...l, ...patch } : l) })
+    }
+
+    // Vista formulario
+    if (creandoCatProv) {
+      return (
+        <div className="max-w-5xl mx-auto">
+          <div className="flex items-center gap-4 mb-4">
+            <BotonVolver onClick={() => { setCreandoCatProv(false); setSelectedCatProv(null); setNuevaCatProv(catProvFormVacio) }} variant="minimal" texto="" />
+            <h1 className="text-xl font-bold text-gray-900">
+              {selectedCatProv ? `Editando: ${selectedCatProv.nombre}` : "Nueva Categoría de Proveedor"}
+            </h1>
+          </div>
+
+          <div className="bg-white rounded-lg border overflow-hidden">
+            {/* Nombre */}
+            <div className="px-6 pt-5 pb-4 border-b">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
+              <input
+                type="text"
+                value={cat.nombre}
+                onChange={e => setCat({ nombre: e.target.value })}
+                className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+              />
+            </div>
+
+            {/* Fila de controles */}
+            <div className="grid grid-cols-2 gap-x-12 px-6 py-5 border-b">
+              {/* Columna izquierda */}
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cat.disponible_clientes}
+                    onChange={e => setCat({ disponible_clientes: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 accent-blue-600"
+                  />
+                  Disponible para clientes
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cat.disponible_proveedores}
+                    onChange={e => setCat({ disponible_proveedores: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 accent-blue-600"
+                  />
+                  Disponible para proveedores
+                </label>
+                <div className="flex items-center gap-3 pt-1">
+                  <span className="text-sm text-gray-700 whitespace-nowrap">Tipo de Control</span>
+                  <select
+                    value={cat.tipo_control}
+                    onChange={e => setCat({ tipo_control: e.target.value as CategoriaProveedor["tipo_control"] })}
+                    className="flex-1 border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Ninguno">Ninguno</option>
+                    <option value="Por Avisos">Por Avisos</option>
+                    <option value="Por Bloqueo">Por Bloqueo</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Columna derecha */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-700 whitespace-nowrap w-52">Cuenta a cobrar por defecto</span>
+                  <select
+                    value={cat.cuenta_cobrar_defecto}
+                    onChange={e => setCat({ cuenta_cobrar_defecto: e.target.value })}
+                    className="flex-1 border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value=""></option>
+                    {CUENTAS_COBRAR.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-700 whitespace-nowrap w-52">Cuenta a pagar por defecto</span>
+                  <select
+                    value={cat.cuenta_pagar_defecto}
+                    onChange={e => setCat({ cuenta_pagar_defecto: e.target.value })}
+                    className="flex-1 border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value=""></option>
+                    {CUENTAS_PAGAR.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cat.requiere_oc_para_facturar}
+                    onChange={e => setCat({ requiere_oc_para_facturar: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300"
+                  />
+                  Requiere Orden de Compra para Facturar
+                </label>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cat.comprobantes_confidenciales}
+                    onChange={e => setCat({ comprobantes_confidenciales: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300"
+                  />
+                  Comprobantes confidenciales
+                </label>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex border-b px-6 pt-2">
+              {[
+                { id: "listas_precios", label: "Listas de Precios Permitidas" },
+                { id: "grupos_descuentos", label: "Grupos de Descuentos Permitidos" },
+                { id: "cuentas_perm", label: "Cuentas Permitidas para Proveedores" },
+                { id: "leyenda", label: "Leyenda para Impresión de Presupuestos" },
+                { id: "grupos", label: "Grupos" },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setCatProvTabActivo(tab.id as typeof catProvTabActivo)}
+                  className={`px-4 py-2 text-sm border-b-2 transition-colors whitespace-nowrap ${
+                    catProvTabActivo === tab.id
+                      ? "border-blue-600 text-blue-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="px-6 py-4">
+              {catProvTabActivo === "listas_precios" && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-3">Si no se selecciona ninguna se permitirán todas las Listas de Precios</p>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b text-xs text-gray-600 uppercase">
+                        <th className="text-left py-2 px-3">Nombre lista de precios</th>
+                        <th className="text-left py-2 px-3">Tipo de lista de precios</th>
+                        <th className="text-left py-2 px-3">Moneda</th>
+                        <th className="py-2 px-3 w-8">
+                          <Trash2 className="w-3.5 h-3.5 text-gray-400" />
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cat.listas_precios.map(lp => (
+                        <tr key={lp.id} className="border-b">
+                          <td className="py-1.5 px-3">
+                            <input type="text" value={lp.nombre} onChange={e => updateListaPrecio(lp.id, { nombre: e.target.value })}
+                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Nombre" />
+                          </td>
+                          <td className="py-1.5 px-3">
+                            <input type="text" value={lp.tipo} onChange={e => updateListaPrecio(lp.id, { tipo: e.target.value })}
+                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Tipo" />
+                          </td>
+                          <td className="py-1.5 px-3">
+                            <select value={lp.moneda} onChange={e => updateListaPrecio(lp.id, { moneda: e.target.value as "ARS" | "USD" | "EUR" })}
+                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+                              <option value="ARS">ARS</option>
+                              <option value="USD">USD</option>
+                              <option value="EUR">EUR</option>
+                            </select>
+                          </td>
+                          <td className="py-1.5 px-3">
+                            <button onClick={() => removeListaPrecio(lp.id)} className="text-red-400 hover:text-red-600">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <button onClick={addListaPrecio} className="mt-2 text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                    <Plus className="w-3.5 h-3.5" /> Añadir un elemento
+                  </button>
+                </div>
+              )}
+              {catProvTabActivo !== "listas_precios" && (
+                <p className="text-sm text-gray-400 py-4 text-center">Sin elementos configurados.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Acciones */}
+          <div className="flex justify-end gap-3 mt-4">
+            <button
+              onClick={() => { setCreandoCatProv(false); setSelectedCatProv(null); setNuevaCatProv(catProvFormVacio) }}
+              className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleGuardarCat}
+              disabled={!cat.nombre.trim()}
+              className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Save className="w-4 h-4" />
+              {selectedCatProv ? "Guardar Cambios" : "Crear Categoría"}
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    // Vista listado
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Categorías de Proveedores</h1>
+            <p className="text-gray-500 mt-1">Configure las categorías para clasificar sus proveedores</p>
+          </div>
+          <button
+            onClick={handleNueva}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+          >
+            <Plus className="w-4 h-4" /> Nueva Categoría
+          </button>
+        </div>
+
+        <div className="bg-white rounded-lg border overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b">
+              <tr className="text-xs text-gray-500 uppercase">
+                <th className="text-left py-3 px-4">Nombre</th>
+                <th className="text-center py-3 px-4">Clientes</th>
+                <th className="text-center py-3 px-4">Proveedores</th>
+                <th className="text-left py-3 px-4">Tipo Control</th>
+                <th className="text-center py-3 px-4">Req. OC</th>
+                <th className="text-center py-3 px-4">Confidencial</th>
+                <th className="text-center py-3 px-4">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {categoriasProveedor.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center text-gray-400 text-sm">
+                    No hay categorías configuradas. Hacé clic en &quot;Nueva Categoría&quot; para crear una.
+                  </td>
+                </tr>
+              )}
+              {categoriasProveedor.map(c => (
+                <tr key={c.id} className="border-b hover:bg-gray-50">
+                  <td className="py-3 px-4 font-medium text-gray-900">{c.nombre}</td>
+                  <td className="py-3 px-4 text-center">
+                    {c.disponible_clientes ? <CheckCircle className="w-4 h-4 text-green-500 mx-auto" /> : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    {c.disponible_proveedores ? <CheckCircle className="w-4 h-4 text-green-500 mx-auto" /> : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{c.tipo_control}</td>
+                  <td className="py-3 px-4 text-center">
+                    {c.requiere_oc_para_facturar ? <CheckCircle className="w-4 h-4 text-green-500 mx-auto" /> : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    {c.comprobantes_confidenciales ? <Lock className="w-4 h-4 text-red-500 mx-auto" /> : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <button onClick={() => handleEditar(c)} className="text-gray-400 hover:text-blue-600">
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => handleEliminarCat(c.id)} className="text-gray-400 hover:text-red-600">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
+  // =====================================================
   // RENDER PLACEHOLDER
   // =====================================================
   const renderPlaceholder = (title: string) => (
@@ -4515,6 +4896,8 @@ export default function ModuloCompras() {
         return renderPlaceholder("Componentes de Evaluación de Equipos")
       case "rangos_precio":
         return renderPlaceholder("Rangos de Precio por Rol")
+      case "cat_proveedores":
+        return renderCatProveedores()
       default:
         return renderProveedores()
     }
