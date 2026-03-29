@@ -4,6 +4,7 @@ import React, { useState, useMemo, useRef, useEffect } from "react"
 import { Search, Filter, ChevronDown, X, Plus, FileText, Truck, Package, ArrowRight, Eye, Edit, Trash2, Download, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Calendar, Tag, RefreshCw, Barcode, QrCode, Layers, ArrowLeftRight, ClipboardCheck, TrendingUp, TrendingDown, Box, Warehouse, Hash, RotateCcw, ChevronRight, MessageSquare, Star, User, Activity, BarChart3, Settings, DollarSign, Users, GripVertical } from "lucide-react"
 import OdooFilterBar, { FilterOption, GroupByOption, SavedFilter } from "./odoo-filter-bar"
 import BotonVolver from "./ui/boton-volver"
+import { FormularioProducto, type FormProducto } from "./modulo-productos"
 
 // Types para Stock/Deposito
 interface Deposito {
@@ -699,7 +700,7 @@ function SeguimientoPanel({
 }
 
 // Component Principal
-export default function ModuloStock({ onNuevoProducto }: { onNuevoProducto?: () => void } = {}) {
+export default function ModuloStock() {
   // Estados principales
   const [activeView, setActiveView] = useState<string>("productos")
   const [searchTerm, setSearchTerm] = useState("")
@@ -741,6 +742,7 @@ export default function ModuloStock({ onNuevoProducto }: { onNuevoProducto?: () 
   const [selectedControl, setSelectedControl] = useState<ControlInventario | null>(null)
   
   // Estados de creación
+  const [creandoProducto, setCreandoProducto] = useState(false)
   const [creandoTransferencia, setCreandoTransferencia] = useState(false)
   const [creandoPedido, setCreandoPedido] = useState(false)
   const [creandoControl, setCreandoControl] = useState(false)
@@ -1228,6 +1230,25 @@ export default function ModuloStock({ onNuevoProducto }: { onNuevoProducto?: () 
 
   // Render Productos
   const renderProductos = () => {
+    if (creandoProducto) {
+      return (
+        <div>
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+            <button onClick={() => setCreandoProducto(false)} className="hover:text-amber-700">Productos</button>
+            <span>/</span>
+            <span className="font-medium text-gray-900">Nuevo producto</span>
+          </div>
+          <FormularioProducto
+            inicial={null}
+            onGuardar={(p: FormProducto) => {
+              setCreandoProducto(false)
+            }}
+            onCancelar={() => setCreandoProducto(false)}
+          />
+        </div>
+      )
+    }
+
     if (selectedProducto) return renderFichaProducto()
     
     const filteredProductos = productos.filter(p => 
@@ -1241,7 +1262,7 @@ export default function ModuloStock({ onNuevoProducto }: { onNuevoProducto?: () 
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-2xl font-bold text-amber-900">Productos</h1>
           <button
-            onClick={() => onNuevoProducto?.()}
+            onClick={() => setCreandoProducto(true)}
             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-900 rounded-md hover:bg-indigo-800 transition-colors"
           >
             <Plus className="w-4 h-4" />

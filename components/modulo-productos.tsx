@@ -436,7 +436,7 @@ const TABS = [
   { id: "observaciones", label: "Observaciones", icon: MessageSquare },
 ]
 
-type FormProducto = Omit<Producto, "id" | "historial_costos"> & { id?: number; historial_costos?: HistorialCosto[] }
+export type FormProducto = Omit<Producto, "id" | "historial_costos"> & { id?: number; historial_costos?: HistorialCosto[] }
 
 interface FormProductoProps {
   inicial: FormProducto | null
@@ -445,7 +445,7 @@ interface FormProductoProps {
   soloLectura?: boolean
 }
 
-function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura = false }: FormProductoProps) {
+export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura = false }: FormProductoProps) {
   const esNuevo = !inicial?.id
 
   const defaultForm: FormProducto = {
