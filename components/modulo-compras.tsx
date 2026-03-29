@@ -4,6 +4,12 @@ import React, { useState, useEffect } from "react"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Settings, Lock, Unlock, FileBox, Ship, Plane } from "lucide-react"
 import BotonVolver from "./ui/boton-volver"
 import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
+import {
+  getCategoriaProveedores,
+  createCategoriaProveedor,
+  updateCategoriaProveedor,
+  deleteCategoriaProveedor,
+} from "@/lib/categorias-proveedor-actions"
 
 // ── Datos geográficos ────────────────────────────────────────────────────────
 
@@ -546,6 +552,28 @@ export default function ModuloCompras() {
   const [selectedCatProv, setSelectedCatProv] = useState<CategoriaProveedor | null>(null)
   const [creandoCatProv, setCreandoCatProv] = useState(false)
   const [catProvTabActivo, setCatProvTabActivo] = useState<"listas_precios" | "grupos_descuentos" | "cuentas_perm" | "leyenda" | "grupos">("listas_precios")
+  const [loadingCatProv, setLoadingCatProv] = useState(false)
+
+  useEffect(() => {
+    setLoadingCatProv(true)
+    getCategoriaProveedores()
+      .then(rows => {
+        setCategoriasProveedor(rows.map(r => ({
+          id: r.id,
+          nombre: r.nombre,
+          disponible_clientes: r.disponible_clientes,
+          disponible_proveedores: r.disponible_proveedores,
+          tipo_control: r.tipo_control as CategoriaProveedor["tipo_control"],
+          cuenta_cobrar_defecto: r.cuenta_cobrar_defecto,
+          cuenta_pagar_defecto: r.cuenta_pagar_defecto,
+          requiere_oc_para_facturar: r.requiere_oc_para_facturar,
+          comprobantes_confidenciales: r.comprobantes_confidenciales,
+          listas_precios: [],
+        })))
+      })
+      .catch(console.error)
+      .finally(() => setLoadingCatProv(false))
+  }, [])
 
   const catProvFormVacio: Omit<CategoriaProveedor, "id"> = {
     nombre: "",
@@ -4599,18 +4627,47 @@ export default function ModuloCompras() {
     const CUENTAS_COBRAR = ["1.1.1 - Clientes", "1.1.2 - Documentos a Cobrar", "1.1.3 - Cheques en Cartera"]
     const CUENTAS_PAGAR = ["2.1.1 - Proveedores", "2.1.2 - Documentos a Pagar", "2.1.3 - Anticipo Proveedores"]
 
-    const handleGuardarCat = () => {
+    const handleGuardarCat = async () => {
       if (!cat.nombre.trim()) return
-      if (selectedCatProv) {
-        setCategoriasProveedor(prev => prev.map(c =>
-          c.id === selectedCatProv.id ? { ...c, ...cat } : c
-        ))
-        setSelectedCatProv(null)
-      } else {
-        setCategoriasProveedor(prev => [...prev, { ...cat, id: Date.now() }])
+      const payload = {
+        nombre: cat.nombre,
+        disponible_clientes: cat.disponible_clientes,
+        disponible_proveedores: cat.disponible_proveedores,
+        tipo_control: cat.tipo_control,
+        cuenta_cobrar_defecto: cat.cuenta_cobrar_defecto,
+        cuenta_pagar_defecto: cat.cuenta_pagar_defecto,
+        requiere_oc_para_facturar: cat.requiere_oc_para_facturar,
+        comprobantes_confidenciales: cat.comprobantes_confidenciales,
+      }
+      try {
+        if (selectedCatProv) {
+          const updated = await updateCategoriaProveedor(selectedCatProv.id, payload)
+          setCategoriasProveedor(prev => prev.map(c =>
+            c.id === selectedCatProv.id
+              ? { ...c, ...updated, tipo_control: updated.tipo_control as CategoriaProveedor["tipo_control"], listas_precios: c.listas_precios }
+              : c
+          ))
+          setSelectedCatProv(null)
+        } else {
+          const created = await createCategoriaProveedor(payload)
+          setCategoriasProveedor(prev => [...prev, {
+            id: created.id,
+            nombre: created.nombre,
+            disponible_clientes: created.disponible_clientes,
+            disponible_proveedores: created.disponible_proveedores,
+            tipo_control: created.tipo_control as CategoriaProveedor["tipo_control"],
+            cuenta_cobrar_defecto: created.cuenta_cobrar_defecto,
+            cuenta_pagar_defecto: created.cuenta_pagar_defecto,
+            requiere_oc_para_facturar: created.requiere_oc_para_facturar,
+            comprobantes_confidenciales: created.comprobantes_confidenciales,
+            listas_precios: [],
+          }])
+        }
         setCreandoCatProv(false)
         setNuevaCatProv(catProvFormVacio)
         setCatProvTabActivo("listas_precios")
+      } catch (e) {
+        console.error(e)
       }
     }
 
@@ -4638,8 +4695,13 @@ export default function ModuloCompras() {
       setCreandoCatProv(true)
     }
 
-    const handleEliminarCat = (id: number) => {
-      setCategoriasProveedor(prev => prev.filter(c => c.id !== id))
+    const handleEliminarCat = async (id: number) => {
+      try {
+        await deleteCategoriaProveedor(id)
+        setCategoriasProveedor(prev => prev.filter(c => c.id !== id))
+      } catch (e) {
+        console.error(e)
+      }
     }
 
     const addListaPrecio = () => {
@@ -4887,7 +4949,14 @@ export default function ModuloCompras() {
               </tr>
             </thead>
             <tbody>
-              {categoriasProveedor.length === 0 && (
+              {loadingCatProv && (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center text-gray-400 text-sm">
+                    Cargando categorías...
+                  </td>
+                </tr>
+              )}
+              {!loadingCatProv && categoriasProveedor.length === 0 && (
                 <tr>
                   <td colSpan={7} className="py-10 text-center text-gray-400 text-sm">
                     No hay categorías configuradas. Hacé clic en &quot;Nueva Categoría&quot; para crear una.
