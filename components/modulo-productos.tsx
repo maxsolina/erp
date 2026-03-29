@@ -7,7 +7,6 @@ import {
   DollarSign, Tag, BarChart2, ShoppingBag, ShoppingCart, BookOpen, MessageSquare,
   Camera, Filter, MoreHorizontal
 } from "lucide-react"
-import BotonVolver from "./ui/boton-volver"
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -1132,14 +1131,11 @@ export default function ModuloProductos() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <BotonVolver />
-          <div>
-            <h1 className="text-lg font-semibold text-gray-900">Productos</h1>
-            <p className="text-xs text-gray-500">
-              {productosFiltrados.length} producto{productosFiltrados.length !== 1 ? "s" : ""} mostrados
-            </p>
-          </div>
+        <div>
+          <h1 className="text-lg font-semibold text-gray-900">Productos</h1>
+          <p className="text-xs text-gray-500">
+            {productosFiltrados.length} producto{productosFiltrados.length !== 1 ? "s" : ""} mostrados
+          </p>
         </div>
         <button
           onClick={() => { setProductoSeleccionado(null); setVista("nuevo") }}
