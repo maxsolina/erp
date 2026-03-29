@@ -727,6 +727,7 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
 
 // ─── Módulo principal ─────────────────────────────────────────────────────────
 
+// v2 - usa Supabase directo sin API routes
 export default function ModuloProductos() {
   const [productos, setProductos] = useState<Producto[]>([])
   const [cargando, setCargando] = useState(true)

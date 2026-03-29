@@ -1,3 +1,4 @@
+// v3 - sin console.log
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
