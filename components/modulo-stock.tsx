@@ -4,6 +4,8 @@ import React, { useState, useMemo, useRef, useEffect } from "react"
 import { Search, Filter, ChevronDown, X, Plus, FileText, Truck, Package, ArrowRight, Eye, Edit, Trash2, Download, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Calendar, Tag, RefreshCw, Barcode, QrCode, Layers, ArrowLeftRight, ClipboardCheck, TrendingUp, TrendingDown, Box, Warehouse, Hash, RotateCcw, ChevronRight, MessageSquare, Star, User, Activity, BarChart3, Settings, DollarSign, Users, GripVertical } from "lucide-react"
 import OdooFilterBar, { FilterOption, GroupByOption, SavedFilter } from "./odoo-filter-bar"
 import BotonVolver from "./ui/boton-volver"
+import { FormularioProducto, type FormProducto } from "./modulo-productos"
+import { guardarProductoEnDB } from "@/lib/productos-actions"
 
 // Types para Stock/Deposito
 interface Deposito {
@@ -225,325 +227,32 @@ interface AjusteInventario {
   }[]
 }
 
-// Mock Data
-const mockCategoriasUbicacion: CategoriaUbicacion[] = [
-  { id: 1, codigo: "STOCK", nombre: "Stock", descripcion: "Ubicaciones de almacenamiento principal" },
-  { id: 2, codigo: "TRANS", nombre: "Transitoria", descripcion: "Ubicaciones temporales de tránsito" },
-  { id: 3, codigo: "CONSIG", nombre: "Cliente en Consignación", descripcion: "Stock en ubicación del cliente" },
-  { id: 4, codigo: "BUSO", nombre: "Bienes de Uso", descripcion: "Activos fijos de la empresa" },
-  { id: 5, codigo: "REP", nombre: "Reparación", descripcion: "Equipos en servicio técnico" },
-  { id: 6, codigo: "SCRAP", nombre: "Scrap/Baja", descripcion: "Productos dados de baja" },
-]
+// Datos
+const mockCategoriasUbicacion: CategoriaUbicacion[] = []
 
-const mockDepositos: Deposito[] = [
-  { 
-    id: 1, codigo: "CC", nombre: "Casa Central", sucursal: "Casa Central", 
-    direccion: "C001793 - Ciento Ocho SRL", subcompanias: [],
-    deposito_distribucion: false, deposito_tercero: false, activo: true,
-    ubicacion_entrada_id: 101, ubicacion_control_calidad_id: 102, 
-    ubicacion_empaquetado_id: 103, ubicacion_salida_id: 104, ubicacion_stock_id: 1,
-    recepcion_automatica: false, 
-    albaranes_entrada: "Recibir bienes directamente en las existencias (1 paso)",
-    envios_salientes: "Enviar directamente desde la existencias (Sólo enviar)",
-    depositos_reabastecimiento: [2, 3]
-  },
-  { 
-    id: 2, codigo: "PN", nombre: "Puerto Norte", sucursal: "Puerto Norte", 
-    direccion: "Córdoba 890", subcompanias: [],
-    deposito_distribucion: false, deposito_tercero: false, activo: true,
-    ubicacion_entrada_id: 201, ubicacion_control_calidad_id: null, 
-    ubicacion_empaquetado_id: null, ubicacion_salida_id: 202, ubicacion_stock_id: 8,
-    recepcion_automatica: false, 
-    albaranes_entrada: "Recibir bienes directamente en las existencias (1 paso)",
-    envios_salientes: "Enviar directamente desde la existencias (Sólo enviar)",
-    depositos_reabastecimiento: [1]
-  },
-  { 
-    id: 3, codigo: "CS", nombre: "Casilda", sucursal: "Casilda", 
-    direccion: "San Martín 500", subcompanias: [],
-    deposito_distribucion: false, deposito_tercero: false, activo: true,
-    ubicacion_entrada_id: 301, ubicacion_control_calidad_id: null, 
-    ubicacion_empaquetado_id: null, ubicacion_salida_id: 302, ubicacion_stock_id: 12,
-    recepcion_automatica: false, 
-    albaranes_entrada: "Recibir bienes directamente en las existencias (1 paso)",
-    envios_salientes: "Enviar directamente desde la existencias (Sólo enviar)",
-    depositos_reabastecimiento: [1]
-  },
-]
+const mockDepositos: Deposito[] = []
 
-const mockUbicaciones: Ubicacion[] = [
-  // Casa Central - Ubicaciones principales
-  { id: 1, deposito_id: 1, codigo: "CC/Stock", nombre: "Stock", tipo: "interna", categoria_id: 1, categoria_nombre: "Stock", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: true },
-  { id: 2, deposito_id: 1, codigo: "CC/Usados", nombre: "Usados", tipo: "interna", categoria_id: 1, categoria_nombre: "Stock", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: true },
-  { id: 3, deposito_id: 1, codigo: "CC/Deposito B", nombre: "Depósito B", tipo: "interna", categoria_id: 1, categoria_nombre: "Stock", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: true },
-  { id: 4, deposito_id: 1, codigo: "CC/Deposito C", nombre: "Depósito C", tipo: "interna", categoria_id: 1, categoria_nombre: "Stock", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-  { id: 5, deposito_id: 1, codigo: "CC/En Reparación", nombre: "En Reparación", tipo: "interna", categoria_id: 5, categoria_nombre: "Reparación", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-  { id: 6, deposito_id: 1, codigo: "CC/Dados de Baja", nombre: "Dados de Baja", tipo: "inventario", categoria_id: 6, categoria_nombre: "Scrap/Baja", activa: true, es_scrap: true, es_devolucion: false, disponible_venta: false },
-  { id: 7, deposito_id: 1, codigo: "CC/Mercado Libre - Full", nombre: "Mercado Libre - Full", tipo: "interna", categoria_id: 3, categoria_nombre: "Cliente en Consignación", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-  // Casa Central - Ubicaciones especiales
-  { id: 101, deposito_id: 1, codigo: "CC/Input", nombre: "Entrada", tipo: "interna", categoria_id: 2, categoria_nombre: "Transitoria", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-  { id: 102, deposito_id: 1, codigo: "CC/Quality Control", nombre: "Control de Calidad", tipo: "interna", categoria_id: 2, categoria_nombre: "Transitoria", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-  { id: 103, deposito_id: 1, codigo: "CC/Zona de empaquetado", nombre: "Zona de Empaquetado", tipo: "interna", categoria_id: 2, categoria_nombre: "Transitoria", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-  { id: 104, deposito_id: 1, codigo: "CC/Salida", nombre: "Salida", tipo: "interna", categoria_id: 2, categoria_nombre: "Transitoria", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-  // Casa Central - Ubicaciones de clientes en consignación
-  { id: 105, deposito_id: 1, codigo: "CC/Like Store", nombre: "Like Store", tipo: "interna", categoria_id: 3, categoria_nombre: "Cliente en Consignación", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-  { id: 106, deposito_id: 1, codigo: "CC/Alcorta Damian", nombre: "Alcorta Damian", tipo: "interna", categoria_id: 3, categoria_nombre: "Cliente en Consignación", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-  { id: 107, deposito_id: 1, codigo: "CC/Caep", nombre: "Caep", tipo: "interna", categoria_id: 3, categoria_nombre: "Cliente en Consignación", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-  { id: 108, deposito_id: 1, codigo: "CC/Offline", nombre: "Offline", tipo: "interna", categoria_id: 3, categoria_nombre: "Cliente en Consignación", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-  { id: 109, deposito_id: 1, codigo: "CC/Activos LOCAL", nombre: "Activos LOCAL", tipo: "interna", categoria_id: 4, categoria_nombre: "Bienes de Uso", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-  // Puerto Norte
-  { id: 8, deposito_id: 2, codigo: "PN/Stock", nombre: "Stock", tipo: "interna", categoria_id: 1, categoria_nombre: "Stock", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: true },
-  { id: 9, deposito_id: 2, codigo: "PN/Outlet", nombre: "Outlet", tipo: "interna", categoria_id: 1, categoria_nombre: "Stock", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: true },
-  { id: 10, deposito_id: 2, codigo: "PN/No disponible venta", nombre: "No disponible venta", tipo: "interna", categoria_id: 6, categoria_nombre: "Scrap/Baja", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-  { id: 11, deposito_id: 2, codigo: "PN/En uso", nombre: "En uso", tipo: "interna", categoria_id: 4, categoria_nombre: "Bienes de Uso", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-  { id: 201, deposito_id: 2, codigo: "PN/Input", nombre: "Entrada", tipo: "interna", categoria_id: 2, categoria_nombre: "Transitoria", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-  { id: 202, deposito_id: 2, codigo: "PN/Output", nombre: "Salida", tipo: "interna", categoria_id: 2, categoria_nombre: "Transitoria", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-  // Casilda
-  { id: 12, deposito_id: 3, codigo: "CS/Stock", nombre: "Stock", tipo: "interna", categoria_id: 1, categoria_nombre: "Stock", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: true },
-  { id: 301, deposito_id: 3, codigo: "CS/Input", nombre: "Entrada", tipo: "interna", categoria_id: 2, categoria_nombre: "Transitoria", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-  { id: 302, deposito_id: 3, codigo: "CS/Output", nombre: "Salida", tipo: "interna", categoria_id: 2, categoria_nombre: "Transitoria", activa: true, es_scrap: false, es_devolucion: false, disponible_venta: false },
-]
+const mockUbicaciones: Ubicacion[] = []
 
-const mockCategorias: CategoriaProducto[] = [
-  { id: 1, nombre: "Todos", categoria_padre_id: null, ruta: "Todos" },
-  { id: 2, nombre: "Repuestos", categoria_padre_id: 1, ruta: "Todos / Repuestos" },
-  { id: 3, nombre: "Celulares", categoria_padre_id: 2, ruta: "Todos / Repuestos / Celulares" },
-  { id: 4, nombre: "Baterías", categoria_padre_id: 3, ruta: "Todos / Repuestos / Celulares / Baterías" },
-  { id: 5, nombre: "Pantallas", categoria_padre_id: 3, ruta: "Todos / Repuestos / Celulares / Pantallas" },
-  { id: 6, nombre: "Equipos", categoria_padre_id: 1, ruta: "Todos / Equipos" },
-  { id: 7, nombre: "iPhone", categoria_padre_id: 6, ruta: "Todos / Equipos / iPhone" },
-  { id: 8, nombre: "Samsung", categoria_padre_id: 6, ruta: "Todos / Equipos / Samsung" },
-  { id: 9, nombre: "Accesorios", categoria_padre_id: 1, ruta: "Todos / Accesorios" },
-]
+const mockCategorias: CategoriaProducto[] = []
 
-const mockProductosStock: ProductoStock[] = [
-  // Productos en CC/Stock (Casa Central)
-  {
-    id: 1, codigo: "BAPWS444MM", nombre: "Batería Apple Watch Serie 4 44 MM", descripcion: "Batería original Apple Watch", 
-    categoria_id: 4, categoria_ruta: "Todos / Repuestos / Celulares / Baterías", tipo: "almacenable", tracking: "lote",
-    puede_venderse: true, puede_comprarse: true, precio_venta: 45000, precio_costo: 28000, moneda_costo: "ARS",
-    ubicacion_id: 1, ubicacion_codigo: "CC/Stock", deposito_id: 1, deposito_codigo: "CC",
-    stock_real: 15, stock_entrante: 5, stock_saliente: 2, stock_disponible: 13, stock_virtual: 18,
-    stock_minimo: 5, stock_maximo: 50, stock_critico: 2, punto_pedido: 10,
-    marca: "Apple", modelo: "Serie 4 44MM", color: "", origen: "USA", codigo_barras: "7891234567890", codigo_dun14: "",
-    cuenta_analitica: "[CC-SHOP] CH - Shop (cc)", imagen_url: null, activo: true
-  },
-  {
-    id: 2, codigo: "EIP12128N", nombre: "iPhone 12 128gb Negro", descripcion: "iPhone 12 128GB Color Negro",
-    categoria_id: 7, categoria_ruta: "Todos / Equipos / iPhone", tipo: "almacenable", tracking: "serie",
-    puede_venderse: true, puede_comprarse: true, precio_venta: 850000, precio_costo: 650000, moneda_costo: "ARS",
-    ubicacion_id: 1, ubicacion_codigo: "CC/Stock", deposito_id: 1, deposito_codigo: "CC",
-    stock_real: 3, stock_entrante: 2, stock_saliente: 0, stock_disponible: 3, stock_virtual: 5,
-    stock_minimo: 2, stock_maximo: 20, stock_critico: 1, punto_pedido: 5,
-    marca: "Apple", modelo: "iPhone 12", color: "Negro", origen: "USA", codigo_barras: "7891234567891", codigo_dun14: "",
-    cuenta_analitica: "[CC-RESELLERS] CH - Resellers (cc)", imagen_url: null, activo: true
-  },
-  {
-    id: 3, codigo: "PANS23U", nombre: "Pantalla Samsung S23 Ultra", descripcion: "Pantalla AMOLED original Samsung S23 Ultra",
-    categoria_id: 5, categoria_ruta: "Todos / Repuestos / Celulares / Pantallas", tipo: "almacenable", tracking: "lote",
-    puede_venderse: true, puede_comprarse: true, precio_venta: 320000, precio_costo: 220000, moneda_costo: "USD",
-    ubicacion_id: 1, ubicacion_codigo: "CC/Stock", deposito_id: 1, deposito_codigo: "CC",
-    stock_real: 4, stock_entrante: 10, stock_saliente: 0, stock_disponible: 4, stock_virtual: 14,
-    stock_minimo: 3, stock_maximo: 15, stock_critico: 1, punto_pedido: 5,
-    marca: "Samsung", modelo: "S23 Ultra", color: "", origen: "Korea", codigo_barras: "7891234567892", codigo_dun14: "",
-    cuenta_analitica: "[CC-RESELLERS] CH - Resellers (cc)", imagen_url: null, activo: true
-  },
-  // Productos de fantasía en CC/Stock para pruebas
-  {
-    id: 6, codigo: "CABUSBC1M", nombre: "Cable USB-C a Lightning 1m", descripcion: "Cable de carga rápida USB-C a Lightning",
-    categoria_id: 9, categoria_ruta: "Todos / Accesorios", tipo: "almacenable", tracking: "ninguno",
-    puede_venderse: true, puede_comprarse: true, precio_venta: 12000, precio_costo: 4500, moneda_costo: "ARS",
-    ubicacion_id: 1, ubicacion_codigo: "CC/Stock", deposito_id: 1, deposito_codigo: "CC",
-    stock_real: 25, stock_entrante: 0, stock_saliente: 0, stock_disponible: 25, stock_virtual: 25,
-    stock_minimo: 10, stock_maximo: 50, stock_critico: 5, punto_pedido: 15,
-    marca: "Apple", modelo: "", color: "Blanco", origen: "China", codigo_barras: "7891234567900", codigo_dun14: "",
-    cuenta_analitica: "[CC-SHOP] CH - Shop (cc)", imagen_url: null, activo: true
-  },
-  {
-    id: 7, codigo: "PROTIP15PM", nombre: "Protector Pantalla iPhone 15 Pro Max", descripcion: "Vidrio templado 9H para iPhone 15 Pro Max",
-    categoria_id: 9, categoria_ruta: "Todos / Accesorios", tipo: "almacenable", tracking: "ninguno",
-    puede_venderse: true, puede_comprarse: true, precio_venta: 8500, precio_costo: 2000, moneda_costo: "ARS",
-    ubicacion_id: 1, ubicacion_codigo: "CC/Stock", deposito_id: 1, deposito_codigo: "CC",
-    stock_real: 40, stock_entrante: 20, stock_saliente: 5, stock_disponible: 35, stock_virtual: 55,
-    stock_minimo: 15, stock_maximo: 100, stock_critico: 10, punto_pedido: 25,
-    marca: "Genérica", modelo: "", color: "Transparente", origen: "China", codigo_barras: "7891234567901", codigo_dun14: "",
-    cuenta_analitica: "[CC-SHOP] CH - Shop (cc)", imagen_url: null, activo: true
-  },
-  {
-    id: 8, codigo: "CARGMAG15W", nombre: "Cargador MagSafe 15W", descripcion: "Cargador inalámbrico MagSafe original Apple",
-    categoria_id: 9, categoria_ruta: "Todos / Accesorios", tipo: "almacenable", tracking: "ninguno",
-    puede_venderse: true, puede_comprarse: true, precio_venta: 65000, precio_costo: 42000, moneda_costo: "USD",
-    ubicacion_id: 1, ubicacion_codigo: "CC/Stock", deposito_id: 1, deposito_codigo: "CC",
-    stock_real: 8, stock_entrante: 5, stock_saliente: 1, stock_disponible: 7, stock_virtual: 12,
-    stock_minimo: 3, stock_maximo: 20, stock_critico: 2, punto_pedido: 5,
-    marca: "Apple", modelo: "MagSafe", color: "Blanco", origen: "USA", codigo_barras: "7891234567902", codigo_dun14: "",
-    cuenta_analitica: "[CC-SHOP] CH - Shop (cc)", imagen_url: null, activo: true
-  },
-  // Productos en PN/Stock (Puerto Norte)
-  {
-    id: 4, codigo: "IP14PRO256", nombre: "iPhone 14 Pro 256gb", descripcion: "iPhone 14 Pro 256GB",
-    categoria_id: 7, categoria_ruta: "Todos / Equipos / iPhone", tipo: "almacenable", tracking: "serie",
-    puede_venderse: true, puede_comprarse: true, precio_venta: 1500000, precio_costo: 1100000, moneda_costo: "USD",
-    ubicacion_id: 8, ubicacion_codigo: "PN/Stock", deposito_id: 2, deposito_codigo: "PN",
-    stock_real: 5, stock_entrante: 2, stock_saliente: 1, stock_disponible: 4, stock_virtual: 6,
-    stock_minimo: 2, stock_maximo: 10, stock_critico: 1, punto_pedido: 3,
-    marca: "Apple", modelo: "iPhone 14 Pro", color: "Space Black", origen: "USA", codigo_barras: "7891234567893", codigo_dun14: "",
-    cuenta_analitica: "[PN-SHOP] CH - Shop (pn)", imagen_url: null, activo: true
-  },
-  {
-    id: 5, codigo: "FUNIP14", nombre: "Funda iPhone 14 Silicona", descripcion: "Funda de silicona para iPhone 14",
-    categoria_id: 9, categoria_ruta: "Todos / Accesorios", tipo: "almacenable", tracking: "ninguno",
-    puede_venderse: true, puede_comprarse: true, precio_venta: 15000, precio_costo: 5000, moneda_costo: "ARS",
-    ubicacion_id: 8, ubicacion_codigo: "PN/Stock", deposito_id: 2, deposito_codigo: "PN",
-    stock_real: 50, stock_entrante: 0, stock_saliente: 5, stock_disponible: 45, stock_virtual: 45,
-    stock_minimo: 10, stock_maximo: 100, stock_critico: 5, punto_pedido: 20,
-    marca: "Genérica", modelo: "", color: "Negro", origen: "China", codigo_barras: "7891234567894", codigo_dun14: "",
-    cuenta_analitica: "[PN-SHOP] CH - Shop (pn)", imagen_url: null, activo: true
-  },
-]
+const mockProductosStock: ProductoStock[] = []
 
-// Solo productos con IMEI (equipos electrónicos con número de serie único) - EN STOCK
-const mockLotesSeries: LoteSerie[] = [
-  { id: 1, producto_id: 2, producto_codigo: "EIP12128N", producto_nombre: "iPhone 12 128gb Negro", producto_categoria: "Equipos / Celulares / iPhone", marca: "Apple", numero: "353456789012345", referencia_interna: "", cantidad: 1, ubicacion_id: 8, ubicacion_nombre: "PN/Stock", deposito_id: 2, deposito_nombre: "Puerto Norte", sucursal: "Puerto Norte", fecha_vencimiento: null, bateria: 92, color: "Negro", estado: "disponible" },
-  { id: 2, producto_id: 2, producto_codigo: "EIP12128N", producto_nombre: "iPhone 12 128gb Negro", producto_categoria: "Equipos / Celulares / iPhone", marca: "Apple", numero: "353456789012346", referencia_interna: "", cantidad: 1, ubicacion_id: 8, ubicacion_nombre: "PN/Stock", deposito_id: 2, deposito_nombre: "Puerto Norte", sucursal: "Puerto Norte", fecha_vencimiento: null, bateria: 88, color: "Negro", estado: "disponible" },
-  { id: 3, producto_id: 2, producto_codigo: "EIP12128N", producto_nombre: "iPhone 12 128gb Negro", producto_categoria: "Equipos / Celulares / iPhone", marca: "Apple", numero: "353456789012347", referencia_interna: "", cantidad: 1, ubicacion_id: 1, ubicacion_nombre: "CC/Stock", deposito_id: 1, deposito_nombre: "Casa Central", sucursal: "Casa Central", fecha_vencimiento: null, bateria: 95, color: "Negro", estado: "disponible" },
-  { id: 4, producto_id: 4, producto_codigo: "IP14PRO256", producto_nombre: "iPhone 14 Pro 256gb", producto_categoria: "Equipos / Celulares / iPhone", marca: "Apple", numero: "359876543210987", referencia_interna: "", cantidad: 1, ubicacion_id: 8, ubicacion_nombre: "PN/Stock", deposito_id: 2, deposito_nombre: "Puerto Norte", sucursal: "Puerto Norte", fecha_vencimiento: null, bateria: 100, color: "Space Black", estado: "disponible" },
-  { id: 5, producto_id: 4, producto_codigo: "IP14PRO256", producto_nombre: "iPhone 14 Pro 256gb", producto_categoria: "Equipos / Celulares / iPhone", marca: "Apple", numero: "359876543210988", referencia_interna: "", cantidad: 1, ubicacion_id: 1, ubicacion_nombre: "CC/Stock", deposito_id: 1, deposito_nombre: "Casa Central", sucursal: "Casa Central", fecha_vencimiento: null, bateria: 100, color: "Space Black", estado: "reservado" },
-  { id: 6, producto_id: 2, producto_codigo: "EIP12128N", producto_nombre: "iPhone 12 128gb Negro", producto_categoria: "Equipos / Celulares / iPhone", marca: "Apple", numero: "353456789012348", referencia_interna: "", cantidad: 1, ubicacion_id: 9, ubicacion_nombre: "PN/Outlet", deposito_id: 2, deposito_nombre: "Puerto Norte", sucursal: "Puerto Norte", fecha_vencimiento: null, bateria: 78, color: "Negro", estado: "disponible" },
-  { id: 7, producto_id: 6, producto_codigo: "ESAMS22U", producto_nombre: "Samsung S22 Ultra 256gb", producto_categoria: "Equipos / Celulares / Samsung", marca: "Samsung", numero: "354567890123456", referencia_interna: "", cantidad: 1, ubicacion_id: 1, ubicacion_nombre: "CC/Stock", deposito_id: 1, deposito_nombre: "Casa Central", sucursal: "Casa Central", fecha_vencimiento: null, bateria: 85, color: "Phantom Black", estado: "disponible" },
-  { id: 8, producto_id: 6, producto_codigo: "ESAMS22U", producto_nombre: "Samsung S22 Ultra 256gb", producto_categoria: "Equipos / Celulares / Samsung", marca: "Samsung", numero: "354567890123457", referencia_interna: "", cantidad: 1, ubicacion_id: 8, ubicacion_nombre: "PN/Stock", deposito_id: 2, deposito_nombre: "Puerto Norte", sucursal: "Puerto Norte", fecha_vencimiento: null, bateria: 91, color: "Green", estado: "disponible" },
-  { id: 9, producto_id: 7, producto_codigo: "EMOTOE40", producto_nombre: "Motorola Edge 40", producto_categoria: "Equipos / Celulares / Motorola", marca: "Motorola", numero: "355678901234567", referencia_interna: "", cantidad: 1, ubicacion_id: 1, ubicacion_nombre: "CC/Stock", deposito_id: 1, deposito_nombre: "Casa Central", sucursal: "Casa Central", fecha_vencimiento: null, bateria: 100, color: "Lunar Blue", estado: "disponible" },
-  { id: 10, producto_id: 8, producto_codigo: "EIPADS9", producto_nombre: "iPad Air 5ta Gen 64gb", producto_categoria: "Equipos / Tablets / iPad", marca: "Apple", numero: "356789012345678", referencia_interna: "", cantidad: 1, ubicacion_id: 8, ubicacion_nombre: "PN/Stock", deposito_id: 2, deposito_nombre: "Puerto Norte", sucursal: "Puerto Norte", fecha_vencimiento: null, bateria: 97, color: "Space Gray", estado: "disponible" },
-  { id: 11, producto_id: 9, producto_codigo: "EAWS8", producto_nombre: "Apple Watch Series 8 45mm", producto_categoria: "Equipos / Wearables / Apple Watch", marca: "Apple", numero: "357890123456789", referencia_interna: "", cantidad: 1, ubicacion_id: 1, ubicacion_nombre: "CC/Stock", deposito_id: 1, deposito_nombre: "Casa Central", sucursal: "Casa Central", fecha_vencimiento: null, bateria: 100, color: "Midnight", estado: "disponible" },
-  { id: 12, producto_id: 10, producto_codigo: "EIPXR64", producto_nombre: "iPhone XR 64gb", producto_categoria: "Equipos / Celulares / iPhone", marca: "Apple", numero: "358901234567890", referencia_interna: "", cantidad: 1, ubicacion_id: 1, ubicacion_nombre: "CC/Stock", deposito_id: 1, deposito_nombre: "Casa Central", sucursal: "Casa Central", fecha_vencimiento: null, bateria: 82, color: "Coral", estado: "disponible" },
-]
+const mockLotesSeries: LoteSerie[] = []
 
-// TODOS los IMEI que pasaron por el sistema (incluye vendidos e históricos)
-const mockTodosLosIMEI: LoteSerie[] = [
-  ...mockLotesSeries,
-  // IMEIs vendidos
-  { id: 101, producto_id: 2, producto_codigo: "EIP12128N", producto_nombre: "iPhone 12 128gb Negro", producto_categoria: "Equipos / Celulares / iPhone", marca: "Apple", numero: "353456789012340", referencia_interna: "", cantidad: 1, ubicacion_id: 0, ubicacion_nombre: "Clientes/Entregado", deposito_id: 0, deposito_nombre: "-", sucursal: "Casa Central", fecha_vencimiento: null, bateria: 90, color: "Negro", estado: "vendido" },
-  { id: 102, producto_id: 2, producto_codigo: "EIP12128N", producto_nombre: "iPhone 12 128gb Negro", producto_categoria: "Equipos / Celulares / iPhone", marca: "Apple", numero: "353456789012341", referencia_interna: "", cantidad: 1, ubicacion_id: 0, ubicacion_nombre: "Clientes/Entregado", deposito_id: 0, deposito_nombre: "-", sucursal: "Puerto Norte", fecha_vencimiento: null, bateria: 85, color: "Negro", estado: "vendido" },
-  { id: 103, producto_id: 4, producto_codigo: "IP14PRO256", producto_nombre: "iPhone 14 Pro 256gb", producto_categoria: "Equipos / Celulares / iPhone", marca: "Apple", numero: "359876543210980", referencia_interna: "", cantidad: 1, ubicacion_id: 0, ubicacion_nombre: "Clientes/Entregado", deposito_id: 0, deposito_nombre: "-", sucursal: "Casa Central", fecha_vencimiento: null, bateria: 100, color: "Deep Purple", estado: "vendido" },
-  { id: 104, producto_id: 6, producto_codigo: "ESAMS22U", producto_nombre: "Samsung S22 Ultra 256gb", producto_categoria: "Equipos / Celulares / Samsung", marca: "Samsung", numero: "354567890123450", referencia_interna: "", cantidad: 1, ubicacion_id: 0, ubicacion_nombre: "Clientes/Entregado", deposito_id: 0, deposito_nombre: "-", sucursal: "Puerto Norte", fecha_vencimiento: null, bateria: 88, color: "Burgundy", estado: "vendido" },
-  { id: 105, producto_id: 10, producto_codigo: "EIPXR64", producto_nombre: "iPhone XR 64gb", producto_categoria: "Equipos / Celulares / iPhone", marca: "Apple", numero: "358901234567880", referencia_interna: "", cantidad: 1, ubicacion_id: 0, ubicacion_nombre: "Clientes/Entregado", deposito_id: 0, deposito_nombre: "-", sucursal: "Casa Central", fecha_vencimiento: null, bateria: 79, color: "Blue", estado: "vendido" },
-  { id: 106, producto_id: 8, producto_codigo: "EIPADS9", producto_nombre: "iPad Air 5ta Gen 64gb", producto_categoria: "Equipos / Tablets / iPad", marca: "Apple", numero: "356789012345670", referencia_interna: "", cantidad: 1, ubicacion_id: 0, ubicacion_nombre: "Clientes/Entregado", deposito_id: 0, deposito_nombre: "-", sucursal: "Puerto Norte", fecha_vencimiento: null, bateria: 95, color: "Starlight", estado: "vendido" },
-  { id: 107, producto_id: 9, producto_codigo: "EAWS8", producto_nombre: "Apple Watch Series 8 45mm", producto_categoria: "Equipos / Wearables / Apple Watch", marca: "Apple", numero: "357890123456780", referencia_interna: "", cantidad: 1, ubicacion_id: 0, ubicacion_nombre: "Clientes/Entregado", deposito_id: 0, deposito_nombre: "-", sucursal: "Casa Central", fecha_vencimiento: null, bateria: 98, color: "Silver", estado: "vendido" },
-  { id: 108, producto_id: 7, producto_codigo: "EMOTOE40", producto_nombre: "Motorola Edge 40", producto_categoria: "Equipos / Celulares / Motorola", marca: "Motorola", numero: "355678901234560", referencia_interna: "", cantidad: 1, ubicacion_id: 0, ubicacion_nombre: "Clientes/Entregado", deposito_id: 0, deposito_nombre: "-", sucursal: "Puerto Norte", fecha_vencimiento: null, bateria: 100, color: "Viva Magenta", estado: "vendido" },
-]
+const mockTodosLosIMEI: LoteSerie[] = []
 
-const mockTransferencias: TransferenciaInterna[] = [
-  {
-    id: 1, numero: "TI X 20000-00003415", deposito_id: 2, deposito_nombre: "Puerto Norte",
-    ubicacion_origen_id: 8, ubicacion_origen_nombre: "PN/Stock",
-    ubicacion_destino_id: 9, ubicacion_destino_nombre: "PN/Outlet",
-    fecha_creacion: "2024-01-15T10:00:00", fecha_transferencia: null,
-    estado: "borrador", sucursal: "Puerto Norte", observaciones: "",
-    lineas: [
-      { producto_id: 2, producto_nombre: "iPhone 12 128gb Negro", stock_virtual: 8, cantidad: 2, observacion: "Equipos para outlet" }
-    ],
-    seguimiento: [
-      { id: 1, fecha: "2024-01-15T10:00:00", usuario: "Agustina Perez", tipo: "creacion", descripcion: "Transferencia Interna creada" },
-      { id: 2, fecha: "2024-01-15T10:00:00", usuario: "Agustina Perez", tipo: "cambio_estado", valor_anterior: "Vacío", valor_nuevo: "Borrador" },
-    ]
-  },
-  {
-    id: 2, numero: "TI X 20000-00003416", deposito_id: 1, deposito_nombre: "Casa Central",
-    ubicacion_origen_id: 1, ubicacion_origen_nombre: "CC/Stock",
-    ubicacion_destino_id: 3, ubicacion_destino_nombre: "CC/Deposito B",
-    fecha_creacion: "2024-01-14T14:30:00", fecha_transferencia: "2024-01-14T15:00:00",
-    estado: "confirmada", sucursal: "Casa Central", observaciones: "Reorganización de stock",
-    lineas: [
-      { producto_id: 1, producto_nombre: "Batería Apple Watch Serie 4 44 MM", stock_virtual: 15, cantidad: 5, observacion: "" },
-      { producto_id: 3, producto_nombre: "Pantalla Samsung S23 Ultra", stock_virtual: 4, cantidad: 2, observacion: "" }
-    ],
-    seguimiento: [
-      { id: 1, fecha: "2024-01-14T14:30:00", usuario: "Agustina Perez", tipo: "creacion", descripcion: "Transferencia Interna creada" },
-      { id: 2, fecha: "2024-01-14T14:30:00", usuario: "Agustina Perez", tipo: "cambio_estado", valor_anterior: "Vacío", valor_nuevo: "Borrador" },
-      { id: 3, fecha: "2024-01-14T14:45:00", usuario: "Agustina Perez", tipo: "nota", descripcion: "Reorganización solicitada por gerencia" },
-      { id: 4, fecha: "2024-01-14T15:00:00", usuario: "Carlos Martinez", tipo: "cambio_estado", valor_anterior: "Borrador", valor_nuevo: "Confirmada" },
-    ]
-  },
-]
+const mockTransferencias: TransferenciaInterna[] = []
 
-const mockPedidosAbastecimiento: PedidoAbastecimiento[] = [
-  {
-    id: 1, numero: "PAB X 10000-00000042", 
-    deposito_origen_id: 1, deposito_origen_nombre: "Casa Central",
-    deposito_destino_id: 2, deposito_destino_nombre: "Puerto Norte",
-    categoria_ubicacion: "Stock", fecha: "2024-01-16T09:00:00",
-    estado: "en_ejecucion", sucursal: "Puerto Norte",
-    ruta_predefinida: "Puerto Norte: proveer producto de Casa Central",
-    transporte: "Transporte Propio", observaciones: "",
-    lineas: [
-      { producto_id: 4, producto_nombre: "iPhone 14 Pro 256gb", cantidad_udd: 3, udd: "Unidad", cantidad: 3, udm: "Unidad" },
-      { producto_id: 3, producto_nombre: "Pantalla Samsung S23 Ultra", cantidad_udd: 5, udd: "Unidad", cantidad: 5, udm: "Unidad" }
-    ]
-  },
-  {
-    id: 2, numero: "PAB X 10000-00000043",
-    deposito_origen_id: 1, deposito_origen_nombre: "Casa Central",
-    deposito_destino_id: 3, deposito_destino_nombre: "Casilda",
-    categoria_ubicacion: "Stock", fecha: "2024-01-17T11:00:00",
-    estado: "borrador", sucursal: "Casilda",
-    ruta_predefinida: "Casilda: proveer producto de Casa Central",
-    transporte: "", observaciones: "Pendiente confirmar transporte",
-    lineas: [
-      { producto_id: 5, producto_nombre: "Funda iPhone 14 Silicona", cantidad_udd: 20, udd: "Unidad", cantidad: 20, udm: "Unidad" }
-    ]
-  },
-]
+const mockPedidosAbastecimiento: PedidoAbastecimiento[] = []
 
-const mockControlesInventario: ControlInventario[] = [
-  {
-    id: 1, numero: "CI X 20000-00000412",
-    deposito_id: 1, deposito_nombre: "Casa Central",
-    ubicacion_id: 3, ubicacion_nombre: "CC/Deposito B",
-    fecha: "2024-01-18T08:00:00", concepto: "Diferencia de Inventario",
-    tipo_inventario: "algunos", estado: "en_proceso", sucursal: "Casa Central",
-    cuenta_analitica: "", desreservar_automatico: false, observaciones: "",
-    lineas: [
-      { producto_id: 1, producto_codigo: "BAPWS444MM", producto_nombre: "Batería Apple Watch Serie 4 44 MM", stock_teorico: 10, stock_contado: 9, diferencia: -1 },
-      { producto_id: 3, producto_codigo: "PANS23U", producto_nombre: "Pantalla Samsung S23 Ultra", stock_teorico: 2, stock_contado: 2, diferencia: 0 },
-    ]
-  },
-  {
-    id: 2, numero: "CI X 20000-00000411",
-    deposito_id: 2, deposito_nombre: "Puerto Norte",
-    ubicacion_id: 8, ubicacion_nombre: "PN/Stock",
-    fecha: "2024-01-10T09:00:00", concepto: "Control Mensual",
-    tipo_inventario: "todos", estado: "confirmado", sucursal: "Puerto Norte",
-    cuenta_analitica: "", desreservar_automatico: true, observaciones: "Sin diferencias",
-    lineas: []
-  },
-]
+const mockControlesInventario: ControlInventario[] = []
 
-const mockAjustes: AjusteInventario[] = [
-  {
-    id: 1, numero: "AJ+ X 20000-00000101", tipo: "positivo",
-    deposito_id: 2, deposito_nombre: "Puerto Norte",
-    ubicacion_id: 8, ubicacion_nombre: "PN/Stock",
-    fecha: "2024-01-12T10:00:00", concepto: "Mercadería encontrada",
-    estado: "confirmado", sucursal: "Puerto Norte", observaciones: "Encontrado en revisión",
-    lineas: [
-      { producto_id: 5, producto_codigo: "FUNIP14", producto_nombre: "Funda iPhone 14 Silicona", cantidad: 5, costo_unitario: 5000 }
-    ]
-  },
-  {
-    id: 2, numero: "AJ- X 20000-00000050", tipo: "negativo",
-    deposito_id: 1, deposito_nombre: "Casa Central",
-    ubicacion_id: 1, ubicacion_nombre: "CC/Stock",
-    fecha: "2024-01-11T14:00:00", concepto: "Rotura / Daño",
-    estado: "confirmado", sucursal: "Casa Central", observaciones: "Producto dañado en traslado",
-    lineas: [
-      { producto_id: 1, producto_codigo: "BAPWS444MM", producto_nombre: "Batería Apple Watch Serie 4 44 MM", cantidad: 1, costo_unitario: 28000 }
-    ]
-  },
-]
+const mockAjustes: AjusteInventario[] = []
 
-// Sucursal actual (simulado)
+// Sucursal actual
 const SUCURSAL_ACTUAL = "Puerto Norte"
-const DEPOSITO_ACTUAL = mockDepositos.find(d => d.sucursal === SUCURSAL_ACTUAL) || mockDepositos[0]
+const DEPOSITO_ACTUAL = mockDepositos[0] ?? null
 
 // Helper functions
 const formatDate = (dateString: string) => {
@@ -741,6 +450,7 @@ export default function ModuloStock() {
   const [selectedControl, setSelectedControl] = useState<ControlInventario | null>(null)
   
   // Estados de creación
+  const [creandoProducto, setCreandoProducto] = useState(false)
   const [creandoTransferencia, setCreandoTransferencia] = useState(false)
   const [creandoPedido, setCreandoPedido] = useState(false)
   const [creandoControl, setCreandoControl] = useState(false)
@@ -1228,6 +938,31 @@ export default function ModuloStock() {
 
   // Render Productos
   const renderProductos = () => {
+    if (creandoProducto) {
+      return (
+        <div>
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+            <button onClick={() => setCreandoProducto(false)} className="hover:text-amber-700">Productos</button>
+            <span>/</span>
+            <span className="font-medium text-gray-900">Nuevo producto</span>
+          </div>
+          <FormularioProducto
+            inicial={null}
+            onGuardar={async (p: FormProducto) => {
+              try {
+                const { id: _id, historial_costos: _hc, ...payload } = p
+                await guardarProductoEnDB(payload)
+                setCreandoProducto(false)
+              } catch (e: any) {
+                alert(e.message ?? "Error al guardar el producto")
+              }
+            }}
+            onCancelar={() => setCreandoProducto(false)}
+          />
+        </div>
+      )
+    }
+
     if (selectedProducto) return renderFichaProducto()
     
     const filteredProductos = productos.filter(p => 
@@ -1240,6 +975,13 @@ export default function ModuloStock() {
       <div>
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-2xl font-bold text-amber-900">Productos</h1>
+          <button
+            onClick={() => setCreandoProducto(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-900 rounded-md hover:bg-indigo-800 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Nuevo producto
+          </button>
         </div>
         
         {/* Buscador */}

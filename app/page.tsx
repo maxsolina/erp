@@ -2522,7 +2522,7 @@ function CellHomeERPContent() {
           Cell Home ERP
         </div>
         <div className="flex ml-10 gap-1">
-          {["home", "taller", "ventas", "compras", "finanzas", "contabilidad", "caja", "deposito", "informes", "config"].map(mod => (
+          {["home", "taller", "ventas", "compras", "finanzas", "contabilidad", "deposito", "informes", "config"].map(mod => (
             <button
               key={mod}
               onClick={() => { setActiveModule(mod); setActiveView("dashboard") }}
