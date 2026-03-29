@@ -781,11 +781,15 @@ export default function ModuloProductos() {
   async function handleGuardar(form: FormProducto) {
     try {
       const { id: productoId, historial_costos: _hc, ...payload } = form
-      await guardarProductoEnDB(payload, productoId ?? undefined)
+      console.log("[v0] handleGuardar payload:", payload)
+      const result = await guardarProductoEnDB(payload, productoId ?? undefined)
+      console.log("[v0] guardarProductoEnDB result:", result)
       await cargarProductos()
+      console.log("[v0] cargarProductos done, productos:", productos.length)
       setVista("listado")
       setProductoSeleccionado(null)
     } catch (e: any) {
+      console.log("[v0] handleGuardar error:", e)
       alert(e.message ?? "Error al guardar el producto")
     }
   }
