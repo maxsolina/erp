@@ -866,17 +866,21 @@ export default function ModuloCompras() {
       <div className="mt-3">
         <button
           onClick={() => toggleSection("configuracion")}
-          className="w-full flex items-center justify-between px-2 py-1.5 group"
+          className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg"
         >
-          <span className="flex items-center gap-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-            <Settings className="w-3.5 h-3.5" />
+          <span className="flex items-center gap-2">
+            <Settings className="w-4 h-4" />
             Configuración
           </span>
-          <span className={`w-2 h-2 rounded-full bg-orange-400 ${expandedSections.includes("configuracion") ? "opacity-100" : "opacity-0 group-hover:opacity-50"}`} />
+          {expandedSections.includes("configuracion") ? (
+            <ChevronDown className="w-4 h-4" />
+          ) : (
+            <ChevronRight className="w-4 h-4" />
+          )}
         </button>
 
         {expandedSections.includes("configuracion") && (
-          <div className="mt-1 space-y-0.5">
+          <div className="ml-4 mt-1 space-y-0.5">
             {configSubGroups.map(group => (
               <div key={group.id}>
                 {/* Sub-grupo con label (ej: Categorías) */}
@@ -894,15 +898,15 @@ export default function ModuloCompras() {
                       <span className="font-medium text-gray-700">{group.label}</span>
                     </button>
                     {expandedSections.includes(group.id) && (
-                      <div className="ml-6 space-y-0.5">
+                      <div className="ml-5 space-y-0.5">
                         {group.items.map(item => (
                           <button
                             key={item.id}
                             onClick={() => setActiveView(item.id)}
                             className={`w-full text-left px-3 py-1.5 text-sm rounded-lg transition-colors ${
                               activeView === item.id
-                                ? "text-orange-600 font-medium bg-orange-50"
-                                : "text-orange-500 hover:bg-orange-50"
+                                ? "bg-blue-50 text-blue-700 font-medium"
+                                : "text-gray-600 hover:bg-gray-50"
                             }`}
                           >
                             {item.label}
@@ -913,15 +917,15 @@ export default function ModuloCompras() {
                   </div>
                 ) : (
                   /* Ítems sueltos (sin sub-grupo) */
-                  <div className="ml-3 space-y-0.5">
+                  <div className="space-y-0.5">
                     {group.items.map(item => (
                       <button
                         key={item.id}
                         onClick={() => setActiveView(item.id)}
-                        className={`w-full text-left px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors ${
                           activeView === item.id
-                            ? "text-orange-600 font-medium bg-orange-50"
-                            : "text-orange-500 hover:bg-orange-50"
+                            ? "bg-blue-50 text-blue-700 font-medium"
+                            : "text-gray-600 hover:bg-gray-50"
                         }`}
                       >
                         {item.label}
