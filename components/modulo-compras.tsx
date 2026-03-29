@@ -5,7 +5,115 @@ import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Re
 import BotonVolver from "./ui/boton-volver"
 import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
 
-// Types
+// ── Datos geográficos ────────────────────────────────────────────────────────
+
+const PAISES_LISTA = [
+  "Argentina", "Bolivia", "Brasil", "Chile", "Colombia", "Ecuador",
+  "México", "Paraguay", "Perú", "Uruguay", "Venezuela",
+  "Alemania", "Australia", "Bélgica", "Canadá", "China", "Corea del Sur",
+  "España", "Estados Unidos", "Francia", "India", "Italia", "Japón",
+  "Países Bajos", "Portugal", "Reino Unido", "Rusia", "Sudáfrica",
+  "Suiza", "Turquía",
+]
+
+const PROVINCIAS_AR = [
+  "Buenos Aires",
+  "Catamarca",
+  "Chaco",
+  "Chubut",
+  "Córdoba",
+  "Corrientes",
+  "Entre Ríos",
+  "Formosa",
+  "Jujuy",
+  "La Pampa",
+  "La Rioja",
+  "Mendoza",
+  "Misiones",
+  "Neuquén",
+  "Río Negro",
+  "Salta",
+  "San Juan",
+  "San Luis",
+  "Santa Cruz",
+  "Santa Fe",
+  "Santiago del Estero",
+  "Tierra del Fuego",
+  "Tucumán",
+]
+
+const CIUDADES_POR_PROVINCIA: Record<string, string[]> = {
+  "Santa Fe": [
+    "Rosario",
+    "Santa Fe",
+    "Rafaela",
+    "Venado Tuerto",
+    "Villa Gobernador Gálvez",
+    "San Lorenzo",
+    "Reconquista",
+    "Casilda",
+    "Firmat",
+    "Cañada de Gómez",
+    "Villa Constitución",
+    "Esperanza",
+    "Gálvez",
+    "Santo Tomé",
+    "Las Rosas",
+    "Pérez",
+    "Rufino",
+    "Villa del Parque",
+    "Vera",
+    "Totoras",
+    "Sastre",
+    "Coronda",
+    "Las Parejas",
+    "Piamonte",
+  ],
+  "Buenos Aires": [
+    "La Plata",
+    "Mar del Plata",
+    "Quilmes",
+    "Lanús",
+    "Tigre",
+    "Lomas de Zamora",
+    "Almirante Brown",
+    "General San Martín",
+    "Tres de Febrero",
+    "Florencio Varela",
+    "Berazategui",
+    "Avellaneda",
+    "Morón",
+    "Merlo",
+    "Moreno",
+    "La Matanza",
+    "San Isidro",
+    "Vicente López",
+    "Hurlingham",
+    "Ituzaingó",
+    "Bahía Blanca",
+    "Tandil",
+    "Junín",
+    "Pergamino",
+    "San Nicolás de los Arroyos",
+    "Necochea",
+    "Olavarría",
+    "Azul",
+    "Luján",
+    "Pilar",
+    "Campana",
+    "Zárate",
+    "San Pedro",
+    "Chascomús",
+    "Dolores",
+    "Trenque Lauquen",
+    "Pehuajó",
+    "9 de Julio",
+    "Bragado",
+    "Chivilcoy",
+  ],
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface ContactoProveedor {
   id: number
   nombre: string
@@ -1309,46 +1417,77 @@ export default function ModuloCompras() {
                 />
               </div>
 
+              {/* País */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">País</label>
+                <select
+                  value={prov.pais}
+                  onChange={e => setP({ pais: e.target.value, provincia: "", ciudad: "" })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {PAISES_LISTA.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+
+              {/* Provincia + Ciudad */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Ciudad</label>
-                  <input
-                    type="text"
-                    value={prov.ciudad}
-                    onChange={e => setP({ ciudad: e.target.value })}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Provincia</label>
+                  {prov.pais === "Argentina" ? (
+                    <select
+                      value={prov.provincia}
+                      onChange={e => setP({ provincia: e.target.value, ciudad: "" })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">— Seleccionar —</option>
+                      {PROVINCIAS_AR.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={prov.provincia}
+                      onChange={e => setP({ provincia: e.target.value })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Provincia</label>
-                  <input
-                    type="text"
-                    value={prov.provincia}
-                    onChange={e => setP({ provincia: e.target.value })}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Ciudad</label>
+                  {(() => {
+                    const ciudadesDisponibles = CIUDADES_POR_PROVINCIA[prov.provincia]
+                    return ciudadesDisponibles ? (
+                      <select
+                        value={prov.ciudad}
+                        onChange={e => setP({ ciudad: e.target.value })}
+                        disabled={!prov.provincia}
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
+                      >
+                        <option value="">— Seleccionar —</option>
+                        {ciudadesDisponibles.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={prov.ciudad}
+                        onChange={e => setP({ ciudad: e.target.value })}
+                        disabled={prov.pais === "Argentina" && !prov.provincia}
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
+                        placeholder={prov.pais === "Argentina" && !prov.provincia ? "Seleccioná provincia primero" : ""}
+                      />
+                    )
+                  })()}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">País</label>
-                  <input
-                    type="text"
-                    value={prov.pais}
-                    onChange={e => setP({ pais: e.target.value })}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Código Postal</label>
-                  <input
-                    type="text"
-                    value={prov.codigo_postal}
-                    onChange={e => setP({ codigo_postal: e.target.value })}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+              {/* Código Postal */}
+              <div className="w-1/2 pr-1.5">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Código Postal</label>
+                <input
+                  type="text"
+                  value={prov.codigo_postal}
+                  onChange={e => setP({ codigo_postal: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
 
               {/* Checkboxes */}
