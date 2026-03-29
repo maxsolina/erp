@@ -2572,7 +2572,7 @@ function CellHomeERPContent() {
   </div>
   ) : activeModule === "deposito" ? (
         <div className="pt-11">
-          <ModuloStock />
+          <ModuloStock onNuevoProducto={() => setActiveModule("productos")} />
         </div>
       ) : activeModule === "informes" ? (
         <div className="pt-11">

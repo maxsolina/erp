@@ -699,7 +699,7 @@ function SeguimientoPanel({
 }
 
 // Component Principal
-export default function ModuloStock() {
+export default function ModuloStock({ onNuevoProducto }: { onNuevoProducto?: () => void } = {}) {
   // Estados principales
   const [activeView, setActiveView] = useState<string>("productos")
   const [searchTerm, setSearchTerm] = useState("")
@@ -1240,6 +1240,13 @@ export default function ModuloStock() {
       <div>
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-2xl font-bold text-amber-900">Productos</h1>
+          <button
+            onClick={() => onNuevoProducto?.()}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-900 rounded-md hover:bg-indigo-800 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Nuevo producto
+          </button>
         </div>
         
         {/* Buscador */}
