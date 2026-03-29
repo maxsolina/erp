@@ -1,7 +1,12 @@
-import { createClient } from "@/lib/supabase/client"
 import { NextResponse } from "next/server"
+import { createClient } from "@supabase/supabase-js"
 
-// Columnas válidas de la tabla productos
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  return createClient(url, key)
+}
+
 const COLUMNAS = new Set([
   "imagen_url", "nombre", "codigo_interno", "categoria", "marca", "modelo",
   "color", "tipo", "puede_venderse", "puede_comprarse", "activo",
@@ -15,22 +20,22 @@ const COLUMNAS = new Set([
 ])
 
 function filtrarPayload(body: Record<string, any>) {
-  return Object.fromEntries(
-    Object.entries(body).filter(([key]) => COLUMNAS.has(key))
-  )
+  const result: Record<string, any> = {}
+  for (const [k, v] of Object.entries(body)) {
+    if (COLUMNAS.has(k)) result[k] = v
+  }
+  if (!result.historial_costos) result.historial_costos = []
+  return result
 }
 
 export async function GET(request: Request) {
-  const supabase = createClient()
+  const supabase = getSupabase()
   const { searchParams } = new URL(request.url)
   const busqueda = searchParams.get("busqueda") || ""
   const activo = searchParams.get("activo")
   const tipo = searchParams.get("tipo")
 
-  let query = supabase
-    .from("productos")
-    .select("*")
-    .order("nombre", { ascending: true })
+  let query = supabase.from("productos").select("*").order("nombre", { ascending: true })
 
   if (busqueda) {
     query = query.or(
@@ -50,10 +55,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const supabase = createClient()
+  const supabase = getSupabase()
   const body = await request.json()
   const payload = filtrarPayload(body)
-  if (!payload.historial_costos) payload.historial_costos = []
 
   const { data, error } = await supabase
     .from("productos")

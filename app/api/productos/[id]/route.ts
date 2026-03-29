@@ -1,5 +1,11 @@
-import { createClient } from "@/lib/supabase/client"
 import { NextResponse } from "next/server"
+import { createClient } from "@supabase/supabase-js"
+
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  return createClient(url, key)
+}
 
 const COLUMNAS = new Set([
   "imagen_url", "nombre", "codigo_interno", "categoria", "marca", "modelo",
@@ -14,13 +20,16 @@ const COLUMNAS = new Set([
 ])
 
 function filtrarPayload(body: Record<string, any>) {
-  return Object.fromEntries(
-    Object.entries(body).filter(([key]) => COLUMNAS.has(key))
-  )
+  const result: Record<string, any> = {}
+  for (const [k, v] of Object.entries(body)) {
+    if (COLUMNAS.has(k)) result[k] = v
+  }
+  if (!result.historial_costos) result.historial_costos = []
+  return result
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = createClient()
+  const supabase = getSupabase()
   const { id } = await params
 
   const { data, error } = await supabase
@@ -34,7 +43,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = createClient()
+  const supabase = getSupabase()
   const { id } = await params
   const body = await request.json()
   const payload = filtrarPayload(body)
@@ -51,7 +60,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = createClient()
+  const supabase = getSupabase()
   const { id } = await params
 
   const { error } = await supabase.from("productos").delete().eq("id", id)

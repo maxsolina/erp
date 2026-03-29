@@ -8,8 +8,6 @@ import {
   Camera, Filter, MoreHorizontal
 } from "lucide-react"
 
-import { createClient } from "@/lib/supabase/client"
-
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
 type TipoProducto = "almacenable" | "servicio" | "consumible"
@@ -733,19 +731,16 @@ export default function ModuloProductos() {
   const cargarProductos = useCallback(async () => {
     setCargando(true)
     setErrorCarga(null)
-    const supabase = createClient()
-    console.log("[v0] cargarProductos: iniciando, supabase url:", process.env.NEXT_PUBLIC_SUPABASE_URL?.slice(0, 30))
-    const { data, error } = await supabase
-      .from("productos")
-      .select("*")
-      .order("nombre", { ascending: true })
-    console.log("[v0] cargarProductos result:", { count: data?.length, error: error?.message })
-    if (error) {
-      setErrorCarga(error.message)
-    } else {
-      setProductos((data ?? []) as Producto[])
+    try {
+      const res = await fetch("/api/productos", { cache: "no-store" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Error al cargar")
+      setProductos((Array.isArray(data) ? data : []) as Producto[])
+    } catch (e: any) {
+      setErrorCarga(e.message)
+    } finally {
+      setCargando(false)
     }
-    setCargando(false)
   }, [])
 
   useEffect(() => {
@@ -784,29 +779,24 @@ export default function ModuloProductos() {
   }, [productos, busqueda, filtroActivo, filtroCategoria, filtroMarca, filtroTipo, filtroSN])
 
   async function handleGuardar(form: FormProducto) {
-    const supabase = createClient()
     const { id: productoId, historial_costos, imagen_url, ...rest } = form
     const payload = {
       ...rest,
       historial_costos: historial_costos ?? [],
       imagen_url: imagen_url?.startsWith("blob:") ? null : imagen_url ?? null,
     }
-    console.log("[v0] handleGuardar payload keys:", Object.keys(payload), "id:", productoId)
 
-    let error: any = null
-    if (productoId) {
-      const res = await supabase.from("productos").update(payload).eq("id", productoId)
-      error = res.error
-      console.log("[v0] update result:", res)
-    } else {
-      const res = await supabase.from("productos").insert([payload])
-      error = res.error
-      console.log("[v0] insert result:", res)
-    }
+    const url = productoId ? `/api/productos/${productoId}` : "/api/productos"
+    const method = productoId ? "PUT" : "POST"
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
 
-    if (error) {
-      console.log("[v0] ERROR al guardar:", error)
-      alert(error.message ?? "Error al guardar el producto")
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      alert(err.error ?? "Error al guardar el producto")
       return
     }
 
