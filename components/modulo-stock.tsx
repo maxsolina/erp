@@ -5,7 +5,12 @@ import { Search, Filter, ChevronDown, X, Plus, FileText, Truck, Package, ArrowRi
 import OdooFilterBar, { FilterOption, GroupByOption, SavedFilter } from "./odoo-filter-bar"
 import BotonVolver from "./ui/boton-volver"
 import { FormularioProducto, type FormProducto } from "./modulo-productos"
-import { guardarProductoEnDB } from "@/lib/productos-actions"
+import { createClient } from "@supabase/supabase-js"
+
+const supabaseStock = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 // Types para Stock/Deposito
 interface Deposito {
@@ -949,13 +954,12 @@ export default function ModuloStock() {
           <FormularioProducto
             inicial={null}
             onGuardar={async (p: FormProducto) => {
-              try {
-                const { id: _id, historial_costos: _hc, ...payload } = p
-                await guardarProductoEnDB(payload)
-                setCreandoProducto(false)
-              } catch (e: any) {
-                alert(e.message ?? "Error al guardar el producto")
-              }
+              const { id: _id, ...payload } = p
+              payload.historial_costos = payload.historial_costos ?? []
+              if (payload.imagen_url?.startsWith("blob:")) payload.imagen_url = null
+              const { error } = await supabaseStock.from("productos").insert([payload])
+              if (error) { alert(error.message); return }
+              setCreandoProducto(false)
             }}
             onCancelar={() => setCreandoProducto(false)}
           />
