@@ -1130,7 +1130,7 @@ export default function ModuloProductos() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-11 z-10">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">Productos</h1>
           <p className="text-xs text-gray-500">
