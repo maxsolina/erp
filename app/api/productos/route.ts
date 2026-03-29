@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient } from "@/lib/supabase/client"
 import { NextResponse } from "next/server"
 
 // Columnas válidas de la tabla productos
@@ -21,7 +21,7 @@ function filtrarPayload(body: Record<string, any>) {
 }
 
 export async function GET(request: Request) {
-  const supabase = await createClient()
+  const supabase = createClient()
   const { searchParams } = new URL(request.url)
   const busqueda = searchParams.get("busqueda") || ""
   const activo = searchParams.get("activo")
@@ -50,7 +50,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
+  const supabase = createClient()
   const body = await request.json()
   const payload = filtrarPayload(body)
   if (!payload.historial_costos) payload.historial_costos = []

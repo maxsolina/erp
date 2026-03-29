@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient } from "@/lib/supabase/client"
 import { NextResponse } from "next/server"
 
 const COLUMNAS = new Set([
@@ -20,7 +20,7 @@ function filtrarPayload(body: Record<string, any>) {
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createClient()
+  const supabase = createClient()
   const { id } = await params
 
   const { data, error } = await supabase
@@ -29,15 +29,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     .eq("id", id)
     .single()
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 404 })
-  }
-
+  if (error) return NextResponse.json({ error: error.message }, { status: 404 })
   return NextResponse.json(data)
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createClient()
+  const supabase = createClient()
   const { id } = await params
   const body = await request.json()
   const payload = filtrarPayload(body)
@@ -49,25 +46,16 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     .select()
     .single()
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createClient()
+  const supabase = createClient()
   const { id } = await params
 
-  const { error } = await supabase
-    .from("productos")
-    .delete()
-    .eq("id", id)
+  const { error } = await supabase.from("productos").delete().eq("id", id)
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })
 }
