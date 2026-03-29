@@ -1,6 +1,12 @@
 "use client"
 
 import React, { useState, useMemo, useEffect, useCallback } from "react"
+import { createClient } from "@supabase/supabase-js"
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 import {
   Search, Plus, Edit2, Eye, ChevronDown, ChevronRight, X, Upload, Package,
   History, AlertCircle, CheckCircle, XCircle, Settings, ToggleLeft, ToggleRight,
@@ -731,16 +737,13 @@ export default function ModuloProductos() {
   const cargarProductos = useCallback(async () => {
     setCargando(true)
     setErrorCarga(null)
-    try {
-      const res = await fetch("/api/productos", { cache: "no-store" })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "Error al cargar")
-      setProductos((Array.isArray(data) ? data : []) as Producto[])
-    } catch (e: any) {
-      setErrorCarga(e.message)
-    } finally {
-      setCargando(false)
-    }
+    const { data, error } = await supabase
+      .from("productos")
+      .select("*")
+      .order("nombre", { ascending: true })
+    if (error) setErrorCarga(error.message)
+    else setProductos((data ?? []) as Producto[])
+    setCargando(false)
   }, [])
 
   useEffect(() => {
@@ -783,20 +786,20 @@ export default function ModuloProductos() {
     const payload = {
       ...rest,
       historial_costos: historial_costos ?? [],
-      imagen_url: imagen_url?.startsWith("blob:") ? null : imagen_url ?? null,
+      imagen_url: imagen_url?.startsWith("blob:") ? null : (imagen_url ?? null),
     }
 
-    const url = productoId ? `/api/productos/${productoId}` : "/api/productos"
-    const method = productoId ? "PUT" : "POST"
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
+    let dbError: any = null
+    if (productoId) {
+      const { error } = await supabase.from("productos").update(payload).eq("id", productoId)
+      dbError = error
+    } else {
+      const { error } = await supabase.from("productos").insert([payload])
+      dbError = error
+    }
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      alert(err.error ?? "Error al guardar el producto")
+    if (dbError) {
+      alert(dbError.message ?? "Error al guardar el producto")
       return
     }
 
