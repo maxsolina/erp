@@ -698,8 +698,57 @@ function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura = fals
       <div className="flex-1 overflow-y-auto p-6">
         {/* TAB: Información */}
         {tab === "informacion" && (
-          <div className="text-sm text-gray-500 italic">
-            Esta sección se completará con campos adicionales según evolucione el sistema (descripción, ficha técnica, etc.).
+          <div className="space-y-6">
+            {/* Precios e IVA */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Precios e impuestos</h4>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className={labelClass}>IVA de venta (%)</label>
+                  <select
+                    value={form.iva_venta}
+                    disabled={soloLectura}
+                    onChange={e => set("iva_venta", Number(e.target.value))}
+                    className={selectClass()}
+                  >
+                    <option value={0}>Exento (0%)</option>
+                    <option value={10.5}>10.5%</option>
+                    <option value={21}>21%</option>
+                    <option value={27}>27%</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>IVA de compra (%)</label>
+                  <select
+                    value={form.iva_compra}
+                    disabled={soloLectura}
+                    onChange={e => set("iva_compra", Number(e.target.value))}
+                    className={selectClass()}
+                  >
+                    <option value={0}>Exento (0%)</option>
+                    <option value={10.5}>10.5%</option>
+                    <option value={21}>21%</option>
+                    <option value={27}>27%</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Descripción */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Descripción</h4>
+              <div>
+                <label className={labelClass}>Descripción interna</label>
+                <textarea
+                  value={form.observaciones}
+                  readOnly={soloLectura}
+                  onChange={e => set("observaciones", e.target.value)}
+                  rows={4}
+                  placeholder="Descripción del producto para uso interno..."
+                  className={`w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 border-gray-300 bg-white resize-none ${soloLectura ? "bg-gray-50 cursor-default" : ""}`}
+                />
+              </div>
+            </div>
           </div>
         )}
 
