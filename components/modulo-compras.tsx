@@ -4678,6 +4678,11 @@ export default function ModuloCompras() {
       setCreandoCatProv(true)
     }
 
+    const handleVerDetalle = (c: CategoriaProveedor) => {
+      setSelectedCatProv(c)
+      setCreandoCatProv(false)
+    }
+
     const handleEditar = (c: CategoriaProveedor) => {
       setNuevaCatProv({
         nombre: c.nombre,
@@ -4714,6 +4719,80 @@ export default function ModuloCompras() {
 
     const updateListaPrecio = (id: number, patch: Partial<ListaPrecioPermitida>) => {
       setCat({ listas_precios: cat.listas_precios.map(l => l.id === id ? { ...l, ...patch } : l) })
+    }
+
+    // Vista ficha (detalle, solo lectura)
+    if (selectedCatProv && !creandoCatProv) {
+      const c = selectedCatProv
+      return (
+        <div className="max-w-3xl mx-auto">
+          {/* Header */}
+          <div className="flex items-start justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <BotonVolver onClick={() => setSelectedCatProv(null)} variant="minimal" texto="" />
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">{c.nombre}</h1>
+                <p className="text-sm text-gray-500">Categoría de Proveedor</p>
+              </div>
+            </div>
+            <button
+              onClick={() => handleEditar(c)}
+              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1"
+            >
+              <Edit className="w-4 h-4" /> Editar
+            </button>
+          </div>
+
+          <div className="bg-white rounded-lg border p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${c.disponible_clientes ? "bg-blue-600 border-blue-600" : "border-gray-300"}`}>
+                    {c.disponible_clientes && <span className="text-white text-xs">✓</span>}
+                  </span>
+                  <span className="text-gray-700">Disponible para clientes</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${c.disponible_proveedores ? "bg-blue-600 border-blue-600" : "border-gray-300"}`}>
+                    {c.disponible_proveedores && <span className="text-white text-xs">✓</span>}
+                  </span>
+                  <span className="text-gray-700">Disponible para proveedores</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-gray-500">Tipo de Control:</span>
+                  <span className="font-medium text-gray-800">{c.tipo_control}</span>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {c.cuenta_cobrar_defecto && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="text-gray-500">Cuenta a cobrar:</span>
+                    <span className="font-medium text-gray-800">{c.cuenta_cobrar_defecto}</span>
+                  </div>
+                )}
+                {c.cuenta_pagar_defecto && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="text-gray-500">Cuenta a pagar:</span>
+                    <span className="font-medium text-gray-800">{c.cuenta_pagar_defecto}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-sm">
+                  <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${c.requiere_oc_para_facturar ? "bg-blue-600 border-blue-600" : "border-gray-300"}`}>
+                    {c.requiere_oc_para_facturar && <span className="text-white text-xs">✓</span>}
+                  </span>
+                  <span className="text-gray-700">Requiere OC para facturar</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${c.comprobantes_confidenciales ? "bg-blue-600 border-blue-600" : "border-gray-300"}`}>
+                    {c.comprobantes_confidenciales && <span className="text-white text-xs">✓</span>}
+                  </span>
+                  <span className="font-medium text-gray-700">Comprobantes confidenciales</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
     }
 
     // Vista formulario
@@ -4901,7 +4980,13 @@ export default function ModuloCompras() {
           {/* Acciones */}
           <div className="flex justify-end gap-3 mt-4">
             <button
-              onClick={() => { setCreandoCatProv(false); setSelectedCatProv(null); setNuevaCatProv(catProvFormVacio) }}
+              onClick={() => {
+                setCreandoCatProv(false)
+                setNuevaCatProv(catProvFormVacio)
+                // Si estábamos editando, volver a la ficha; si era nueva, volver al listado
+                if (!selectedCatProv) setSelectedCatProv(null)
+                else setCreandoCatProv(false)
+              }}
               className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50"
             >
               Cancelar
@@ -4965,7 +5050,7 @@ export default function ModuloCompras() {
               {categoriasProveedor.map(c => (
                 <tr
                   key={c.id}
-                  onClick={() => handleEditar(c)}
+                  onClick={() => handleVerDetalle(c)}
                   className="border-b hover:bg-gray-50 cursor-pointer"
                 >
                   <td className="py-3 px-4 font-medium text-gray-900">{c.nombre}</td>
