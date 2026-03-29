@@ -529,7 +529,7 @@ const UBICACIONES_OC = [
 export default function ModuloCompras() {
   // Active view state
   const [activeView, setActiveView] = useState("proveedores")
-  const [expandedSections, setExpandedSections] = useState<string[]>(["proveedores", "compras", "comprobantes", "pagos", "configuracion", "categorias"])
+  const [expandedSections, setExpandedSections] = useState<string[]>(["proveedores", "compras", "comprobantes", "pagos", "configuracion", "cfg_categorias"])
 
   // Proveedores
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
@@ -791,29 +791,31 @@ export default function ModuloCompras() {
         { id: "ordenes_pago", label: "Órdenes de Pago", icon: DollarSign },
       ]
     },
+  ]
+
+  // Sub-grupos dentro de Configuración
+  const configSubGroups = [
     {
-      id: "configuracion",
-      label: "Configuración",
-      icon: Settings,
+      id: "cfg_general",
+      label: null, // ítems sueltos sin grupo
       items: [
-        { id: "tipos_gasto", label: "Tipos de Gasto", icon: Tag },
-        { id: "componentes_evaluacion", label: "Componentes Evaluación", icon: CheckCircle },
-        { id: "rangos_precio", label: "Rangos de Precio por Rol", icon: Percent },
+        { id: "tipos_gasto", label: "Tipos de Gasto" },
+        { id: "componentes_evaluacion", label: "Componentes Evaluación" },
+        { id: "rangos_precio", label: "Rangos de Precio por Rol" },
       ]
     },
     {
-      id: "categorias",
+      id: "cfg_categorias",
       label: "Categorías",
-      icon: Tag,
       items: [
-        { id: "cat_proveedores", label: "Proveedores", icon: Building2 },
+        { id: "cat_proveedores", label: "Proveedores" },
       ]
     },
   ]
 
   const toggleSection = (sectionId: string) => {
-    setExpandedSections(prev => 
-      prev.includes(sectionId) 
+    setExpandedSections(prev =>
+      prev.includes(sectionId)
         ? prev.filter(id => id !== sectionId)
         : [...prev, sectionId]
     )
@@ -822,6 +824,7 @@ export default function ModuloCompras() {
   // Render Sidebar
   const renderSidebar = () => (
     <div className="p-3 space-y-1">
+      {/* Secciones principales (Proveedores, Compras, Comprobantes, Pagos) */}
       {menuSections.map(section => (
         <div key={section.id}>
           <button
@@ -846,7 +849,7 @@ export default function ModuloCompras() {
                   onClick={() => setActiveView(item.id)}
                   className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors ${
                     activeView === item.id
-                      ? "bg-blue-50 text-blue-700 font-medium"
+                      ? "bg-orange-50 text-orange-600 font-medium"
                       : "text-gray-600 hover:bg-gray-50"
                   }`}
                 >
@@ -858,6 +861,79 @@ export default function ModuloCompras() {
           )}
         </div>
       ))}
+
+      {/* ── CONFIGURACIÓN ─────────────────────── */}
+      <div className="mt-3">
+        <button
+          onClick={() => toggleSection("configuracion")}
+          className="w-full flex items-center justify-between px-2 py-1.5 group"
+        >
+          <span className="flex items-center gap-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            <Settings className="w-3.5 h-3.5" />
+            Configuración
+          </span>
+          <span className={`w-2 h-2 rounded-full bg-orange-400 ${expandedSections.includes("configuracion") ? "opacity-100" : "opacity-0 group-hover:opacity-50"}`} />
+        </button>
+
+        {expandedSections.includes("configuracion") && (
+          <div className="mt-1 space-y-0.5">
+            {configSubGroups.map(group => (
+              <div key={group.id}>
+                {/* Sub-grupo con label (ej: Categorías) */}
+                {group.label ? (
+                  <div>
+                    <button
+                      onClick={() => toggleSection(group.id)}
+                      className="w-full flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded-lg"
+                    >
+                      {expandedSections.includes(group.id) ? (
+                        <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                      )}
+                      <span className="font-medium text-gray-700">{group.label}</span>
+                    </button>
+                    {expandedSections.includes(group.id) && (
+                      <div className="ml-6 space-y-0.5">
+                        {group.items.map(item => (
+                          <button
+                            key={item.id}
+                            onClick={() => setActiveView(item.id)}
+                            className={`w-full text-left px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                              activeView === item.id
+                                ? "text-orange-600 font-medium bg-orange-50"
+                                : "text-orange-500 hover:bg-orange-50"
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* Ítems sueltos (sin sub-grupo) */
+                  <div className="ml-3 space-y-0.5">
+                    {group.items.map(item => (
+                      <button
+                        key={item.id}
+                        onClick={() => setActiveView(item.id)}
+                        className={`w-full text-left px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                          activeView === item.id
+                            ? "text-orange-600 font-medium bg-orange-50"
+                            : "text-orange-500 hover:bg-orange-50"
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 
