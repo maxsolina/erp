@@ -4,32 +4,198 @@ import React, { useState, useEffect } from "react"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Settings, Lock, Unlock, FileBox, Ship, Plane } from "lucide-react"
 import BotonVolver from "./ui/boton-volver"
 import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
+import {
+  getCategoriaProveedores,
+  createCategoriaProveedor,
+  updateCategoriaProveedor,
+  deleteCategoriaProveedor,
+} from "@/lib/categorias-proveedor-actions"
 
-// Types
+// ── Datos geográficos ────────────────────────────────────────────────────────
+
+const PAISES_LISTA = [
+  "Argentina", "Bolivia", "Brasil", "Chile", "Colombia", "Ecuador",
+  "México", "Paraguay", "Perú", "Uruguay", "Venezuela",
+  "Alemania", "Australia", "Bélgica", "Canadá", "China", "Corea del Sur",
+  "España", "Estados Unidos", "Francia", "India", "Italia", "Japón",
+  "Países Bajos", "Portugal", "Reino Unido", "Rusia", "Sudáfrica",
+  "Suiza", "Turquía",
+]
+
+const PROVINCIAS_AR = [
+  "Buenos Aires",
+  "Catamarca",
+  "Chaco",
+  "Chubut",
+  "Córdoba",
+  "Corrientes",
+  "Entre Ríos",
+  "Formosa",
+  "Jujuy",
+  "La Pampa",
+  "La Rioja",
+  "Mendoza",
+  "Misiones",
+  "Neuquén",
+  "Río Negro",
+  "Salta",
+  "San Juan",
+  "San Luis",
+  "Santa Cruz",
+  "Santa Fe",
+  "Santiago del Estero",
+  "Tierra del Fuego",
+  "Tucumán",
+]
+
+const CIUDADES_POR_PROVINCIA: Record<string, string[]> = {
+  "Santa Fe": [
+    "Rosario",
+    "Santa Fe",
+    "Rafaela",
+    "Venado Tuerto",
+    "Villa Gobernador Gálvez",
+    "San Lorenzo",
+    "Reconquista",
+    "Casilda",
+    "Firmat",
+    "Cañada de Gómez",
+    "Villa Constitución",
+    "Esperanza",
+    "Gálvez",
+    "Santo Tomé",
+    "Las Rosas",
+    "Pérez",
+    "Rufino",
+    "Villa del Parque",
+    "Vera",
+    "Totoras",
+    "Sastre",
+    "Coronda",
+    "Las Parejas",
+    "Piamonte",
+  ],
+  "Buenos Aires": [
+    "La Plata",
+    "Mar del Plata",
+    "Quilmes",
+    "Lanús",
+    "Tigre",
+    "Lomas de Zamora",
+    "Almirante Brown",
+    "General San Martín",
+    "Tres de Febrero",
+    "Florencio Varela",
+    "Berazategui",
+    "Avellaneda",
+    "Morón",
+    "Merlo",
+    "Moreno",
+    "La Matanza",
+    "San Isidro",
+    "Vicente López",
+    "Hurlingham",
+    "Ituzaingó",
+    "Bahía Blanca",
+    "Tandil",
+    "Junín",
+    "Pergamino",
+    "San Nicolás de los Arroyos",
+    "Necochea",
+    "Olavarría",
+    "Azul",
+    "Luján",
+    "Pilar",
+    "Campana",
+    "Zárate",
+    "San Pedro",
+    "Chascomús",
+    "Dolores",
+    "Trenque Lauquen",
+    "Pehuajó",
+    "9 de Julio",
+    "Bragado",
+    "Chivilcoy",
+  ],
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface ListaPrecioPermitida {
+  id: number
+  nombre: string
+  tipo: string
+  moneda: "ARS" | "USD" | "EUR"
+}
+
+interface CategoriaProveedor {
+  id: number
+  nombre: string
+  disponible_clientes: boolean
+  disponible_proveedores: boolean
+  tipo_control: "Ninguno" | "Por Avisos" | "Por Bloqueo"
+  cuenta_cobrar_defecto: string
+  cuenta_pagar_defecto: string
+  requiere_oc_para_facturar: boolean
+  comprobantes_confidenciales: boolean
+  listas_precios: ListaPrecioPermitida[]
+}
+
+interface ContactoProveedor {
+  id: number
+  nombre: string
+  sector: string
+  puesto: string
+  telefono: string
+  email: string
+  observaciones: string
+}
+
 interface Proveedor {
   id: number
   codigo: string
   nombre: string
+  nombre_fantasia: string
   razon_social: string
-  cuit: string
-  tipo_documento: string
+  tipo_documento: "CUIT" | "DNI" | "Pasaporte" | "Sin documento"
   numero_documento: string
-  direccion: string
+  posicion_fiscal: "Responsable Inscripto" | "Monotributista" | "Exento" | "Consumidor Final" | "No responsable" | "Exterior"
+  categoria_proveedor: string
+  celular: string
+  email: string
+  calle_numero: string
   ciudad: string
   provincia: string
+  pais: string
   codigo_postal: string
+  // Legacy compat
+  cuit: string
+  tipo_documento_legacy: string
+  numero_documento_legacy: string
+  direccion: string
   telefono: string
-  email: string
   web: string
   contacto_nombre: string
   contacto_telefono: string
   contacto_email: string
   condicion_pago: string
-  moneda_habitual: "ARS" | "USD"
+  moneda_habitual: "ARS" | "USD" | "EUR"
   categoria: "publico" | "privado"
+  confidencial: boolean
   tipo: "nacional" | "internacional" | "despachante"
   saldo: number
   activo: boolean
+  // Contactos múltiples
+  contactos: ContactoProveedor[]
+  // Tab Ventas & Compras
+  sucursal_origen: string
+  moneda_defecto: "ARS" | "USD" | "EUR"
+  // Tab Contabilidad
+  cuenta_gastos_defecto: string
+  cuenta_analitica: string
+  tipo_cotizacion_defecto: string
+  // Tab Observaciones
+  observaciones: string
 }
 
 interface OrdenCompraLinea {
@@ -369,7 +535,7 @@ const UBICACIONES_OC = [
 export default function ModuloCompras() {
   // Active view state
   const [activeView, setActiveView] = useState("proveedores")
-  const [expandedSections, setExpandedSections] = useState<string[]>(["proveedores", "compras", "comprobantes", "pagos", "configuracion"])
+  const [expandedSections, setExpandedSections] = useState<string[]>(["proveedores", "compras", "comprobantes", "pagos", "configuracion", "cfg_categorias"])
 
   // Proveedores
   const [proveedores, setProveedores] = useState<Proveedor[]>([])
@@ -379,6 +545,97 @@ export default function ModuloCompras() {
   const [proveedorSearchText, setProveedorSearchText] = useState("")
   const [proveedorFiltroCategoria, setProveedorFiltroCategoria] = useState<"todos" | "publico" | "privado">("todos")
   const [proveedorFiltroTipo, setProveedorFiltroTipo] = useState<"todos" | "nacional" | "internacional" | "despachante">("todos")
+  const [proveedorTabActivo, setProveedorTabActivo] = useState<"contactos" | "ventas_compras" | "contabilidad" | "observaciones">("contactos")
+  const [confirmandoConfidencial, setConfirmandoConfidencial] = useState(false)
+
+  const [categoriasProveedor, setCategoriasProveedor] = useState<CategoriaProveedor[]>([])
+  const [selectedCatProv, setSelectedCatProv] = useState<CategoriaProveedor | null>(null)
+  const [creandoCatProv, setCreandoCatProv] = useState(false)
+  const [catProvTabActivo, setCatProvTabActivo] = useState<"listas_precios" | "grupos_descuentos" | "cuentas_perm" | "leyenda" | "grupos">("listas_precios")
+  const [loadingCatProv, setLoadingCatProv] = useState(false)
+
+  useEffect(() => {
+    setLoadingCatProv(true)
+    getCategoriaProveedores()
+      .then(rows => {
+        setCategoriasProveedor(rows.map(r => ({
+          id: r.id,
+          nombre: r.nombre,
+          disponible_clientes: r.disponible_clientes,
+          disponible_proveedores: r.disponible_proveedores,
+          tipo_control: r.tipo_control as CategoriaProveedor["tipo_control"],
+          cuenta_cobrar_defecto: r.cuenta_cobrar_defecto,
+          cuenta_pagar_defecto: r.cuenta_pagar_defecto,
+          requiere_oc_para_facturar: r.requiere_oc_para_facturar,
+          comprobantes_confidenciales: r.comprobantes_confidenciales,
+          listas_precios: [],
+        })))
+      })
+      .catch(console.error)
+      .finally(() => setLoadingCatProv(false))
+  }, [])
+
+  const catProvFormVacio: Omit<CategoriaProveedor, "id"> = {
+    nombre: "",
+    disponible_clientes: true,
+    disponible_proveedores: true,
+    tipo_control: "Ninguno",
+    cuenta_cobrar_defecto: "",
+    cuenta_pagar_defecto: "",
+    requiere_oc_para_facturar: false,
+    comprobantes_confidenciales: false,
+    listas_precios: [],
+  }
+  const [nuevaCatProv, setNuevaCatProv] = useState<Omit<CategoriaProveedor, "id">>(catProvFormVacio)
+
+  // CATEGORIAS_PROVEEDOR es ahora dinámico
+  const CATEGORIAS_PROVEEDOR = categoriasProveedor.map(c => c.nombre)
+
+  const SUCURSALES_LISTA = ["Puerto Norte", "Centro", "Sur"]
+  const MONEDAS_LISTA: Array<"ARS" | "USD" | "EUR"> = ["ARS", "USD", "EUR"]
+  const CUENTAS_GASTOS = ["5.1.1 - Compras Mercadería", "5.1.2 - Gastos Importación", "5.2.1 - Servicios", "5.2.2 - Flete y Aduanas"]
+  const TIPOS_COTIZACION = ["Dólar Oficial", "Dólar MEP", "Dólar Blue"]
+
+  const proveedorFormVacio: Omit<Proveedor, "id" | "codigo" | "saldo"> = {
+    nombre: "",
+    nombre_fantasia: "",
+    razon_social: "",
+    tipo_documento: "CUIT",
+    numero_documento: "",
+    posicion_fiscal: "Responsable Inscripto",
+    categoria_proveedor: "Proveedor Nacional",
+    celular: "",
+    email: "",
+    calle_numero: "",
+    ciudad: "",
+    provincia: "",
+    pais: "Argentina",
+    codigo_postal: "",
+    cuit: "",
+    tipo_documento_legacy: "CUIT",
+    numero_documento_legacy: "",
+    direccion: "",
+    telefono: "",
+    web: "",
+    contacto_nombre: "",
+    contacto_telefono: "",
+    contacto_email: "",
+    condicion_pago: "Contado",
+    moneda_habitual: "ARS",
+    categoria: "publico",
+    confidencial: false,
+    tipo: "nacional",
+    activo: true,
+    contactos: [],
+    sucursal_origen: "",
+    moneda_defecto: "ARS",
+    cuenta_gastos_defecto: "",
+    cuenta_analitica: "",
+    tipo_cotizacion_defecto: "",
+    observaciones: "",
+  }
+
+  const [nuevoProveedor, setNuevoProveedor] = useState<Omit<Proveedor, "id" | "codigo" | "saldo">>(proveedorFormVacio)
 
   // Órdenes de Compra
   const [ordenesCompra, setOrdenesCompra] = useState<OrdenCompra[]>([])
@@ -562,21 +819,31 @@ export default function ModuloCompras() {
         { id: "ordenes_pago", label: "Órdenes de Pago", icon: DollarSign },
       ]
     },
+  ]
+
+  // Sub-grupos dentro de Configuración
+  const configSubGroups = [
     {
-      id: "configuracion",
-      label: "Configuración",
-      icon: Settings,
+      id: "cfg_general",
+      label: null, // ítems sueltos sin grupo
       items: [
-        { id: "tipos_gasto", label: "Tipos de Gasto", icon: Tag },
-        { id: "componentes_evaluacion", label: "Componentes Evaluación", icon: CheckCircle },
-        { id: "rangos_precio", label: "Rangos de Precio por Rol", icon: Percent },
+        { id: "tipos_gasto", label: "Tipos de Gasto" },
+        { id: "componentes_evaluacion", label: "Componentes Evaluación" },
+        { id: "rangos_precio", label: "Rangos de Precio por Rol" },
+      ]
+    },
+    {
+      id: "cfg_categorias",
+      label: "Categorías",
+      items: [
+        { id: "cat_proveedores", label: "Proveedores" },
       ]
     },
   ]
 
   const toggleSection = (sectionId: string) => {
-    setExpandedSections(prev => 
-      prev.includes(sectionId) 
+    setExpandedSections(prev =>
+      prev.includes(sectionId)
         ? prev.filter(id => id !== sectionId)
         : [...prev, sectionId]
     )
@@ -585,6 +852,7 @@ export default function ModuloCompras() {
   // Render Sidebar
   const renderSidebar = () => (
     <div className="p-3 space-y-1">
+      {/* Secciones principales (Proveedores, Compras, Comprobantes, Pagos) */}
       {menuSections.map(section => (
         <div key={section.id}>
           <button
@@ -609,7 +877,7 @@ export default function ModuloCompras() {
                   onClick={() => setActiveView(item.id)}
                   className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors ${
                     activeView === item.id
-                      ? "bg-blue-50 text-blue-700 font-medium"
+                      ? "bg-orange-50 text-orange-600 font-medium"
                       : "text-gray-600 hover:bg-gray-50"
                   }`}
                 >
@@ -621,6 +889,83 @@ export default function ModuloCompras() {
           )}
         </div>
       ))}
+
+      {/* ── CONFIGURACIÓN ─────────────────────── */}
+      <div className="mt-3">
+        <button
+          onClick={() => toggleSection("configuracion")}
+          className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg"
+        >
+          <span className="flex items-center gap-2">
+            <Settings className="w-4 h-4" />
+            Configuración
+          </span>
+          {expandedSections.includes("configuracion") ? (
+            <ChevronDown className="w-4 h-4" />
+          ) : (
+            <ChevronRight className="w-4 h-4" />
+          )}
+        </button>
+
+        {expandedSections.includes("configuracion") && (
+          <div className="ml-4 mt-1 space-y-0.5">
+            {configSubGroups.map(group => (
+              <div key={group.id}>
+                {/* Sub-grupo con label (ej: Categorías) */}
+                {group.label ? (
+                  <div>
+                    <button
+                      onClick={() => toggleSection(group.id)}
+                      className="w-full flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 rounded-lg"
+                    >
+                      {expandedSections.includes(group.id) ? (
+                        <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                      )}
+                      <span className="font-medium text-gray-700">{group.label}</span>
+                    </button>
+                    {expandedSections.includes(group.id) && (
+                      <div className="ml-5 space-y-0.5">
+                        {group.items.map(item => (
+                          <button
+                            key={item.id}
+                            onClick={() => setActiveView(item.id)}
+                            className={`w-full text-left px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                              activeView === item.id
+                                ? "bg-blue-50 text-blue-700 font-medium"
+                                : "text-gray-600 hover:bg-gray-50"
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* Ítems sueltos (sin sub-grupo) */
+                  <div className="space-y-0.5">
+                    {group.items.map(item => (
+                      <button
+                        key={item.id}
+                        onClick={() => setActiveView(item.id)}
+                        className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                          activeView === item.id
+                            ? "bg-blue-50 text-blue-700 font-medium"
+                            : "text-gray-600 hover:bg-gray-50"
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 
@@ -637,6 +982,7 @@ export default function ModuloCompras() {
       return matchesSearch && matchesCategoria && matchesTipo
     })
 
+    if (editandoProveedor) return renderFormularioProveedor(true)
     if (selectedProveedor) return renderFichaProveedor()
     if (creandoProveedor) return renderCrearProveedor()
 
@@ -719,52 +1065,47 @@ export default function ModuloCompras() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr className="text-xs text-gray-500 uppercase">
-                <th className="text-left py-3 px-4">Código</th>
                 <th className="text-left py-3 px-4">Nombre</th>
-                <th className="text-left py-3 px-4">CUIT</th>
-                <th className="text-left py-3 px-4">Tipo</th>
-                <th className="text-center py-3 px-4">Categoría</th>
-                <th className="text-right py-3 px-4">Saldo</th>
-                <th className="text-center py-3 px-4">Estado</th>
+                <th className="text-left py-3 px-4">Nombre Fantasía</th>
+                <th className="text-left py-3 px-4">CUIT / Doc.</th>
+                <th className="text-left py-3 px-4">Categoría</th>
+                <th className="text-center py-3 px-4">Moneda</th>
+                <th className="text-center py-3 px-4">Activo</th>
+                <th className="text-center py-3 px-4">Confidencial</th>
               </tr>
             </thead>
             <tbody>
               {filteredProveedores.map(proveedor => (
-                <tr 
-                  key={proveedor.id} 
+                <tr
+                  key={proveedor.id}
                   className="border-b hover:bg-gray-50 cursor-pointer"
                   onClick={() => setSelectedProveedor(proveedor)}
                 >
-                  <td className="py-3 px-4 font-medium text-blue-700">{proveedor.codigo}</td>
-                  <td className="py-3 px-4">{proveedor.nombre}</td>
-                  <td className="py-3 px-4 text-sm text-gray-500">{proveedor.cuit}</td>
                   <td className="py-3 px-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      proveedor.tipo === 'nacional' ? 'bg-blue-100 text-blue-700' :
-                      proveedor.tipo === 'internacional' ? 'bg-purple-100 text-purple-700' :
-                      'bg-amber-100 text-amber-700'
-                    }`}>
-                      {proveedor.tipo.charAt(0).toUpperCase() + proveedor.tipo.slice(1)}
+                    <div className="font-medium text-gray-900">{proveedor.nombre}</div>
+                    <div className="text-xs text-gray-400">{proveedor.codigo}</div>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{proveedor.nombre_fantasia || <span className="text-gray-300">—</span>}</td>
+                  <td className="py-3 px-4 text-sm text-gray-500">{proveedor.cuit || proveedor.numero_documento || <span className="text-gray-300">—</span>}</td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{proveedor.categoria_proveedor || proveedor.tipo}</td>
+                  <td className="py-3 px-4 text-center">
+                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
+                      {proveedor.moneda_habitual}
                     </span>
                   </td>
                   <td className="py-3 px-4 text-center">
-                    {proveedor.categoria === 'privado' ? (
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      proveedor.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {proveedor.activo ? 'Sí' : 'No'}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    {(proveedor.confidencial || proveedor.categoria === 'privado') ? (
                       <Lock className="w-4 h-4 text-red-500 mx-auto" />
                     ) : (
-                      <Unlock className="w-4 h-4 text-green-500 mx-auto" />
+                      <span className="text-gray-300 text-xs">—</span>
                     )}
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    <span className={proveedor.saldo > 0 ? 'text-red-600 font-medium' : 'text-gray-500'}>
-                      {formatCurrency(proveedor.saldo)}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      proveedor.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-                    }`}>
-                      {proveedor.activo ? 'Activo' : 'Inactivo'}
-                    </span>
                   </td>
                 </tr>
               ))}
@@ -799,7 +1140,52 @@ export default function ModuloCompras() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1">
+            <button
+              onClick={() => {
+                if (!selectedProveedor) return
+                setNuevoProveedor({
+                  nombre: selectedProveedor.nombre,
+                  nombre_fantasia: selectedProveedor.nombre_fantasia ?? "",
+                  razon_social: selectedProveedor.razon_social,
+                  tipo_documento: selectedProveedor.tipo_documento,
+                  numero_documento: selectedProveedor.numero_documento,
+                  posicion_fiscal: selectedProveedor.posicion_fiscal ?? "Responsable Inscripto",
+                  categoria_proveedor: selectedProveedor.categoria_proveedor ?? "Proveedor Nacional",
+                  celular: selectedProveedor.celular ?? selectedProveedor.telefono ?? "",
+                  email: selectedProveedor.email,
+                  calle_numero: selectedProveedor.calle_numero ?? selectedProveedor.direccion ?? "",
+                  ciudad: selectedProveedor.ciudad,
+                  provincia: selectedProveedor.provincia ?? "",
+                  pais: selectedProveedor.pais ?? "Argentina",
+                  codigo_postal: selectedProveedor.codigo_postal ?? "",
+                  cuit: selectedProveedor.cuit,
+                  tipo_documento_legacy: selectedProveedor.tipo_documento_legacy ?? selectedProveedor.tipo_documento,
+                  numero_documento_legacy: selectedProveedor.numero_documento_legacy ?? selectedProveedor.numero_documento,
+                  direccion: selectedProveedor.direccion,
+                  telefono: selectedProveedor.telefono,
+                  web: selectedProveedor.web ?? "",
+                  contacto_nombre: selectedProveedor.contacto_nombre ?? "",
+                  contacto_telefono: selectedProveedor.contacto_telefono ?? "",
+                  contacto_email: selectedProveedor.contacto_email ?? "",
+                  condicion_pago: selectedProveedor.condicion_pago,
+                  moneda_habitual: selectedProveedor.moneda_habitual,
+                  categoria: selectedProveedor.categoria,
+                  confidencial: selectedProveedor.confidencial ?? selectedProveedor.categoria === "privado",
+                  tipo: selectedProveedor.tipo,
+                  activo: selectedProveedor.activo,
+                  contactos: selectedProveedor.contactos ?? [],
+                  sucursal_origen: selectedProveedor.sucursal_origen ?? "",
+                  moneda_defecto: selectedProveedor.moneda_defecto ?? selectedProveedor.moneda_habitual,
+                  cuenta_gastos_defecto: selectedProveedor.cuenta_gastos_defecto ?? "",
+                  cuenta_analitica: selectedProveedor.cuenta_analitica ?? "",
+                  tipo_cotizacion_defecto: selectedProveedor.tipo_cotizacion_defecto ?? "",
+                  observaciones: selectedProveedor.observaciones ?? "",
+                })
+                setProveedorTabActivo("contactos")
+                setEditandoProveedor(true)
+              }}
+              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1"
+            >
               <Edit className="w-4 h-4" /> Editar
             </button>
             <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
@@ -977,23 +1363,555 @@ export default function ModuloCompras() {
     )
   }
 
-  const renderCrearProveedor = () => {
+  const renderFormularioProveedor = (modoEdicion: boolean) => {
+    const prov = nuevoProveedor
+    const setP = (patch: Partial<typeof prov>) => setNuevoProveedor(prev => ({ ...prev, ...patch }))
+
+    const handleGuardar = () => {
+      if (!prov.nombre.trim()) return
+      if (prov.tipo_documento !== "Sin documento" && !prov.numero_documento.trim()) return
+
+      if (modoEdicion && selectedProveedor) {
+        setProveedores(prev => prev.map(p =>
+          p.id === selectedProveedor.id
+            ? { ...p, ...prov, cuit: prov.numero_documento, codigo: p.codigo, saldo: p.saldo }
+            : p
+        ))
+        setSelectedProveedor(prev => prev ? { ...prev, ...prov, cuit: prov.numero_documento } : null)
+        setEditandoProveedor(false)
+      } else {
+        const nuevo: Proveedor = {
+          ...prov,
+          id: Date.now(),
+          codigo: `PROV-${String(proveedores.length + 1).padStart(3, "0")}`,
+          cuit: prov.numero_documento,
+          saldo: 0,
+        }
+        setProveedores(prev => [...prev, nuevo])
+        setCreandoProveedor(false)
+        setNuevoProveedor(proveedorFormVacio)
+        setProveedorTabActivo("contactos")
+      }
+    }
+
+    const handleCancelar = () => {
+      if (modoEdicion) {
+        setEditandoProveedor(false)
+      } else {
+        setCreandoProveedor(false)
+        setNuevoProveedor(proveedorFormVacio)
+        setProveedorTabActivo("contactos")
+      }
+    }
+
+    const addContacto = () => {
+      setP({
+        contactos: [...prov.contactos, {
+          id: Date.now(), nombre: "", sector: "", puesto: "", telefono: "", email: "", observaciones: ""
+        }]
+      })
+    }
+
+    const removeContacto = (id: number) => {
+      setP({ contactos: prov.contactos.filter(c => c.id !== id) })
+    }
+
+    const updateContacto = (id: number, patch: Partial<ContactoProveedor>) => {
+      setP({ contactos: prov.contactos.map(c => c.id === id ? { ...c, ...patch } : c) })
+    }
+
     return (
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-5xl mx-auto">
+        {/* Header */}
         <div className="flex items-center gap-4 mb-6">
-<BotonVolver onClick={() => setCreandoProveedor(false)} variant="minimal" texto="" />
+          <BotonVolver onClick={handleCancelar} variant="minimal" texto="" />
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Nuevo Proveedor</h1>
-            <p className="text-sm text-gray-500">Complete los datos del nuevo proveedor</p>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {modoEdicion ? `Editando: ${selectedProveedor?.nombre}` : "Nuevo Proveedor"}
+            </h1>
+            <p className="text-sm text-gray-500">
+              {modoEdicion ? selectedProveedor?.codigo : "Complete los datos del nuevo proveedor"}
+            </p>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border p-6">
-          <p className="text-center text-gray-500 py-8">Formulario de creación de proveedor (en desarrollo)</p>
+        {/* Cabecera del formulario */}
+        <div className="bg-white rounded-lg border p-6 mb-4">
+          <div className="grid grid-cols-2 gap-6">
+            {/* Columna izquierda */}
+            <div className="space-y-4">
+              {/* Razón Social */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Razón Social / Nombre <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={prov.nombre}
+                  onChange={e => setP({ nombre: e.target.value, razon_social: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Razón social"
+                />
+              </div>
+
+              {/* Nombre de Fantasía */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Nombre de Fantasía</label>
+                <input
+                  type="text"
+                  value={prov.nombre_fantasia}
+                  onChange={e => setP({ nombre_fantasia: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Nombre comercial"
+                />
+              </div>
+
+              {/* Tipo y N° de Documento */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de Documento</label>
+                  <select
+                    value={prov.tipo_documento}
+                    onChange={e => setP({ tipo_documento: e.target.value as Proveedor["tipo_documento"] })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="CUIT">CUIT</option>
+                    <option value="DNI">DNI</option>
+                    <option value="Pasaporte">Pasaporte</option>
+                    <option value="Sin documento">Sin documento</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Número {prov.tipo_documento !== "Sin documento" && <span className="text-red-500">*</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={prov.numero_documento}
+                    onChange={e => setP({ numero_documento: e.target.value, cuit: e.target.value })}
+                    disabled={prov.tipo_documento === "Sin documento"}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
+                    placeholder={prov.tipo_documento === "CUIT" ? "XX-XXXXXXXX-X" : ""}
+                  />
+                </div>
+              </div>
+
+              {/* Posición Fiscal */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Posición Fiscal</label>
+                <select
+                  value={prov.posicion_fiscal}
+                  onChange={e => setP({ posicion_fiscal: e.target.value as Proveedor["posicion_fiscal"] })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="Responsable Inscripto">Responsable Inscripto</option>
+                  <option value="Monotributista">Monotributista</option>
+                  <option value="Exento">Exento</option>
+                  <option value="Consumidor Final">Consumidor Final</option>
+                  <option value="No responsable">No responsable</option>
+                  <option value="Exterior">Exterior</option>
+                </select>
+              </div>
+
+              {/* Categoría de Proveedor */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Categoría de Proveedor</label>
+                <select
+                  value={prov.categoria_proveedor}
+                  onChange={e => setP({ categoria_proveedor: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {CATEGORIAS_PROVEEDOR.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Columna derecha */}
+            <div className="space-y-4">
+              {/* Celular */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Celular</label>
+                <input
+                  type="text"
+                  value={prov.celular}
+                  onChange={e => setP({ celular: e.target.value, telefono: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="+54 9 11 ..."
+                />
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={prov.email}
+                  onChange={e => setP({ email: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="email@proveedor.com"
+                />
+              </div>
+
+              {/* Dirección */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Calle y Número</label>
+                <input
+                  type="text"
+                  value={prov.calle_numero}
+                  onChange={e => setP({ calle_numero: e.target.value, direccion: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Av. Ejemplo 1234"
+                />
+              </div>
+
+              {/* País */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">País</label>
+                <select
+                  value={prov.pais}
+                  onChange={e => setP({ pais: e.target.value, provincia: "", ciudad: "" })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {PAISES_LISTA.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+
+              {/* Provincia + Ciudad */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Provincia</label>
+                  {prov.pais === "Argentina" ? (
+                    <select
+                      value={prov.provincia}
+                      onChange={e => setP({ provincia: e.target.value, ciudad: "" })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">— Seleccionar —</option>
+                      {PROVINCIAS_AR.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={prov.provincia}
+                      onChange={e => setP({ provincia: e.target.value })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Ciudad</label>
+                  {(() => {
+                    const ciudadesDisponibles = CIUDADES_POR_PROVINCIA[prov.provincia]
+                    return ciudadesDisponibles ? (
+                      <select
+                        value={prov.ciudad}
+                        onChange={e => setP({ ciudad: e.target.value })}
+                        disabled={!prov.provincia}
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
+                      >
+                        <option value="">— Seleccionar —</option>
+                        {ciudadesDisponibles.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={prov.ciudad}
+                        onChange={e => setP({ ciudad: e.target.value })}
+                        disabled={prov.pais === "Argentina" && !prov.provincia}
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
+                        placeholder={prov.pais === "Argentina" && !prov.provincia ? "Seleccioná provincia primero" : ""}
+                      />
+                    )
+                  })()}
+                </div>
+              </div>
+
+              {/* Código Postal */}
+              <div className="w-1/2 pr-1.5">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Código Postal</label>
+                <input
+                  type="text"
+                  value={prov.codigo_postal}
+                  onChange={e => setP({ codigo_postal: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Checkboxes */}
+              <div className="flex items-center gap-6 pt-2">
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={prov.activo}
+                    onChange={e => setP({ activo: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                  />
+                  Activo
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={prov.confidencial}
+                    onChange={e => {
+                      if (e.target.checked) {
+                        setConfirmandoConfidencial(true)
+                      } else {
+                        setP({ confidencial: false, categoria: "publico" })
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-gray-300 text-red-600"
+                  />
+                  Es confidencial
+                </label>
+              </div>
+
+              {/* Aviso confidencial */}
+              {confirmandoConfidencial && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm">
+                  <p className="text-amber-800 font-medium mb-2">
+                    Este proveedor solo será visible para usuarios del grupo Proveedores Privados. ¿Confirmás?
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setP({ confidencial: true, categoria: "privado" }); setConfirmandoConfidencial(false) }}
+                      className="px-3 py-1 bg-amber-600 text-white text-xs rounded hover:bg-amber-700"
+                    >
+                      Confirmar
+                    </button>
+                    <button
+                      onClick={() => setConfirmandoConfidencial(false)}
+                      className="px-3 py-1 border text-xs rounded hover:bg-gray-50"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {prov.confidencial && !confirmandoConfidencial && (
+                <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
+                  <Lock className="w-3.5 h-3.5 flex-shrink-0" />
+                  Proveedor confidencial — solo visible para usuarios autorizados
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="bg-white rounded-lg border overflow-hidden">
+          {/* Tab headers */}
+          <div className="flex border-b">
+            {[
+              { id: "contactos", label: "Contactos" },
+              { id: "ventas_compras", label: "Ventas & Compras" },
+              { id: "contabilidad", label: "Contabilidad" },
+              { id: "observaciones", label: "Observaciones" },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setProveedorTabActivo(tab.id as typeof proveedorTabActivo)}
+                className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  proveedorTabActivo === tab.id
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {tab.label}
+                {tab.id === "contactos" && prov.contactos.length > 0 && (
+                  <span className="ml-1.5 bg-blue-100 text-blue-700 text-xs px-1.5 py-0.5 rounded-full">
+                    {prov.contactos.length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content */}
+          <div className="p-6">
+
+            {/* TAB: CONTACTOS */}
+            {proveedorTabActivo === "contactos" && (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-sm text-gray-500">Personas de contacto dentro de esta empresa</p>
+                  <button
+                    onClick={addContacto}
+                    className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50"
+                  >
+                    <Plus className="w-4 h-4" /> Agregar contacto
+                  </button>
+                </div>
+
+                {prov.contactos.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400 text-sm border-2 border-dashed rounded-lg">
+                    Sin contactos registrados. Hacé clic en &quot;Agregar contacto&quot; para añadir uno.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-xs text-gray-500 uppercase">
+                          <th className="text-left py-2 px-2">Nombre</th>
+                          <th className="text-left py-2 px-2">Sector / Área</th>
+                          <th className="text-left py-2 px-2">Puesto / Cargo</th>
+                          <th className="text-left py-2 px-2">Teléfono</th>
+                          <th className="text-left py-2 px-2">Email</th>
+                          <th className="text-left py-2 px-2">Observaciones</th>
+                          <th className="py-2 px-2"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {prov.contactos.map(c => (
+                          <tr key={c.id} className="border-b">
+                            <td className="py-1.5 px-2">
+                              <input type="text" value={c.nombre} onChange={e => updateContacto(c.id, { nombre: e.target.value })}
+                                className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Nombre" />
+                            </td>
+                            <td className="py-1.5 px-2">
+                              <input type="text" value={c.sector} onChange={e => updateContacto(c.id, { sector: e.target.value })}
+                                className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Ventas" />
+                            </td>
+                            <td className="py-1.5 px-2">
+                              <input type="text" value={c.puesto} onChange={e => updateContacto(c.id, { puesto: e.target.value })}
+                                className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Gerente" />
+                            </td>
+                            <td className="py-1.5 px-2">
+                              <input type="text" value={c.telefono} onChange={e => updateContacto(c.id, { telefono: e.target.value })}
+                                className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="+54..." />
+                            </td>
+                            <td className="py-1.5 px-2">
+                              <input type="email" value={c.email} onChange={e => updateContacto(c.id, { email: e.target.value })}
+                                className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="email@..." />
+                            </td>
+                            <td className="py-1.5 px-2">
+                              <input type="text" value={c.observaciones} onChange={e => updateContacto(c.id, { observaciones: e.target.value })}
+                                className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="" />
+                            </td>
+                            <td className="py-1.5 px-2">
+                              <button onClick={() => removeContacto(c.id)} className="text-red-400 hover:text-red-600">
+                                <X className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB: VENTAS & COMPRAS */}
+            {proveedorTabActivo === "ventas_compras" && (
+              <div className="grid grid-cols-2 gap-6 max-w-lg">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Sucursal de Origen</label>
+                  <select
+                    value={prov.sucursal_origen}
+                    onChange={e => setP({ sucursal_origen: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">— Ninguna —</option>
+                    {SUCURSALES_LISTA.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Moneda por Defecto</label>
+                  <select
+                    value={prov.moneda_defecto}
+                    onChange={e => setP({ moneda_defecto: e.target.value as "ARS" | "USD" | "EUR", moneda_habitual: e.target.value as "ARS" | "USD" | "EUR" })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {MONEDAS_LISTA.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: CONTABILIDAD */}
+            {proveedorTabActivo === "contabilidad" && (
+              <div className="space-y-4 max-w-lg">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta de Gastos por Defecto</label>
+                  <select
+                    value={prov.cuenta_gastos_defecto}
+                    onChange={e => setP({ cuenta_gastos_defecto: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">— Sin asignar —</option>
+                    {CUENTAS_GASTOS.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta Analítica para Compras</label>
+                  <input
+                    type="text"
+                    value={prov.cuenta_analitica}
+                    onChange={e => setP({ cuenta_analitica: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Opcional"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de Cotización por Defecto</label>
+                  <select
+                    value={prov.tipo_cotizacion_defecto}
+                    onChange={e => setP({ tipo_cotizacion_defecto: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">— Sin asignar —</option>
+                    {TIPOS_COTIZACION.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  {prov.moneda_defecto === "ARS" && (
+                    <p className="text-xs text-gray-400 mt-1">Relevante principalmente cuando la moneda es distinta de ARS.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB: OBSERVACIONES */}
+            {proveedorTabActivo === "observaciones" && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-2">
+                  Notas internas sobre el proveedor
+                </label>
+                <textarea
+                  value={prov.observaciones}
+                  onChange={e => setP({ observaciones: e.target.value })}
+                  rows={6}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  placeholder="Notas internas. No se imprime ni se comparte."
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Acciones */}
+        <div className="flex items-center justify-end gap-3 mt-4">
+          <button
+            onClick={handleCancelar}
+            className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleGuardar}
+            disabled={!prov.nombre.trim() || (prov.tipo_documento !== "Sin documento" && !prov.numero_documento.trim())}
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Save className="w-4 h-4" />
+            {modoEdicion ? "Guardar Cambios" : "Crear Proveedor"}
+          </button>
         </div>
       </div>
     )
   }
+
+  const renderCrearProveedor = () => renderFormularioProveedor(false)
 
   // =====================================================
   // RENDER ÓRDENES DE COMPRA
@@ -2810,10 +3728,7 @@ export default function ModuloCompras() {
             <h1 className="text-2xl font-bold text-gray-900">Recepciones de Compra</h1>
             <p className="text-gray-500 mt-1 text-sm">Las recepciones se generan automáticamente desde Órdenes de Compra, Tomas de Equipo y Transferencias.</p>
           </div>
-          <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span>No se crean manualmente</span>
-          </div>
+
         </div>
 
         {/* Estadísticas */}
@@ -3703,6 +4618,497 @@ export default function ModuloCompras() {
   }
 
   // =====================================================
+  // RENDER CATEGORÍAS PROVEEDORES
+  // =====================================================
+  const renderCatProveedores = () => {
+    const cat = nuevaCatProv
+    const setCat = (patch: Partial<typeof cat>) => setNuevaCatProv(prev => ({ ...prev, ...patch }))
+
+    const CUENTAS_COBRAR = ["1.1.1 - Clientes", "1.1.2 - Documentos a Cobrar", "1.1.3 - Cheques en Cartera"]
+    const CUENTAS_PAGAR = ["2.1.1 - Proveedores", "2.1.2 - Documentos a Pagar", "2.1.3 - Anticipo Proveedores"]
+
+    const handleGuardarCat = async () => {
+      if (!cat.nombre.trim()) return
+      const payload = {
+        nombre: cat.nombre,
+        disponible_clientes: cat.disponible_clientes,
+        disponible_proveedores: cat.disponible_proveedores,
+        tipo_control: cat.tipo_control,
+        cuenta_cobrar_defecto: cat.cuenta_cobrar_defecto,
+        cuenta_pagar_defecto: cat.cuenta_pagar_defecto,
+        requiere_oc_para_facturar: cat.requiere_oc_para_facturar,
+        comprobantes_confidenciales: cat.comprobantes_confidenciales,
+      }
+      try {
+        if (selectedCatProv) {
+          const updated = await updateCategoriaProveedor(selectedCatProv.id, payload)
+          setCategoriasProveedor(prev => prev.map(c =>
+            c.id === selectedCatProv.id
+              ? { ...c, ...updated, tipo_control: updated.tipo_control as CategoriaProveedor["tipo_control"], listas_precios: c.listas_precios }
+              : c
+          ))
+          setSelectedCatProv(null)
+        } else {
+          const created = await createCategoriaProveedor(payload)
+          setCategoriasProveedor(prev => [...prev, {
+            id: created.id,
+            nombre: created.nombre,
+            disponible_clientes: created.disponible_clientes,
+            disponible_proveedores: created.disponible_proveedores,
+            tipo_control: created.tipo_control as CategoriaProveedor["tipo_control"],
+            cuenta_cobrar_defecto: created.cuenta_cobrar_defecto,
+            cuenta_pagar_defecto: created.cuenta_pagar_defecto,
+            requiere_oc_para_facturar: created.requiere_oc_para_facturar,
+            comprobantes_confidenciales: created.comprobantes_confidenciales,
+            listas_precios: [],
+          }])
+        }
+        setCreandoCatProv(false)
+        setNuevaCatProv(catProvFormVacio)
+        setCatProvTabActivo("listas_precios")
+      } catch (e) {
+        console.error(e)
+      }
+    }
+
+    const handleNueva = () => {
+      setSelectedCatProv(null)
+      setNuevaCatProv(catProvFormVacio)
+      setCatProvTabActivo("listas_precios")
+      setCreandoCatProv(true)
+    }
+
+    const handleVerDetalle = (c: CategoriaProveedor) => {
+      setSelectedCatProv(c)
+      setCreandoCatProv(false)
+    }
+
+    const handleEditar = (c: CategoriaProveedor) => {
+      setNuevaCatProv({
+        nombre: c.nombre,
+        disponible_clientes: c.disponible_clientes,
+        disponible_proveedores: c.disponible_proveedores,
+        tipo_control: c.tipo_control,
+        cuenta_cobrar_defecto: c.cuenta_cobrar_defecto,
+        cuenta_pagar_defecto: c.cuenta_pagar_defecto,
+        requiere_oc_para_facturar: c.requiere_oc_para_facturar,
+        comprobantes_confidenciales: c.comprobantes_confidenciales,
+        listas_precios: c.listas_precios,
+      })
+      setSelectedCatProv(c)
+      setCatProvTabActivo("listas_precios")
+      setCreandoCatProv(true)
+    }
+
+    const handleEliminarCat = async (id: number) => {
+      try {
+        await deleteCategoriaProveedor(id)
+        setCategoriasProveedor(prev => prev.filter(c => c.id !== id))
+      } catch (e) {
+        console.error(e)
+      }
+    }
+
+    const addListaPrecio = () => {
+      setCat({ listas_precios: [...cat.listas_precios, { id: Date.now(), nombre: "", tipo: "", moneda: "ARS" }] })
+    }
+
+    const removeListaPrecio = (id: number) => {
+      setCat({ listas_precios: cat.listas_precios.filter(l => l.id !== id) })
+    }
+
+    const updateListaPrecio = (id: number, patch: Partial<ListaPrecioPermitida>) => {
+      setCat({ listas_precios: cat.listas_precios.map(l => l.id === id ? { ...l, ...patch } : l) })
+    }
+
+    // Vista ficha (detalle, solo lectura)
+    if (selectedCatProv && !creandoCatProv) {
+      const c = selectedCatProv
+      return (
+        <div>
+          {/* Breadcrumb */}
+          <div className="text-sm text-gray-500 mb-4 flex items-center gap-2">
+            <button onClick={() => setSelectedCatProv(null)} className="hover:text-blue-600">Categorías de Proveedores</button>
+            <span>/</span>
+            <span className="text-gray-900">{c.nombre}</span>
+          </div>
+
+          {/* Header */}
+          <div className="flex items-start justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <BotonVolver onClick={() => setSelectedCatProv(null)} variant="minimal" texto="" />
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">{c.nombre}</h1>
+                <p className="text-sm text-gray-500">Categoría de Proveedor</p>
+              </div>
+            </div>
+            <button
+              onClick={() => handleEditar(c)}
+              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1"
+            >
+              <Edit className="w-4 h-4" /> Editar
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="grid grid-cols-3 gap-6">
+            <div className="col-span-2 space-y-6">
+              <div className="bg-white rounded-lg border p-6">
+                <h3 className="font-semibold text-gray-900 mb-4">Configuración</h3>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500">Disponible para clientes:</span>
+                    <span className={`ml-2 font-medium ${c.disponible_clientes ? "text-green-600" : "text-gray-400"}`}>
+                      {c.disponible_clientes ? "Sí" : "No"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Disponible para proveedores:</span>
+                    <span className={`ml-2 font-medium ${c.disponible_proveedores ? "text-green-600" : "text-gray-400"}`}>
+                      {c.disponible_proveedores ? "Sí" : "No"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Tipo de Control:</span>
+                    <span className="ml-2 font-medium">{c.tipo_control}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Req. OC para facturar:</span>
+                    <span className={`ml-2 font-medium ${c.requiere_oc_para_facturar ? "text-green-600" : "text-gray-400"}`}>
+                      {c.requiere_oc_para_facturar ? "Sí" : "No"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Comprobantes confidenciales:</span>
+                    <span className={`ml-2 font-medium ${c.comprobantes_confidenciales ? "text-red-600" : "text-gray-400"}`}>
+                      {c.comprobantes_confidenciales ? "Sí" : "No"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {(c.cuenta_cobrar_defecto || c.cuenta_pagar_defecto) && (
+                <div className="bg-white rounded-lg border p-6">
+                  <h3 className="font-semibold text-gray-900 mb-4">Cuentas Contables</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    {c.cuenta_cobrar_defecto && (
+                      <div>
+                        <span className="text-gray-500">Cuenta a cobrar por defecto:</span>
+                        <span className="ml-2 font-medium">{c.cuenta_cobrar_defecto}</span>
+                      </div>
+                    )}
+                    {c.cuenta_pagar_defecto && (
+                      <div>
+                        <span className="text-gray-500">Cuenta a pagar por defecto:</span>
+                        <span className="ml-2 font-medium">{c.cuenta_pagar_defecto}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Panel lateral */}
+            <div className="space-y-6">
+              <div className="bg-white rounded-lg border p-6">
+                <h3 className="font-semibold text-gray-900 mb-4">Resumen</h3>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Proveedores con esta categoría:</span>
+                    <span className="font-bold text-gray-900">
+                      {proveedores.filter(p => p.categoria_proveedor === c.nombre).length}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // Vista formulario
+    if (creandoCatProv) {
+      return (
+        <div className="max-w-5xl mx-auto">
+          <div className="flex items-center gap-4 mb-4">
+            <BotonVolver onClick={() => { setCreandoCatProv(false); setSelectedCatProv(null); setNuevaCatProv(catProvFormVacio) }} variant="minimal" texto="" />
+            <h1 className="text-xl font-bold text-gray-900">
+              {selectedCatProv ? `Editando: ${selectedCatProv.nombre}` : "Nueva Categoría de Proveedor"}
+            </h1>
+          </div>
+
+          <div className="bg-white rounded-lg border overflow-hidden">
+            {/* Nombre */}
+            <div className="px-6 pt-5 pb-4 border-b">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
+              <input
+                type="text"
+                value={cat.nombre}
+                onChange={e => setCat({ nombre: e.target.value })}
+                className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+              />
+            </div>
+
+            {/* Fila de controles */}
+            <div className="grid grid-cols-2 gap-x-12 px-6 py-5 border-b">
+              {/* Columna izquierda */}
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cat.disponible_clientes}
+                    onChange={e => setCat({ disponible_clientes: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 accent-blue-600"
+                  />
+                  Disponible para clientes
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cat.disponible_proveedores}
+                    onChange={e => setCat({ disponible_proveedores: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 accent-blue-600"
+                  />
+                  Disponible para proveedores
+                </label>
+                <div className="flex items-center gap-3 pt-1">
+                  <span className="text-sm text-gray-700 whitespace-nowrap">Tipo de Control</span>
+                  <select
+                    value={cat.tipo_control}
+                    onChange={e => setCat({ tipo_control: e.target.value as CategoriaProveedor["tipo_control"] })}
+                    className="flex-1 border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Ninguno">Ninguno</option>
+                    <option value="Por Avisos">Por Avisos</option>
+                    <option value="Por Bloqueo">Por Bloqueo</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Columna derecha */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-700 whitespace-nowrap w-52">Cuenta a cobrar por defecto</span>
+                  <select
+                    value={cat.cuenta_cobrar_defecto}
+                    onChange={e => setCat({ cuenta_cobrar_defecto: e.target.value })}
+                    className="flex-1 border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value=""></option>
+                    {CUENTAS_COBRAR.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-700 whitespace-nowrap w-52">Cuenta a pagar por defecto</span>
+                  <select
+                    value={cat.cuenta_pagar_defecto}
+                    onChange={e => setCat({ cuenta_pagar_defecto: e.target.value })}
+                    className="flex-1 border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value=""></option>
+                    {CUENTAS_PAGAR.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cat.requiere_oc_para_facturar}
+                    onChange={e => setCat({ requiere_oc_para_facturar: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300"
+                  />
+                  Requiere Orden de Compra para Facturar
+                </label>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cat.comprobantes_confidenciales}
+                    onChange={e => setCat({ comprobantes_confidenciales: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300"
+                  />
+                  Comprobantes confidenciales
+                </label>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex border-b px-6 pt-2">
+              {[
+                { id: "listas_precios", label: "Listas de Precios Permitidas" },
+                { id: "grupos_descuentos", label: "Grupos de Descuentos Permitidos" },
+                { id: "cuentas_perm", label: "Cuentas Permitidas para Proveedores" },
+                { id: "leyenda", label: "Leyenda para Impresión de Presupuestos" },
+                { id: "grupos", label: "Grupos" },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setCatProvTabActivo(tab.id as typeof catProvTabActivo)}
+                  className={`px-4 py-2 text-sm border-b-2 transition-colors whitespace-nowrap ${
+                    catProvTabActivo === tab.id
+                      ? "border-blue-600 text-blue-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="px-6 py-4">
+              {catProvTabActivo === "listas_precios" && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-3">Si no se selecciona ninguna se permitirán todas las Listas de Precios</p>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b text-xs text-gray-600 uppercase">
+                        <th className="text-left py-2 px-3">Nombre lista de precios</th>
+                        <th className="text-left py-2 px-3">Tipo de lista de precios</th>
+                        <th className="text-left py-2 px-3">Moneda</th>
+                        <th className="py-2 px-3 w-8">
+                          <Trash2 className="w-3.5 h-3.5 text-gray-400" />
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cat.listas_precios.map(lp => (
+                        <tr key={lp.id} className="border-b">
+                          <td className="py-1.5 px-3">
+                            <input type="text" value={lp.nombre} onChange={e => updateListaPrecio(lp.id, { nombre: e.target.value })}
+                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Nombre" />
+                          </td>
+                          <td className="py-1.5 px-3">
+                            <input type="text" value={lp.tipo} onChange={e => updateListaPrecio(lp.id, { tipo: e.target.value })}
+                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Tipo" />
+                          </td>
+                          <td className="py-1.5 px-3">
+                            <select value={lp.moneda} onChange={e => updateListaPrecio(lp.id, { moneda: e.target.value as "ARS" | "USD" | "EUR" })}
+                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+                              <option value="ARS">ARS</option>
+                              <option value="USD">USD</option>
+                              <option value="EUR">EUR</option>
+                            </select>
+                          </td>
+                          <td className="py-1.5 px-3">
+                            <button onClick={() => removeListaPrecio(lp.id)} className="text-red-400 hover:text-red-600">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <button onClick={addListaPrecio} className="mt-2 text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                    <Plus className="w-3.5 h-3.5" /> Añadir un elemento
+                  </button>
+                </div>
+              )}
+              {catProvTabActivo !== "listas_precios" && (
+                <p className="text-sm text-gray-400 py-4 text-center">Sin elementos configurados.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Acciones */}
+          <div className="flex justify-end gap-3 mt-4">
+            <button
+              onClick={() => {
+                setCreandoCatProv(false)
+                setNuevaCatProv(catProvFormVacio)
+                // Si estábamos editando, volver a la ficha; si era nueva, volver al listado
+                if (!selectedCatProv) setSelectedCatProv(null)
+                else setCreandoCatProv(false)
+              }}
+              className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleGuardarCat}
+              disabled={!cat.nombre.trim()}
+              className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Save className="w-4 h-4" />
+              {selectedCatProv ? "Guardar Cambios" : "Crear Categoría"}
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    // Vista listado
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Categorías de Proveedores</h1>
+            <p className="text-gray-500 mt-1">Configure las categorías para clasificar sus proveedores</p>
+          </div>
+          <button
+            onClick={handleNueva}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+          >
+            <Plus className="w-4 h-4" /> Nueva Categoría
+          </button>
+        </div>
+
+        <div className="bg-white rounded-lg border overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b">
+              <tr className="text-xs text-gray-500 uppercase">
+                <th className="text-left py-3 px-4">Nombre</th>
+                <th className="text-center py-3 px-4">Clientes</th>
+                <th className="text-center py-3 px-4">Proveedores</th>
+                <th className="text-left py-3 px-4">Tipo Control</th>
+                <th className="text-center py-3 px-4">Req. OC</th>
+                <th className="text-center py-3 px-4">Confidencial</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loadingCatProv && (
+                <tr>
+                  <td colSpan={6} className="py-10 text-center text-gray-400 text-sm">
+                    Cargando categorías...
+                  </td>
+                </tr>
+              )}
+              {!loadingCatProv && categoriasProveedor.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-10 text-center text-gray-400 text-sm">
+                    No hay categorías configuradas. Hacé clic en &quot;Nueva Categoría&quot; para crear una.
+                  </td>
+                </tr>
+              )}
+              {categoriasProveedor.map(c => (
+                <tr
+                  key={c.id}
+                  onClick={() => handleVerDetalle(c)}
+                  className="border-b hover:bg-gray-50 cursor-pointer"
+                >
+                  <td className="py-3 px-4 font-medium text-gray-900">{c.nombre}</td>
+                  <td className="py-3 px-4 text-center">
+                    {c.disponible_clientes ? <CheckCircle className="w-4 h-4 text-green-500 mx-auto" /> : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    {c.disponible_proveedores ? <CheckCircle className="w-4 h-4 text-green-500 mx-auto" /> : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{c.tipo_control}</td>
+                  <td className="py-3 px-4 text-center">
+                    {c.requiere_oc_para_facturar ? <CheckCircle className="w-4 h-4 text-green-500 mx-auto" /> : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    {c.comprobantes_confidenciales ? <Lock className="w-4 h-4 text-red-500 mx-auto" /> : <span className="text-gray-300">—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
+  // =====================================================
   // RENDER PLACEHOLDER
   // =====================================================
   const renderPlaceholder = (title: string) => (
@@ -3749,6 +5155,8 @@ export default function ModuloCompras() {
         return renderPlaceholder("Componentes de Evaluación de Equipos")
       case "rangos_precio":
         return renderPlaceholder("Rangos de Precio por Rol")
+      case "cat_proveedores":
+        return renderCatProveedores()
       default:
         return renderProveedores()
     }
