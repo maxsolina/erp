@@ -2810,10 +2810,7 @@ export default function ModuloCompras() {
             <h1 className="text-2xl font-bold text-gray-900">Recepciones de Compra</h1>
             <p className="text-gray-500 mt-1 text-sm">Las recepciones se generan automáticamente desde Órdenes de Compra, Tomas de Equipo y Transferencias.</p>
           </div>
-          <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span>No se crean manualmente</span>
-          </div>
+
         </div>
 
         {/* Estadísticas */}
