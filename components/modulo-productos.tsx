@@ -8,7 +8,7 @@ import {
   Camera, Filter, MoreHorizontal
 } from "lucide-react"
 
-import { fetchProductos, guardarProductoEnDB } from "@/lib/productos-actions"
+import { createClient } from "@/lib/supabase/client"
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -733,16 +733,17 @@ export default function ModuloProductos() {
   const cargarProductos = useCallback(async () => {
     setCargando(true)
     setErrorCarga(null)
-    try {
-      const res = await fetch("/api/productos", { cache: "no-store" })
-      if (!res.ok) throw new Error("Error al cargar productos")
-      const data = await res.json()
-      setProductos(Array.isArray(data) ? data : [])
-    } catch (e: any) {
-      setErrorCarga(e.message ?? "Error al cargar productos")
-    } finally {
-      setCargando(false)
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from("productos")
+      .select("*")
+      .order("nombre", { ascending: true })
+    if (error) {
+      setErrorCarga(error.message)
+    } else {
+      setProductos((data ?? []) as Producto[])
     }
+    setCargando(false)
   }, [])
 
   useEffect(() => {
@@ -781,25 +782,32 @@ export default function ModuloProductos() {
   }, [productos, busqueda, filtroActivo, filtroCategoria, filtroMarca, filtroTipo, filtroSN])
 
   async function handleGuardar(form: FormProducto) {
-    try {
-      const { id: productoId, historial_costos: _hc, ...payload } = form
-      const url = productoId ? `/api/productos/${productoId}` : "/api/productos"
-      const method = productoId ? "PUT" : "POST"
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error ?? "Error al guardar")
-      }
-      await cargarProductos()
-      setVista("listado")
-      setProductoSeleccionado(null)
-    } catch (e: any) {
-      alert(e.message ?? "Error al guardar el producto")
+    const supabase = createClient()
+    const { id: productoId, historial_costos, imagen_url, ...rest } = form
+    // imagen_url solo se guarda si es una URL real (no blob local)
+    const payload = {
+      ...rest,
+      historial_costos: historial_costos ?? [],
+      imagen_url: imagen_url?.startsWith("blob:") ? null : imagen_url ?? null,
     }
+
+    let error: any = null
+    if (productoId) {
+      const res = await supabase.from("productos").update(payload).eq("id", productoId)
+      error = res.error
+    } else {
+      const res = await supabase.from("productos").insert([payload])
+      error = res.error
+    }
+
+    if (error) {
+      alert(error.message ?? "Error al guardar el producto")
+      return
+    }
+
+    await cargarProductos()
+    setVista("listado")
+    setProductoSeleccionado(null)
   }
 
   // ── Vistas de formulario ──────────────────────────────────────────────────
