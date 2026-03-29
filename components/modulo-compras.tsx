@@ -341,6 +341,31 @@ interface MovimientoCtaCteProveedor {
   saldo: number
 }
 
+// Depósitos y ubicaciones (compartidos con modulo-stock)
+const DEPOSITOS_OC = [
+  { id: 1, codigo: "CC", nombre: "Casa Central" },
+  { id: 2, codigo: "PN", nombre: "Puerto Norte" },
+  { id: 3, codigo: "CS", nombre: "Casilda" },
+]
+const UBICACIONES_OC = [
+  { id: 1,   deposito_id: 1, codigo: "CC/Stock",              nombre: "Stock" },
+  { id: 2,   deposito_id: 1, codigo: "CC/Usados",             nombre: "Usados" },
+  { id: 3,   deposito_id: 1, codigo: "CC/Deposito B",         nombre: "Depósito B" },
+  { id: 4,   deposito_id: 1, codigo: "CC/Deposito C",         nombre: "Depósito C" },
+  { id: 5,   deposito_id: 1, codigo: "CC/En Reparación",      nombre: "En Reparación" },
+  { id: 101, deposito_id: 1, codigo: "CC/Input",              nombre: "Entrada" },
+  { id: 102, deposito_id: 1, codigo: "CC/Quality Control",    nombre: "Control de Calidad" },
+  { id: 103, deposito_id: 1, codigo: "CC/Zona empaquetado",   nombre: "Zona de Empaquetado" },
+  { id: 104, deposito_id: 1, codigo: "CC/Salida",             nombre: "Salida" },
+  { id: 8,   deposito_id: 2, codigo: "PN/Stock",              nombre: "Stock" },
+  { id: 9,   deposito_id: 2, codigo: "PN/Outlet",             nombre: "Outlet" },
+  { id: 201, deposito_id: 2, codigo: "PN/Input",              nombre: "Entrada" },
+  { id: 202, deposito_id: 2, codigo: "PN/Output",             nombre: "Salida" },
+  { id: 12,  deposito_id: 3, codigo: "CS/Stock",              nombre: "Stock" },
+  { id: 301, deposito_id: 3, codigo: "CS/Input",              nombre: "Entrada" },
+  { id: 302, deposito_id: 3, codigo: "CS/Output",             nombre: "Salida" },
+]
+
 export default function ModuloCompras() {
   // Active view state
   const [activeView, setActiveView] = useState("proveedores")
@@ -1735,27 +1760,18 @@ export default function ModuloCompras() {
               </div>
               <div>
                 <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Proveedor <span className="text-red-500">*</span></label>
-                {proveedores.length > 0 ? (
-                  <select
-                    value={oc.proveedor_id || ""}
-                    onChange={e => {
-                      const p = proveedores.find(p => p.id === Number(e.target.value))
-                      if (p) setNuevaOC(prev => ({ ...prev, proveedor_id: p.id, proveedor_nombre: p.nombre, moneda: p.moneda_habitual }))
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Seleccionar proveedor...</option>
-                    {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    value={oc.proveedor_nombre || ""}
-                    onChange={e => setNuevaOC(prev => ({ ...prev, proveedor_nombre: e.target.value }))}
-                    placeholder="Nombre del proveedor..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-                  />
-                )}
+                <select
+                  value={oc.proveedor_id || ""}
+                  onChange={e => {
+                    const p = proveedores.find(p => p.id === Number(e.target.value))
+                    if (p) setNuevaOC(prev => ({ ...prev, proveedor_id: p.id, proveedor_nombre: p.nombre, moneda: p.moneda_habitual }))
+                    else setNuevaOC(prev => ({ ...prev, proveedor_id: undefined, proveedor_nombre: "" }))
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="">Seleccionar proveedor...</option>
+                  {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                </select>
               </div>
               <div>
                 <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Termino de Pago</label>
@@ -1820,24 +1836,37 @@ export default function ModuloCompras() {
                 <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Deposito Destino <span className="text-red-500">*</span></label>
                 <select
                   value={oc.deposito_destino || ""}
-                  onChange={e => setNuevaOC(prev => ({ ...prev, deposito_destino: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                  onChange={e => setNuevaOC(prev => ({ ...prev, deposito_destino: e.target.value, ubicacion_destino: "" }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white"
                 >
                   <option value="">Seleccionar deposito...</option>
-                  <option value="Deposito Principal">Deposito Principal</option>
-                  <option value="Deposito Usados">Deposito Usados</option>
-                  <option value="Deposito Reparacion">Deposito Reparacion</option>
+                  {DEPOSITOS_OC.map(d => (
+                    <option key={d.id} value={d.nombre}>{d.nombre}</option>
+                  ))}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Ubicacion Destino</label>
-                <input
-                  type="text"
+                <label className={`block text-xs uppercase tracking-wide mb-1 ${oc.deposito_destino ? "text-gray-500" : "text-gray-300"}`}>
+                  Ubicacion Destino
+                </label>
+                <select
                   value={oc.ubicacion_destino || ""}
                   onChange={e => setNuevaOC(prev => ({ ...prev, ubicacion_destino: e.target.value }))}
-                  placeholder="Ej: Estante A1..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-                />
+                  disabled={!oc.deposito_destino}
+                  className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white transition-colors ${
+                    oc.deposito_destino
+                      ? "border-gray-300 text-gray-900"
+                      : "border-gray-200 text-gray-400 cursor-not-allowed bg-gray-50"
+                  }`}
+                >
+                  <option value="">{oc.deposito_destino ? "Seleccionar ubicación..." : "Seleccione un depósito primero"}</option>
+                  {oc.deposito_destino && UBICACIONES_OC
+                    .filter(u => DEPOSITOS_OC.find(d => d.nombre === oc.deposito_destino)?.id === u.deposito_id)
+                    .map(u => (
+                      <option key={u.id} value={u.codigo}>{u.nombre}</option>
+                    ))
+                  }
+                </select>
               </div>
               <div>
                 <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Moneda</label>
