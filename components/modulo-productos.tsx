@@ -2,13 +2,9 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from "react"
 import { createClient } from "@supabase/supabase-js"
-import {
-  Search, Plus, Edit2, Eye, X, Package, History,
-  CheckCircle, XCircle, ToggleLeft, ToggleRight,
-  Filter, ChevronDown
-} from "lucide-react"
+import { Search, Plus, Edit2, Package, CheckCircle, XCircle, ChevronLeft } from "lucide-react"
 
-// ─── Supabase client ──────────────────────────────────────────────────────────
+// ─── Supabase ─────────────────────────────────────────────────────────────────
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -82,52 +78,22 @@ const CUENTAS_VENTAS = ["4.1.01 - Ventas de mercadería", "4.1.02 - Ventas de se
 const CUENTAS_EXISTENCIAS = ["1.1.03 - Mercaderías", "1.1.04 - Materias primas", "1.1.05 - Productos terminados"]
 
 const DEFAULT_FORM: FormProducto = {
-  imagen_url: null,
-  nombre: "",
-  codigo_interno: "",
-  categoria: "",
-  marca: "",
-  modelo: "",
-  color: "",
-  tipo: "almacenable",
-  puede_venderse: true,
-  puede_comprarse: true,
-  activo: true,
-  stock_real: 0,
-  stock_minimo: 0,
-  stock_maximo: 0,
-  stock_critico: 0,
-  tiene_numero_serie: false,
-  requiere_color: false,
-  requiere_bateria: false,
-  requiere_outlet: false,
-  requiere_observaciones: false,
-  costo_manual: 0,
-  moneda_costo: "ARS",
-  costo_contable: 0,
-  historial_costos: [],
-  garantia_propia_valor: 0,
-  garantia_propia_unidad: "meses",
-  garantia_fabricante_valor: 0,
-  garantia_fabricante_unidad: "meses",
-  iva_venta: 21,
-  iva_compra: 21,
-  cuenta_ventas: "",
-  cuenta_existencias: "",
-  observaciones: "",
+  imagen_url: null, nombre: "", codigo_interno: "", categoria: "", marca: "", modelo: "",
+  color: "", tipo: "almacenable", puede_venderse: true, puede_comprarse: true, activo: true,
+  stock_real: 0, stock_minimo: 0, stock_maximo: 0, stock_critico: 0,
+  tiene_numero_serie: false, requiere_color: false, requiere_bateria: false,
+  requiere_outlet: false, requiere_observaciones: false,
+  costo_manual: 0, moneda_costo: "ARS", costo_contable: 0, historial_costos: [],
+  garantia_propia_valor: 0, garantia_propia_unidad: "meses",
+  garantia_fabricante_valor: 0, garantia_fabricante_unidad: "meses",
+  iva_venta: 21, iva_compra: 21, cuenta_ventas: "", cuenta_existencias: "", observaciones: "",
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmt(n: number) {
-  return n.toLocaleString("es-AR", { minimumFractionDigits: 0 })
-}
-
-// ─── Componentes UI reutilizables ─────────────────────────────────────────────
+// ─── Helpers UI ───────────────────────────────────────────────────────────────
 
 function Label({ children, required }: { children: React.ReactNode; required?: boolean }) {
   return (
-    <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
+    <label className="block text-xs font-medium text-gray-500 mb-1">
       {children}{required && <span className="text-red-500 ml-0.5">*</span>}
     </label>
   )
@@ -136,16 +102,16 @@ function Label({ children, required }: { children: React.ReactNode; required?: b
 function Input({ className = "", ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className={`w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] placeholder-[var(--color-text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent disabled:opacity-50 ${className}`}
+      className={`w-full px-3 py-2 text-sm rounded-md border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-900 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500 ${className}`}
       {...props}
     />
   )
 }
 
-function Select({ className = "", children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement> & { children: React.ReactNode }) {
+function Sel({ className = "", children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement> & { children: React.ReactNode }) {
   return (
     <select
-      className={`w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent ${className}`}
+      className={`w-full px-3 py-2 text-sm rounded-md border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-900 focus:border-transparent disabled:bg-gray-50 ${className}`}
       {...props}
     >
       {children}
@@ -155,14 +121,14 @@ function Select({ className = "", children, ...props }: React.SelectHTMLAttribut
 
 function Checkbox({ label, checked, onChange, disabled }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
-    <label className={`flex items-center gap-2 cursor-pointer ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}>
+    <label className={`flex items-center gap-2 cursor-pointer select-none ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}>
       <div
-        className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${checked ? "bg-[var(--color-primary)] border-[var(--color-primary)]" : "border-[var(--color-border)]"}`}
+        className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${checked ? "bg-indigo-900 border-indigo-900" : "border-gray-300 bg-white"}`}
         onClick={() => !disabled && onChange(!checked)}
       >
-        {checked && <CheckCircle className="w-3 h-3 text-white" />}
+        {checked && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
       </div>
-      <span className="text-sm text-[var(--color-text)]">{label}</span>
+      <span className="text-sm text-gray-700">{label}</span>
     </label>
   )
 }
@@ -172,14 +138,14 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
     <button
       type="button"
       onClick={onClick}
-      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${active ? "border-[var(--color-primary)] text-[var(--color-primary)]" : "border-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"}`}
+      className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${active ? "border-indigo-900 text-indigo-900" : "border-transparent text-gray-500 hover:text-gray-700"}`}
     >
       {children}
     </button>
   )
 }
 
-// ─── Formulario de Producto ───────────────────────────────────────────────────
+// ─── Formulario ───────────────────────────────────────────────────────────────
 
 interface FormularioProductoProps {
   inicial: FormProducto | null
@@ -212,58 +178,51 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
     e.preventDefault()
     if (soloLectura || !validar()) return
     setGuardando(true)
-    try {
-      await onGuardar(form)
-    } finally {
-      setGuardando(false)
-    }
+    try { await onGuardar(form) } finally { setGuardando(false) }
   }
 
+  const TABS = [
+    { id: "info", label: "Información" },
+    { id: "inventario", label: "Inventario" },
+    { id: "abastecimientos", label: "Abastecimientos" },
+    { id: "ventas", label: "Ventas" },
+    { id: "contabilidad", label: "Contabilidad" },
+    { id: "observaciones", label: "Observaciones" },
+  ] as const
+
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-0 h-full">
+    <form onSubmit={handleSubmit} className="flex flex-col h-full bg-gray-50">
       {/* Cabecera */}
-      <div className="p-6 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
+      <div className="p-6 bg-white border-b border-gray-200">
         <div className="flex flex-col gap-4">
-          {/* Fila 1: Nombre y Código */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label required>Nombre del producto</Label>
-              <Input
-                value={form.nombre}
-                onChange={e => set("nombre", e.target.value)}
-                placeholder="Ej: iPhone 15 Pro Max 256GB Negro"
-                disabled={soloLectura}
-              />
+              <Input value={form.nombre} onChange={e => set("nombre", e.target.value)} placeholder="Ej: iPhone 15 Pro Max 256GB Negro" disabled={soloLectura} />
               {errores.nombre && <p className="text-xs text-red-500 mt-1">{errores.nombre}</p>}
             </div>
             <div>
               <Label required>Código interno</Label>
-              <Input
-                value={form.codigo_interno}
-                onChange={e => set("codigo_interno", e.target.value)}
-                placeholder="Ej: IP15PM-256-BLK"
-                disabled={soloLectura}
-              />
+              <Input value={form.codigo_interno} onChange={e => set("codigo_interno", e.target.value)} placeholder="Ej: IP15PM-256-BLK" disabled={soloLectura} />
               {errores.codigo_interno && <p className="text-xs text-red-500 mt-1">{errores.codigo_interno}</p>}
             </div>
           </div>
 
-          {/* Fila 2: Categoría, Marca, Modelo, Color */}
           <div className="grid grid-cols-4 gap-3">
             <div>
               <Label required>Categoría</Label>
-              <Select value={form.categoria} onChange={e => set("categoria", e.target.value)} disabled={soloLectura}>
+              <Sel value={form.categoria} onChange={e => set("categoria", e.target.value)} disabled={soloLectura}>
                 <option value="">Seleccionar...</option>
                 {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
-              </Select>
+              </Sel>
               {errores.categoria && <p className="text-xs text-red-500 mt-1">{errores.categoria}</p>}
             </div>
             <div>
               <Label>Marca</Label>
-              <Select value={form.marca} onChange={e => set("marca", e.target.value)} disabled={soloLectura}>
+              <Sel value={form.marca} onChange={e => set("marca", e.target.value)} disabled={soloLectura}>
                 <option value="">Seleccionar...</option>
                 {MARCAS.map(m => <option key={m} value={m}>{m}</option>)}
-              </Select>
+              </Sel>
             </div>
             <div>
               <Label>Modelo</Label>
@@ -271,22 +230,21 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
             </div>
             <div>
               <Label>Color</Label>
-              <Select value={form.color} onChange={e => set("color", e.target.value)} disabled={soloLectura}>
+              <Sel value={form.color} onChange={e => set("color", e.target.value)} disabled={soloLectura}>
                 <option value="">Sin color</option>
                 {COLORES.map(c => <option key={c} value={c}>{c}</option>)}
-              </Select>
+              </Sel>
             </div>
           </div>
 
-          {/* Fila 3: Tipo y checkboxes */}
           <div className="flex flex-wrap items-center gap-6">
             <div className="flex items-center gap-2">
-              <Label>Tipo:</Label>
-              <Select value={form.tipo} onChange={e => set("tipo", e.target.value as TipoProducto)} disabled={soloLectura} className="w-40">
+              <span className="text-xs font-medium text-gray-500">Tipo:</span>
+              <Sel value={form.tipo} onChange={e => set("tipo", e.target.value as TipoProducto)} disabled={soloLectura} className="w-40">
                 <option value="almacenable">Almacenable</option>
                 <option value="servicio">Servicio</option>
                 <option value="consumible">Consumible</option>
-              </Select>
+              </Sel>
             </div>
             <Checkbox label="Puede venderse" checked={form.puede_venderse} onChange={v => set("puede_venderse", v)} disabled={soloLectura} />
             <Checkbox label="Puede comprarse" checked={form.puede_comprarse} onChange={v => set("puede_comprarse", v)} disabled={soloLectura} />
@@ -296,26 +254,22 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 overflow-x-auto">
-        {(["info", "inventario", "abastecimientos", "ventas", "contabilidad", "observaciones"] as const).map(t => (
-          <TabBtn key={t} active={tab === t} onClick={() => setTab(t)}>
-            {t === "info" ? "Información" : t === "inventario" ? "Inventario" : t === "abastecimientos" ? "Abastecimientos" : t === "ventas" ? "Ventas" : t === "contabilidad" ? "Contabilidad" : "Observaciones"}
-          </TabBtn>
-        ))}
+      <div className="flex border-b border-gray-200 bg-white px-2 overflow-x-auto">
+        {TABS.map(t => <TabBtn key={t.id} active={tab === t.id} onClick={() => setTab(t.id)}>{t.label}</TabBtn>)}
       </div>
 
-      {/* Contenido del tab */}
-      <div className="flex-1 overflow-y-auto p-6 bg-[var(--color-bg)]">
+      {/* Contenido */}
+      <div className="flex-1 overflow-y-auto p-6">
 
         {tab === "info" && (
-          <p className="text-sm text-[var(--color-text-secondary)]">Sección de información general. Próximamente: descripción, ficha técnica, etc.</p>
+          <p className="text-sm text-gray-400">Sección de información general. Próximamente: descripción, ficha técnica, etc.</p>
         )}
 
         {tab === "inventario" && (
           <div className="flex flex-col gap-6">
             {form.tipo !== "servicio" && (
-              <div>
-                <h3 className="text-sm font-semibold text-[var(--color-text)] mb-3">Stock y niveles</h3>
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <h3 className="text-sm font-semibold text-gray-900 mb-4">Stock y niveles</h3>
                 <div className="grid grid-cols-4 gap-4">
                   {([
                     { key: "stock_real", label: "Stock real", readOnly: true },
@@ -325,27 +279,20 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
                   ] as { key: keyof FormProducto; label: string; readOnly?: boolean }[]).map(({ key, label, readOnly }) => (
                     <div key={key}>
                       <Label>{label}</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={form[key] as number}
-                        onChange={e => set(key, Number(e.target.value))}
-                        disabled={soloLectura || readOnly}
-                      />
+                      <Input type="number" min={0} value={form[key] as number} onChange={e => set(key, Number(e.target.value))} disabled={soloLectura || readOnly} />
                     </div>
                   ))}
                 </div>
               </div>
             )}
-
             {form.tipo === "almacenable" && (
-              <div>
-                <h3 className="text-sm font-semibold text-[var(--color-text)] mb-3">Tracking por número de serie</h3>
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Tracking por número de serie</h3>
                 <div className="flex flex-col gap-3">
                   <Checkbox label="Número de serie único" checked={form.tiene_numero_serie} onChange={v => set("tiene_numero_serie", v)} disabled={soloLectura} />
                   {form.tiene_numero_serie && (
-                    <div className="ml-6 flex flex-col gap-2 p-4 bg-[var(--color-surface)] rounded-lg border border-[var(--color-border)]">
-                      <p className="text-xs text-[var(--color-text-secondary)] mb-1">Atributos requeridos por unidad:</p>
+                    <div className="ml-6 flex flex-col gap-2 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <p className="text-xs text-gray-500 mb-1">Atributos requeridos por unidad:</p>
                       <Checkbox label="Color" checked={form.requiere_color} onChange={v => set("requiere_color", v)} disabled={soloLectura} />
                       <Checkbox label="% Batería" checked={form.requiere_bateria} onChange={v => set("requiere_bateria", v)} disabled={soloLectura} />
                       <Checkbox label="Outlet (sí/no)" checked={form.requiere_outlet} onChange={v => set("requiere_outlet", v)} disabled={soloLectura} />
@@ -359,8 +306,8 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
         )}
 
         {tab === "abastecimientos" && (
-          <div className="flex flex-col gap-4">
-            <h3 className="text-sm font-semibold text-[var(--color-text)] mb-1">Costos</h3>
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="text-sm font-semibold text-gray-900 mb-4">Costos</h3>
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label>Costo manual</Label>
@@ -368,9 +315,9 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
               </div>
               <div>
                 <Label>Moneda</Label>
-                <Select value={form.moneda_costo} onChange={e => set("moneda_costo", e.target.value)} disabled={soloLectura}>
+                <Sel value={form.moneda_costo} onChange={e => set("moneda_costo", e.target.value)} disabled={soloLectura}>
                   {MONEDAS.map(m => <option key={m} value={m}>{m}</option>)}
-                </Select>
+                </Sel>
               </div>
               <div>
                 <Label>Costo contable</Label>
@@ -381,68 +328,70 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
         )}
 
         {tab === "ventas" && (
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <h3 className="text-sm font-semibold text-[var(--color-text)] mb-3">Garantía propia</h3>
-              <div className="flex gap-2">
-                <Input type="number" min={0} value={form.garantia_propia_valor} onChange={e => set("garantia_propia_valor", Number(e.target.value))} disabled={soloLectura} className="flex-1" />
-                <Select value={form.garantia_propia_unidad} onChange={e => set("garantia_propia_unidad", e.target.value as "meses" | "dias")} disabled={soloLectura} className="w-28">
-                  <option value="meses">Meses</option>
-                  <option value="dias">Días</option>
-                </Select>
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Garantía propia</h3>
+                <div className="flex gap-2">
+                  <Input type="number" min={0} value={form.garantia_propia_valor} onChange={e => set("garantia_propia_valor", Number(e.target.value))} disabled={soloLectura} className="flex-1" />
+                  <Sel value={form.garantia_propia_unidad} onChange={e => set("garantia_propia_unidad", e.target.value as "meses" | "dias")} disabled={soloLectura} className="w-28">
+                    <option value="meses">Meses</option>
+                    <option value="dias">Días</option>
+                  </Sel>
+                </div>
               </div>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-[var(--color-text)] mb-3">Garantía del fabricante</h3>
-              <div className="flex gap-2">
-                <Input type="number" min={0} value={form.garantia_fabricante_valor} onChange={e => set("garantia_fabricante_valor", Number(e.target.value))} disabled={soloLectura} className="flex-1" />
-                <Select value={form.garantia_fabricante_unidad} onChange={e => set("garantia_fabricante_unidad", e.target.value as "meses" | "dias")} disabled={soloLectura} className="w-28">
-                  <option value="meses">Meses</option>
-                  <option value="dias">Días</option>
-                </Select>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Garantía del fabricante</h3>
+                <div className="flex gap-2">
+                  <Input type="number" min={0} value={form.garantia_fabricante_valor} onChange={e => set("garantia_fabricante_valor", Number(e.target.value))} disabled={soloLectura} className="flex-1" />
+                  <Sel value={form.garantia_fabricante_unidad} onChange={e => set("garantia_fabricante_unidad", e.target.value as "meses" | "dias")} disabled={soloLectura} className="w-28">
+                    <option value="meses">Meses</option>
+                    <option value="dias">Días</option>
+                  </Sel>
+                </div>
               </div>
             </div>
           </div>
         )}
 
         {tab === "contabilidad" && (
-          <div className="flex flex-col gap-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>IVA de venta</Label>
-                <Select value={form.iva_venta} onChange={e => set("iva_venta", Number(e.target.value))} disabled={soloLectura}>
+                <Sel value={form.iva_venta} onChange={e => set("iva_venta", Number(e.target.value))} disabled={soloLectura}>
                   {OPCIONES_IVA.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </Select>
+                </Sel>
               </div>
               <div>
                 <Label>IVA de compra</Label>
-                <Select value={form.iva_compra} onChange={e => set("iva_compra", Number(e.target.value))} disabled={soloLectura}>
+                <Sel value={form.iva_compra} onChange={e => set("iva_compra", Number(e.target.value))} disabled={soloLectura}>
                   {OPCIONES_IVA.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </Select>
+                </Sel>
               </div>
               <div>
                 <Label>Cuenta de ventas</Label>
-                <Select value={form.cuenta_ventas} onChange={e => set("cuenta_ventas", e.target.value)} disabled={soloLectura}>
+                <Sel value={form.cuenta_ventas} onChange={e => set("cuenta_ventas", e.target.value)} disabled={soloLectura}>
                   <option value="">Seleccionar...</option>
                   {CUENTAS_VENTAS.map(c => <option key={c} value={c}>{c}</option>)}
-                </Select>
+                </Sel>
               </div>
               <div>
                 <Label>Cuenta de existencias</Label>
-                <Select value={form.cuenta_existencias} onChange={e => set("cuenta_existencias", e.target.value)} disabled={soloLectura}>
+                <Sel value={form.cuenta_existencias} onChange={e => set("cuenta_existencias", e.target.value)} disabled={soloLectura}>
                   <option value="">Seleccionar...</option>
                   {CUENTAS_EXISTENCIAS.map(c => <option key={c} value={c}>{c}</option>)}
-                </Select>
+                </Sel>
               </div>
             </div>
           </div>
         )}
 
         {tab === "observaciones" && (
-          <div>
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
             <Label>Notas internas</Label>
             <textarea
-              className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-none"
+              className="w-full px-3 py-2 text-sm rounded-md border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-900 resize-none disabled:bg-gray-50"
               rows={6}
               value={form.observaciones}
               onChange={e => set("observaciones", e.target.value)}
@@ -455,18 +404,18 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
 
       {/* Footer */}
       {!soloLectura && (
-        <div className="flex justify-end gap-3 p-4 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-white">
           <button
             type="button"
             onClick={onCancelar}
-            className="px-4 py-2 text-sm font-medium rounded-lg border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg)] transition-colors"
+            className="px-4 py-2 text-sm font-medium rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
           >
             Cancelar
           </button>
           <button
             type="submit"
             disabled={guardando}
-            className="px-5 py-2 text-sm font-medium rounded-lg bg-[var(--color-primary)] text-white hover:opacity-90 transition-opacity disabled:opacity-60"
+            className="px-5 py-2 text-sm font-medium rounded-md bg-indigo-900 text-white hover:bg-indigo-800 transition-colors disabled:opacity-60"
           >
             {guardando ? "Guardando..." : "Confirmar"}
           </button>
@@ -476,9 +425,9 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
   )
 }
 
-// ─── Módulo Productos (listado + vistas) ──────────────────────────────────────
+// ─── Módulo Productos ─────────────────────────────────────────────────────────
 
-type Vista = "listado" | "nuevo" | "editar" | "ver"
+type Vista = "listado" | "nuevo" | "editar"
 
 export default function ModuloProductos() {
   const [productos, setProductos] = useState<Producto[]>([])
@@ -498,11 +447,8 @@ export default function ModuloProductos() {
       .from("productos")
       .select("*")
       .order("nombre", { ascending: true })
-    if (err) {
-      setError(err.message)
-    } else {
-      setProductos((data ?? []) as Producto[])
-    }
+    if (err) setError(err.message)
+    else setProductos((data ?? []) as Producto[])
     setCargando(false)
   }, [])
 
@@ -522,16 +468,14 @@ export default function ModuloProductos() {
       err = res.error
     }
 
-    if (err) {
-      alert(err.message)
-      return
-    }
+    if (err) { alert(err.message); return }
     await cargarProductos()
     setVista("listado")
     setSeleccionado(null)
   }
 
-  async function handleToggleActivo(p: Producto) {
+  async function handleToggleActivo(e: React.MouseEvent, p: Producto) {
+    e.stopPropagation()
     const { error: err } = await supabase
       .from("productos")
       .update({ activo: !p.activo })
@@ -548,36 +492,32 @@ export default function ModuloProductos() {
       if (filtroTipo && p.tipo !== filtroTipo) return false
       if (busqueda) {
         const q = busqueda.toLowerCase()
-        if (
-          !p.nombre.toLowerCase().includes(q) &&
-          !p.codigo_interno.toLowerCase().includes(q) &&
-          !p.marca.toLowerCase().includes(q) &&
-          !p.categoria.toLowerCase().includes(q)
-        ) return false
+        if (!p.nombre.toLowerCase().includes(q) && !p.codigo_interno.toLowerCase().includes(q) && !p.marca.toLowerCase().includes(q) && !p.categoria.toLowerCase().includes(q)) return false
       }
       return true
     })
   }, [productos, filtroActivo, filtroCategoria, filtroTipo, busqueda])
 
-  // ── Vistas formulario ───────────────────────────────────────────────────────
+  // ── Vista formulario ────────────────────────────────────────────────────────
   if (vista !== "listado") {
-    const titulo = vista === "nuevo" ? "Nuevo producto" : vista === "editar" ? "Editar producto" : "Ver producto"
     return (
       <div className="flex flex-col h-full">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-2 px-6 py-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] text-sm">
-          <button onClick={() => { setVista("listado"); setSeleccionado(null) }} className="text-[var(--color-primary)] hover:underline font-medium">
+        <div className="flex items-center gap-2 px-6 py-3 border-b border-gray-200 bg-white text-sm">
+          <button
+            onClick={() => { setVista("listado"); setSeleccionado(null) }}
+            className="flex items-center gap-1 text-indigo-700 hover:text-indigo-900 font-medium transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" />
             Productos
           </button>
-          <span className="text-[var(--color-text-secondary)]">/</span>
-          <span className="text-[var(--color-text)]">{titulo}</span>
+          <span className="text-gray-400">/</span>
+          <span className="text-gray-900 font-medium">{vista === "nuevo" ? "Nuevo producto" : `Editar: ${seleccionado?.nombre}`}</span>
         </div>
         <div className="flex-1 overflow-hidden">
           <FormularioProducto
             inicial={seleccionado ? { ...seleccionado } : null}
             onGuardar={handleGuardar}
             onCancelar={() => { setVista("listado"); setSeleccionado(null) }}
-            soloLectura={vista === "ver"}
           />
         </div>
       </div>
@@ -586,16 +526,16 @@ export default function ModuloProductos() {
 
   // ── Listado ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-gray-50">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white">
         <div>
-          <h1 className="text-lg font-semibold text-[var(--color-text)]">Productos</h1>
-          <p className="text-xs text-[var(--color-text-secondary)]">{productosFiltrados.length} resultado{productosFiltrados.length !== 1 ? "s" : ""}</p>
+          <h1 className="text-2xl font-bold text-indigo-900">Productos</h1>
+          <p className="text-xs text-gray-500 mt-0.5">{productosFiltrados.length} resultado{productosFiltrados.length !== 1 ? "s" : ""}</p>
         </div>
         <button
           onClick={() => { setSeleccionado(null); setVista("nuevo") }}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-[var(--color-primary)] text-white hover:opacity-90 transition-opacity"
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-indigo-900 text-white hover:bg-indigo-800 transition-colors"
         >
           <Plus className="w-4 h-4" />
           Nuevo producto
@@ -603,21 +543,21 @@ export default function ModuloProductos() {
       </div>
 
       {/* Filtros */}
-      <div className="flex flex-wrap items-center gap-3 px-6 py-3 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
+      <div className="flex flex-wrap items-center gap-3 px-6 py-3 border-b border-gray-200 bg-white">
         <div className="relative flex-1 min-w-48">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-secondary)]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
             placeholder="Buscar por nombre, código, marca..."
             value={busqueda}
             onChange={e => setBusqueda(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+            className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-900"
           />
         </div>
         <select
           value={filtroActivo}
           onChange={e => setFiltroActivo(e.target.value as any)}
-          className="px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] focus:outline-none"
+          className="px-3 py-2 text-sm rounded-md border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-900"
         >
           <option value="todos">Todos</option>
           <option value="activos">Activos</option>
@@ -626,7 +566,7 @@ export default function ModuloProductos() {
         <select
           value={filtroCategoria}
           onChange={e => setFiltroCategoria(e.target.value)}
-          className="px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] focus:outline-none"
+          className="px-3 py-2 text-sm rounded-md border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-900"
         >
           <option value="">Todas las categorías</option>
           {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
@@ -634,7 +574,7 @@ export default function ModuloProductos() {
         <select
           value={filtroTipo}
           onChange={e => setFiltroTipo(e.target.value)}
-          className="px-3 py-2 text-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] focus:outline-none"
+          className="px-3 py-2 text-sm rounded-md border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-900"
         >
           <option value="">Todos los tipos</option>
           <option value="almacenable">Almacenable</option>
@@ -646,75 +586,60 @@ export default function ModuloProductos() {
       {/* Tabla */}
       <div className="flex-1 overflow-auto">
         {cargando ? (
-          <div className="flex items-center justify-center h-48 text-[var(--color-text-secondary)] text-sm">Cargando productos...</div>
+          <div className="flex items-center justify-center h-48 text-gray-400 text-sm">Cargando productos...</div>
         ) : error ? (
           <div className="flex items-center justify-center h-48 text-red-500 text-sm">{error}</div>
         ) : productosFiltrados.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 gap-2">
-            <Package className="w-8 h-8 text-[var(--color-text-secondary)]" />
-            <p className="text-sm text-[var(--color-text-secondary)]">No hay productos que coincidan con los filtros</p>
-            <button
-              onClick={() => { setSeleccionado(null); setVista("nuevo") }}
-              className="mt-2 text-sm text-[var(--color-primary)] hover:underline"
-            >
+            <Package className="w-8 h-8 text-gray-300" />
+            <p className="text-sm text-gray-400">No hay productos que coincidan</p>
+            <button onClick={() => { setSeleccionado(null); setVista("nuevo") }} className="mt-1 text-sm text-indigo-700 hover:text-indigo-900 hover:underline">
               Crear primer producto
             </button>
           </div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="bg-[var(--color-surface)] border-b border-[var(--color-border)] sticky top-0">
+            <thead className="bg-white border-b border-gray-200 sticky top-0">
               <tr>
-                <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">Código</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">Nombre</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">Categoría</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">Marca</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">Tipo</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">Stock</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">Estado</th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-[var(--color-text-secondary)]">Acciones</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Código</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nombre</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Categoría</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Marca</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Estado</th>
               </tr>
             </thead>
             <tbody>
               {productosFiltrados.map((p, i) => (
-                <tr key={p.id} className={`border-b border-[var(--color-border)] hover:bg-[var(--color-surface)] transition-colors ${i % 2 === 0 ? "" : "bg-[var(--color-bg)]"}`}>
-                  <td className="px-4 py-3 font-mono text-xs text-[var(--color-text-secondary)]">{p.codigo_interno}</td>
-                  <td className="px-4 py-3 font-medium text-[var(--color-text)] max-w-xs">
-                    <div className="truncate">{p.nombre}</div>
-                    {p.modelo && <div className="text-xs text-[var(--color-text-secondary)] truncate">{p.modelo}</div>}
+                <tr
+                  key={p.id}
+                  onClick={() => { setSeleccionado(p); setVista("editar") }}
+                  className={`border-b border-gray-100 hover:bg-indigo-50 cursor-pointer transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}
+                >
+                  <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.codigo_interno}</td>
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-indigo-900">{p.nombre}</div>
+                    {p.modelo && <div className="text-xs text-gray-400">{p.modelo}</div>}
                   </td>
-                  <td className="px-4 py-3 text-[var(--color-text-secondary)]">{p.categoria}</td>
-                  <td className="px-4 py-3 text-[var(--color-text-secondary)]">{p.marca}</td>
+                  <td className="px-4 py-3 text-gray-600">{p.categoria}</td>
+                  <td className="px-4 py-3 text-gray-600">{p.marca}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${p.tipo === "almacenable" ? "bg-blue-100 text-blue-700" : p.tipo === "servicio" ? "bg-purple-100 text-purple-700" : "bg-orange-100 text-orange-700"}`}>
                       {p.tipo}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-[var(--color-text)]">{p.tipo === "servicio" ? "—" : p.stock_real}</td>
+                  <td className="px-4 py-3 text-gray-700">{p.tipo === "servicio" ? "—" : p.stock_real}</td>
                   <td className="px-4 py-3">
-                    <button onClick={() => handleToggleActivo(p)} className="flex items-center gap-1 text-xs">
+                    <button
+                      onClick={(e) => handleToggleActivo(e, p)}
+                      className="flex items-center gap-1 text-xs hover:opacity-80 transition-opacity"
+                    >
                       {p.activo
                         ? <><CheckCircle className="w-4 h-4 text-green-500" /><span className="text-green-600">Activo</span></>
-                        : <><XCircle className="w-4 h-4 text-[var(--color-text-secondary)]" /><span className="text-[var(--color-text-secondary)]">Inactivo</span></>
+                        : <><XCircle className="w-4 h-4 text-gray-400" /><span className="text-gray-400">Inactivo</span></>
                       }
                     </button>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => { setSeleccionado(p); setVista("ver") }}
-                        className="p-1.5 rounded-lg hover:bg-[var(--color-bg)] text-[var(--color-text-secondary)] transition-colors"
-                        title="Ver"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => { setSeleccionado(p); setVista("editar") }}
-                        className="p-1.5 rounded-lg hover:bg-[var(--color-bg)] text-[var(--color-text-secondary)] transition-colors"
-                        title="Editar"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                    </div>
                   </td>
                 </tr>
               ))}
