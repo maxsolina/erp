@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Settings, Lock, Unlock, FileBox, Ship, Plane } from "lucide-react"
 import BotonVolver from "./ui/boton-volver"
+import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
 
 // Types
 interface Proveedor {
@@ -31,16 +32,32 @@ interface Proveedor {
   activo: boolean
 }
 
+interface OrdenCompraLinea {
+  producto_id: number
+  producto_nombre: string
+  descripcion: string
+  cantidad: number
+  cantidad_recibida: number
+  precio_unitario: number
+  descuento: number
+  subtotal: number
+}
+
 interface OrdenCompra {
   id: number
   numero: string
   fecha: string
+  sucursal: string
   proveedor_id: number
   proveedor_nombre: string
+  termino_pago: string
+  tipo_compra: string
+  metodo_compra: "estandar" | "inmediato"
   estado: "borrador" | "confirmada" | "recibida_parcial" | "recibida" | "cancelada"
-  tipo_compra: "nacional" | "importacion"
   fecha_entrega_estimada: string
-  moneda: "ARS" | "USD"
+  deposito_destino: string
+  ubicacion_destino?: string
+  moneda: "ARS" | "USD" | "EUR"
   tipo_cambio: number
   subtotal: number
   impuestos: number
@@ -48,40 +65,67 @@ interface OrdenCompra {
   observaciones: string
   legajo_id?: number
   despacho_simple_id?: number
-  lineas: {
-    producto_id: number
-    producto_nombre: string
-    cantidad: number
-    cantidad_recibida: number
-    precio_unitario: number
-    descuento: number
-    subtotal: number
-  }[]
+  lineas: OrdenCompraLinea[]
+  cancelacion?: {
+    usuario: string
+    fecha: string
+    motivo: string
+  }
   seguimiento?: SeguimientoEntry[]
+}
+
+interface UnidadSerie {
+  nro_serie: string
+  lote?: string
+  bateria_pct?: number
+  color?: string
+  outlet: boolean
+  fallas?: string
+}
+
+interface RecepcionLinea {
+  producto_id: number
+  producto_nombre: string
+  producto_sku: string
+  tiene_serie: boolean
+  cantidad_pedida: number
+  cantidad_recibida: number
+  udm: string
+  precio_unitario: number
+  estado_linea: "pendiente" | "recibido" | "recibido_parcial"
+  unidades_serie?: UnidadSerie[]
 }
 
 interface Recepcion {
   id: number
   numero: string
   fecha: string
-  proveedor_id: number
-  proveedor_nombre: string
-  orden_compra_id: number
-  orden_compra_numero: string
-  estado: "borrador" | "confirmada" | "cancelada"
-  tipo: "total" | "parcial"
-  observaciones: string
-  legajo_id?: number
-  despacho_simple_id?: number
-  lineas: {
-    producto_id: number
-    producto_nombre: string
-    cantidad_ordenada: number
-    cantidad_recibida: number
-    cantidad_esta_recepcion: number
-    precio_unitario: number
-  }[]
-  seguimiento?: SeguimientoEntry[]
+  sucursal: string
+  proveedor_id?: number
+  proveedor_nombre?: string
+  deposito_destino: string
+  ubicacion_destino?: string
+  documento_origen_tipo: "oc" | "toma_equipo" | "transferencia"
+  documento_origen_id?: number
+  documento_origen_ref: string
+  fecha_pedido?: string
+  fecha_entrega_esperada?: string
+  fecha_recepcion_real?: string
+  remito_numero?: string
+  remito_fecha?: string
+  observaciones?: string
+  estado: "esperando_recepcion" | "recibida" | "cancelada"
+  recepcion_anterior_id?: number
+  recepcion_complementaria_id?: number
+  lineas: RecepcionLinea[]
+  cancelacion?: {
+    usuario: string
+    fecha: string
+    motivo: string
+  }
+  // backward compat para legajo
+  orden_compra_id?: number
+  orden_compra_numero?: string
 }
 
 interface FacturaCompra {
@@ -297,89 +341,38 @@ interface MovimientoCtaCteProveedor {
   saldo: number
 }
 
+// Depósitos y ubicaciones (compartidos con modulo-stock)
+const DEPOSITOS_OC = [
+  { id: 1, codigo: "CC", nombre: "Casa Central" },
+  { id: 2, codigo: "PN", nombre: "Puerto Norte" },
+  { id: 3, codigo: "CS", nombre: "Casilda" },
+]
+const UBICACIONES_OC = [
+  { id: 1,   deposito_id: 1, codigo: "CC/Stock",              nombre: "Stock" },
+  { id: 2,   deposito_id: 1, codigo: "CC/Usados",             nombre: "Usados" },
+  { id: 3,   deposito_id: 1, codigo: "CC/Deposito B",         nombre: "Depósito B" },
+  { id: 4,   deposito_id: 1, codigo: "CC/Deposito C",         nombre: "Depósito C" },
+  { id: 5,   deposito_id: 1, codigo: "CC/En Reparación",      nombre: "En Reparación" },
+  { id: 101, deposito_id: 1, codigo: "CC/Input",              nombre: "Entrada" },
+  { id: 102, deposito_id: 1, codigo: "CC/Quality Control",    nombre: "Control de Calidad" },
+  { id: 103, deposito_id: 1, codigo: "CC/Zona empaquetado",   nombre: "Zona de Empaquetado" },
+  { id: 104, deposito_id: 1, codigo: "CC/Salida",             nombre: "Salida" },
+  { id: 8,   deposito_id: 2, codigo: "PN/Stock",              nombre: "Stock" },
+  { id: 9,   deposito_id: 2, codigo: "PN/Outlet",             nombre: "Outlet" },
+  { id: 201, deposito_id: 2, codigo: "PN/Input",              nombre: "Entrada" },
+  { id: 202, deposito_id: 2, codigo: "PN/Output",             nombre: "Salida" },
+  { id: 12,  deposito_id: 3, codigo: "CS/Stock",              nombre: "Stock" },
+  { id: 301, deposito_id: 3, codigo: "CS/Input",              nombre: "Entrada" },
+  { id: 302, deposito_id: 3, codigo: "CS/Output",             nombre: "Salida" },
+]
+
 export default function ModuloCompras() {
   // Active view state
   const [activeView, setActiveView] = useState("proveedores")
   const [expandedSections, setExpandedSections] = useState<string[]>(["proveedores", "compras", "comprobantes", "pagos", "configuracion"])
 
   // Proveedores
-  const [proveedores, setProveedores] = useState<Proveedor[]>([
-    {
-      id: 1,
-      codigo: "PROV-001",
-      nombre: "Tech Supplies SA",
-      razon_social: "Tech Supplies SA",
-      cuit: "30-12345678-9",
-      tipo_documento: "CUIT",
-      numero_documento: "30-12345678-9",
-      direccion: "Av. Corrientes 1234",
-      ciudad: "Buenos Aires",
-      provincia: "Buenos Aires",
-      codigo_postal: "1043",
-      telefono: "011-4555-1234",
-      email: "compras@techsupplies.com",
-      web: "www.techsupplies.com",
-      contacto_nombre: "Juan Pérez",
-      contacto_telefono: "011-4555-1235",
-      contacto_email: "jperez@techsupplies.com",
-      condicion_pago: "30 días",
-      moneda_habitual: "ARS",
-      categoria: "publico",
-      tipo: "nacional",
-      saldo: 150000,
-      activo: true
-    },
-    {
-      id: 2,
-      codigo: "PROV-002",
-      nombre: "Mobile World Inc",
-      razon_social: "Mobile World Inc",
-      cuit: "30-98765432-1",
-      tipo_documento: "Tax ID",
-      numero_documento: "US-12345678",
-      direccion: "123 Tech Street",
-      ciudad: "Miami",
-      provincia: "Florida",
-      codigo_postal: "33101",
-      telefono: "+1-305-555-1234",
-      email: "sales@mobileworld.com",
-      web: "www.mobileworld.com",
-      contacto_nombre: "John Smith",
-      contacto_telefono: "+1-305-555-1235",
-      contacto_email: "jsmith@mobileworld.com",
-      condicion_pago: "Anticipado",
-      moneda_habitual: "USD",
-      categoria: "publico",
-      tipo: "internacional",
-      saldo: 0,
-      activo: true
-    },
-    {
-      id: 3,
-      codigo: "PROV-003",
-      nombre: "Despachante García",
-      razon_social: "García y Asociados SRL",
-      cuit: "30-55555555-5",
-      tipo_documento: "CUIT",
-      numero_documento: "30-55555555-5",
-      direccion: "Puerto Madero 456",
-      ciudad: "Buenos Aires",
-      provincia: "Buenos Aires",
-      codigo_postal: "1107",
-      telefono: "011-4312-5678",
-      email: "contacto@despachanteg.com",
-      web: "www.despachanteg.com",
-      contacto_nombre: "María García",
-      contacto_telefono: "011-4312-5679",
-      contacto_email: "mgarcia@despachanteg.com",
-      condicion_pago: "Contado",
-      moneda_habitual: "ARS",
-      categoria: "publico",
-      tipo: "despachante",
-      saldo: 25000,
-      activo: true
-    }
-  ])
+  const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [selectedProveedor, setSelectedProveedor] = useState<Proveedor | null>(null)
   const [creandoProveedor, setCreandoProveedor] = useState(false)
   const [editandoProveedor, setEditandoProveedor] = useState(false)
@@ -388,54 +381,82 @@ export default function ModuloCompras() {
   const [proveedorFiltroTipo, setProveedorFiltroTipo] = useState<"todos" | "nacional" | "internacional" | "despachante">("todos")
 
   // Órdenes de Compra
-  const [ordenesCompra, setOrdenesCompra] = useState<OrdenCompra[]>([
-    {
-      id: 1,
-      numero: "OC-00001",
-      fecha: "2026-03-10T10:00:00",
-      proveedor_id: 1,
-      proveedor_nombre: "Tech Supplies SA",
-      estado: "confirmada",
-      tipo_compra: "nacional",
-      fecha_entrega_estimada: "2026-03-15",
-      moneda: "ARS",
-      tipo_cambio: 1,
-      subtotal: 500000,
-      impuestos: 105000,
-      total: 605000,
-      observaciones: "Urgente",
-      lineas: [
-        { producto_id: 1, producto_nombre: "Pantalla iPhone 13", cantidad: 10, cantidad_recibida: 0, precio_unitario: 50000, descuento: 0, subtotal: 500000 }
-      ]
-    },
-    {
-      id: 2,
-      numero: "OC-00002",
-      fecha: "2026-03-08T14:30:00",
-      proveedor_id: 2,
-      proveedor_nombre: "Mobile World Inc",
-      estado: "confirmada",
-      tipo_compra: "importacion",
-      fecha_entrega_estimada: "2026-03-25",
-      moneda: "USD",
-      tipo_cambio: 1050,
-      subtotal: 5000,
-      impuestos: 0,
-      total: 5000,
-      observaciones: "Importación USA",
-      legajo_id: 1,
-      lineas: [
-        { producto_id: 2, producto_nombre: "iPhone 14 Pro 128GB", cantidad: 10, cantidad_recibida: 0, precio_unitario: 500, descuento: 0, subtotal: 5000 }
-      ]
-    }
-  ])
+  const [ordenesCompra, setOrdenesCompra] = useState<OrdenCompra[]>([])
   const [selectedOC, setSelectedOC] = useState<OrdenCompra | null>(null)
   const [creandoOC, setCreandoOC] = useState(false)
+  // UI state OC — listado
+  const [ocFiltroEstado, setOcFiltroEstado] = useState<"todos" | "borrador" | "confirmada" | "cancelada">("todos")
+  const [ocFiltroMetodo, setOcFiltroMetodo] = useState<"todos" | "estandar" | "inmediato">("todos")
+  const [ocBusqueda, setOcBusqueda] = useState("")
+  // UI state OC — ficha
+  const [ocTabActivo, setOcTabActivo] = useState<"productos" | "recepciones" | "facturas" | "observaciones">("productos")
+  // UI state OC — cancelación
+  const [ocModalCancelacionOpen, setOcModalCancelacionOpen] = useState(false)
+  const [ocCancelacionMotivo, setOcCancelacionMotivo] = useState("")
+  // UI state OC — creación/edición
+  const [nuevaOC, setNuevaOC] = useState<Partial<OrdenCompra> & { lineas: OrdenCompraLinea[] }>({
+    sucursal: "",
+    proveedor_id: 0,
+    proveedor_nombre: "",
+    termino_pago: "Contado",
+    tipo_compra: "nacional",
+    metodo_compra: "estandar",
+    fecha: new Date().toISOString().slice(0, 10),
+    fecha_entrega_estimada: "",
+    deposito_destino: "",
+    ubicacion_destino: "",
+    moneda: "ARS",
+    tipo_cambio: 1,
+    observaciones: "",
+    lineas: []
+  })
+
+  // OdooFilterBar states
+  const [savedFiltersOC, setSavedFiltersOC] = useState<SavedFilter[]>([])
+  const [activeFiltersOC, setActiveFiltersOC] = useState<FilterOption[]>([])
+  const [activeGroupByOC, setActiveGroupByOC] = useState<GroupByOption[]>([])
+
+  const [savedFiltersRec, setSavedFiltersRec] = useState<SavedFilter[]>([])
+  const [activeFiltersRec, setActiveFiltersRec] = useState<FilterOption[]>([])
+  const [activeGroupByRec, setActiveGroupByRec] = useState<GroupByOption[]>([])
+
+  const [savedFiltersFC, setSavedFiltersFC] = useState<SavedFilter[]>([])
+  const [activeFiltersFC, setActiveFiltersFC] = useState<FilterOption[]>([])
+  const [activeGroupByFC, setActiveGroupByFC] = useState<GroupByOption[]>([])
+
+  const [savedFiltersProv, setSavedFiltersProv] = useState<SavedFilter[]>([])
+  const [activeFiltersProv, setActiveFiltersProv] = useState<FilterOption[]>([])
+  const [activeGroupByProv, setActiveGroupByProv] = useState<GroupByOption[]>([])
+
+  const makeSavedFilterHandlersC = (
+    setter: React.Dispatch<React.SetStateAction<SavedFilter[]>>,
+    setActiveFilters: React.Dispatch<React.SetStateAction<FilterOption[]>>,
+    setActiveGroupBy: React.Dispatch<React.SetStateAction<GroupByOption[]>>,
+    setSearch: (s: string) => void
+  ) => ({
+    onSaveFilter: (f: Omit<SavedFilter, "id" | "createdBy">) => setter(prev => [...prev, { ...f, id: Date.now().toString(), createdBy: "Admin" }]),
+    onDeleteFilter: (id: string) => setter(prev => prev.filter(sf => sf.id !== id)),
+    onApplyFilter: (f: SavedFilter) => { setActiveFilters(f.filters); setActiveGroupBy(f.groupBy); setSearch("") }
+  })
 
   // Recepciones
   const [recepciones, setRecepciones] = useState<Recepcion[]>([])
   const [selectedRecepcion, setSelectedRecepcion] = useState<Recepcion | null>(null)
   const [creandoRecepcion, setCreandoRecepcion] = useState(false)
+  // UI state recepciones
+  const [recepcionFiltroEstado, setRecepcionFiltroEstado] = useState<"todos" | "esperando_recepcion" | "recibida" | "cancelada">("todos")
+  const [recepcionBusqueda, setRecepcionBusqueda] = useState("")
+  // Cantidades editadas en la ficha (producto_id → cantidad recibida)
+  const [recepcionCantidades, setRecepcionCantidades] = useState<Record<number, number>>({})
+  // Modal de N° serie
+  const [modalSerieOpen, setModalSerieOpen] = useState(false)
+  const [modalSerieProducto, setModalSerieProducto] = useState<RecepcionLinea | null>(null)
+  const [modalSerieUnidades, setModalSerieUnidades] = useState<UnidadSerie[]>([])
+  // Modal de cancelación
+  const [modalCancelacionOpen, setModalCancelacionOpen] = useState(false)
+  const [cancelacionMotivo, setCancelacionMotivo] = useState("")
+  // Unidades serie acumuladas durante confirmación (producto_id → lista)
+  const [seriesConfirmadas, setSeriesConfirmadas] = useState<Record<number, UnidadSerie[]>>({})
 
   // Cargar recepciones pendientes generadas desde Toma de Equipo (ventas)
   useEffect(() => {
@@ -451,29 +472,7 @@ export default function ModuloCompras() {
   }, [])
 
   // Facturas de Compra
-  const [facturasCompra, setFacturasCompra] = useState<FacturaCompra[]>([
-    {
-      id: 1,
-      numero: "FC-A-00001",
-      tipo: "A",
-      fecha: "2026-03-12T10:00:00",
-      fecha_vencimiento: "2026-04-12",
-      proveedor_id: 1,
-      proveedor_nombre: "Tech Supplies SA",
-      estado: "pendiente",
-      orden_compra_id: 1,
-      recepcion_id: 1,
-      moneda: "ARS",
-      tipo_cambio: 1,
-      subtotal: 500000,
-      impuestos: 105000,
-      total: 605000,
-      saldo: 605000,
-      lineas: [
-        { producto_id: 1, producto_nombre: "Pantalla iPhone 13", cantidad: 10, precio_unitario: 50000, subtotal: 500000 }
-      ]
-    }
-  ])
+  const [facturasCompra, setFacturasCompra] = useState<FacturaCompra[]>([])
   const [selectedFacturaCompra, setSelectedFacturaCompra] = useState<FacturaCompra | null>(null)
   const [creandoFacturaCompra, setCreandoFacturaCompra] = useState(false)
 
@@ -493,120 +492,21 @@ export default function ModuloCompras() {
   const [creandoOP, setCreandoOP] = useState(false)
 
   // Legajos de Importación
-  const [legajosImportacion, setLegajosImportacion] = useState<LegajoImportacion[]>([
-    {
-      id: 1,
-      numero: "LEG-2026-001",
-      nombre: "Importación iPhone USA Marzo",
-      responsable: "Admin",
-      despachante_id: 3,
-      despachante_nombre: "Despachante García",
-      fecha_apertura: "2026-03-01",
-      estado: "abierto",
-      subcompania: "Cell Home",
-      sucursal: "Puerto Norte",
-      tc_referencia: 1050,
-      total_compras: 5250000,
-      total_gastos: 525000,
-      ordenes_compra_ids: [2],
-      recepciones_ids: [],
-      facturas_ids: [],
-      notas_credito_ids: [],
-      notas_debito_ids: [],
-      gastos: [
-        {
-          id: 1,
-          tipo_gasto_id: 1,
-          tipo_gasto_nombre: "Flete Internacional",
-          proveedor_id: 2,
-          proveedor_nombre: "Mobile World Inc",
-          importe: 300,
-          moneda: "USD",
-          tipo_cambio_tipo: "dia_factura",
-          tipo_cambio: 1050,
-          importe_base: 315000,
-          clasificacion: "activable",
-          criterio_distribucion: "peso",
-          estado: "pendiente"
-        },
-        {
-          id: 2,
-          tipo_gasto_id: 2,
-          tipo_gasto_nombre: "Gastos de Despachante",
-          proveedor_id: 3,
-          proveedor_nombre: "Despachante García",
-          importe: 200000,
-          moneda: "ARS",
-          tipo_cambio_tipo: "dia_factura",
-          tipo_cambio: 1,
-          importe_base: 200000,
-          clasificacion: "activable",
-          criterio_distribucion: "fob",
-          estado: "pendiente"
-        }
-      ],
-      observaciones: "Importación de equipos nuevos para stock"
-    }
-  ])
+  const [legajosImportacion, setLegajosImportacion] = useState<LegajoImportacion[]>([])
   const [selectedLegajo, setSelectedLegajo] = useState<LegajoImportacion | null>(null)
   const [creandoLegajo, setCreandoLegajo] = useState(false)
   const [legajoTab, setLegajoTab] = useState<"compras" | "gastos" | "distribucion" | "observaciones">("compras")
 
   // Despachos Simples
-  const [despachosSimples, setDespachosSimples] = useState<DespachoSimple[]>([
-    {
-      id: 1,
-      numero: "DS-2026-001",
-      nombre: "Despacho USA Telefonía",
-      proveedor_id: 2,
-      proveedor_nombre: "Mobile World Inc",
-      responsable: "Admin",
-      fecha: "2026-03-05",
-      estado: "abierto",
-      subcompania: "Cell Home",
-      sucursal: "Puerto Norte",
-      total_mercaderia: 2500000,
-      total_fletes: 157500,
-      flete_internacional: {
-        importe: 100,
-        moneda: "USD",
-        tipo_cambio: 1050,
-        importe_base: 105000
-      },
-      flete_nacional: {
-        importe: 50000,
-        moneda: "ARS",
-        tipo_cambio: 1,
-        importe_base: 50000
-      },
-      productos: [
-        { producto_id: 3, producto_nombre: "iPhone 13 128GB", cantidad: 5, peso_unitario: 0.2, peso_total: 1, precio_fob_unitario: 400, total_fob: 2000 },
-        { producto_id: 4, producto_nombre: "iPhone 13 Pro 128GB", cantidad: 3, peso_unitario: 0.21, peso_total: 0.63, precio_fob_unitario: 500, total_fob: 1500 }
-      ],
-      ordenes_compra_ids: [],
-      recepciones_ids: [],
-      facturas_ids: []
-    }
-  ])
+  const [despachosSimples, setDespachosSimples] = useState<DespachoSimple[]>([])
   const [selectedDespachoSimple, setSelectedDespachoSimple] = useState<DespachoSimple | null>(null)
   const [creandoDespachoSimple, setCreandoDespachoSimple] = useState(false)
 
   // Tipos de Gasto (Configuración)
-  const [tiposGasto, setTiposGasto] = useState<TipoGasto[]>([
-    { id: 1, nombre: "Flete Internacional", clasificacion_defecto: "activable", cuenta_debe: "1.1.3.01", cuenta_haber: "2.1.1.01", criterio_sugerido: "peso", moneda_habitual: "USD", tc_defecto: "dia_factura" },
-    { id: 2, nombre: "Gastos de Despachante", clasificacion_defecto: "activable", cuenta_debe: "1.1.3.01", cuenta_haber: "2.1.1.01", criterio_sugerido: "fob", moneda_habitual: "ARS", tc_defecto: "dia_factura" },
-    { id: 3, nombre: "Seguro", clasificacion_defecto: "activable", cuenta_debe: "1.1.3.01", cuenta_haber: "2.1.1.01", criterio_sugerido: "fob", moneda_habitual: "USD", tc_defecto: "dia_factura" },
-    { id: 4, nombre: "Derechos de Importación", clasificacion_defecto: "activable", cuenta_debe: "1.1.3.01", cuenta_haber: "2.1.1.01", criterio_sugerido: "posicion_arancelaria", moneda_habitual: "ARS", tc_defecto: "dia_dji" },
-    { id: 5, nombre: "Tasa de Estadística", clasificacion_defecto: "activable", cuenta_debe: "1.1.3.01", cuenta_haber: "2.1.1.01", criterio_sugerido: "fob", moneda_habitual: "ARS", tc_defecto: "dia_dji" },
-    { id: 6, nombre: "IVA Importación", clasificacion_defecto: "resultado", cuenta_debe: "1.1.5.01", cuenta_haber: "2.1.1.01", criterio_sugerido: "fob", moneda_habitual: "ARS", tc_defecto: "dia_dji" },
-    { id: 7, nombre: "Percepciones IIBB", clasificacion_defecto: "resultado", cuenta_debe: "1.1.5.02", cuenta_haber: "2.1.1.01", criterio_sugerido: "fob", moneda_habitual: "ARS", tc_defecto: "dia_dji" },
-    { id: 8, nombre: "Percepciones Ganancias", clasificacion_defecto: "resultado", cuenta_debe: "1.1.5.03", cuenta_haber: "2.1.1.01", criterio_sugerido: "fob", moneda_habitual: "ARS", tc_defecto: "dia_dji" },
-  ])
+  const [tiposGasto, setTiposGasto] = useState<TipoGasto[]>([])
 
   // Movimientos Cuenta Corriente Proveedores
-  const [movimientosCtaCte, setMovimientosCtaCte] = useState<MovimientoCtaCteProveedor[]>([
-    { id: 1, proveedor_id: 1, tipo: "factura", numero: "FC-A-00001", fecha: "2026-03-12", concepto: "Compra repuestos", debe: 605000, haber: 0, saldo: 605000 }
-  ])
+  const [movimientosCtaCte, setMovimientosCtaCte] = useState<MovimientoCtaCteProveedor[]>([])
 
   // Helpers
   const formatCurrency = (amount: number, currency: "ARS" | "USD" = "ARS") => {
@@ -758,36 +658,40 @@ export default function ModuloCompras() {
         </div>
 
         {/* Filters */}
-        <div className="flex items-center gap-4 mb-6">
-          <div className="flex-1 relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por nombre, código o CUIT..."
-              value={proveedorSearchText}
-              onChange={(e) => setProveedorSearchText(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          <select
-            value={proveedorFiltroCategoria}
-            onChange={(e) => setProveedorFiltroCategoria(e.target.value as "todos" | "publico" | "privado")}
-            className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="todos">Todas las categorías</option>
-            <option value="publico">Públicos</option>
-            <option value="privado">Privados</option>
-          </select>
-          <select
-            value={proveedorFiltroTipo}
-            onChange={(e) => setProveedorFiltroTipo(e.target.value as "todos" | "nacional" | "internacional" | "despachante")}
-            className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="todos">Todos los tipos</option>
-            <option value="nacional">Nacional</option>
-            <option value="internacional">Internacional</option>
-            <option value="despachante">Despachante</option>
-          </select>
+        <div className="mb-6">
+          <OdooFilterBar
+            moduleName="proveedores"
+            filterOptions={[
+              { field: "categoria", label: "Categoría", values: [
+                { value: "publico", label: "Público" },
+                { value: "privado", label: "Privado" },
+              ]},
+              { field: "tipo", label: "Tipo", values: [
+                { value: "nacional", label: "Nacional" },
+                { value: "internacional", label: "Internacional" },
+                { value: "despachante", label: "Despachante" },
+              ]},
+            ]}
+            groupByOptions={[
+              { id: "categoria", label: "Categoría", field: "categoria" },
+              { id: "tipo", label: "Tipo", field: "tipo" },
+              { id: "moneda_habitual", label: "Moneda", field: "moneda_habitual" },
+            ]}
+            activeFilters={activeFiltersProv}
+            activeGroupBy={activeGroupByProv}
+            searchTerm={proveedorSearchText}
+            onFiltersChange={f => {
+              setActiveFiltersProv(f)
+              setProveedorFiltroCategoria((f.find(x => x.field === "categoria")?.value as any) ?? "todos")
+              setProveedorFiltroTipo((f.find(x => x.field === "tipo")?.value as any) ?? "todos")
+            }}
+            onGroupByChange={setActiveGroupByProv}
+            onSearchChange={setProveedorSearchText}
+            savedFilters={savedFiltersProv}
+            {...makeSavedFilterHandlersC(setSavedFiltersProv, setActiveFiltersProv, setActiveGroupByProv, setProveedorSearchText)}
+            totalCount={proveedores.length}
+            filteredCount={filteredProveedores.length}
+          />
         </div>
 
         {/* Stats */}
@@ -1098,95 +1002,193 @@ export default function ModuloCompras() {
     if (selectedOC) return renderFichaOC()
     if (creandoOC) return renderCrearOC()
 
+    const estadoColor: Record<string, string> = {
+      borrador:        "bg-gray-100 text-gray-700",
+      confirmada:      "bg-blue-100 text-blue-700",
+      recibida_parcial:"bg-amber-100 text-amber-700",
+      recibida:        "bg-green-100 text-green-700",
+      cancelada:       "bg-red-100 text-red-700",
+    }
+    const estadoLabel: Record<string, string> = {
+      borrador:        "Borrador",
+      confirmada:      "Confirmada",
+      recibida_parcial:"Recibida parcial",
+      recibida:        "Recibida",
+      cancelada:       "Cancelada",
+    }
+
+    const ocsFiltradas = ordenesCompra.filter(oc => {
+      const matchEstado = ocFiltroEstado === "todos" || oc.estado === ocFiltroEstado
+      const matchMetodo = ocFiltroMetodo === "todos" || oc.metodo_compra === ocFiltroMetodo
+      const q = ocBusqueda.toLowerCase()
+      const matchBusqueda = !q ||
+        oc.numero.toLowerCase().includes(q) ||
+        oc.proveedor_nombre.toLowerCase().includes(q) ||
+        oc.lineas.some(l => l.producto_nombre.toLowerCase().includes(q))
+      return matchEstado && matchMetodo && matchBusqueda
+    })
+
+    const recsPendientes = ordenesCompra.filter(o => o.estado === 'confirmada' || o.estado === 'recibida_parcial').length
+
     return (
       <div>
+        {/* Cabecera */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Órdenes de Compra</h1>
-            <p className="text-gray-500 mt-1">Gestione las órdenes de compra a proveedores</p>
+            <p className="text-gray-500 mt-1 text-sm">Gestione las órdenes de compra a proveedores</p>
           </div>
-          <button 
-            onClick={() => setCreandoOC(true)}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+          <button
+            onClick={() => {
+              setNuevaOC({
+                sucursal: "", proveedor_id: 0, proveedor_nombre: "", termino_pago: "Contado",
+                tipo_compra: "nacional", metodo_compra: "estandar",
+                fecha: new Date().toISOString().slice(0, 10), fecha_entrega_estimada: "",
+                deposito_destino: "", ubicacion_destino: "", moneda: "ARS", tipo_cambio: 1,
+                observaciones: "", lineas: []
+              })
+              setCreandoOC(true)
+            }}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium"
           >
             <Plus className="w-4 h-4" />
             Nueva OC
           </button>
         </div>
 
+        {/* Estadísticas */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Total OC</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Total OC</p>
             <p className="text-2xl font-bold text-gray-900">{ordenesCompra.length}</p>
           </div>
           <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Confirmadas</p>
-            <p className="text-2xl font-bold text-blue-600">{ordenesCompra.filter(o => o.estado === 'confirmada').length}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Borradores</p>
+            <p className="text-2xl font-bold text-gray-600">{ordenesCompra.filter(o => o.estado === 'borrador').length}</p>
           </div>
           <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Pendientes Recepción</p>
-            <p className="text-2xl font-bold text-amber-600">{ordenesCompra.filter(o => o.estado === 'confirmada' || o.estado === 'recibida_parcial').length}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Pend. Recepción</p>
+            <p className="text-2xl font-bold text-amber-600">{recsPendientes}</p>
           </div>
           <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Monto Total</p>
-            <p className="text-2xl font-bold text-green-600">{formatCurrency(ordenesCompra.reduce((s, o) => s + o.total, 0))}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Completadas</p>
+            <p className="text-2xl font-bold text-green-600">{ordenesCompra.filter(o => o.estado === 'recibida').length}</p>
           </div>
         </div>
 
+        {/* Filtros */}
+        <div className="mb-4">
+          <OdooFilterBar
+            moduleName="ordenes-compra"
+            filterOptions={[
+              { field: "estado", label: "Estado", values: [
+                { value: "borrador", label: "Borrador" },
+                { value: "confirmada", label: "Confirmada" },
+                { value: "recibida_parcial", label: "Recibida parcial" },
+                { value: "recibida", label: "Recibida" },
+                { value: "cancelada", label: "Cancelada" },
+              ]},
+              { field: "metodo_compra", label: "Método", values: [
+                { value: "estandar", label: "Estándar" },
+                { value: "inmediato", label: "Inmediato" },
+              ]},
+              { field: "moneda", label: "Moneda", values: [
+                { value: "ARS", label: "ARS" },
+                { value: "USD", label: "USD" },
+                { value: "EUR", label: "EUR" },
+              ]},
+            ]}
+            groupByOptions={[
+              { id: "estado", label: "Estado", field: "estado" },
+              { id: "proveedor", label: "Proveedor", field: "proveedor" },
+              { id: "sucursal", label: "Sucursal", field: "sucursal" },
+              { id: "metodo_compra", label: "Método de Compra", field: "metodo_compra" },
+            ]}
+            activeFilters={activeFiltersOC}
+            activeGroupBy={activeGroupByOC}
+            searchTerm={ocBusqueda}
+            onFiltersChange={f => {
+              setActiveFiltersOC(f)
+              setOcFiltroEstado((f.find(x => x.field === "estado")?.value as any) ?? "todos")
+              setOcFiltroMetodo((f.find(x => x.field === "metodo_compra")?.value as any) ?? "todos")
+            }}
+            onGroupByChange={setActiveGroupByOC}
+            onSearchChange={setOcBusqueda}
+            savedFilters={savedFiltersOC}
+            {...makeSavedFilterHandlersC(setSavedFiltersOC, setActiveFiltersOC, setActiveGroupByOC, setOcBusqueda)}
+            totalCount={ordenesCompra.length}
+            filteredCount={ocsFiltradas.length}
+          />
+        </div>
+
+        {/* Tabla */}
         <div className="bg-white rounded-lg border overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
-              <tr className="text-xs text-gray-500 uppercase">
-                <th className="text-left py-3 px-4">Número</th>
+              <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                <th className="text-left py-3 px-4">N° OC</th>
                 <th className="text-left py-3 px-4">Fecha</th>
                 <th className="text-left py-3 px-4">Proveedor</th>
-                <th className="text-left py-3 px-4">Tipo</th>
+                <th className="text-left py-3 px-4">Sucursal</th>
+                <th className="text-center py-3 px-4">Método</th>
+                <th className="text-left py-3 px-4">Moneda</th>
                 <th className="text-right py-3 px-4">Total</th>
+                <th className="text-center py-3 px-4">Recepción</th>
                 <th className="text-center py-3 px-4">Estado</th>
-                <th className="text-center py-3 px-4">Legajo/Despacho</th>
+                <th className="py-3 px-4"></th>
               </tr>
             </thead>
-            <tbody>
-              {ordenesCompra.map(oc => (
-                <tr 
-                  key={oc.id} 
-                  className="border-b hover:bg-gray-50 cursor-pointer"
-                  onClick={() => setSelectedOC(oc)}
-                >
-                  <td className="py-3 px-4 font-medium text-blue-700">{oc.numero}</td>
-                  <td className="py-3 px-4 text-sm">{formatDate(oc.fecha)}</td>
-                  <td className="py-3 px-4 text-sm">{oc.proveedor_nombre}</td>
-                  <td className="py-3 px-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      oc.tipo_compra === 'nacional' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-                    }`}>
-                      {oc.tipo_compra === 'nacional' ? 'Nacional' : 'Importación'}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-right font-medium">
-                    {oc.moneda === 'USD' ? formatCurrency(oc.total, 'USD') : formatCurrency(oc.total)}
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      oc.estado === 'confirmada' ? 'bg-blue-100 text-blue-700' :
-                      oc.estado === 'recibida' ? 'bg-green-100 text-green-700' :
-                      oc.estado === 'recibida_parcial' ? 'bg-amber-100 text-amber-700' :
-                      oc.estado === 'borrador' ? 'bg-gray-100 text-gray-700' :
-                      'bg-red-100 text-red-700'
-                    }`}>
-                      {oc.estado.replace('_', ' ').charAt(0).toUpperCase() + oc.estado.replace('_', ' ').slice(1)}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    {oc.legajo_id && (
-                      <span className="text-xs text-purple-600">LEG-{oc.legajo_id}</span>
-                    )}
-                    {oc.despacho_simple_id && (
-                      <span className="text-xs text-cyan-600">DS-{oc.despacho_simple_id}</span>
-                    )}
+            <tbody className="divide-y divide-gray-100">
+              {ocsFiltradas.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="py-12 text-center text-sm text-gray-400">
+                    No se encontraron órdenes de compra
                   </td>
                 </tr>
-              ))}
+              )}
+              {ocsFiltradas.map(oc => {
+                const recsVinculadas = recepciones.filter(r => r.documento_origen_id === oc.id)
+                const recEstado = recsVinculadas.length === 0 ? null :
+                  recsVinculadas.every(r => r.estado === 'recibida') ? 'recibida' :
+                  recsVinculadas.some(r => r.estado === 'recibida') ? 'parcial' : 'esperando'
+                return (
+                  <tr
+                    key={oc.id}
+                    className="hover:bg-gray-50 cursor-pointer"
+                    onClick={() => { setSelectedOC(oc); setOcTabActivo("productos") }}
+                  >
+                    <td className="py-3 px-4 font-medium text-blue-700">{oc.numero}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{formatDate(oc.fecha)}</td>
+                    <td className="py-3 px-4 text-sm font-medium">{oc.proveedor_nombre}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{oc.sucursal || '-'}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        oc.metodo_compra === 'inmediato' ? 'bg-cyan-100 text-cyan-700' : 'bg-indigo-100 text-indigo-700'
+                      }`}>
+                        {oc.metodo_compra === 'inmediato' ? 'Inmediato' : 'Estándar'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{oc.moneda}</td>
+                    <td className="py-3 px-4 text-right font-medium text-sm">
+                      {formatCurrency(oc.total, oc.moneda)}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      {recEstado === null ? <span className="text-gray-300 text-xs">-</span> :
+                       recEstado === 'recibida' ? <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Recibida</span> :
+                       recEstado === 'parcial' ? <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Parcial</span> :
+                       <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Esperando</span>}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${estadoColor[oc.estado] || 'bg-gray-100 text-gray-600'}`}>
+                        {estadoLabel[oc.estado] || oc.estado}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <ChevronRight className="w-4 h-4 text-gray-400" />
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -1194,79 +1196,819 @@ export default function ModuloCompras() {
     )
   }
 
+  const confirmarOC = (oc: OrdenCompra) => {
+    const ahora = new Date().toISOString()
+    const nuevoId = Math.max(...recepciones.map(r => r.id), 0) + 1
+    const esInmediato = oc.metodo_compra === 'inmediato'
+
+    const nuevaRec: Recepcion = {
+      id: nuevoId,
+      numero: `REC-${String(nuevoId).padStart(5, '0')}`,
+      fecha: ahora,
+      sucursal: oc.sucursal,
+      proveedor_id: oc.proveedor_id,
+      proveedor_nombre: oc.proveedor_nombre,
+      deposito_destino: oc.deposito_destino,
+      ubicacion_destino: oc.ubicacion_destino,
+      documento_origen_tipo: "oc",
+      documento_origen_id: oc.id,
+      documento_origen_ref: oc.numero,
+      orden_compra_id: oc.id,
+      orden_compra_numero: oc.numero,
+      fecha_pedido: oc.fecha.slice(0, 10),
+      fecha_entrega_esperada: oc.fecha_entrega_estimada,
+      estado: esInmediato ? "recibida" : "esperando_recepcion",
+      fecha_recepcion_real: esInmediato ? ahora : undefined,
+      lineas: oc.lineas.map(l => ({
+        producto_id: l.producto_id,
+        producto_nombre: l.producto_nombre,
+        producto_sku: l.producto_nombre.substring(0, 8).toUpperCase().replace(/\s/g, '-'),
+        tiene_serie: false,
+        cantidad_pedida: l.cantidad,
+        cantidad_recibida: esInmediato ? l.cantidad : 0,
+        udm: "un",
+        precio_unitario: l.precio_unitario,
+        estado_linea: esInmediato ? "recibido" : "pendiente"
+      }))
+    }
+
+    const ocConfirmada: OrdenCompra = {
+      ...oc,
+      estado: esInmediato ? "recibida" : "confirmada",
+      lineas: oc.lineas.map(l => ({
+        ...l,
+        cantidad_recibida: esInmediato ? l.cantidad : 0
+      }))
+    }
+
+    setRecepciones(prev => [...prev, nuevaRec])
+    setOrdenesCompra(prev => prev.map(o => o.id === oc.id ? ocConfirmada : o))
+    setSelectedOC(ocConfirmada)
+  }
+
   const renderFichaOC = () => {
     if (!selectedOC) return null
+    const oc = selectedOC
+    const editable = oc.estado === 'borrador'
+
+    const estadoColor: Record<string, string> = {
+      borrador:        "bg-gray-100 text-gray-700",
+      confirmada:      "bg-blue-100 text-blue-700",
+      recibida_parcial:"bg-amber-100 text-amber-700",
+      recibida:        "bg-green-100 text-green-700",
+      cancelada:       "bg-red-100 text-red-700",
+    }
+    const estadoLabel: Record<string, string> = {
+      borrador:        "Borrador",
+      confirmada:      "Confirmada",
+      recibida_parcial:"Recibida parcial",
+      recibida:        "Recibida",
+      cancelada:       "Cancelada",
+    }
+
+    const recsVinculadas = recepciones.filter(r => r.documento_origen_id === oc.id)
+    const facturasVinculadas = facturasCompra.filter(f => f.orden_compra_id === oc.id)
+    const totalRecibido = oc.lineas.reduce((s, l) => s + l.cantidad_recibida, 0)
+    const totalPedido = oc.lineas.reduce((s, l) => s + l.cantidad, 0)
+
+    const tabs = [
+      { key: "productos",     label: "Productos",                           count: oc.lineas.length },
+      { key: "recepciones",   label: "Entregas / Recepciones",              count: recsVinculadas.length },
+      { key: "facturas",      label: "Facturas vinculadas",                 count: facturasVinculadas.length },
+      { key: "observaciones", label: "Observaciones",                       count: null },
+    ] as const
+
     return (
       <div>
+        {/* Breadcrumb */}
         <div className="text-sm text-gray-500 mb-4 flex items-center gap-2">
-          <button onClick={() => setSelectedOC(null)} className="hover:text-blue-600">Órdenes de Compra</button>
-          <span>/</span>
-          <span className="text-gray-900">{selectedOC.numero}</span>
+          <button onClick={() => setSelectedOC(null)} className="hover:text-blue-600">Ordenes de Compra</button>
+          <ChevronRight className="w-4 h-4" />
+          <span className="text-gray-900 font-medium">{oc.numero}</span>
         </div>
 
-        <div className="flex items-start justify-between mb-6">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-4">
             <BotonVolver onClick={() => setSelectedOC(null)} variant="minimal" texto="" />
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{selectedOC.numero}</h1>
-              <p className="text-sm text-gray-500">{formatDate(selectedOC.fecha)} | {selectedOC.proveedor_nombre}</p>
+              <h1 className="text-2xl font-bold text-gray-900">{oc.numero}</h1>
+              <p className="text-sm text-gray-500">{formatDate(oc.fecha)} | {oc.proveedor_nombre}</p>
             </div>
           </div>
-          <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
-            selectedOC.estado === 'confirmada' ? 'bg-blue-100 text-blue-700' :
-            selectedOC.estado === 'recibida' ? 'bg-green-100 text-green-700' :
-            'bg-gray-100 text-gray-700'
-          }`}>
-            {selectedOC.estado.charAt(0).toUpperCase() + selectedOC.estado.slice(1)}
-          </span>
+          <div className="flex items-center gap-2">
+            {editable && (
+              <>
+                <button
+                  onClick={() => confirmarOC(oc)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Confirmar
+                </button>
+                <button
+                  onClick={() => setOcModalCancelacionOpen(true)}
+                  className="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50"
+                >
+                  Eliminar
+                </button>
+              </>
+            )}
+            {(oc.estado === 'confirmada' || oc.estado === 'recibida_parcial') && oc.metodo_compra === 'estandar' && (
+              <button
+                onClick={() => setOcTabActivo("recepciones")}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full hover:bg-emerald-100"
+              >
+                <Truck className="w-3.5 h-3.5" />
+                Recepciones ({recsVinculadas.length})
+              </button>
+            )}
+            {(oc.estado === 'confirmada' || oc.estado === 'recibida') && oc.metodo_compra === 'inmediato' && (
+              <button
+                onClick={() => setOcTabActivo("facturas")}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded-full hover:bg-blue-100"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Crear Factura
+              </button>
+            )}
+            {!editable && (
+              <button
+                onClick={() => setOcModalCancelacionOpen(true)}
+                className="px-3 py-1.5 border border-red-200 text-red-500 rounded-lg text-xs hover:bg-red-50"
+              >
+                Cancelar OC
+              </button>
+            )}
+            <span className={`px-3 py-1.5 rounded-full text-sm font-semibold ${estadoColor[oc.estado] || 'bg-gray-100 text-gray-700'}`}>
+              {estadoLabel[oc.estado] || oc.estado}
+            </span>
+          </div>
         </div>
 
-        <div className="bg-white rounded-lg border p-6">
-          <h3 className="font-semibold mb-4">Líneas de la Orden</h3>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-xs text-gray-500 uppercase">
-                <th className="text-left py-2">Producto</th>
-                <th className="text-right py-2">Cantidad</th>
-                <th className="text-right py-2">Recibido</th>
-                <th className="text-right py-2">Precio Unit.</th>
-                <th className="text-right py-2">Subtotal</th>
-              </tr>
-            </thead>
-            <tbody>
-              {selectedOC.lineas.map((linea, idx) => (
-                <tr key={idx} className="border-b">
-                  <td className="py-2">{linea.producto_nombre}</td>
-                  <td className="py-2 text-right">{linea.cantidad}</td>
-                  <td className="py-2 text-right">{linea.cantidad_recibida}</td>
-                  <td className="py-2 text-right">{selectedOC.moneda === 'USD' ? formatCurrency(linea.precio_unitario, 'USD') : formatCurrency(linea.precio_unitario)}</td>
-                  <td className="py-2 text-right font-medium">{selectedOC.moneda === 'USD' ? formatCurrency(linea.subtotal, 'USD') : formatCurrency(linea.subtotal)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="font-semibold">
-                <td colSpan={4} className="py-2 text-right">Total:</td>
-                <td className="py-2 text-right">{selectedOC.moneda === 'USD' ? formatCurrency(selectedOC.total, 'USD') : formatCurrency(selectedOC.total)}</td>
-              </tr>
-            </tfoot>
-          </table>
+        {/* Barra de progreso */}
+        <div className="bg-white rounded-lg border px-6 py-4 mb-4">
+          <div className="flex items-center gap-0">
+            {(['borrador', 'confirmada', 'recibida'] as const).map((step, idx) => {
+              const stepLabel = { borrador: 'Borrador', confirmada: 'Confirmada', recibida: 'Recibida' }[step]
+              const stepsDone = ['borrador', 'confirmada', 'recibida'].indexOf(oc.estado)
+              const isCurrent = oc.estado === step || (oc.estado === 'recibida_parcial' && step === 'confirmada')
+              const isDone = stepsDone > idx || oc.estado === 'recibida'
+              return (
+                <React.Fragment key={step}>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                      oc.estado === 'cancelada' ? 'bg-red-100 text-red-600' :
+                      isDone ? 'bg-blue-600 text-white' :
+                      isCurrent ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-300' :
+                      'bg-gray-100 text-gray-400'
+                    }`}>
+                      {isDone && oc.estado !== 'cancelada' ? <CheckCircle className="w-4 h-4" /> : idx + 1}
+                    </div>
+                    <span className={`text-xs font-medium ${isCurrent || isDone ? 'text-gray-900' : 'text-gray-400'}`}>
+                      {stepLabel}
+                    </span>
+                  </div>
+                  {idx < 2 && <div className={`flex-1 h-0.5 mx-3 ${isDone ? 'bg-blue-400' : 'bg-gray-200'}`} />}
+                </React.Fragment>
+              )
+            })}
+          </div>
         </div>
+
+        {/* Cabecera datos */}
+        <div className="bg-white rounded-lg border p-6 mb-4">
+          <div className="grid grid-cols-3 gap-x-8 gap-y-4 text-sm">
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Sucursal</p>
+              <p className="font-medium">{oc.sucursal || '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Proveedor</p>
+              <p className="font-medium">{oc.proveedor_nombre}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Término de Pago</p>
+              <p className="font-medium">{oc.termino_pago || '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Tipo de Compra</p>
+              <p className="font-medium">{oc.tipo_compra || '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Método de Compra</p>
+              <p className={`font-medium ${oc.metodo_compra === 'inmediato' ? 'text-cyan-700' : 'text-indigo-700'}`}>
+                {oc.metodo_compra === 'inmediato' ? 'Inmediato' : 'Estándar'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Moneda</p>
+              <p className="font-medium">{oc.moneda}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Fecha de Pedido</p>
+              <p className="font-medium">{formatDate(oc.fecha)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Entrega Estimada</p>
+              <p className="font-medium">{oc.fecha_entrega_estimada ? formatDate(oc.fecha_entrega_estimada) : '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Depósito Destino</p>
+              <p className="font-medium">{oc.deposito_destino || '-'}{oc.ubicacion_destino ? ` / ${oc.ubicacion_destino}` : ''}</p>
+            </div>
+          </div>
+          {oc.cancelacion && (
+            <div className="mt-4 pt-4 border-t border-red-200 bg-red-50 rounded-lg p-3">
+              <p className="text-xs text-red-500 font-semibold uppercase tracking-wide mb-1">Cancelación</p>
+              <p className="text-sm text-red-700"><span className="font-medium">{oc.cancelacion.usuario}</span> — {new Date(oc.cancelacion.fecha).toLocaleString('es-AR')}</p>
+              <p className="text-sm text-red-600 mt-1">{oc.cancelacion.motivo}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Tabs */}
+        <div className="bg-white rounded-lg border overflow-hidden">
+          <div className="flex border-b">
+            {tabs.map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setOcTabActivo(tab.key)}
+                className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  ocTabActivo === tab.key
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {tab.label}
+                {tab.count !== null && tab.count > 0 && (
+                  <span className={`px-1.5 py-0.5 text-xs rounded-full font-medium ${
+                    ocTabActivo === tab.key ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                  }`}>{tab.count}</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab: Productos */}
+          {ocTabActivo === "productos" && (
+            <div className="p-0">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                    <th className="text-left py-3 px-4">Producto</th>
+                    <th className="text-left py-3 px-4">Descripcion</th>
+                    <th className="text-right py-3 px-4">Cant.</th>
+                    <th className="text-right py-3 px-4">Recibido</th>
+                    <th className="text-right py-3 px-4">Precio Unit.</th>
+                    <th className="text-right py-3 px-4">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {oc.lineas.length === 0 && (
+                    <tr><td colSpan={6} className="py-8 text-center text-sm text-gray-400">Sin líneas</td></tr>
+                  )}
+                  {oc.lineas.map((l, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50">
+                      <td className="py-3 px-4 font-medium">{l.producto_nombre}</td>
+                      <td className="py-3 px-4 text-gray-500">{l.descripcion || '-'}</td>
+                      <td className="py-3 px-4 text-right">{l.cantidad}</td>
+                      <td className="py-3 px-4 text-right">
+                        <span className={l.cantidad_recibida > 0 ? 'text-green-600 font-medium' : 'text-gray-400'}>
+                          {l.cantidad_recibida}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right">{formatCurrency(l.precio_unitario, oc.moneda)}</td>
+                      <td className="py-3 px-4 text-right font-medium">{formatCurrency(l.subtotal, oc.moneda)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="border-t bg-gray-50">
+                  <tr>
+                    <td colSpan={4} className="py-3 px-4 text-sm text-gray-500">
+                      {totalPedido > 0 && (
+                        <span>{totalRecibido} de {totalPedido} unidades recibidas</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-right text-sm font-semibold text-gray-700">Total</td>
+                    <td className="py-3 px-4 text-right text-base font-bold text-gray-900">
+                      {formatCurrency(oc.total, oc.moneda)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+
+          {/* Tab: Recepciones */}
+          {ocTabActivo === "recepciones" && (
+            <div className="p-4">
+              {recsVinculadas.length === 0 ? (
+                <p className="text-center text-sm text-gray-400 py-8">No hay recepciones generadas aún</p>
+              ) : (
+                <div className="space-y-2">
+                  {recsVinculadas.map(r => (
+                    <div
+                      key={r.id}
+                      onClick={() => {
+                        setSelectedRecepcion(r)
+                        setRecepcionCantidades(Object.fromEntries(r.lineas.map(l => [l.producto_id, l.cantidad_recibida])))
+                        setSelectedOC(null)
+                        setActiveView("recepciones")
+                      }}
+                      className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 text-sm border border-gray-100"
+                    >
+                      <span className="font-medium text-emerald-700">{r.numero}</span>
+                      <span className="text-gray-500">{new Date(r.fecha).toLocaleDateString('es-AR')}</span>
+                      <span className="text-gray-500">{r.lineas.length} producto{r.lineas.length !== 1 ? 's' : ''}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        r.estado === 'recibida' ? 'bg-green-100 text-green-700' :
+                        r.estado === 'esperando_recepcion' ? 'bg-amber-100 text-amber-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {r.estado === 'recibida' ? 'Recibida' : r.estado === 'esperando_recepcion' ? 'Esperando recepcion' : 'Cancelada'}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-gray-400" />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(oc.estado === 'confirmada' || oc.estado === 'recibida_parcial') && oc.metodo_compra === 'estandar' && (
+                <div className="mt-4 text-xs text-gray-400 text-center">
+                  Las recepciones se generan automáticamente al confirmar la OC
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab: Facturas */}
+          {ocTabActivo === "facturas" && (
+            <div className="p-4">
+              {facturasVinculadas.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-sm text-gray-400 mb-4">No hay facturas vinculadas aún</p>
+                  {oc.metodo_compra === 'inmediato' && oc.estado !== 'borrador' && (
+                    <button className="flex items-center gap-2 mx-auto px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+                      <Plus className="w-4 h-4" />
+                      Crear Factura de Compra
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {facturasVinculadas.map(f => (
+                    <div key={f.id} className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-lg text-sm border border-gray-100">
+                      <span className="font-medium text-blue-700">{f.numero}</span>
+                      <span className="text-gray-500">{formatDate(f.fecha)}</span>
+                      <span className="font-medium">{formatCurrency(f.total, oc.moneda)}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        f.estado === 'pagada' ? 'bg-green-100 text-green-700' :
+                        f.estado === 'pendiente' ? 'bg-amber-100 text-amber-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>{f.estado}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab: Observaciones */}
+          {ocTabActivo === "observaciones" && (
+            <div className="p-6">
+              {editable ? (
+                <textarea
+                  defaultValue={oc.observaciones || ''}
+                  rows={6}
+                  placeholder="Notas internas sobre esta orden de compra (no se comparte con el proveedor)..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 resize-none"
+                  onChange={e => setSelectedOC({ ...oc, observaciones: e.target.value })}
+                />
+              ) : (
+                <p className="text-sm text-gray-700 whitespace-pre-wrap">{oc.observaciones || 'Sin observaciones.'}</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Modal cancelación OC */}
+        {ocModalCancelacionOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+              <div className="flex items-center justify-between px-6 py-4 border-b">
+                <h2 className="text-lg font-bold text-gray-900">{editable ? 'Eliminar OC' : 'Cancelar OC'}</h2>
+                <button onClick={() => { setOcModalCancelacionOpen(false); setOcCancelacionMotivo("") }} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="px-6 py-4">
+                {!editable && (
+                  <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                    <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-red-700">
+                      {recsVinculadas.some(r => r.estado === 'recibida')
+                        ? 'Existe una recepción confirmada vinculada. Cancela primero la recepción para poder cancelar la OC.'
+                        : 'Esta acción cancelará también las recepciones en estado "Esperando recepción" vinculadas.'}
+                    </div>
+                  </div>
+                )}
+                {recsVinculadas.some(r => r.estado === 'recibida') ? (
+                  <div className="text-center py-2">
+                    <button onClick={() => setOcModalCancelacionOpen(false)} className="px-4 py-2 bg-gray-100 rounded-lg text-sm">Cerrar</button>
+                  </div>
+                ) : (
+                  <>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Motivo <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      value={ocCancelacionMotivo}
+                      onChange={e => setOcCancelacionMotivo(e.target.value)}
+                      rows={3}
+                      placeholder="Motivo..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 resize-none"
+                    />
+                    <div className="flex items-center justify-end gap-3 mt-4">
+                      <button onClick={() => { setOcModalCancelacionOpen(false); setOcCancelacionMotivo("") }} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Volver</button>
+                      <button
+                        disabled={!ocCancelacionMotivo.trim()}
+                        onClick={() => {
+                          if (!ocCancelacionMotivo.trim()) return
+                          if (editable) {
+                            setOrdenesCompra(prev => prev.filter(o => o.id !== oc.id))
+                            setSelectedOC(null)
+                          } else {
+                            const ocCancelada = { ...oc, estado: 'cancelada' as const, cancelacion: { usuario: 'Admin', fecha: new Date().toISOString(), motivo: ocCancelacionMotivo.trim() } }
+                            setOrdenesCompra(prev => prev.map(o => o.id === oc.id ? ocCancelada : o))
+                            setSelectedOC(ocCancelada)
+                            // cancelar recepciones pendientes vinculadas
+                            setRecepciones(prev => prev.map(r =>
+                              r.documento_origen_id === oc.id && r.estado === 'esperando_recepcion'
+                                ? { ...r, estado: 'cancelada' as const, cancelacion: { usuario: 'Admin', fecha: new Date().toISOString(), motivo: `OC cancelada: ${ocCancelacionMotivo.trim()}` } }
+                                : r
+                            ))
+                          }
+                          setOcModalCancelacionOpen(false)
+                          setOcCancelacionMotivo("")
+                        }}
+                        className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium disabled:opacity-40"
+                      >
+                        {editable ? 'Eliminar' : 'Confirmar Cancelación'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
 
   const renderCrearOC = () => {
+    const oc = nuevaOC
+    const totalOC = oc.lineas.reduce((s, l) => s + l.subtotal, 0)
+
+    const guardarOC = () => {
+      if (!oc.proveedor_nombre || !oc.deposito_destino || oc.lineas.length === 0) {
+        alert("Complete proveedor, depósito destino y al menos una línea.")
+        return
+      }
+      const nuevoId = Math.max(...ordenesCompra.map(o => o.id), 0) + 1
+      const nuevaOrden: OrdenCompra = {
+        id: nuevoId,
+        numero: `OC-${String(nuevoId).padStart(5, '0')}`,
+        fecha: oc.fecha || new Date().toISOString().slice(0, 10),
+        sucursal: oc.sucursal || "",
+        proveedor_id: oc.proveedor_id || 0,
+        proveedor_nombre: oc.proveedor_nombre || "",
+        termino_pago: oc.termino_pago || "Contado",
+        tipo_compra: oc.tipo_compra || "nacional",
+        metodo_compra: oc.metodo_compra || "estandar",
+        estado: "borrador",
+        fecha_entrega_estimada: oc.fecha_entrega_estimada || "",
+        deposito_destino: oc.deposito_destino || "",
+        ubicacion_destino: oc.ubicacion_destino || "",
+        moneda: oc.moneda || "ARS",
+        tipo_cambio: oc.tipo_cambio || 1,
+        subtotal: totalOC,
+        impuestos: 0,
+        total: totalOC,
+        observaciones: oc.observaciones || "",
+        lineas: oc.lineas
+      }
+      setOrdenesCompra(prev => [...prev, nuevaOrden])
+      setCreandoOC(false)
+      setSelectedOC(nuevaOrden)
+      setOcTabActivo("productos")
+    }
+
     return (
-      <div className="max-w-4xl mx-auto">
+      <div>
+        {/* Acciones guardar */}
+        <div className="flex items-center gap-3 mb-4">
+          <button
+            onClick={guardarOC}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+          >
+            <Save className="w-4 h-4" />
+            Guardar
+          </button>
+          <button
+            onClick={() => setCreandoOC(false)}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50"
+          >
+            <X className="w-4 h-4" />
+            Descartar
+          </button>
+        </div>
+
+        {/* Breadcrumb */}
+        <div className="text-sm text-gray-500 mb-4 flex items-center gap-2">
+          <button onClick={() => setCreandoOC(false)} className="hover:text-blue-600">Ordenes de Compra</button>
+          <ChevronRight className="w-4 h-4" />
+          <span className="text-gray-900 font-medium">Nueva OC</span>
+        </div>
+
         <div className="flex items-center gap-4 mb-6">
-<BotonVolver onClick={() => setCreandoOC(false)} variant="minimal" texto="" />
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Nueva Orden de Compra</h1>
+          <BotonVolver onClick={() => setCreandoOC(false)} variant="minimal" texto="" />
+          <h1 className="text-2xl font-bold text-gray-900">Nueva Orden de Compra</h1>
+        </div>
+
+        {/* Cabecera */}
+        <div className="bg-white rounded-lg border p-6 mb-4">
+          <div className="grid grid-cols-2 gap-x-12 gap-y-4">
+            {/* Columna izquierda */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">N° de OC</label>
+                <p className="text-sm text-gray-400 italic">Generado automáticamente</p>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Sucursal <span className="text-red-500">*</span></label>
+                <select
+                  value={oc.sucursal || ""}
+                  onChange={e => setNuevaOC(prev => ({ ...prev, sucursal: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Seleccionar sucursal...</option>
+                  <option value="Puerto Norte">Puerto Norte</option>
+                  <option value="Centro">Centro</option>
+                  <option value="Sur">Sur</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Proveedor <span className="text-red-500">*</span></label>
+                <select
+                  value={oc.proveedor_id || ""}
+                  onChange={e => {
+                    const p = proveedores.find(p => p.id === Number(e.target.value))
+                    if (p) setNuevaOC(prev => ({ ...prev, proveedor_id: p.id, proveedor_nombre: p.nombre, moneda: p.moneda_habitual }))
+                    else setNuevaOC(prev => ({ ...prev, proveedor_id: undefined, proveedor_nombre: "" }))
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="">Seleccionar proveedor...</option>
+                  {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Termino de Pago</label>
+                <select
+                  value={oc.termino_pago || "Contado"}
+                  onChange={e => setNuevaOC(prev => ({ ...prev, termino_pago: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                >
+                  <option>Contado</option>
+                  <option>30 dias</option>
+                  <option>60 dias</option>
+                  <option>90 dias</option>
+                  <option>Anticipado</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Tipo de Compra</label>
+                <select
+                  value={oc.tipo_compra || "nacional"}
+                  onChange={e => setNuevaOC(prev => ({ ...prev, tipo_compra: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="nacional">Compra Nacional</option>
+                  <option value="importacion">Importacion</option>
+                  <option value="reposicion">Reposicion</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Metodo de Compra <span className="text-red-500">*</span></label>
+                <select
+                  value={oc.metodo_compra}
+                  onChange={(e) => setNuevaOC(prev => ({ ...prev, metodo_compra: e.target.value as "estandar" | "inmediato" }))}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="estandar">Estándar</option>
+                  <option value="inmediato">Inmediato</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Columna derecha */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Fecha de Pedido</label>
+                <input
+                  type="date"
+                  value={oc.fecha || ""}
+                  onChange={e => setNuevaOC(prev => ({ ...prev, fecha: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Fecha de Entrega Estimada</label>
+                <input
+                  type="date"
+                  value={oc.fecha_entrega_estimada || ""}
+                  onChange={e => setNuevaOC(prev => ({ ...prev, fecha_entrega_estimada: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Deposito Destino <span className="text-red-500">*</span></label>
+                <select
+                  value={oc.deposito_destino || ""}
+                  onChange={e => setNuevaOC(prev => ({ ...prev, deposito_destino: e.target.value, ubicacion_destino: "" }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="">Seleccionar deposito...</option>
+                  {DEPOSITOS_OC.map(d => (
+                    <option key={d.id} value={d.nombre}>{d.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={`block text-xs uppercase tracking-wide mb-1 ${oc.deposito_destino ? "text-gray-500" : "text-gray-300"}`}>
+                  Ubicacion Destino
+                </label>
+                <select
+                  value={oc.ubicacion_destino || ""}
+                  onChange={e => setNuevaOC(prev => ({ ...prev, ubicacion_destino: e.target.value }))}
+                  disabled={!oc.deposito_destino}
+                  className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white transition-colors ${
+                    oc.deposito_destino
+                      ? "border-gray-300 text-gray-900"
+                      : "border-gray-200 text-gray-400 cursor-not-allowed bg-gray-50"
+                  }`}
+                >
+                  <option value="">{oc.deposito_destino ? "Seleccionar ubicación..." : "Seleccione un depósito primero"}</option>
+                  {oc.deposito_destino && UBICACIONES_OC
+                    .filter(u => DEPOSITOS_OC.find(d => d.nombre === oc.deposito_destino)?.id === u.deposito_id)
+                    .map(u => (
+                      <option key={u.id} value={u.codigo}>{u.nombre}</option>
+                    ))
+                  }
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Moneda</label>
+                <select
+                  value={oc.moneda || "ARS"}
+                  onChange={e => setNuevaOC(prev => ({ ...prev, moneda: e.target.value as "ARS" | "USD" | "EUR" }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="ARS">ARS - Peso Argentino</option>
+                  <option value="USD">USD - Dolar</option>
+                  <option value="EUR">EUR - Euro</option>
+                </select>
+              </div>
+            </div>
           </div>
         </div>
-        <div className="bg-white rounded-lg border p-6">
-          <p className="text-center text-gray-500 py-8">Formulario de creación de OC (en desarrollo)</p>
+
+        {/* Grilla de productos */}
+        <div className="bg-white rounded-lg border overflow-hidden mb-4">
+          <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
+            <h3 className="font-semibold text-sm text-gray-900">Productos</h3>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="border-b bg-gray-50">
+              <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                <th className="text-left py-2.5 px-4">Producto</th>
+                <th className="text-left py-2.5 px-4">Descripcion</th>
+                <th className="text-right py-2.5 px-4 w-24">Cantidad</th>
+                <th className="text-right py-2.5 px-4 w-36">Precio Unit.</th>
+                <th className="text-right py-2.5 px-4 w-32">Subtotal</th>
+                <th className="w-10 py-2.5 px-4"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {oc.lineas.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-sm text-gray-400">
+                    No hay productos. Agregue una linea para comenzar.
+                  </td>
+                </tr>
+              )}
+              {oc.lineas.map((linea, idx) => (
+                <tr key={idx} className="hover:bg-gray-50">
+                  <td className="py-2 px-4">
+                    <input
+                      type="text"
+                      value={linea.producto_nombre}
+                      onChange={e => {
+                        const updated = [...oc.lineas]
+                        updated[idx] = { ...updated[idx], producto_nombre: e.target.value }
+                        setNuevaOC(prev => ({ ...prev, lineas: updated }))
+                      }}
+                      placeholder="Nombre del producto..."
+                      className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-blue-500"
+                    />
+                  </td>
+                  <td className="py-2 px-4">
+                    <input
+                      type="text"
+                      value={linea.descripcion}
+                      onChange={e => {
+                        const updated = [...oc.lineas]
+                        updated[idx] = { ...updated[idx], descripcion: e.target.value }
+                        setNuevaOC(prev => ({ ...prev, lineas: updated }))
+                      }}
+                      placeholder="Descripcion..."
+                      className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-blue-500"
+                    />
+                  </td>
+                  <td className="py-2 px-4">
+                    <input
+                      type="number"
+                      min={1}
+                      value={linea.cantidad}
+                      onChange={e => {
+                        const updated = [...oc.lineas]
+                        const cant = Math.max(1, Number(e.target.value))
+                        updated[idx] = { ...updated[idx], cantidad: cant, subtotal: cant * updated[idx].precio_unitario }
+                        setNuevaOC(prev => ({ ...prev, lineas: updated }))
+                      }}
+                      className="w-full text-right px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-blue-500"
+                    />
+                  </td>
+                  <td className="py-2 px-4">
+                    <input
+                      type="number"
+                      min={0}
+                      value={linea.precio_unitario}
+                      onChange={e => {
+                        const updated = [...oc.lineas]
+                        const precio = Math.max(0, Number(e.target.value))
+                        updated[idx] = { ...updated[idx], precio_unitario: precio, subtotal: updated[idx].cantidad * precio }
+                        setNuevaOC(prev => ({ ...prev, lineas: updated }))
+                      }}
+                      className="w-full text-right px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-blue-500"
+                    />
+                  </td>
+                  <td className="py-2 px-4 text-right font-medium text-gray-700">
+                    {formatCurrency(linea.subtotal, oc.moneda)}
+                  </td>
+                  <td className="py-2 px-4">
+                    <button
+                      onClick={() => setNuevaOC(prev => ({ ...prev, lineas: prev.lineas.filter((_, i) => i !== idx) }))}
+                      className="text-gray-400 hover:text-red-500"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t bg-gray-50">
+              <tr>
+                <td colSpan={3} className="py-3 px-4">
+                  <button
+                    onClick={() => setNuevaOC(prev => ({
+                      ...prev,
+                      lineas: [...prev.lineas, {
+                        producto_id: Date.now(),
+                        producto_nombre: "",
+                        descripcion: "",
+                        cantidad: 1,
+                        cantidad_recibida: 0,
+                        precio_unitario: 0,
+                        descuento: 0,
+                        subtotal: 0
+                      }]
+                    }))}
+                    className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Agregar linea
+                  </button>
+                </td>
+                <td className="py-3 px-4 text-right text-sm font-semibold text-gray-700">Total</td>
+                <td className="py-3 px-4 text-right text-base font-bold text-gray-900">
+                  {formatCurrency(totalOC, oc.moneda)}
+                </td>
+                <td />
+              </tr>
+            </tfoot>
+          </table>
         </div>
       </div>
     )
@@ -1910,80 +2652,284 @@ export default function ModuloCompras() {
   }
 
   // =====================================================
+  // LÓGICA CONFIRMAR RECEPCIÓN
+  // =====================================================
+  const handleConfirmarRecepcion = () => {
+    if (!selectedRecepcion) return
+    const rec = selectedRecepcion
+
+    // Validación: cantidades > 0
+    const lineasConCantidad = rec.lineas.filter(l => (recepcionCantidades[l.producto_id] ?? 0) > 0)
+    if (lineasConCantidad.length === 0) {
+      alert("Debe ingresar al menos una cantidad recibida mayor a 0.")
+      return
+    }
+
+    // Validación: series registradas para productos con serie
+    for (const linea of rec.lineas) {
+      if (!linea.tiene_serie) continue
+      const cantRequerida = recepcionCantidades[linea.producto_id] ?? 0
+      if (cantRequerida === 0) continue
+      const seriesDelProducto = seriesConfirmadas[linea.producto_id] || []
+      if (seriesDelProducto.length < cantRequerida) {
+        alert(`Debe registrar los N° de serie para: ${linea.producto_nombre}`)
+        setModalSerieProducto(linea)
+        setModalSerieUnidades(seriesDelProducto.length > 0 ? seriesDelProducto : Array.from({ length: cantRequerida }, () => ({ nro_serie: '', outlet: false })))
+        setModalSerieOpen(true)
+        return
+      }
+    }
+
+    const ahora = new Date().toISOString()
+    const lineasActualizadas: RecepcionLinea[] = rec.lineas.map(l => {
+      const cantRec = recepcionCantidades[l.producto_id] ?? 0
+      const estadoLinea: RecepcionLinea['estado_linea'] = cantRec === 0
+        ? 'pendiente'
+        : cantRec < l.cantidad_pedida
+        ? 'recibido_parcial'
+        : 'recibido'
+      return {
+        ...l,
+        cantidad_recibida: cantRec,
+        estado_linea: estadoLinea,
+        unidades_serie: l.tiene_serie ? (seriesConfirmadas[l.producto_id] || []) : l.unidades_serie
+      }
+    })
+
+    // Determinar si hay recepción parcial
+    const hayParcial = lineasActualizadas.some(l => l.estado_linea === 'recibido_parcial')
+
+    // Generar recepción complementaria si hay parcial
+    let recCompId: number | undefined = undefined
+    if (hayParcial) {
+      const lineasPendientes: RecepcionLinea[] = lineasActualizadas
+        .filter(l => l.cantidad_pedida - l.cantidad_recibida > 0)
+        .map(l => ({
+          ...l,
+          cantidad_pedida: l.cantidad_pedida - l.cantidad_recibida,
+          cantidad_recibida: 0,
+          estado_linea: 'pendiente' as const,
+          unidades_serie: []
+        }))
+
+      if (lineasPendientes.length > 0) {
+        const nuevoId = Math.max(...recepciones.map(r => r.id)) + 1
+        recCompId = nuevoId
+        const recComp: Recepcion = {
+          ...rec,
+          id: nuevoId,
+          numero: `REC-${String(nuevoId).padStart(5, '0')}`,
+          fecha: ahora,
+          estado: 'esperando_recepcion',
+          fecha_recepcion_real: undefined,
+          remito_numero: undefined,
+          remito_fecha: undefined,
+          recepcion_anterior_id: rec.id,
+          recepcion_complementaria_id: undefined,
+          lineas: lineasPendientes,
+          cancelacion: undefined
+        }
+        setRecepciones(prev => [...prev, recComp])
+      }
+    }
+
+    // Actualizar la recepción actual
+    const recActualizada: Recepcion = {
+      ...rec,
+      estado: 'recibida',
+      fecha_recepcion_real: ahora,
+      lineas: lineasActualizadas,
+      recepcion_complementaria_id: recCompId
+    }
+    setRecepciones(prev => prev.map(r => r.id === rec.id ? recActualizada : r))
+    setSelectedRecepcion(recActualizada)
+
+    // Actualizar OC vinculada
+    if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
+      setOrdenesCompra(prev => prev.map(oc => {
+        if (oc.id !== rec.documento_origen_id) return oc
+        const todasRecibidas = lineasActualizadas.every(l => l.estado_linea === 'recibido')
+        return {
+          ...oc,
+          estado: todasRecibidas && !hayParcial ? 'recibida' : 'recibida_parcial',
+          lineas: oc.lineas.map(ol => {
+            const linRec = lineasActualizadas.find(l => l.producto_id === ol.producto_id)
+            return linRec ? { ...ol, cantidad_recibida: ol.cantidad_recibida + linRec.cantidad_recibida } : ol
+          })
+        }
+      }))
+    }
+
+    // Limpiar estado temporal
+    setSeriesConfirmadas({})
+    setRecepcionCantidades({})
+  }
+
+  // =====================================================
   // RENDER RECEPCIONES
   // =====================================================
   const renderRecepciones = () => {
+    if (selectedRecepcion) return renderFichaRecepcion()
+
     const estadoColor: Record<string, string> = {
-      confirmada: 'bg-green-100 text-green-700',
-      borrador:   'bg-amber-100 text-amber-700',
-      cancelada:  'bg-red-100 text-red-700',
+      recibida:             'bg-green-100 text-green-700',
+      esperando_recepcion:  'bg-amber-100 text-amber-700',
+      cancelada:            'bg-red-100 text-red-700',
     }
     const estadoLabel: Record<string, string> = {
-      confirmada: 'Confirmada',
-      borrador:   'Esperando Recepción',
-      cancelada:  'Cancelada',
+      recibida:             'Recibida',
+      esperando_recepcion:  'Esperando Recepción',
+      cancelada:            'Cancelada',
     }
+    const origenLabel: Record<string, string> = {
+      oc:           'Orden de Compra',
+      toma_equipo:  'Toma de Equipo',
+      transferencia:'Transferencia',
+    }
+
+    const recepcionesFiltradas = recepciones.filter(r => {
+      const matchEstado = recepcionFiltroEstado === "todos" || r.estado === recepcionFiltroEstado
+      const q = recepcionBusqueda.toLowerCase()
+      const matchBusqueda = !q ||
+        r.numero.toLowerCase().includes(q) ||
+        (r.proveedor_nombre || '').toLowerCase().includes(q) ||
+        r.documento_origen_ref.toLowerCase().includes(q) ||
+        r.lineas.some(l =>
+          l.producto_nombre.toLowerCase().includes(q) ||
+          l.producto_sku.toLowerCase().includes(q) ||
+          (l.unidades_serie || []).some(u => u.nro_serie.toLowerCase().includes(q))
+        )
+      return matchEstado && matchBusqueda
+    })
 
     return (
       <div>
-        <div className="flex items-center justify-between mb-6">
+        {/* Cabecera */}
+        <div className="flex items-start justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-emerald-900">Recepciones de Compra</h1>
-            <p className="text-gray-500 mt-1">Gestione las recepciones de mercadería</p>
+            <h1 className="text-2xl font-bold text-gray-900">Recepciones de Compra</h1>
+            <p className="text-gray-500 mt-1 text-sm">Las recepciones se generan automáticamente desde Órdenes de Compra, Tomas de Equipo y Transferencias.</p>
           </div>
-          <button className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700">
-            <Plus className="w-4 h-4" /> Nueva Recepción
-          </button>
+          <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>No se crean manualmente</span>
+          </div>
         </div>
 
+        {/* Estadísticas */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Total Recepciones</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Total</p>
             <p className="text-2xl font-bold text-gray-900">{recepciones.length}</p>
           </div>
           <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Confirmadas</p>
-            <p className="text-2xl font-bold text-emerald-600">{recepciones.filter(r => r.estado === 'confirmada').length}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Esperando Recepción</p>
+            <p className="text-2xl font-bold text-amber-600">{recepciones.filter(r => r.estado === 'esperando_recepcion').length}</p>
           </div>
           <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Esperando Recepción</p>
-            <p className="text-2xl font-bold text-amber-600">{recepciones.filter(r => r.estado === 'borrador').length}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Recibidas</p>
+            <p className="text-2xl font-bold text-green-600">{recepciones.filter(r => r.estado === 'recibida').length}</p>
           </div>
           <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Valor Total</p>
-            <p className="text-2xl font-bold text-blue-600">{formatCurrency(recepciones.reduce((s, r) => s + r.lineas.reduce((ls, l) => ls + l.cantidad_esta_recepcion * l.precio_unitario, 0), 0))}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Canceladas</p>
+            <p className="text-2xl font-bold text-red-600">{recepciones.filter(r => r.estado === 'cancelada').length}</p>
           </div>
         </div>
 
+        {/* Filtros */}
+        <div className="mb-4">
+          <OdooFilterBar
+            moduleName="recepciones"
+            filterOptions={[
+              { field: "estado", label: "Estado", values: [
+                { value: "esperando_recepcion", label: "Esperando recepción" },
+                { value: "recibida", label: "Recibida" },
+                { value: "cancelada", label: "Cancelada" },
+              ]},
+              { field: "origen", label: "Origen", values: [
+                { value: "oc", label: "Orden de Compra" },
+                { value: "devolucion", label: "Devolución" },
+                { value: "toma_equipo", label: "Toma de Equipo" },
+              ]},
+            ]}
+            groupByOptions={[
+              { id: "estado", label: "Estado", field: "estado" },
+              { id: "proveedor", label: "Proveedor", field: "proveedor" },
+              { id: "sucursal", label: "Sucursal", field: "sucursal" },
+              { id: "origen", label: "Origen", field: "origen" },
+            ]}
+            activeFilters={activeFiltersRec}
+            activeGroupBy={activeGroupByRec}
+            searchTerm={recepcionBusqueda}
+            onFiltersChange={f => {
+              setActiveFiltersRec(f)
+              setRecepcionFiltroEstado((f.find(x => x.field === "estado")?.value as any) ?? "todos")
+            }}
+            onGroupByChange={setActiveGroupByRec}
+            onSearchChange={setRecepcionBusqueda}
+            savedFilters={savedFiltersRec}
+            {...makeSavedFilterHandlersC(setSavedFiltersRec, setActiveFiltersRec, setActiveGroupByRec, setRecepcionBusqueda)}
+            totalCount={recepciones.length}
+            filteredCount={recepcionesFiltradas.length}
+          />
+        </div>
+
+        {/* Tabla */}
         <div className="bg-white rounded-lg border overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
-              <tr className="text-xs text-gray-500 uppercase">
-                <th className="text-left py-3 px-4">Número</th>
+              <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                <th className="text-left py-3 px-4">N° Recepción</th>
                 <th className="text-left py-3 px-4">Fecha</th>
                 <th className="text-left py-3 px-4">Proveedor / Origen</th>
-                <th className="text-left py-3 px-4">Ref.</th>
-                <th className="text-center py-3 px-4">Items</th>
-                <th className="text-right py-3 px-4">Total</th>
+                <th className="text-left py-3 px-4">Sucursal / Depósito</th>
+                <th className="text-left py-3 px-4">Doc. Origen</th>
+                <th className="text-center py-3 px-4">Productos</th>
                 <th className="text-center py-3 px-4">Estado</th>
+                <th className="py-3 px-4"></th>
               </tr>
             </thead>
-            <tbody>
-              {recepciones.length === 0 && (
-                <tr><td colSpan={7} className="py-10 text-center text-sm text-gray-400">No hay recepciones registradas</td></tr>
+            <tbody className="divide-y divide-gray-100">
+              {recepcionesFiltradas.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-sm text-gray-400">
+                    No se encontraron recepciones
+                  </td>
+                </tr>
               )}
-              {recepciones.map(rec => (
-                <tr key={rec.id} className="border-b hover:bg-gray-50 cursor-pointer">
+              {recepcionesFiltradas.map(rec => (
+                <tr
+                  key={rec.id}
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => {
+                    setSelectedRecepcion(rec)
+                    setRecepcionCantidades(
+                      Object.fromEntries(rec.lineas.map(l => [l.producto_id, l.cantidad_recibida]))
+                    )
+                  }}
+                >
                   <td className="py-3 px-4 font-medium text-emerald-700">{rec.numero}</td>
-                  <td className="py-3 px-4 text-sm">{new Date(rec.fecha).toLocaleDateString('es-AR')}</td>
-                  <td className="py-3 px-4 text-sm">{rec.proveedor_nombre}</td>
-                  <td className="py-3 px-4 text-sm text-blue-600">{rec.orden_compra_numero || '-'}</td>
-                  <td className="py-3 px-4 text-sm text-center">{rec.lineas.length}</td>
-                  <td className="py-3 px-4 text-sm text-right font-medium">{formatCurrency(rec.lineas.reduce((s, l) => s + l.cantidad_esta_recepcion * l.precio_unitario, 0))}</td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{new Date(rec.fecha).toLocaleDateString('es-AR')}</td>
+                  <td className="py-3 px-4 text-sm">
+                    <span className="font-medium">{rec.proveedor_nombre || '-'}</span>
+                    <span className="ml-2 text-xs text-gray-400">{origenLabel[rec.documento_origen_tipo]}</span>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-600">
+                    <span>{rec.sucursal}</span>
+                    <span className="text-gray-400 mx-1">/</span>
+                    <span>{rec.deposito_destino}</span>
+                  </td>
+                  <td className="py-3 px-4">
+                    <span className="text-sm text-blue-600 font-medium">{rec.documento_origen_ref}</span>
+                  </td>
+                  <td className="py-3 px-4 text-center text-sm">{rec.lineas.length}</td>
                   <td className="py-3 px-4 text-center">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${estadoColor[rec.estado] || 'bg-gray-100 text-gray-600'}`}>
                       {estadoLabel[rec.estado] || rec.estado}
                     </span>
+                  </td>
+                  <td className="py-3 px-4">
+                    <ChevronRight className="w-4 h-4 text-gray-400" />
                   </td>
                 </tr>
               ))}
@@ -1995,14 +2941,351 @@ export default function ModuloCompras() {
   }
 
   // =====================================================
+  // RENDER FICHA RECEPCION
+  // =====================================================
+  const renderFichaRecepcion = () => {
+    if (!selectedRecepcion) return null
+    const rec = selectedRecepcion
+    const editable = rec.estado === "esperando_recepcion"
+
+    const estadoColor: Record<string, string> = {
+      recibida:             'bg-green-100 text-green-700',
+      esperando_recepcion:  'bg-amber-100 text-amber-700',
+      cancelada:            'bg-red-100 text-red-700',
+    }
+    const estadoLabel: Record<string, string> = {
+      recibida:             'Recibida',
+      esperando_recepcion:  'Esperando Recepción',
+      cancelada:            'Cancelada',
+    }
+    const estadoLineaColor: Record<string, string> = {
+      pendiente:        'bg-gray-100 text-gray-600',
+      recibido:         'bg-green-100 text-green-700',
+      recibido_parcial: 'bg-amber-100 text-amber-700',
+    }
+    const estadoLineaLabel: Record<string, string> = {
+      pendiente:        'Pendiente',
+      recibido:         'Recibido',
+      recibido_parcial: 'Parcial',
+    }
+    const origenLabel: Record<string, string> = {
+      oc:           'Orden de Compra',
+      toma_equipo:  'Toma de Equipo',
+      transferencia:'Transferencia',
+    }
+
+    // Check si todas las cantidades recibidas = pedidas (para "Recibir todo")
+    const todasCompletas = rec.lineas.every(l => (recepcionCantidades[l.producto_id] ?? l.cantidad_recibida) >= l.cantidad_pedida)
+
+    const ocVinculada = rec.documento_origen_tipo === "oc" && rec.documento_origen_id
+      ? ordenesCompra.find(o => o.id === rec.documento_origen_id)
+      : null
+
+    const recAnterior = rec.recepcion_anterior_id
+      ? recepciones.find(r => r.id === rec.recepcion_anterior_id)
+      : null
+
+    const recComplementaria = rec.recepcion_complementaria_id
+      ? recepciones.find(r => r.id === rec.recepcion_complementaria_id)
+      : null
+
+    return (
+      <div>
+        {/* Breadcrumb */}
+        <div className="text-sm text-gray-500 mb-4 flex items-center gap-2">
+          <button onClick={() => setSelectedRecepcion(null)} className="hover:text-emerald-600">
+            Recepciones
+          </button>
+          <ChevronRight className="w-4 h-4" />
+          <span className="text-gray-900 font-medium">{rec.numero}</span>
+        </div>
+
+        {/* Smart buttons de navegación cruzada */}
+        {(ocVinculada || recAnterior || recComplementaria) && (
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
+            {ocVinculada && (
+              <button
+                onClick={() => { setSelectedOC(ocVinculada); setActiveView("ordenes_compra") }}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded-full hover:bg-blue-100 transition-colors"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Ver OC: {ocVinculada.numero}
+              </button>
+            )}
+            {recAnterior && (
+              <button
+                onClick={() => {
+                  setSelectedRecepcion(recAnterior)
+                  setRecepcionCantidades(Object.fromEntries(recAnterior.lineas.map(l => [l.producto_id, l.cantidad_recibida])))
+                }}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs bg-gray-50 border border-gray-200 text-gray-700 rounded-full hover:bg-gray-100 transition-colors"
+              >
+                <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+                Recepción anterior: {recAnterior.numero}
+              </button>
+            )}
+            {recComplementaria && (
+              <button
+                onClick={() => {
+                  setSelectedRecepcion(recComplementaria)
+                  setRecepcionCantidades(Object.fromEntries(recComplementaria.lineas.map(l => [l.producto_id, l.cantidad_recibida])))
+                }}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs bg-amber-50 border border-amber-200 text-amber-700 rounded-full hover:bg-amber-100 transition-colors"
+              >
+                <ArrowRight className="w-3.5 h-3.5" />
+                Recepción complementaria: {recComplementaria.numero}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Header */}
+        <div className="flex items-start justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <BotonVolver onClick={() => setSelectedRecepcion(null)} variant="minimal" texto="" />
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">{rec.numero}</h1>
+              <p className="text-sm text-gray-500">
+                {new Date(rec.fecha).toLocaleDateString('es-AR')} | {rec.proveedor_nombre || 'Sin proveedor'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {editable && (
+              <button
+                onClick={handleConfirmarRecepcion}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700"
+              >
+                <CheckCircle className="w-4 h-4" />
+                Confirmar Recepción
+              </button>
+            )}
+            {rec.estado === 'recibida' && (
+              <button
+                onClick={() => setModalCancelacionOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50"
+              >
+                <XCircle className="w-4 h-4" />
+                Cancelar
+              </button>
+            )}
+            <span className={`px-3 py-1.5 rounded-full text-sm font-semibold ${estadoColor[rec.estado]}`}>
+              {estadoLabel[rec.estado]}
+            </span>
+          </div>
+        </div>
+
+        {/* Cabecera datos */}
+        <div className="bg-white rounded-lg border p-6 mb-6">
+          <div className="grid grid-cols-3 gap-x-8 gap-y-4 text-sm">
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Sucursal</p>
+              <p className="font-medium">{rec.sucursal}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Depósito Destino</p>
+              <p className="font-medium">{rec.deposito_destino}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Ubicación</p>
+              <p className="font-medium">{rec.ubicacion_destino || '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Documento Origen</p>
+              {ocVinculada ? (
+                <button
+                  onClick={() => { setSelectedOC(ocVinculada); setActiveView("ordenes_compra") }}
+                  className="text-blue-600 font-medium hover:underline"
+                >
+                  {origenLabel[rec.documento_origen_tipo]}: {rec.documento_origen_ref}
+                </button>
+              ) : (
+                <p className="font-medium">{origenLabel[rec.documento_origen_tipo]}: {rec.documento_origen_ref}</p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Fecha Pedido</p>
+              <p className="font-medium">{rec.fecha_pedido ? new Date(rec.fecha_pedido).toLocaleDateString('es-AR') : '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Entrega Esperada</p>
+              <p className="font-medium">{rec.fecha_entrega_esperada ? new Date(rec.fecha_entrega_esperada).toLocaleDateString('es-AR') : '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Fecha Recepción Real</p>
+              <p className={`font-medium ${rec.fecha_recepcion_real ? 'text-green-700' : 'text-gray-400'}`}>
+                {rec.fecha_recepcion_real ? new Date(rec.fecha_recepcion_real).toLocaleString('es-AR') : 'Pendiente'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Remito N°</p>
+              {editable ? (
+                <input
+                  type="text"
+                  defaultValue={rec.remito_numero || ''}
+                  placeholder="Ingrese N° de remito"
+                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-emerald-500"
+                  onChange={e => setSelectedRecepcion({ ...rec, remito_numero: e.target.value })}
+                />
+              ) : (
+                <p className="font-medium">{rec.remito_numero || '-'}</p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Fecha Remito</p>
+              {editable ? (
+                <input
+                  type="date"
+                  defaultValue={rec.remito_fecha || ''}
+                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-emerald-500"
+                  onChange={e => setSelectedRecepcion({ ...rec, remito_fecha: e.target.value })}
+                />
+              ) : (
+                <p className="font-medium">{rec.remito_fecha ? new Date(rec.remito_fecha).toLocaleDateString('es-AR') : '-'}</p>
+              )}
+            </div>
+          </div>
+          {(editable || rec.observaciones) && (
+            <div className="mt-4 pt-4 border-t">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Observaciones</p>
+              {editable ? (
+                <textarea
+                  defaultValue={rec.observaciones || ''}
+                  rows={2}
+                  placeholder="Observaciones sobre la recepción..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-emerald-500 resize-none"
+                  onChange={e => setSelectedRecepcion({ ...rec, observaciones: e.target.value })}
+                />
+              ) : (
+                <p className="text-sm text-gray-700">{rec.observaciones || '-'}</p>
+              )}
+            </div>
+          )}
+          {rec.cancelacion && (
+            <div className="mt-4 pt-4 border-t border-red-200 bg-red-50 rounded-lg p-3">
+              <p className="text-xs text-red-500 font-semibold uppercase tracking-wide mb-1">Cancelación</p>
+              <p className="text-sm text-red-700">
+                <span className="font-medium">{rec.cancelacion.usuario}</span> — {new Date(rec.cancelacion.fecha).toLocaleString('es-AR')}
+              </p>
+              <p className="text-sm text-red-600 mt-1">{rec.cancelacion.motivo}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Grilla de productos */}
+        <div className="bg-white rounded-lg border overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
+            <h3 className="font-semibold text-gray-900 text-sm">Líneas de Recepción</h3>
+            {editable && (
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={todasCompletas}
+                  onChange={e => {
+                    if (e.target.checked) {
+                      const nuevo: Record<number, number> = {}
+                      rec.lineas.forEach(l => { nuevo[l.producto_id] = l.cantidad_pedida })
+                      setRecepcionCantidades(nuevo)
+                    } else {
+                      const nuevo: Record<number, number> = {}
+                      rec.lineas.forEach(l => { nuevo[l.producto_id] = 0 })
+                      setRecepcionCantidades(nuevo)
+                    }
+                  }}
+                  className="rounded border-gray-300 text-emerald-600"
+                />
+                Recibir todo
+              </label>
+            )}
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b">
+              <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                <th className="text-left py-2.5 px-4">Producto</th>
+                <th className="text-left py-2.5 px-4">SKU</th>
+                <th className="text-center py-2.5 px-4">Cant. Pedida</th>
+                <th className="text-center py-2.5 px-4">Cant. Recibida</th>
+                <th className="text-center py-2.5 px-4">UdM</th>
+                <th className="text-center py-2.5 px-4">Estado</th>
+                {editable && <th className="text-center py-2.5 px-4">Serie/IMEI</th>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {rec.lineas.map((linea, idx) => {
+                const cantRec = recepcionCantidades[linea.producto_id] ?? linea.cantidad_recibida
+                const estadoLinea = editable
+                  ? (cantRec === 0 ? 'pendiente' : cantRec < linea.cantidad_pedida ? 'recibido_parcial' : 'recibido')
+                  : linea.estado_linea
+                const seriesRegistradas = (seriesConfirmadas[linea.producto_id] || []).length
+
+                return (
+                  <tr key={idx} className="hover:bg-gray-50">
+                    <td className="py-3 px-4 font-medium text-gray-900">{linea.producto_nombre}</td>
+                    <td className="py-3 px-4 text-gray-500">{linea.producto_sku}</td>
+                    <td className="py-3 px-4 text-center">{linea.cantidad_pedida}</td>
+                    <td className="py-3 px-4 text-center">
+                      {editable ? (
+                        <input
+                          type="number"
+                          min={0}
+                          max={linea.cantidad_pedida}
+                          value={cantRec}
+                          onChange={e => setRecepcionCantidades(prev => ({
+                            ...prev,
+                            [linea.producto_id]: Math.min(linea.cantidad_pedida, Math.max(0, Number(e.target.value)))
+                          }))}
+                          className="w-16 text-center px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-emerald-500"
+                        />
+                      ) : (
+                        <span className="font-medium">{linea.cantidad_recibida}</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-center text-gray-500">{linea.udm}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${estadoLineaColor[estadoLinea]}`}>
+                        {estadoLineaLabel[estadoLinea]}
+                      </span>
+                    </td>
+                    {editable && (
+                      <td className="py-3 px-4 text-center">
+                        {linea.tiene_serie ? (
+                          <button
+                            onClick={() => {
+                              setModalSerieProducto(linea)
+                              setModalSerieUnidades(seriesConfirmadas[linea.producto_id] || Array.from({ length: cantRec }, () => ({ nro_serie: '', outlet: false })))
+                              setModalSerieOpen(true)
+                            }}
+                            className={`px-2 py-1 text-xs rounded border transition-colors ${
+                              seriesRegistradas >= cantRec && cantRec > 0
+                                ? 'border-green-300 bg-green-50 text-green-700'
+                                : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                            }`}
+                          >
+                            {seriesRegistradas >= cantRec && cantRec > 0
+                              ? `${seriesRegistradas} registradas`
+                              : `Registrar (${seriesRegistradas}/${cantRec})`
+                            }
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-400">-</span>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
+  // =====================================================
   // RENDER FACTURAS DE COMPRA
   // =====================================================
   const renderFacturasCompra = () => {
-    const facturasMock = [
-      { id: 1, numero: "FC-A-00001", fecha: "2026-03-10", proveedor: "Tech Import SA", recepcion: "REC-00001", subtotal: 2500000, iva: 525000, total: 3025000, estado: "pendiente" },
-      { id: 2, numero: "FC-A-00002", fecha: "2026-03-12", proveedor: "Distribuidora Norte", recepcion: "REC-00002", subtotal: 890000, iva: 186900, total: 1076900, estado: "pagada" },
-      { id: 3, numero: "FC-B-00001", fecha: "2026-03-14", proveedor: "Mayorista Sur", recepcion: "REC-00003", subtotal: 1200000, iva: 0, total: 1200000, estado: "vencida" },
-    ]
+    const facturasMock: { id: number; numero: string; fecha: string; proveedor: string; recepcion: string; subtotal: number; iva: number; total: number; estado: string }[] = []
 
     return (
       <div>
@@ -2035,6 +3318,33 @@ export default function ModuloCompras() {
               {formatCurrency(facturasMock.filter(f => f.estado !== 'pagada').reduce((s, f) => s + f.total, 0))}
             </p>
           </div>
+        </div>
+
+        <div className="mb-4">
+          <OdooFilterBar
+            moduleName="facturas-compra"
+            filterOptions={[
+              { field: "estado", label: "Estado", values: [
+                { value: "pendiente", label: "Pendiente" },
+                { value: "pagada", label: "Pagada" },
+                { value: "vencida", label: "Vencida" },
+              ]},
+            ]}
+            groupByOptions={[
+              { id: "estado", label: "Estado", field: "estado" },
+              { id: "proveedor", label: "Proveedor", field: "proveedor" },
+            ]}
+            activeFilters={activeFiltersFC}
+            activeGroupBy={activeGroupByFC}
+            searchTerm=""
+            onFiltersChange={setActiveFiltersFC}
+            onGroupByChange={setActiveGroupByFC}
+            onSearchChange={() => {}}
+            savedFilters={savedFiltersFC}
+            {...makeSavedFilterHandlersC(setSavedFiltersFC, setActiveFiltersFC, setActiveGroupByFC, () => {})}
+            totalCount={facturasMock.length}
+            filteredCount={facturasMock.length}
+          />
         </div>
 
         <div className="bg-white rounded-lg border overflow-hidden">
@@ -2083,10 +3393,7 @@ export default function ModuloCompras() {
   // RENDER NOTAS DE CRÉDITO DE COMPRA
   // =====================================================
   const renderNotasCreditoCompra = () => {
-    const ncMock = [
-      { id: 1, numero: "NC-A-00001", fecha: "2026-03-11", proveedor: "Tech Import SA", factura_origen: "FC-A-00001", motivo: "Devolución mercadería", total: 150000, estado: "aplicada" },
-      { id: 2, numero: "NC-A-00002", fecha: "2026-03-13", proveedor: "Distribuidora Norte", factura_origen: "FC-A-00002", motivo: "Diferencia de precio", total: 25000, estado: "pendiente" },
-    ]
+    const ncMock: { id: number; numero: string; fecha: string; proveedor: string; factura_origen: string; motivo: string; total: number; estado: string }[] = []
 
     return (
       <div>
@@ -2142,9 +3449,7 @@ export default function ModuloCompras() {
   // RENDER NOTAS DE DÉBITO DE COMPRA
   // =====================================================
   const renderNotasDebitoCompra = () => {
-    const ndMock = [
-      { id: 1, numero: "ND-A-00001", fecha: "2026-03-12", proveedor: "Tech Import SA", factura_origen: "FC-A-00001", motivo: "Intereses por mora", total: 35000, estado: "pendiente" },
-    ]
+    const ndMock: { id: number; numero: string; fecha: string; proveedor: string; factura_origen: string; motivo: string; total: number; estado: string }[] = []
 
     return (
       <div>
@@ -2200,11 +3505,7 @@ export default function ModuloCompras() {
   // RENDER ÓRDENES DE PAGO
   // =====================================================
   const renderOrdenesPago = () => {
-    const ordenesPagoMock = [
-      { id: 1, numero: "OP-00001", fecha: "2026-03-10", proveedor: "Tech Import SA", facturas: ["FC-A-00001"], monto: 3025000, forma_pago: "Transferencia", estado: "pagada" },
-      { id: 2, numero: "OP-00002", fecha: "2026-03-12", proveedor: "Distribuidora Norte", facturas: ["FC-A-00002"], monto: 1051900, forma_pago: "Cheque", estado: "emitida" },
-      { id: 3, numero: "OP-00003", fecha: "2026-03-14", proveedor: "Mayorista Sur", facturas: ["FC-B-00001"], monto: 600000, forma_pago: "Efectivo", estado: "borrador" },
-    ]
+    const ordenesPagoMock: { id: number; numero: string; fecha: string; proveedor: string; facturas: string[]; monto: number; forma_pago: string; estado: string }[] = []
 
     return (
       <div>
@@ -2283,13 +3584,7 @@ export default function ModuloCompras() {
   // RENDER CTA CTE PROVEEDORES
   // =====================================================
   const renderCtaCteProveedores = () => {
-    const movimientosMock = [
-      { id: 1, fecha: "2026-03-10", proveedor: "Tech Import SA", tipo: "factura", numero: "FC-A-00001", debe: 3025000, haber: 0 },
-      { id: 2, fecha: "2026-03-11", proveedor: "Tech Import SA", tipo: "nc", numero: "NC-A-00001", debe: 0, haber: 150000 },
-      { id: 3, fecha: "2026-03-10", proveedor: "Tech Import SA", tipo: "pago", numero: "OP-00001", debe: 0, haber: 3025000 },
-      { id: 4, fecha: "2026-03-12", proveedor: "Distribuidora Norte", tipo: "factura", numero: "FC-A-00002", debe: 1076900, haber: 0 },
-      { id: 5, fecha: "2026-03-12", proveedor: "Distribuidora Norte", tipo: "pago", numero: "OP-00002", debe: 0, haber: 1051900 },
-    ]
+    const movimientosMock: { id: number; fecha: string; proveedor: string; tipo: string; numero: string; debe: number; haber: number }[] = []
 
     return (
       <div>
@@ -2357,13 +3652,7 @@ export default function ModuloCompras() {
   // RENDER TIPOS DE GASTO
   // =====================================================
   const renderTiposGasto = () => {
-    const tiposGastoMock = [
-      { id: 1, codigo: "FLE", nombre: "Flete Internacional", activa_costo: true, criterio_distribucion: "peso" },
-      { id: 2, codigo: "SEG", nombre: "Seguro de Carga", activa_costo: true, criterio_distribucion: "valor" },
-      { id: 3, codigo: "DES", nombre: "Despacho Aduanero", activa_costo: true, criterio_distribucion: "valor" },
-      { id: 4, codigo: "ALM", nombre: "Almacenaje", activa_costo: false, criterio_distribucion: "unidades" },
-      { id: 5, codigo: "COM", nombre: "Comisión Despachante", activa_costo: true, criterio_distribucion: "valor" },
-    ]
+    const tiposGastoMock: { id: number; codigo: string; nombre: string; activa_costo: boolean; criterio_distribucion: string }[] = []
 
     return (
       <div>
@@ -2476,6 +3765,239 @@ export default function ModuloCompras() {
       <main className="flex-1 ml-56 p-6 bg-gray-50 min-h-screen">
         {renderContent()}
       </main>
+
+      {/* ===== MODAL REGISTRO N° SERIE ===== */}
+      {modalSerieOpen && modalSerieProducto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl mx-4 flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">
+                  Registrar unidades — {modalSerieProducto.producto_nombre}
+                </h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {modalSerieUnidades.filter(u => u.nro_serie.trim() !== '').length} de {recepcionCantidades[modalSerieProducto.producto_id] ?? modalSerieProducto.cantidad_pedida} unidades registradas
+                </p>
+              </div>
+              <button onClick={() => setModalSerieOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {/* Tabla unidades */}
+            <div className="overflow-auto flex-1 p-6">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-gray-500 uppercase tracking-wider border-b">
+                    <th className="text-left py-2 pr-3">#</th>
+                    <th className="text-left py-2 pr-3">N° Serie / IMEI *</th>
+                    <th className="text-left py-2 pr-3">Lote</th>
+                    <th className="text-left py-2 pr-3">% Batería</th>
+                    <th className="text-left py-2 pr-3">Color</th>
+                    <th className="text-center py-2 pr-3">Outlet</th>
+                    <th className="text-left py-2">Fallas / Obs.</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {modalSerieUnidades.map((u, idx) => (
+                    <tr key={idx}>
+                      <td className="py-2 pr-3 text-gray-400 text-xs">{idx + 1}</td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="text"
+                          value={u.nro_serie}
+                          placeholder="IMEI / N° serie"
+                          onChange={e => {
+                            const updated = [...modalSerieUnidades]
+                            updated[idx] = { ...updated[idx], nro_serie: e.target.value }
+                            setModalSerieUnidades(updated)
+                          }}
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="text"
+                          value={u.lote || ''}
+                          placeholder="Lote"
+                          onChange={e => {
+                            const updated = [...modalSerieUnidades]
+                            updated[idx] = { ...updated[idx], lote: e.target.value }
+                            setModalSerieUnidades(updated)
+                          }}
+                          className="w-24 px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={u.bateria_pct ?? ''}
+                          placeholder="%"
+                          onChange={e => {
+                            const updated = [...modalSerieUnidades]
+                            updated[idx] = { ...updated[idx], bateria_pct: Number(e.target.value) }
+                            setModalSerieUnidades(updated)
+                          }}
+                          className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <select
+                          value={u.color || ''}
+                          onChange={e => {
+                            const updated = [...modalSerieUnidades]
+                            updated[idx] = { ...updated[idx], color: e.target.value }
+                            setModalSerieUnidades(updated)
+                          }}
+                          className="w-28 px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500"
+                        >
+                          <option value="">-</option>
+                          {['Negro', 'Blanco', 'Azul', 'Rojo', 'Verde', 'Amarillo', 'Gris', 'Plata', 'Oro', 'Morado'].map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-2 pr-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={u.outlet}
+                          onChange={e => {
+                            const updated = [...modalSerieUnidades]
+                            updated[idx] = { ...updated[idx], outlet: e.target.checked }
+                            setModalSerieUnidades(updated)
+                          }}
+                          className="rounded border-gray-300 text-emerald-600"
+                        />
+                      </td>
+                      <td className="py-2">
+                        <input
+                          type="text"
+                          value={u.fallas || ''}
+                          placeholder="Fallas u observaciones..."
+                          onChange={e => {
+                            const updated = [...modalSerieUnidades]
+                            updated[idx] = { ...updated[idx], fallas: e.target.value }
+                            setModalSerieUnidades(updated)
+                          }}
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <button
+                onClick={() => setModalSerieUnidades(prev => [...prev, { nro_serie: '', outlet: false }])}
+                className="mt-3 flex items-center gap-1.5 text-sm text-emerald-600 hover:text-emerald-700"
+              >
+                <Plus className="w-4 h-4" /> Añadir unidad
+              </button>
+            </div>
+            {/* Footer */}
+            <div className="flex items-center justify-between px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+              <p className="text-xs text-gray-500">
+                * N° Serie / IMEI obligatorio. No puede repetirse dentro de la misma recepción.
+              </p>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setModalSerieOpen(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    if (!modalSerieProducto) return
+                    const cantRequerida = recepcionCantidades[modalSerieProducto.producto_id] ?? modalSerieProducto.cantidad_pedida
+                    const validas = modalSerieUnidades.filter(u => u.nro_serie.trim() !== '')
+                    if (validas.length < cantRequerida) {
+                      alert(`Debe registrar ${cantRequerida} unidades. Registradas: ${validas.length}`)
+                      return
+                    }
+                    const series = validas.map(u => u.nro_serie.trim())
+                    const duplicados = series.filter((s, i) => series.indexOf(s) !== i)
+                    if (duplicados.length > 0) {
+                      alert(`N° de serie duplicado: ${duplicados[0]}`)
+                      return
+                    }
+                    setSeriesConfirmadas(prev => ({
+                      ...prev,
+                      [modalSerieProducto.producto_id]: validas.slice(0, cantRequerida)
+                    }))
+                    setModalSerieOpen(false)
+                  }}
+                  className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium"
+                >
+                  Confirmar Series
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== MODAL CANCELACIÓN ===== */}
+      {modalCancelacionOpen && selectedRecepcion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h2 className="text-lg font-bold text-gray-900">Cancelar Recepción</h2>
+              <button onClick={() => { setModalCancelacionOpen(false); setCancelacionMotivo("") }} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-6 py-4">
+              <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-red-700">
+                  <p className="font-medium">Esta acción revierte el stock recibido.</p>
+                  <p className="mt-1 text-red-600">Solo es posible si el stock no fue consumido (vendido o transferido).</p>
+                </div>
+              </div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Motivo de cancelación <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={cancelacionMotivo}
+                onChange={e => setCancelacionMotivo(e.target.value)}
+                rows={4}
+                placeholder="Describa el motivo de la cancelación..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 resize-none"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+              <button
+                onClick={() => { setModalCancelacionOpen(false); setCancelacionMotivo("") }}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Volver
+              </button>
+              <button
+                disabled={!cancelacionMotivo.trim()}
+                onClick={() => {
+                  if (!cancelacionMotivo.trim() || !selectedRecepcion) return
+                  const rec = selectedRecepcion
+                  const recActualizada: Recepcion = {
+                    ...rec,
+                    estado: "cancelada",
+                    cancelacion: {
+                      usuario: "Admin",
+                      fecha: new Date().toISOString(),
+                      motivo: cancelacionMotivo.trim()
+                    }
+                  }
+                  setRecepciones(prev => prev.map(r => r.id === rec.id ? recActualizada : r))
+                  setSelectedRecepcion(recActualizada)
+                  setModalCancelacionOpen(false)
+                  setCancelacionMotivo("")
+                }}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Confirmar Cancelación
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

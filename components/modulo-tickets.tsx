@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useERP, Ticket } from "@/contexts/erp-context"
+import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
 import { 
   Search, Plus, Filter, Send, Paperclip, Clock, 
   AlertCircle, CheckCircle, MessageSquare, Tag, Calendar,
@@ -417,45 +418,44 @@ export default function ModuloTickets() {
       </div>
 
       {/* Filtros */}
-      <div className="flex items-center gap-4 mb-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Buscar tickets..."
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-gray-400" />
-          <select
-            value={filtroEstado}
-            onChange={(e) => setFiltroEstado(e.target.value)}
-            className="px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
-          >
-            <option value="todos">Todos los estados</option>
-            <option value="abierto">Abiertos</option>
-            <option value="en_progreso">En Progreso</option>
-            <option value="pendiente_usuario">Pendiente Usuario</option>
-            <option value="resuelto">Resueltos</option>
-            <option value="cerrado">Cerrados</option>
-          </select>
-
-          <select
-            value={filtroCategoria}
-            onChange={(e) => setFiltroCategoria(e.target.value)}
-            className="px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
-          >
-            <option value="todos">Todas las categorías</option>
-            <option value="soporte">Soporte Técnico</option>
-            <option value="error">Reporte de Error</option>
-            <option value="mejora">Solicitud de Mejora</option>
-            <option value="consulta">Consulta General</option>
-          </select>
-        </div>
+      <div className="mb-4">
+        <OdooFilterBar
+          moduleName="tickets"
+          filterOptions={[
+            { field: "estado", label: "Estado", values: [
+              { value: "abierto", label: "Abierto" },
+              { value: "en_progreso", label: "En Progreso" },
+              { value: "pendiente_usuario", label: "Pendiente Usuario" },
+              { value: "resuelto", label: "Resuelto" },
+              { value: "cerrado", label: "Cerrado" },
+            ]},
+            { field: "categoria", label: "Categoría", values: [
+              { value: "soporte", label: "Soporte Técnico" },
+              { value: "error", label: "Reporte de Error" },
+              { value: "mejora", label: "Solicitud de Mejora" },
+              { value: "consulta", label: "Consulta General" },
+            ]},
+          ]}
+          groupByOptions={[
+            { id: "estado", label: "Estado", field: "estado" },
+            { id: "categoria", label: "Categoría", field: "categoria" },
+          ]}
+          activeFilters={[]}
+          activeGroupBy={[]}
+          searchTerm={searchText}
+          onFiltersChange={f => {
+            setFiltroEstado(f.find(x => x.field === "estado")?.value ?? "todos")
+            setFiltroCategoria(f.find(x => x.field === "categoria")?.value ?? "todos")
+          }}
+          onGroupByChange={() => {}}
+          onSearchChange={setSearchText}
+          savedFilters={[]}
+          onSaveFilter={() => {}}
+          onDeleteFilter={() => {}}
+          onApplyFilter={() => {}}
+          totalCount={tickets.length}
+          filteredCount={misTickets.length}
+        />
       </div>
 
       {/* Lista */}

@@ -8,6 +8,7 @@ import type { ClienteDB } from "@/hooks/use-clientes"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History } from "lucide-react"
  import BotonVolver from "./ui/boton-volver"
 import ProductoDropdown from "./producto-dropdown"
+import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
 import { tarjetasIniciales, gruposIniciales, recargosIniciales } from "./modulo-finanzas"
 import type { Tarjeta as TarjetaFinanzas, GrupoTarjeta as GrupoTarjetaFinanzas, RecargoTarjeta as RecargoTarjetaFinanzas, RecargoTarjeta } from "./modulo-finanzas"
 
@@ -1380,10 +1381,47 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [ncDetallePopup, setNcDetallePopup] = useState<AjusteCliente | null>(null)
   const [selectedAjuste, setSelectedAjuste] = useState<AjusteCliente | null>(null)
   
-  // Filters
+  // Filters (legacy — kept for compatibility with filtered derived state)
   const [estadoFilter, setEstadoFilter] = useState<string>("todos")
   const [vendedorFilter, setVendedorFilter] = useState<number | null>(null)
   const [categoriaFilter, setCategoriaFilter] = useState<string>("todos")
+
+  // OdooFilterBar state — one set per list view
+  const [savedFiltersClientes, setSavedFiltersClientes] = useState<SavedFilter[]>([])
+  const [activeFiltersClientes, setActiveFiltersClientes] = useState<FilterOption[]>([])
+  const [activeGroupByClientes, setActiveGroupByClientes] = useState<GroupByOption[]>([])
+
+  const [savedFiltersNV, setSavedFiltersNV] = useState<SavedFilter[]>([])
+  const [activeFiltersNV, setActiveFiltersNV] = useState<FilterOption[]>([])
+  const [activeGroupByNV, setActiveGroupByNV] = useState<GroupByOption[]>([])
+
+  const [savedFiltersOE, setSavedFiltersOE] = useState<SavedFilter[]>([])
+  const [activeFiltersOE, setActiveFiltersOE] = useState<FilterOption[]>([])
+  const [activeGroupByOE, setActiveGroupByOE] = useState<GroupByOption[]>([])
+
+  const [savedFiltersFacturas, setSavedFiltersFacturas] = useState<SavedFilter[]>([])
+  const [activeFiltersFacturas, setActiveFiltersFacturas] = useState<FilterOption[]>([])
+  const [activeGroupByFacturas, setActiveGroupByFacturas] = useState<GroupByOption[]>([])
+
+  const [savedFiltersRecibos, setSavedFiltersRecibos] = useState<SavedFilter[]>([])
+  const [activeFiltersRecibos, setActiveFiltersRecibos] = useState<FilterOption[]>([])
+  const [activeGroupByRecibos, setActiveGroupByRecibos] = useState<GroupByOption[]>([])
+
+  const [savedFiltersNDC, setSavedFiltersNDC] = useState<SavedFilter[]>([])
+  const [activeFiltersNDC, setActiveFiltersNDC] = useState<FilterOption[]>([])
+  const [activeGroupByNDC, setActiveGroupByNDC] = useState<GroupByOption[]>([])
+
+  // Helper for saving/deleting saved filters
+  const makeSavedFilterHandlers = (
+    setter: React.Dispatch<React.SetStateAction<SavedFilter[]>>,
+    setActiveFilters: React.Dispatch<React.SetStateAction<FilterOption[]>>,
+    setActiveGroupBy: React.Dispatch<React.SetStateAction<GroupByOption[]>>,
+    setSearch: (s: string) => void
+  ) => ({
+    onSaveFilter: (f: Omit<SavedFilter, "id" | "createdBy">) => setter(prev => [...prev, { ...f, id: Date.now().toString(), createdBy: "Admin" }]),
+    onDeleteFilter: (id: string) => setter(prev => prev.filter(sf => sf.id !== id)),
+    onApplyFilter: (f: SavedFilter) => { setActiveFilters(f.filters); setActiveGroupBy(f.groupBy); setSearch("") }
+  })
 
   // Helper functions
   const formatCurrency = (amount: number, currency: "ARS" | "USD" = "ARS") => {
@@ -2010,29 +2048,31 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-          <div className="flex gap-4 items-center">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar por código, nombre o email..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-            <select
-              value={categoriaFilter}
-              onChange={(e) => setCategoriaFilter(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            >
-              <option value="todos">Todas las categorías</option>
-              <option value="publico">Público</option>
-              <option value="mercadolibre">Mercadolibre</option>
-              <option value="mayorista">Mayorista</option>
-            </select>
-          </div>
+        <div className="mb-4">
+          <OdooFilterBar
+            moduleName="clientes"
+            filterOptions={[
+              { field: "categoria", label: "Categoría", values: [
+                { value: "publico", label: "Público" },
+                { value: "mercadolibre", label: "MercadoLibre" },
+                { value: "mayorista", label: "Mayorista" },
+              ]},
+            ]}
+            groupByOptions={[
+              { id: "categoria", label: "Categoría", field: "categoria" },
+              { id: "ciudad", label: "Ciudad", field: "ciudad" },
+            ]}
+            activeFilters={activeFiltersClientes}
+            activeGroupBy={activeGroupByClientes}
+            searchTerm={searchQuery}
+            onFiltersChange={f => { setActiveFiltersClientes(f); setCategoriaFilter(f.find(x => x.field === "categoria")?.value ?? "todos") }}
+            onGroupByChange={setActiveGroupByClientes}
+            onSearchChange={setSearchQuery}
+            savedFilters={savedFiltersClientes}
+            {...makeSavedFilterHandlers(setSavedFiltersClientes, setActiveFiltersClientes, setActiveGroupByClientes, setSearchQuery)}
+            totalCount={clientes.length}
+            filteredCount={clientesFiltrados.length}
+          />
         </div>
 
         {/* Table */}
@@ -3112,42 +3152,40 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-          <div className="flex gap-4 items-center">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar por número o cliente..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-            <select
-              value={estadoFilter}
-              onChange={(e) => setEstadoFilter(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            >
-              <option value="todos">Todos los estados</option>
-              <option value="borrador">Borrador</option>
-              <option value="a_facturar">A Facturar</option>
-              <option value="verificacion_factura">Verif. Factura</option>
-              <option value="verificacion_oe">Verif. OE</option>
-              <option value="finalizada">Finalizada</option>
-              <option value="cancelada">Cancelada</option>
-            </select>
-            <select
-              value={vendedorFilter || ""}
-              onChange={(e) => setVendedorFilter(e.target.value ? Number(e.target.value) : null)}
-              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            >
-              <option value="">Todos los vendedores</option>
-              {vendedores.map(v => (
-                <option key={v.id} value={v.id}>{v.nombre}</option>
-              ))}
-            </select>
-          </div>
+        <div className="mb-4">
+          <OdooFilterBar
+            moduleName="notas-venta"
+            filterOptions={[
+              { field: "estado", label: "Estado", values: [
+                { value: "borrador", label: "Borrador" },
+                { value: "a_facturar", label: "A Facturar" },
+                { value: "verificacion_factura", label: "Verif. Factura" },
+                { value: "verificacion_oe", label: "Verif. OE" },
+                { value: "finalizada", label: "Finalizada" },
+                { value: "cancelada", label: "Cancelada" },
+              ]},
+              { field: "vendedor", label: "Vendedor", values: vendedores.map(v => ({ value: String(v.id), label: v.nombre })) },
+            ]}
+            groupByOptions={[
+              { id: "estado", label: "Estado", field: "estado" },
+              { id: "vendedor", label: "Vendedor", field: "vendedor" },
+              { id: "cliente", label: "Cliente", field: "cliente" },
+            ]}
+            activeFilters={activeFiltersNV}
+            activeGroupBy={activeGroupByNV}
+            searchTerm={searchQuery}
+            onFiltersChange={f => {
+              setActiveFiltersNV(f)
+              setEstadoFilter(f.find(x => x.field === "estado")?.value ?? "todos")
+              setVendedorFilter(f.find(x => x.field === "vendedor") ? Number(f.find(x => x.field === "vendedor")!.value) : null)
+            }}
+            onGroupByChange={setActiveGroupByNV}
+            onSearchChange={setSearchQuery}
+            savedFilters={savedFiltersNV}
+            {...makeSavedFilterHandlers(setSavedFiltersNV, setActiveFiltersNV, setActiveGroupByNV, setSearchQuery)}
+            totalCount={notasVenta.length}
+            filteredCount={notasVentaFiltradas.length}
+          />
         </div>
 
         {/* Table */}
@@ -5483,19 +5521,38 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         </button>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-        <div className="flex gap-4 items-center">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por número o cliente..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-          </div>
-        </div>
+      <div className="mb-4">
+        <OdooFilterBar
+          moduleName="ordenes-entrega"
+          filterOptions={[
+            { field: "estado", label: "Estado", values: [
+              { value: "pendiente", label: "Pendiente" },
+              { value: "en_preparacion", label: "En preparación" },
+              { value: "lista", label: "Lista" },
+              { value: "entregada", label: "Entregada" },
+              { value: "cancelada", label: "Cancelada" },
+            ]},
+          ]}
+          groupByOptions={[
+            { id: "estado", label: "Estado", field: "estado" },
+            { id: "cliente", label: "Cliente", field: "cliente" },
+          ]}
+          activeFilters={activeFiltersOE}
+          activeGroupBy={activeGroupByOE}
+          searchTerm={searchQuery}
+          onFiltersChange={setActiveFiltersOE}
+          onGroupByChange={setActiveGroupByOE}
+          onSearchChange={setSearchQuery}
+          savedFilters={savedFiltersOE}
+          {...makeSavedFilterHandlers(setSavedFiltersOE, setActiveFiltersOE, setActiveGroupByOE, setSearchQuery)}
+          totalCount={ordenesEntrega.length}
+          filteredCount={ordenesEntrega.filter(oe => {
+            const q = searchQuery.toLowerCase()
+            const matchSearch = !q || oe.numero.toLowerCase().includes(q) || oe.cliente_nombre.toLowerCase().includes(q)
+            const matchEstado = !activeFiltersOE.find(f => f.field === "estado") || activeFiltersOE.some(f => f.field === "estado" && f.value === oe.estado)
+            return matchSearch && matchEstado
+          }).length}
+        />
       </div>
 
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -6758,19 +6815,41 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         </button>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-        <div className="flex gap-4 items-center">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por número o cliente..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-          </div>
-        </div>
+      <div className="mb-4">
+        <OdooFilterBar
+          moduleName="facturas-venta"
+          filterOptions={[
+            { field: "estado", label: "Estado", values: [
+              { value: "borrador", label: "Borrador" },
+              { value: "abierta", label: "Abierta" },
+              { value: "conciliada", label: "Conciliada" },
+            ]},
+            { field: "moneda", label: "Moneda", values: [
+              { value: "ARS", label: "ARS" },
+              { value: "USD", label: "USD" },
+            ]},
+          ]}
+          groupByOptions={[
+            { id: "estado", label: "Estado", field: "estado" },
+            { id: "cliente", label: "Cliente", field: "cliente" },
+            { id: "moneda", label: "Moneda", field: "moneda" },
+          ]}
+          activeFilters={activeFiltersFacturas}
+          activeGroupBy={activeGroupByFacturas}
+          searchTerm={searchQuery}
+          onFiltersChange={setActiveFiltersFacturas}
+          onGroupByChange={setActiveGroupByFacturas}
+          onSearchChange={setSearchQuery}
+          savedFilters={savedFiltersFacturas}
+          {...makeSavedFilterHandlers(setSavedFiltersFacturas, setActiveFiltersFacturas, setActiveGroupByFacturas, setSearchQuery)}
+          totalCount={facturas.length}
+          filteredCount={facturas.filter(f => {
+            const q = searchQuery.toLowerCase()
+            const matchSearch = !q || f.numero.toLowerCase().includes(q) || f.cliente_nombre.toLowerCase().includes(q)
+            const matchEstado = !activeFiltersFacturas.find(af => af.field === "estado") || activeFiltersFacturas.some(af => af.field === "estado" && af.value === f.estado)
+            return matchSearch && matchEstado
+          }).length}
+        />
       </div>
 
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -7936,19 +8015,37 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         </button>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-        <div className="flex gap-4 items-center">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por número o cliente..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-          </div>
-        </div>
+      <div className="mb-4">
+        <OdooFilterBar
+          moduleName="recibos"
+          filterOptions={[
+            { field: "estado", label: "Estado", values: [
+              { value: "borrador", label: "Borrador" },
+              { value: "publicado", label: "Publicado" },
+            ]},
+            { field: "moneda", label: "Moneda", values: [
+              { value: "ARS", label: "ARS" },
+              { value: "USD", label: "USD" },
+            ]},
+          ]}
+          groupByOptions={[
+            { id: "estado", label: "Estado", field: "estado" },
+            { id: "cliente", label: "Cliente", field: "cliente" },
+          ]}
+          activeFilters={activeFiltersRecibos}
+          activeGroupBy={activeGroupByRecibos}
+          searchTerm={searchQuery}
+          onFiltersChange={setActiveFiltersRecibos}
+          onGroupByChange={setActiveGroupByRecibos}
+          onSearchChange={setSearchQuery}
+          savedFilters={savedFiltersRecibos}
+          {...makeSavedFilterHandlers(setSavedFiltersRecibos, setActiveFiltersRecibos, setActiveGroupByRecibos, setSearchQuery)}
+          totalCount={recibos.length}
+          filteredCount={recibos.filter(r => {
+            const q = searchQuery.toLowerCase()
+            return !q || r.numero.toLowerCase().includes(q) || r.cliente_nombre.toLowerCase().includes(q)
+          }).length}
+        />
       </div>
 
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -8927,12 +9024,42 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const titulo = tipo === "credito" ? "Notas de Crédito" : "Notas de Débito"
 
     return (
-      <div>
-        <div className="flex justify-between items-center mb-4">
+        <div>
+          <div className="flex justify-between items-center mb-4">
           <div>
             <h1 className="text-2xl font-bold text-emerald-900">{titulo}</h1>
-            <p className="text-sm text-gray-500 mt-0.5">{notasFiltradas.length} registro{notasFiltradas.length !== 1 ? "s" : ""}</p>
           </div>
+        </div>
+
+        <div className="mb-4">
+          <OdooFilterBar
+            moduleName={`notas-${tipo}`}
+            filterOptions={[
+              { field: "estado", label: "Estado", values: [
+                { value: "borrador", label: "Borrador" },
+                { value: "publicado", label: "Publicada" },
+              ]},
+              { field: "moneda", label: "Moneda", values: [
+                { value: "ARS", label: "ARS" },
+                { value: "USD", label: "USD" },
+              ]},
+            ]}
+            groupByOptions={[
+              { id: "estado", label: "Estado", field: "estado" },
+              { id: "cliente", label: "Cliente", field: "cliente" },
+              { id: "sucursal", label: "Sucursal", field: "sucursal" },
+            ]}
+            activeFilters={activeFiltersNDC}
+            activeGroupBy={activeGroupByNDC}
+            searchTerm={searchQuery}
+            onFiltersChange={setActiveFiltersNDC}
+            onGroupByChange={setActiveGroupByNDC}
+            onSearchChange={setSearchQuery}
+            savedFilters={savedFiltersNDC}
+            {...makeSavedFilterHandlers(setSavedFiltersNDC, setActiveFiltersNDC, setActiveGroupByNDC, setSearchQuery)}
+            totalCount={ajustes.filter(a => a.numero.startsWith(prefijo)).length}
+            filteredCount={notasFiltradas.length}
+          />
         </div>
 
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">

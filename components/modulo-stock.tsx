@@ -703,6 +703,23 @@ export default function ModuloStock() {
   // Estados principales
   const [activeView, setActiveView] = useState<string>("productos")
   const [searchTerm, setSearchTerm] = useState("")
+
+  // OdooFilterBar states para Productos y Transferencias
+  const [savedFiltersProductos, setSavedFiltersProductos] = useState<SavedFilter[]>([])
+  const [activeFiltersProductos, setActiveFiltersProductos] = useState<FilterOption[]>([])
+  const [activeGroupByProductos, setActiveGroupByProductos] = useState<GroupByOption[]>([])
+  const [savedFiltersTransferencias, setSavedFiltersTransferencias] = useState<SavedFilter[]>([])
+  const [activeFiltersTransferencias, setActiveFiltersTransferencias] = useState<FilterOption[]>([])
+  const [activeGroupByTransferencias, setActiveGroupByTransferencias] = useState<GroupByOption[]>([])
+  const makeStockFilterHandlers = (
+    setter: React.Dispatch<React.SetStateAction<SavedFilter[]>>,
+    setActiveFilters: React.Dispatch<React.SetStateAction<FilterOption[]>>,
+    setActiveGroupBy: React.Dispatch<React.SetStateAction<GroupByOption[]>>
+  ) => ({
+    onSaveFilter: (f: Omit<SavedFilter, "id" | "createdBy">) => setter(prev => [...prev, { ...f, id: Date.now().toString(), createdBy: "Admin" }]),
+    onDeleteFilter: (id: string) => setter(prev => prev.filter(sf => sf.id !== id)),
+    onApplyFilter: (f: SavedFilter) => { setActiveFilters(f.filters); setActiveGroupBy(f.groupBy) }
+  })
   
   // Estados de datos
   const [productos, setProductos] = useState<ProductoStock[]>(mockProductosStock)
@@ -1226,17 +1243,28 @@ export default function ModuloStock() {
         </div>
         
         {/* Buscador */}
-        <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por código, nombre o categoría..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-            />
-          </div>
+        <div className="mb-4">
+          <OdooFilterBar
+            moduleName="productos-stock"
+            filterOptions={[
+              { field: "categoria", label: "Categoría", values: Array.from(new Set(mockProductosStock.map(p => p.categoria))).map(c => ({ value: c, label: c })) },
+              { field: "moneda_costo", label: "Moneda", values: [{ value: "ARS", label: "ARS" }, { value: "USD", label: "USD" }] },
+            ]}
+            groupByOptions={[
+              { id: "categoria", label: "Categoría", field: "categoria" },
+              { id: "moneda_costo", label: "Moneda", field: "moneda_costo" },
+            ]}
+            activeFilters={activeFiltersProductos}
+            activeGroupBy={activeGroupByProductos}
+            searchTerm={searchTerm}
+            onFiltersChange={setActiveFiltersProductos}
+            onGroupByChange={setActiveGroupByProductos}
+            onSearchChange={setSearchTerm}
+            savedFilters={savedFiltersProductos}
+            {...makeStockFilterHandlers(setSavedFiltersProductos, setActiveFiltersProductos, setActiveGroupByProductos)}
+            totalCount={productos.length}
+            filteredCount={filteredProductos.length}
+          />
         </div>
 
         {/* Tabla */}
@@ -1482,17 +1510,32 @@ export default function ModuloStock() {
         </div>
 
         {/* Buscador */}
-        <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por número o ubicación..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-            />
-          </div>
+        <div className="mb-4">
+          <OdooFilterBar
+            moduleName="transferencias-stock"
+            filterOptions={[
+              { field: "estado", label: "Estado", values: [
+                { value: "borrador", label: "Borrador" },
+                { value: "en_transito", label: "En tránsito" },
+                { value: "completada", label: "Completada" },
+                { value: "cancelada", label: "Cancelada" },
+              ]},
+            ]}
+            groupByOptions={[
+              { id: "estado", label: "Estado", field: "estado" },
+              { id: "origen", label: "Origen", field: "origen" },
+            ]}
+            activeFilters={activeFiltersTransferencias}
+            activeGroupBy={activeGroupByTransferencias}
+            searchTerm={searchTerm}
+            onFiltersChange={setActiveFiltersTransferencias}
+            onGroupByChange={setActiveGroupByTransferencias}
+            onSearchChange={setSearchTerm}
+            savedFilters={savedFiltersTransferencias}
+            {...makeStockFilterHandlers(setSavedFiltersTransferencias, setActiveFiltersTransferencias, setActiveGroupByTransferencias)}
+            totalCount={transferencias.length}
+            filteredCount={transferencias.length}
+          />
         </div>
 
         {/* Tabla */}
