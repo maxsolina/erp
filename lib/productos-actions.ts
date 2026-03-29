@@ -24,6 +24,7 @@ export async function guardarProductoEnDB(
 ): Promise<{ id: number }> {
   const url = productoId ? `/api/productos/${productoId}` : "/api/productos"
   const method = productoId ? "PUT" : "POST"
+  console.log("[v0] guardarProductoEnDB ->", method, url, Object.keys(payload))
 
   const res = await fetch(url, {
     method,
@@ -32,6 +33,7 @@ export async function guardarProductoEnDB(
   })
 
   const text = await res.text()
+  console.log("[v0] respuesta status:", res.status, "body:", text.slice(0, 200))
   if (!res.ok) {
     let msg = text
     try { msg = JSON.parse(text)?.error ?? text } catch {}

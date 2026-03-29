@@ -50,11 +50,13 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  console.log("[v0] POST /api/productos llamado")
   const supabase = await createClient()
   const body = await request.json()
+  console.log("[v0] body recibido:", JSON.stringify(body).slice(0, 200))
   const payload = filtrarPayload(body)
+  console.log("[v0] payload filtrado keys:", Object.keys(payload))
 
-  // historial_costos debe ser array JSONB
   if (!payload.historial_costos) payload.historial_costos = []
 
   const { data, error } = await supabase
@@ -63,6 +65,10 @@ export async function POST(request: Request) {
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    console.log("[v0] Supabase error:", error.message, error.code, error.details)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+  console.log("[v0] Producto creado con id:", data?.id)
   return NextResponse.json(data, { status: 201 })
 }
