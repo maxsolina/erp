@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Settings, Lock, Unlock, FileBox, Ship, Plane } from "lucide-react"
+import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Settings, Lock, Unlock, FileBox, Ship, Plane, Pencil, ChevronLeft, ChevronRight as ChevronRightIcon } from "lucide-react"
 import BotonVolver from "./ui/boton-volver"
 import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
 import {
@@ -10,6 +10,8 @@ import {
   updateCategoriaProveedor,
   deleteCategoriaProveedor,
 } from "@/lib/categorias-proveedor-actions"
+import { fetchProductos } from "@/lib/productos-actions"
+import { procesarEntradaRecepcion, fetchDepositos, fetchUbicaciones } from "@/lib/stock-actions"
 
 // ── Datos geográficos ────────────────────────────────────────────────────────
 
@@ -201,12 +203,18 @@ interface Proveedor {
 interface OrdenCompraLinea {
   producto_id: number
   producto_nombre: string
+  producto_sku?: string
   descripcion: string
   cantidad: number
   cantidad_recibida: number
   precio_unitario: number
   descuento: number
   subtotal: number
+  tiene_serie?: boolean
+  requiere_color?: boolean
+  requiere_bateria?: boolean
+  requiere_outlet?: boolean
+  requiere_observaciones?: boolean
 }
 
 interface OrdenCompra {
@@ -254,6 +262,10 @@ interface RecepcionLinea {
   producto_nombre: string
   producto_sku: string
   tiene_serie: boolean
+  requiere_color: boolean
+  requiere_bateria: boolean
+  requiere_outlet: boolean
+  requiere_observaciones: boolean
   cantidad_pedida: number
   cantidad_recibida: number
   udm: string
@@ -668,6 +680,12 @@ export default function ModuloCompras() {
     lineas: []
   })
 
+  // OC — dropdown búsqueda de producto por línea
+  const [ocProductoSearch, setOcProductoSearch] = useState<Record<number, string>>({})
+  const [ocProductoOpciones, setOcProductoOpciones] = useState<Record<number, any[]>>({})
+  const [ocProductoDropdownAbierto, setOcProductoDropdownAbierto] = useState<Record<number, boolean>>({})
+  const ocProductoInputRefs = React.useRef<Record<number, HTMLInputElement | null>>({})
+
   // OdooFilterBar states
   const [savedFiltersOC, setSavedFiltersOC] = useState<SavedFilter[]>([])
   const [activeFiltersOC, setActiveFiltersOC] = useState<FilterOption[]>([])
@@ -709,6 +727,7 @@ export default function ModuloCompras() {
   const [modalSerieOpen, setModalSerieOpen] = useState(false)
   const [modalSerieProducto, setModalSerieProducto] = useState<RecepcionLinea | null>(null)
   const [modalSerieUnidades, setModalSerieUnidades] = useState<UnidadSerie[]>([])
+  const [modalSerieUnidadActiva, setModalSerieUnidadActiva] = useState(0)
   // Modal de cancelación
   const [modalCancelacionOpen, setModalCancelacionOpen] = useState(false)
   const [cancelacionMotivo, setCancelacionMotivo] = useState("")
@@ -2140,8 +2159,12 @@ export default function ModuloCompras() {
       lineas: oc.lineas.map(l => ({
         producto_id: l.producto_id,
         producto_nombre: l.producto_nombre,
-        producto_sku: l.producto_nombre.substring(0, 8).toUpperCase().replace(/\s/g, '-'),
-        tiene_serie: false,
+        producto_sku: l.producto_sku ?? l.producto_nombre.substring(0, 8).toUpperCase().replace(/\s/g, '-'),
+        tiene_serie: l.tiene_serie ?? false,
+        requiere_color: l.requiere_color ?? false,
+        requiere_bateria: l.requiere_bateria ?? false,
+        requiere_outlet: l.requiere_outlet ?? false,
+        requiere_observaciones: l.requiere_observaciones ?? false,
         cantidad_pedida: l.cantidad,
         cantidad_recibida: esInmediato ? l.cantidad : 0,
         udm: "un",
@@ -2829,17 +2852,81 @@ export default function ModuloCompras() {
               {oc.lineas.map((linea, idx) => (
                 <tr key={idx} className="hover:bg-gray-50">
                   <td className="py-2 px-4">
-                    <input
-                      type="text"
-                      value={linea.producto_nombre}
-                      onChange={e => {
-                        const updated = [...oc.lineas]
-                        updated[idx] = { ...updated[idx], producto_nombre: e.target.value }
-                        setNuevaOC(prev => ({ ...prev, lineas: updated }))
-                      }}
-                      placeholder="Nombre del producto..."
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-blue-500"
-                    />
+                    <div className="relative">
+                      <input
+                        ref={el => { ocProductoInputRefs.current[idx] = el }}
+                        type="text"
+                        value={ocProductoSearch[idx] ?? linea.producto_nombre}
+                        onChange={async e => {
+                          const val = e.target.value
+                          setOcProductoSearch(prev => ({ ...prev, [idx]: val }))
+                          if (val.trim().length === 0) {
+                            setOcProductoOpciones(prev => ({ ...prev, [idx]: [] }))
+                            setOcProductoDropdownAbierto(prev => ({ ...prev, [idx]: false }))
+                            const updated = [...oc.lineas]
+                            updated[idx] = { ...updated[idx], producto_id: 0, producto_nombre: "" }
+                            setNuevaOC(prev => ({ ...prev, lineas: updated }))
+                            return
+                          }
+                          setOcProductoDropdownAbierto(prev => ({ ...prev, [idx]: true }))
+                          try {
+                            const res = await fetchProductos({ busqueda: val, activo: true })
+                            setOcProductoOpciones(prev => ({ ...prev, [idx]: res }))
+                          } catch {
+                            setOcProductoOpciones(prev => ({ ...prev, [idx]: [] }))
+                          }
+                        }}
+                        onFocus={() => {
+                          if ((ocProductoSearch[idx] ?? linea.producto_nombre).length > 0 && (ocProductoOpciones[idx] ?? []).length > 0) {
+                            setOcProductoDropdownAbierto(prev => ({ ...prev, [idx]: true }))
+                          }
+                        }}
+                        onBlur={() => {
+                          setTimeout(() => {
+                            setOcProductoDropdownAbierto(prev => ({ ...prev, [idx]: false }))
+                          }, 150)
+                        }}
+                        placeholder="Nombre del producto..."
+                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-blue-500"
+                      />
+                      {ocProductoDropdownAbierto[idx] && (
+                        <div className="absolute z-50 left-0 right-0 top-full mt-0.5 bg-white border border-gray-300 rounded shadow-lg max-h-48 overflow-y-auto">
+                          {(ocProductoOpciones[idx] ?? []).length === 0 ? (
+                            <div className="px-3 py-2 text-xs text-gray-400">Sin resultados</div>
+                          ) : (
+                            (ocProductoOpciones[idx] ?? []).map((p: any) => (
+                              <div
+                                key={p.id}
+                                onMouseDown={e => {
+                                  e.preventDefault()
+                                  const updated = [...oc.lineas]
+                                  updated[idx] = {
+                                    ...updated[idx],
+                                    producto_id: p.id,
+                                    producto_nombre: p.nombre,
+                                    producto_sku: p.codigo_interno ?? p.sku ?? "",
+                                    descripcion: updated[idx].descripcion || p.descripcion || "",
+                                    precio_unitario: updated[idx].precio_unitario || p.precio_compra || p.costo_manual || 0,
+                                    subtotal: updated[idx].cantidad * (updated[idx].precio_unitario || p.precio_compra || p.costo_manual || 0),
+                                    tiene_serie: p.tiene_numero_serie ?? false,
+                                    requiere_color: p.requiere_color ?? false,
+                                    requiere_bateria: p.requiere_bateria ?? false,
+                                    requiere_outlet: p.requiere_outlet ?? false,
+                                    requiere_observaciones: p.requiere_observaciones ?? false,
+                                  }
+                                  setNuevaOC(prev => ({ ...prev, lineas: updated }))
+                                  setOcProductoSearch(prev => ({ ...prev, [idx]: p.nombre }))
+                                  setOcProductoDropdownAbierto(prev => ({ ...prev, [idx]: false }))
+                                }}
+                                className="px-3 py-1.5 hover:bg-blue-600 hover:text-white cursor-pointer text-xs"
+                              >
+                                <span className="font-medium">[{p.sku ?? p.codigo ?? "—"}]</span> {p.nombre}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td className="py-2 px-4">
                     <input
@@ -2887,7 +2974,12 @@ export default function ModuloCompras() {
                   </td>
                   <td className="py-2 px-4">
                     <button
-                      onClick={() => setNuevaOC(prev => ({ ...prev, lineas: prev.lineas.filter((_, i) => i !== idx) }))}
+                      onClick={() => {
+                        setNuevaOC(prev => ({ ...prev, lineas: prev.lineas.filter((_, i) => i !== idx) }))
+                        setOcProductoSearch(prev => { const n = { ...prev }; delete n[idx]; return n })
+                        setOcProductoOpciones(prev => { const n = { ...prev }; delete n[idx]; return n })
+                        setOcProductoDropdownAbierto(prev => { const n = { ...prev }; delete n[idx]; return n })
+                      }}
                       className="text-gray-400 hover:text-red-500"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -3678,6 +3770,52 @@ export default function ModuloCompras() {
       }))
     }
 
+    // Disparar entrada de stock en Supabase (async, no bloquea la UI)
+    ;(async () => {
+      try {
+        // Obtener el depósito destino por nombre desde Supabase
+        const depositos = await fetchDepositos()
+        const depositoDestino = depositos.find(
+          (d: any) => d.nombre?.toLowerCase() === recActualizada.deposito_destino?.toLowerCase()
+            || d.codigo?.toLowerCase() === recActualizada.deposito_destino?.toLowerCase()
+        ) ?? depositos[0]
+
+        if (!depositoDestino) return
+
+        // Obtener ubicación destino por defecto del depósito
+        const ubicaciones = await fetchUbicaciones(depositoDestino.id)
+        const ubicacionDestino = ubicaciones.find((u: any) => u.es_defecto) ?? ubicaciones[0]
+
+        if (!ubicacionDestino) return
+
+        await procesarEntradaRecepcion({
+          recepcion_id: recActualizada.id,
+          recepcion_numero: recActualizada.numero,
+          deposito_id: depositoDestino.id,
+          ubicacion_id: ubicacionDestino.id,
+          lineas: lineasActualizadas
+            .filter(l => l.cantidad_recibida > 0)
+            .map(l => ({
+              producto_id: l.producto_id,
+              producto_nombre: l.producto_nombre,
+              tiene_serie: !!l.tiene_serie,
+              cantidad: l.cantidad_recibida,
+              unidades: l.tiene_serie
+                ? (l.unidades_serie ?? []).slice(0, l.cantidad_recibida).map((u: any) => ({
+                    nro_serie: u.nro_serie || undefined,
+                    color: u.color || undefined,
+                    bateria_pct: u.bateria_pct ?? undefined,
+                    es_outlet: u.outlet ?? false,
+                    observaciones: u.observaciones || undefined,
+                  }))
+                : undefined,
+            })),
+        })
+      } catch (err) {
+        console.error("[stock] Error procesando entrada de stock:", err)
+      }
+    })()
+
     // Limpiar estado temporal
     setSeriesConfirmadas({})
     setRecepcionCantidades({})
@@ -4122,7 +4260,7 @@ export default function ModuloCompras() {
                 <th className="text-center py-2.5 px-4">Cant. Recibida</th>
                 <th className="text-center py-2.5 px-4">UdM</th>
                 <th className="text-center py-2.5 px-4">Estado</th>
-                {editable && <th className="text-center py-2.5 px-4">Serie/IMEI</th>}
+                {editable && <th className="text-center py-2.5 px-4">Tracking</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -4161,31 +4299,45 @@ export default function ModuloCompras() {
                         {estadoLineaLabel[estadoLinea]}
                       </span>
                     </td>
-                    {editable && (
-                      <td className="py-3 px-4 text-center">
-                        {linea.tiene_serie ? (
-                          <button
-                            onClick={() => {
-                              setModalSerieProducto(linea)
-                              setModalSerieUnidades(seriesConfirmadas[linea.producto_id] || Array.from({ length: cantRec }, () => ({ nro_serie: '', outlet: false })))
-                              setModalSerieOpen(true)
-                            }}
-                            className={`px-2 py-1 text-xs rounded border transition-colors ${
-                              seriesRegistradas >= cantRec && cantRec > 0
-                                ? 'border-green-300 bg-green-50 text-green-700'
-                                : 'border-gray-300 text-gray-600 hover:bg-gray-50'
-                            }`}
-                          >
-                            {seriesRegistradas >= cantRec && cantRec > 0
-                              ? `${seriesRegistradas} registradas`
-                              : `Registrar (${seriesRegistradas}/${cantRec})`
-                            }
-                          </button>
-                        ) : (
-                          <span className="text-xs text-gray-400">-</span>
-                        )}
-                      </td>
-                    )}
+                    {editable && (() => {
+                      const necesitaTracking = linea.tiene_serie || linea.requiere_color || linea.requiere_bateria || linea.requiere_outlet || linea.requiere_observaciones
+                      const totalUnidades = linea.cantidad_pedida
+                      const completadas = (seriesConfirmadas[linea.producto_id] || []).filter(u =>
+                        (!linea.tiene_serie || u.nro_serie.trim() !== '')
+                      ).length
+                      const todoCompleto = completadas >= totalUnidades && totalUnidades > 0
+                      return (
+                        <td className="py-3 px-4 text-center">
+                          {necesitaTracking ? (
+                            <button
+                              title="Registrar datos de unidades"
+                              onClick={() => {
+                                const existentes = seriesConfirmadas[linea.producto_id]
+                                const iniciales = existentes && existentes.length >= totalUnidades
+                                  ? existentes.slice(0, totalUnidades)
+                                  : Array.from({ length: totalUnidades }, (_, i) => existentes?.[i] ?? { nro_serie: '', outlet: false })
+                                setModalSerieProducto(linea)
+                                setModalSerieUnidades(iniciales)
+                                setModalSerieUnidadActiva(0)
+                                setModalSerieOpen(true)
+                              }}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                                todoCompleto
+                                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                  : 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                              }`}
+                            >
+                              <Pencil className="w-3 h-3" />
+                              {todoCompleto
+                                ? `${completadas}/${totalUnidades} listo`
+                                : `${completadas}/${totalUnidades}`}
+                            </button>
+                          ) : (
+                            <span className="text-xs text-gray-400">-</span>
+                          )}
+                        </td>
+                      )
+                    })()}
                   </tr>
                 )
               })}
@@ -5174,174 +5326,266 @@ export default function ModuloCompras() {
         {renderContent()}
       </main>
 
-      {/* ===== MODAL REGISTRO N° SERIE ===== */}
-      {modalSerieOpen && modalSerieProducto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl mx-4 flex flex-col max-h-[90vh]">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">
-                  Registrar unidades — {modalSerieProducto.producto_nombre}
-                </h2>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  {modalSerieUnidades.filter(u => u.nro_serie.trim() !== '').length} de {recepcionCantidades[modalSerieProducto.producto_id] ?? modalSerieProducto.cantidad_pedida} unidades registradas
-                </p>
+      {/* ===== MODAL WIZARD REGISTRO DE UNIDADES ===== */}
+      {modalSerieOpen && modalSerieProducto && (() => {
+        const linea = modalSerieProducto
+        const cantTotal = Math.max(linea.cantidad_pedida, 1)
+        const unidadIdx = Math.min(modalSerieUnidadActiva, cantTotal - 1)
+        const unidadActual = modalSerieUnidades[unidadIdx] ?? { nro_serie: '', outlet: false }
+
+        const updateUnidad = (patch: Partial<UnidadSerie>) => {
+          setModalSerieUnidades(prev => {
+            const updated = [...prev]
+            while (updated.length < cantTotal) updated.push({ nro_serie: '', outlet: false })
+            updated[unidadIdx] = { ...updated[unidadIdx], ...patch }
+            return updated
+          })
+        }
+
+        const unidadCompleta = (u: UnidadSerie) =>
+          (!linea.tiene_serie || u.nro_serie.trim() !== '') &&
+          (!linea.requiere_color || (u.color ?? '').trim() !== '') &&
+          (!linea.requiere_bateria || (u.bateria_pct !== undefined && u.bateria_pct !== null))
+
+        const completadas = modalSerieUnidades.filter((u, i) => i < cantTotal && unidadCompleta(u)).length
+
+        const irA = (i: number) => setModalSerieUnidadActiva(Math.max(0, Math.min(cantTotal - 1, i)))
+
+        const irSiguiente = () => {
+          if (unidadIdx < cantTotal - 1) irA(unidadIdx + 1)
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b">
+                <div>
+                  <h2 className="text-base font-bold text-gray-900">{linea.producto_nombre}</h2>
+                  <p className="text-sm text-gray-500 mt-0.5">
+                    Registro de unidades
+                  </p>
+                </div>
+                <button onClick={() => setModalSerieOpen(false)} className="text-gray-400 hover:text-gray-600 ml-4">
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <button onClick={() => setModalSerieOpen(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            {/* Tabla unidades */}
-            <div className="overflow-auto flex-1 p-6">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs text-gray-500 uppercase tracking-wider border-b">
-                    <th className="text-left py-2 pr-3">#</th>
-                    <th className="text-left py-2 pr-3">N° Serie / IMEI *</th>
-                    <th className="text-left py-2 pr-3">Lote</th>
-                    <th className="text-left py-2 pr-3">% Batería</th>
-                    <th className="text-left py-2 pr-3">Color</th>
-                    <th className="text-center py-2 pr-3">Outlet</th>
-                    <th className="text-left py-2">Fallas / Obs.</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {modalSerieUnidades.map((u, idx) => (
-                    <tr key={idx}>
-                      <td className="py-2 pr-3 text-gray-400 text-xs">{idx + 1}</td>
-                      <td className="py-2 pr-3">
-                        <input
-                          type="text"
-                          value={u.nro_serie}
-                          placeholder="IMEI / N° serie"
-                          onChange={e => {
-                            const updated = [...modalSerieUnidades]
-                            updated[idx] = { ...updated[idx], nro_serie: e.target.value }
-                            setModalSerieUnidades(updated)
-                          }}
-                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500"
-                        />
-                      </td>
-                      <td className="py-2 pr-3">
-                        <input
-                          type="text"
-                          value={u.lote || ''}
-                          placeholder="Lote"
-                          onChange={e => {
-                            const updated = [...modalSerieUnidades]
-                            updated[idx] = { ...updated[idx], lote: e.target.value }
-                            setModalSerieUnidades(updated)
-                          }}
-                          className="w-24 px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500"
-                        />
-                      </td>
-                      <td className="py-2 pr-3">
-                        <input
-                          type="number"
-                          min={0}
-                          max={100}
-                          value={u.bateria_pct ?? ''}
-                          placeholder="%"
-                          onChange={e => {
-                            const updated = [...modalSerieUnidades]
-                            updated[idx] = { ...updated[idx], bateria_pct: Number(e.target.value) }
-                            setModalSerieUnidades(updated)
-                          }}
-                          className="w-16 px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500"
-                        />
-                      </td>
-                      <td className="py-2 pr-3">
-                        <select
-                          value={u.color || ''}
-                          onChange={e => {
-                            const updated = [...modalSerieUnidades]
-                            updated[idx] = { ...updated[idx], color: e.target.value }
-                            setModalSerieUnidades(updated)
-                          }}
-                          className="w-28 px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500"
-                        >
-                          <option value="">-</option>
-                          {['Negro', 'Blanco', 'Azul', 'Rojo', 'Verde', 'Amarillo', 'Gris', 'Plata', 'Oro', 'Morado'].map(c => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="py-2 pr-3 text-center">
-                        <input
-                          type="checkbox"
-                          checked={u.outlet}
-                          onChange={e => {
-                            const updated = [...modalSerieUnidades]
-                            updated[idx] = { ...updated[idx], outlet: e.target.checked }
-                            setModalSerieUnidades(updated)
-                          }}
-                          className="rounded border-gray-300 text-emerald-600"
-                        />
-                      </td>
-                      <td className="py-2">
-                        <input
-                          type="text"
-                          value={u.fallas || ''}
-                          placeholder="Fallas u observaciones..."
-                          onChange={e => {
-                            const updated = [...modalSerieUnidades]
-                            updated[idx] = { ...updated[idx], fallas: e.target.value }
-                            setModalSerieUnidades(updated)
-                          }}
-                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500"
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <button
-                onClick={() => setModalSerieUnidades(prev => [...prev, { nro_serie: '', outlet: false }])}
-                className="mt-3 flex items-center gap-1.5 text-sm text-emerald-600 hover:text-emerald-700"
-              >
-                <Plus className="w-4 h-4" /> Añadir unidad
-              </button>
-            </div>
-            {/* Footer */}
-            <div className="flex items-center justify-between px-6 py-4 border-t bg-gray-50 rounded-b-xl">
-              <p className="text-xs text-gray-500">
-                * N° Serie / IMEI obligatorio. No puede repetirse dentro de la misma recepción.
-              </p>
-              <div className="flex items-center gap-3">
-                <button onClick={() => setModalSerieOpen(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+
+              {/* Barra de progreso + counter */}
+              <div className="px-6 pt-4 pb-2">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Progreso</span>
+                  <span className="text-sm font-semibold text-gray-800">
+                    <span className={completadas === cantTotal ? 'text-emerald-600' : 'text-amber-600'}>{completadas}</span>
+                    <span className="text-gray-400"> / {cantTotal} completados</span>
+                  </span>
+                </div>
+                <div className="flex gap-1">
+                  {Array.from({ length: cantTotal }).map((_, i) => {
+                    const u = modalSerieUnidades[i] ?? { nro_serie: '', outlet: false }
+                    const completa = unidadCompleta(u)
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => irA(i)}
+                        title={`Unidad ${i + 1}`}
+                        className={`h-2 flex-1 rounded-full transition-colors ${
+                          i === unidadIdx
+                            ? 'bg-emerald-500 ring-2 ring-emerald-300 ring-offset-1'
+                            : completa
+                            ? 'bg-emerald-400'
+                            : 'bg-gray-200 hover:bg-gray-300'
+                        }`}
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Navegador de unidad */}
+              <div className="flex items-center justify-between px-6 py-3 bg-gray-50 border-y">
+                <button
+                  onClick={() => irA(unidadIdx - 1)}
+                  disabled={unidadIdx === 0}
+                  className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-30"
+                >
+                  <ChevronLeft className="w-4 h-4" /> Anterior
+                </button>
+                <span className="text-sm font-semibold text-gray-800">
+                  Unidad {unidadIdx + 1} <span className="text-gray-400 font-normal">de {cantTotal}</span>
+                </span>
+                <button
+                  onClick={() => irA(unidadIdx + 1)}
+                  disabled={unidadIdx === cantTotal - 1}
+                  className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-30"
+                >
+                  Siguiente <ChevronRightIcon className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Formulario de la unidad activa */}
+              <div className="px-6 py-5 space-y-4 overflow-y-auto max-h-[55vh]">
+                {/* N° Serie / IMEI */}
+                {linea.tiene_serie && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">
+                      N° Serie / IMEI <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      autoFocus
+                      type="text"
+                      value={unidadActual.nro_serie}
+                      placeholder="Ej: 359173012345678"
+                      onChange={e => updateUnidad({ nro_serie: e.target.value })}
+                      onKeyDown={e => { if (e.key === 'Enter') irSiguiente() }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    />
+                  </div>
+                )}
+
+                {/* Color */}
+                {linea.requiere_color && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">
+                      Color <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={unidadActual.color ?? ''}
+                      onChange={e => updateUnidad({ color: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    >
+                      <option value="">Seleccionar color...</option>
+                      {['Negro', 'Blanco', 'Azul', 'Rojo', 'Verde', 'Amarillo', 'Gris', 'Plata', 'Oro', 'Morado', 'Rosa', 'Naranja'].map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* % Batería */}
+                {linea.requiere_bateria && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">
+                      % Batería <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={unidadActual.bateria_pct ?? ''}
+                        placeholder="0 – 100"
+                        onChange={e => updateUnidad({ bateria_pct: e.target.value === '' ? undefined : Number(e.target.value) })}
+                        className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      />
+                      <span className="text-sm text-gray-400">%</span>
+                      {unidadActual.bateria_pct !== undefined && (
+                        <div className="flex-1 bg-gray-200 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full transition-all ${
+                              (unidadActual.bateria_pct ?? 0) >= 80 ? 'bg-emerald-500' :
+                              (unidadActual.bateria_pct ?? 0) >= 50 ? 'bg-yellow-400' : 'bg-red-500'
+                            }`}
+                            style={{ width: `${Math.min(100, unidadActual.bateria_pct ?? 0)}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Outlet */}
+                {linea.requiere_outlet && (
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="modal-outlet"
+                      checked={unidadActual.outlet}
+                      onChange={e => updateUnidad({ outlet: e.target.checked })}
+                      className="w-4 h-4 rounded border-gray-300 text-emerald-600"
+                    />
+                    <label htmlFor="modal-outlet" className="text-sm font-medium text-gray-700 cursor-pointer">
+                      Equipo Outlet (tiene daño estético)
+                    </label>
+                  </div>
+                )}
+
+                {/* Observaciones / Fallas */}
+                {linea.requiere_observaciones && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">
+                      Observaciones / Fallas
+                    </label>
+                    <textarea
+                      value={unidadActual.fallas ?? ''}
+                      placeholder="Describa fallas, daños o notas relevantes..."
+                      rows={2}
+                      onChange={e => updateUnidad({ fallas: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 resize-none"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Footer — botones de acción */}
+              <div className="flex items-center justify-end gap-2 px-6 py-3 bg-gray-50 rounded-b-xl border-t">
+                <button
+                  onClick={() => setModalSerieOpen(false)}
+                  className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-700"
+                >
                   Cancelar
                 </button>
+                {/* Guardar: persiste sin cerrar, permite seguir editando */}
                 <button
                   onClick={() => {
-                    if (!modalSerieProducto) return
-                    const cantRequerida = recepcionCantidades[modalSerieProducto.producto_id] ?? modalSerieProducto.cantidad_pedida
-                    const validas = modalSerieUnidades.filter(u => u.nro_serie.trim() !== '')
-                    if (validas.length < cantRequerida) {
-                      alert(`Debe registrar ${cantRequerida} unidades. Registradas: ${validas.length}`)
-                      return
+                    const finales = Array.from({ length: cantTotal }, (_, i) => modalSerieUnidades[i] ?? { nro_serie: '', outlet: false })
+                    setSeriesConfirmadas(prev => ({ ...prev, [linea.producto_id]: finales }))
+                    // Sincronizar cant. recibida con las unidades que tienen serie completa
+                    const cantCompletas = finales.filter(u => unidadCompleta(u)).length
+                    setRecepcionCantidades(prev => ({ ...prev, [linea.producto_id]: cantCompletas }))
+                    // Feedback visual
+                    const btn = document.getElementById('btn-guardar-serie')
+                    if (btn) {
+                      btn.textContent = '¡Guardado!'
+                      btn.classList.add('bg-emerald-100', 'border-emerald-500', 'text-emerald-800')
+                      setTimeout(() => {
+                        btn.textContent = 'Guardar'
+                        btn.classList.remove('bg-emerald-100', 'border-emerald-500', 'text-emerald-800')
+                      }, 1500)
                     }
-                    const series = validas.map(u => u.nro_serie.trim())
-                    const duplicados = series.filter((s, i) => series.indexOf(s) !== i)
-                    if (duplicados.length > 0) {
-                      alert(`N° de serie duplicado: ${duplicados[0]}`)
-                      return
+                  }}
+                  id="btn-guardar-serie"
+                  className="px-4 py-2 text-sm border border-emerald-400 rounded-lg text-emerald-700 hover:bg-emerald-50 font-medium transition-colors"
+                >
+                  Guardar
+                </button>
+                {/* Confirmar: valida duplicados, guarda y cierra */}
+                <button
+                  onClick={() => {
+                    if (linea.tiene_serie) {
+                      const series = modalSerieUnidades.slice(0, cantTotal).map(u => u.nro_serie.trim()).filter(Boolean)
+                      const duplicados = series.filter((s, i) => series.indexOf(s) !== i)
+                      if (duplicados.length > 0) {
+                        alert(`N° de serie duplicado: ${duplicados[0]}`)
+                        return
+                      }
                     }
-                    setSeriesConfirmadas(prev => ({
-                      ...prev,
-                      [modalSerieProducto.producto_id]: validas.slice(0, cantRequerida)
-                    }))
+                    const finales = Array.from({ length: cantTotal }, (_, i) => modalSerieUnidades[i] ?? { nro_serie: '', outlet: false })
+                    setSeriesConfirmadas(prev => ({ ...prev, [linea.producto_id]: finales }))
+                    // Sincronizar cant. recibida con las unidades completas
+                    const cantCompletas = finales.filter(u => unidadCompleta(u)).length
+                    setRecepcionCantidades(prev => ({ ...prev, [linea.producto_id]: cantCompletas }))
                     setModalSerieOpen(false)
                   }}
-                  className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium"
+                  className="px-4 py-2 text-sm rounded-lg font-medium transition-colors bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
-                  Confirmar Series
+                  Confirmar ({completadas}/{cantTotal})
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ===== MODAL CANCELACIÓN ===== */}
       {modalCancelacionOpen && selectedRecepcion && (
