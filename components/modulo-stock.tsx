@@ -4,8 +4,7 @@ import React, { useState, useMemo, useRef, useEffect } from "react"
 import { Search, Filter, ChevronDown, X, Plus, FileText, Truck, Package, ArrowRight, Eye, Edit, Trash2, Download, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Calendar, Tag, RefreshCw, Barcode, QrCode, Layers, ArrowLeftRight, ClipboardCheck, TrendingUp, TrendingDown, Box, Warehouse, Hash, RotateCcw, ChevronRight, MessageSquare, Star, User, Activity, BarChart3, Settings, DollarSign, Users, GripVertical } from "lucide-react"
 import OdooFilterBar, { FilterOption, GroupByOption, SavedFilter } from "./odoo-filter-bar"
 import BotonVolver from "./ui/boton-volver"
-import { FormularioProducto, type FormProducto } from "./modulo-productos"
-import { guardarProductoEnDB } from "@/lib/productos-actions"
+import ModuloProductos from "./modulo-productos"
 
 // Types para Stock/Deposito
 interface Deposito {
@@ -938,113 +937,9 @@ export default function ModuloStock() {
 
   // Render Productos
   const renderProductos = () => {
-    if (creandoProducto) {
-      return (
-        <div>
-          <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
-            <button onClick={() => setCreandoProducto(false)} className="hover:text-amber-700">Productos</button>
-            <span>/</span>
-            <span className="font-medium text-gray-900">Nuevo producto</span>
-          </div>
-          <FormularioProducto
-            inicial={null}
-            onGuardar={async (p: FormProducto) => {
-              try {
-                const { id: _id, historial_costos: _hc, ...payload } = p
-                await guardarProductoEnDB(payload)
-                setCreandoProducto(false)
-              } catch (e: any) {
-                alert(e.message ?? "Error al guardar el producto")
-              }
-            }}
-            onCancelar={() => setCreandoProducto(false)}
-          />
-        </div>
-      )
-    }
-
-    if (selectedProducto) return renderFichaProducto()
-    
-    const filteredProductos = productos.filter(p => 
-      p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.categoria_ruta.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-
     return (
-      <div>
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold text-amber-900">Productos</h1>
-          <button
-            onClick={() => setCreandoProducto(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-900 rounded-md hover:bg-indigo-800 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Nuevo producto
-          </button>
-        </div>
-        
-        {/* Buscador */}
-        <div className="mb-4">
-          <OdooFilterBar
-            moduleName="productos-stock"
-            filterOptions={[
-              { field: "categoria", label: "Categoría", values: Array.from(new Set(mockProductosStock.map(p => p.categoria))).map(c => ({ value: c, label: c })) },
-              { field: "moneda_costo", label: "Moneda", values: [{ value: "ARS", label: "ARS" }, { value: "USD", label: "USD" }] },
-            ]}
-            groupByOptions={[
-              { id: "categoria", label: "Categoría", field: "categoria" },
-              { id: "moneda_costo", label: "Moneda", field: "moneda_costo" },
-            ]}
-            activeFilters={activeFiltersProductos}
-            activeGroupBy={activeGroupByProductos}
-            searchTerm={searchTerm}
-            onFiltersChange={setActiveFiltersProductos}
-            onGroupByChange={setActiveGroupByProductos}
-            onSearchChange={setSearchTerm}
-            savedFilters={savedFiltersProductos}
-            {...makeStockFilterHandlers(setSavedFiltersProductos, setActiveFiltersProductos, setActiveGroupByProductos)}
-            totalCount={productos.length}
-            filteredCount={filteredProductos.length}
-          />
-        </div>
-
-        {/* Tabla */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Código</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Nombre</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Categoría</th>
-                <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Stock Real</th>
-                <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Moneda</th>
-                <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Precio Costo</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Cuenta Analítica</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProductos.map(producto => (
-                <tr 
-                  key={producto.id} 
-                  onClick={() => setSelectedProducto(producto)}
-                  className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
-                >
-                  <td className="py-3 px-4 font-mono text-sm text-amber-700 font-medium">{producto.codigo}</td>
-                  <td className="py-3 px-4 text-sm">{producto.nombre}</td>
-                  <td className="py-3 px-4 text-sm text-gray-600">{producto.categoria_ruta}</td>
-                  <td className="py-3 px-4 text-sm text-right font-medium">{producto.stock_real}</td>
-                  <td className="py-3 px-4 text-sm text-right text-gray-600">{producto.moneda_costo}</td>
-                  <td className="py-3 px-4 text-sm text-right">{formatCurrency(producto.precio_costo, producto.moneda_costo)}</td>
-                  <td className="py-3 px-4 text-sm text-gray-600">{producto.cuenta_analitica || "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {filteredProductos.length === 0 && (
-            <div className="text-center py-8 text-gray-500">No se encontraron productos</div>
-          )}
-        </div>
+      <div className="h-full">
+        <ModuloProductos />
       </div>
     )
   }
