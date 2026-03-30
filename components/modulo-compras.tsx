@@ -11,6 +11,7 @@ import {
   deleteCategoriaProveedor,
 } from "@/lib/categorias-proveedor-actions"
 import { fetchProductos } from "@/lib/productos-actions"
+import { procesarEntradaRecepcion, fetchDepositos, fetchUbicaciones } from "@/lib/stock-actions"
 
 // ── Datos geográficos ────────────────────────────────────────────────────────
 
@@ -3768,6 +3769,52 @@ export default function ModuloCompras() {
         }
       }))
     }
+
+    // Disparar entrada de stock en Supabase (async, no bloquea la UI)
+    ;(async () => {
+      try {
+        // Obtener el depósito destino por nombre desde Supabase
+        const depositos = await fetchDepositos()
+        const depositoDestino = depositos.find(
+          (d: any) => d.nombre?.toLowerCase() === recActualizada.deposito_destino?.toLowerCase()
+            || d.codigo?.toLowerCase() === recActualizada.deposito_destino?.toLowerCase()
+        ) ?? depositos[0]
+
+        if (!depositoDestino) return
+
+        // Obtener ubicación destino por defecto del depósito
+        const ubicaciones = await fetchUbicaciones(depositoDestino.id)
+        const ubicacionDestino = ubicaciones.find((u: any) => u.es_defecto) ?? ubicaciones[0]
+
+        if (!ubicacionDestino) return
+
+        await procesarEntradaRecepcion({
+          recepcion_id: recActualizada.id,
+          recepcion_numero: recActualizada.numero,
+          deposito_id: depositoDestino.id,
+          ubicacion_id: ubicacionDestino.id,
+          lineas: lineasActualizadas
+            .filter(l => l.cantidad_recibida > 0)
+            .map(l => ({
+              producto_id: l.producto_id,
+              producto_nombre: l.producto_nombre,
+              tiene_serie: !!l.tiene_serie,
+              cantidad: l.cantidad_recibida,
+              unidades: l.tiene_serie
+                ? (l.unidades_serie ?? []).slice(0, l.cantidad_recibida).map((u: any) => ({
+                    nro_serie: u.nro_serie || undefined,
+                    color: u.color || undefined,
+                    bateria_pct: u.bateria_pct ?? undefined,
+                    es_outlet: u.outlet ?? false,
+                    observaciones: u.observaciones || undefined,
+                  }))
+                : undefined,
+            })),
+        })
+      } catch (err) {
+        console.error("[stock] Error procesando entrada de stock:", err)
+      }
+    })()
 
     // Limpiar estado temporal
     setSeriesConfirmadas({})

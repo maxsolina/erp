@@ -226,32 +226,17 @@ interface AjusteInventario {
   }[]
 }
 
-// Datos
+// Datos mock vacíos (se reemplazan por datos reales de Supabase al montar)
 const mockCategoriasUbicacion: CategoriaUbicacion[] = []
-
-const mockDepositos: Deposito[] = []
-
-const mockUbicaciones: Ubicacion[] = []
-
 const mockCategorias: CategoriaProducto[] = []
-
 const mockProductosStock: ProductoStock[] = []
-
-const mockLotesSeries: LoteSerie[] = []
-
-const mockTodosLosIMEI: LoteSerie[] = []
-
 const mockTransferencias: TransferenciaInterna[] = []
-
 const mockPedidosAbastecimiento: PedidoAbastecimiento[] = []
-
 const mockControlesInventario: ControlInventario[] = []
-
 const mockAjustes: AjusteInventario[] = []
 
 // Sucursal actual
 const SUCURSAL_ACTUAL = "Puerto Norte"
-const DEPOSITO_ACTUAL = mockDepositos[0] ?? null
 
 // Helper functions
 const formatDate = (dateString: string) => {
@@ -429,17 +414,105 @@ export default function ModuloStock() {
     onApplyFilter: (f: SavedFilter) => { setActiveFilters(f.filters); setActiveGroupBy(f.groupBy) }
   })
   
-  // Estados de datos
+  // Estados de datos — cargados desde Supabase
+  const [depositos, setDepositos] = useState<Deposito[]>([])
+  const [ubicaciones, setUbicaciones] = useState<Ubicacion[]>([])
+  const [stockUnidades, setStockUnidades] = useState<any[]>([])
+  const [cargandoStock, setCargandoStock] = useState(true)
   const [productos, setProductos] = useState<ProductoStock[]>(mockProductosStock)
-  const [lotesSeries, setLotesSeries] = useState<LoteSerie[]>(mockLotesSeries)
+  const [lotesSeries, setLotesSeries] = useState<LoteSerie[]>([])
   const [transferencias, setTransferencias] = useState<TransferenciaInterna[]>(mockTransferencias)
   const [pedidosAbastecimiento, setPedidosAbastecimiento] = useState<PedidoAbastecimiento[]>(mockPedidosAbastecimiento)
   const [controlesInventario, setControlesInventario] = useState<ControlInventario[]>(mockControlesInventario)
   const [ajustes, setAjustes] = useState<AjusteInventario[]>(mockAjustes)
-  
+
+  // Cargar depósitos, ubicaciones y stock unidades desde Supabase
+  useEffect(() => {
+    async function cargarDatos() {
+      setCargandoStock(true)
+      try {
+        const [deps, ubics, unidades] = await Promise.all([
+          fetch("/api/depositos").then(r => r.json()),
+          fetch("/api/ubicaciones").then(r => r.json()),
+          fetch("/api/stock/unidades").then(r => r.json()),
+        ])
+
+        // Mapear depositos al tipo interno
+        const depositosMapped: Deposito[] = (deps ?? []).map((d: any) => ({
+          id: d.id,
+          codigo: d.codigo,
+          nombre: d.nombre,
+          sucursal: d.sucursales?.nombre ?? "",
+          direccion: "",
+          subcompanias: [],
+          deposito_distribucion: false,
+          deposito_tercero: false,
+          activo: d.activo,
+          ubicacion_entrada_id: null,
+          ubicacion_control_calidad_id: null,
+          ubicacion_empaquetado_id: null,
+          ubicacion_salida_id: null,
+          ubicacion_stock_id: null,
+          recepcion_automatica: false,
+          albaranes_entrada: "manual",
+          envios_salientes: "manual",
+          depositos_reabastecimiento: [],
+        }))
+
+        // Mapear ubicaciones al tipo interno
+        const ubicacionesMapped: Ubicacion[] = (ubics ?? []).map((u: any) => ({
+          id: u.id,
+          deposito_id: u.deposito_id,
+          codigo: u.codigo,
+          nombre: u.nombre,
+          tipo: u.tipo ?? "interna",
+          categoria_id: null,
+          categoria_nombre: u.tipo === "reparacion" ? "En Reparación" : "Stock",
+          activa: u.activa,
+          es_scrap: false,
+          es_devolucion: false,
+          disponible_venta: u.tipo === "interna",
+        }))
+
+        // Mapear stock_unidades → LoteSerie (para vista IMEI en Stock)
+        const lotesMapped: LoteSerie[] = (unidades ?? []).map((u: any) => ({
+          id: u.id,
+          producto_id: u.producto_id,
+          producto_codigo: u.productos?.codigo_interno ?? "",
+          producto_nombre: u.productos?.nombre ?? "",
+          producto_categoria: "",
+          marca: "",
+          numero: u.nro_serie ?? "",
+          referencia_interna: u.nro_serie ?? "",
+          cantidad: 1,
+          ubicacion_id: u.ubicacion_id,
+          ubicacion_nombre: u.ubicaciones?.nombre ?? "",
+          deposito_id: u.deposito_id,
+          deposito_nombre: u.depositos?.nombre ?? "",
+          sucursal: "",
+          fecha_vencimiento: null,
+          bateria: u.bateria_pct ?? null,
+          color: u.color ?? null,
+          estado: u.estado === "disponible" ? "disponible" : u.estado === "reservado" ? "reservado" : "vendido",
+        }))
+
+        setDepositos(depositosMapped)
+        setUbicaciones(ubicacionesMapped)
+        setStockUnidades(unidades ?? [])
+        setLotesSeries(lotesMapped)
+        setTodosIMEI(lotesMapped)
+      } catch (err) {
+        console.error("[stock] Error cargando datos:", err)
+      } finally {
+        setCargandoStock(false)
+      }
+    }
+    cargarDatos()
+  }, [])
+
   // Depósito actual seleccionado (por defecto el primero)
-  const [currentDepositoId, setCurrentDepositoId] = useState<number>(mockDepositos[0]?.id || 1)
-  const currentDeposito = useMemo(() => mockDepositos.find(d => d.id === currentDepositoId) || mockDepositos[0], [currentDepositoId])
+  const [currentDepositoId, setCurrentDepositoId] = useState<number>(1)
+  const currentDeposito = useMemo(() => depositos.find(d => d.id === currentDepositoId) || depositos[0], [currentDepositoId, depositos])
   
   // Estados de selección
   const [selectedProducto, setSelectedProducto] = useState<ProductoStock | null>(null)
@@ -552,8 +625,8 @@ export default function ModuloStock() {
   // Estado para grupos expandidos
   const [lotesExpandedGroups, setLotesExpandedGroups] = useState<Set<string>>(new Set())
   
-  // Estados para Lotes y Series (todos los IMEI históricos) - Sistema de Filtros Odoo
-  const [todosIMEI] = useState<LoteSerie[]>(mockTodosLosIMEI)
+  // Estados para Lotes y Series (todos los IMEI históricos) - reutiliza stockUnidades
+  const [todosIMEI, setTodosIMEI] = useState<LoteSerie[]>([])
   const [seriesSearchTerm, setSeriesSearchTerm] = useState("")
   const [seriesActiveFilters, setSeriesActiveFilters] = useState<FilterOption[]>([])
   const [seriesActiveGroupBy, setSeriesActiveGroupBy] = useState<GroupByOption[]>([])
@@ -1219,7 +1292,7 @@ export default function ModuloStock() {
 
   // Ubicaciones del depósito seleccionado (para formulario transferencia)
   const transUbicacionesDeposito = useMemo(() => 
-    mockUbicaciones.filter(u => u.deposito_id === transFormDeposito && u.activa),
+        ubicaciones.filter(u => u.deposito_id === transFormDeposito && u.activa),
     [transFormDeposito]
   )
   
@@ -1231,7 +1304,7 @@ export default function ModuloStock() {
   
   // Resetear formulario de transferencia interna
   const resetTransferenciaForm = () => {
-    const primerDeposito = mockDepositos[0]
+    const primerDeposito = depositos[0]
     setTransFormDeposito(primerDeposito?.id ?? null)
     setTransFormUbicacionOrigen(null)
     setTransFormUbicacionDestino(null)
@@ -1288,9 +1361,9 @@ export default function ModuloStock() {
       return
     }
     
-    const deposito = mockDepositos.find(d => d.id === transFormDeposito)
-    const ubicOrigen = mockUbicaciones.find(u => u.id === transFormUbicacionOrigen)
-    const ubicDestino = mockUbicaciones.find(u => u.id === transFormUbicacionDestino)
+    const deposito = depositos.find(d => d.id === transFormDeposito)
+    const ubicOrigen = ubicaciones.find(u => u.id === transFormUbicacionOrigen)
+    const ubicDestino = ubicaciones.find(u => u.id === transFormUbicacionDestino)
     
     // Agregar entrada de seguimiento si se confirma
     let seguimientoFinal = [...transFormSeguimiento]
@@ -1400,7 +1473,7 @@ export default function ModuloStock() {
                   className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm bg-purple-50 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 >
                   <option value="">Seleccionar...</option>
-                  {mockDepositos.map(d => (
+                  {depositos.map(d => (
                     <option key={d.id} value={d.id}>{d.nombre}</option>
                   ))}
                 </select>
@@ -2528,12 +2601,12 @@ export default function ModuloStock() {
   const renderConfigDepositos = () => {
     // Si hay un depósito seleccionado, mostrar la ficha
     if (selectedDeposito) {
-      const ubicacionesDeposito = mockUbicaciones.filter(u => u.deposito_id === selectedDeposito.id)
-      const ubicacionEntrada = mockUbicaciones.find(u => u.id === selectedDeposito.ubicacion_entrada_id)
-      const ubicacionSalida = mockUbicaciones.find(u => u.id === selectedDeposito.ubicacion_salida_id)
-      const ubicacionStock = mockUbicaciones.find(u => u.id === selectedDeposito.ubicacion_stock_id)
-      const ubicacionQC = mockUbicaciones.find(u => u.id === selectedDeposito.ubicacion_control_calidad_id)
-      const ubicacionPack = mockUbicaciones.find(u => u.id === selectedDeposito.ubicacion_empaquetado_id)
+  const ubicacionesDeposito = ubicaciones.filter(u => u.deposito_id === selectedDeposito.id)
+  const ubicacionEntrada = ubicaciones.find(u => u.id === selectedDeposito.ubicacion_entrada_id)
+  const ubicacionSalida = ubicaciones.find(u => u.id === selectedDeposito.ubicacion_salida_id)
+  const ubicacionStock = ubicaciones.find(u => u.id === selectedDeposito.ubicacion_stock_id)
+  const ubicacionQC = ubicaciones.find(u => u.id === selectedDeposito.ubicacion_control_calidad_id)
+  const ubicacionPack = ubicaciones.find(u => u.id === selectedDeposito.ubicacion_empaquetado_id)
       
       return (
         <div>
@@ -2821,7 +2894,7 @@ export default function ModuloStock() {
               </tr>
             </thead>
             <tbody>
-              {mockDepositos.map(deposito => (
+              {depositos.map(deposito => (
                 <tr 
                   key={deposito.id} 
                   className="border-b border-gray-100 hover:bg-amber-50 cursor-pointer"
@@ -2847,7 +2920,7 @@ export default function ModuloStock() {
   const renderConfigUbicaciones = () => {
     // Si hay una ubicación seleccionada, mostrar la ficha
     if (selectedUbicacion) {
-      const deposito = mockDepositos.find(d => d.id === selectedUbicacion.deposito_id)
+      const deposito = depositos.find(d => d.id === selectedUbicacion.deposito_id)
       
       return (
         <div>
@@ -2912,7 +2985,7 @@ export default function ModuloStock() {
                   <div className="flex items-center gap-4">
                     <label className="w-40 text-sm text-gray-600">Depósito</label>
                     <select defaultValue={selectedUbicacion.deposito_id} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                      {mockDepositos.map(dep => (
+                      {depositos.map(dep => (
                         <option key={dep.id} value={dep.id}>{dep.nombre}</option>
                       ))}
                     </select>
@@ -3047,7 +3120,7 @@ export default function ModuloStock() {
                   <label className="w-40 text-sm text-gray-600">Depósito *</label>
                   <select className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
                     <option value="">Seleccionar...</option>
-                    {mockDepositos.map(dep => (
+                    {depositos.map(dep => (
                       <option key={dep.id} value={dep.id}>{dep.nombre}</option>
                     ))}
                   </select>
@@ -3122,8 +3195,8 @@ export default function ModuloStock() {
               </tr>
             </thead>
             <tbody>
-              {mockUbicaciones.map(ubicacion => {
-                const deposito = mockDepositos.find(d => d.id === ubicacion.deposito_id)
+          {ubicaciones.map(ubicacion => {
+            const deposito = depositos.find(d => d.id === ubicacion.deposito_id)
                 return (
                   <tr 
                     key={ubicacion.id} 
@@ -3166,8 +3239,8 @@ export default function ModuloStock() {
     }> = []
 
     productos.forEach(p => {
-      const ubicacion = mockUbicaciones.find(u => u.id === p.ubicacion_id)
-      const deposito = mockDepositos.find(d => d.id === p.deposito_id)
+          const ubicacion = ubicaciones.find(u => u.id === p.ubicacion_id)
+          const deposito = depositos.find(d => d.id === p.deposito_id)
       
       const lotesProducto = lotesSeries.filter(l => l.producto_id === p.id)
       
@@ -3367,7 +3440,7 @@ export default function ModuloStock() {
               {/* Ubicaciones con esta categoría */}
               <div className="mt-8">
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">
-                  Ubicaciones con esta categoría ({mockUbicaciones.filter(u => u.categoria_nombre === selectedCategoria.nombre).length})
+                  Ubicaciones con esta categoría ({ubicaciones.filter(u => u.categoria_nombre === selectedCategoria.nombre).length})
                 </h3>
                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                   <table className="w-full">
@@ -3379,8 +3452,8 @@ export default function ModuloStock() {
                       </tr>
                     </thead>
                     <tbody>
-                      {mockUbicaciones.filter(u => u.categoria_nombre === selectedCategoria.nombre).map(ub => {
-                        const dep = mockDepositos.find(d => d.id === ub.deposito_id)
+            {ubicaciones.filter(u => u.categoria_nombre === selectedCategoria.nombre).map(ub => {
+              const dep = depositos.find(d => d.id === ub.deposito_id)
                         return (
                           <tr key={ub.id} className="border-b border-gray-100 hover:bg-gray-50">
                             <td className="py-2 px-4 text-sm text-blue-600">{ub.codigo}</td>
@@ -3389,7 +3462,7 @@ export default function ModuloStock() {
                           </tr>
                         )
                       })}
-                      {mockUbicaciones.filter(u => u.categoria_nombre === selectedCategoria.nombre).length === 0 && (
+                      {ubicaciones.filter(u => u.categoria_nombre === selectedCategoria.nombre).length === 0 && (
                         <tr><td colSpan={3} className="py-4 text-center text-sm text-gray-500">No hay ubicaciones con esta categoría</td></tr>
                       )}
                     </tbody>
@@ -3491,7 +3564,7 @@ export default function ModuloStock() {
                   <td className="py-3 px-4 text-sm text-gray-900">{cat.nombre}</td>
                   <td className="py-3 px-4 text-sm text-gray-600">{cat.descripcion || "-"}</td>
                   <td className="py-3 px-4 text-sm text-gray-600">
-                    {mockUbicaciones.filter(u => u.categoria_nombre === cat.nombre).length}
+                    {ubicaciones.filter(u => u.categoria_nombre === cat.nombre).length}
                   </td>
                 </tr>
               ))}
@@ -3926,7 +3999,7 @@ export default function ModuloStock() {
           </div>
           <div className="flex items-center gap-2 bg-white rounded-lg px-4 py-2 shadow-sm border-l-3 border-blue-500">
             <span className="text-gray-500 uppercase text-xs">Ubicaciones:</span>
-            <span className="font-bold text-gray-900 text-base">{mockUbicaciones.filter(u => u.activa).length}</span>
+                    <span className="font-bold text-gray-900 text-base">{ubicaciones.filter(u => u.activa).length}</span>
           </div>
           <div className="flex items-center gap-2 bg-white rounded-lg px-4 py-2 shadow-sm border-l-3 border-emerald-500">
             <span className="text-gray-500 uppercase text-xs">Unidades:</span>
