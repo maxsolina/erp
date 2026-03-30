@@ -5480,36 +5480,6 @@ export default function ModuloCompras() {
                 )}
               </div>
 
-              {/* Barra de navegación rápida — escala a cualquier cantidad */}
-              <div className="px-6 pb-1 pt-3 border-t bg-white">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs text-gray-400 shrink-0">Ir a:</span>
-                  <div className="flex gap-0.5 flex-1 overflow-x-auto pb-1">
-                    {Array.from({ length: cantTotal }).map((_, i) => {
-                      const u = modalSerieUnidades[i] ?? { nro_serie: '', outlet: false }
-                      const completa = unidadCompleta(u)
-                      const esActual = i === unidadIdx
-                      return (
-                        <button
-                          key={i}
-                          onClick={() => irA(i)}
-                          title={`Unidad ${i + 1}${completa ? ' ✓' : ''}`}
-                          className={`shrink-0 h-6 min-w-[1.6rem] px-1 rounded text-xs font-semibold border transition-all ${
-                            esActual
-                              ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
-                              : completa
-                              ? 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100'
-                              : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400 hover:bg-gray-50'
-                          }`}
-                        >
-                          {i + 1}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-
               {/* Footer — botones de acción */}
               <div className="flex items-center justify-end gap-2 px-6 py-3 bg-gray-50 rounded-b-xl border-t">
                 <button
