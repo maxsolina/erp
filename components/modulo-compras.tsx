@@ -727,6 +727,7 @@ export default function ModuloCompras() {
   const [modalSerieProducto, setModalSerieProducto] = useState<RecepcionLinea | null>(null)
   const [modalSerieUnidades, setModalSerieUnidades] = useState<UnidadSerie[]>([])
   const [modalSerieUnidadActiva, setModalSerieUnidadActiva] = useState(0)
+  const [modalSerieCantTotal, setModalSerieCantTotal] = useState(0)
   // Modal de cancelación
   const [modalCancelacionOpen, setModalCancelacionOpen] = useState(false)
   const [cancelacionMotivo, setCancelacionMotivo] = useState("")
@@ -4265,11 +4266,13 @@ export default function ModuloCompras() {
                             <button
                               title="Registrar datos de unidades"
                               onClick={() => {
+                                const cant = Math.max(cantRec, 1)
                                 const existentes = seriesConfirmadas[linea.producto_id]
-                                const iniciales = existentes && existentes.length > 0
-                                  ? existentes
-                                  : Array.from({ length: Math.max(cantRec, 1) }, () => ({ nro_serie: '', outlet: false }))
+                                const iniciales = existentes && existentes.length >= cant
+                                  ? existentes.slice(0, cant)
+                                  : Array.from({ length: cant }, (_, i) => existentes?.[i] ?? { nro_serie: '', outlet: false })
                                 setModalSerieProducto(linea)
+                                setModalSerieCantTotal(cant)
                                 setModalSerieUnidades(iniciales)
                                 setModalSerieUnidadActiva(0)
                                 setModalSerieOpen(true)
@@ -5282,7 +5285,7 @@ export default function ModuloCompras() {
       {/* ===== MODAL REGISTRO DE UNIDADES (estilo Odoo) ===== */}
       {modalSerieOpen && modalSerieProducto && (() => {
         const linea = modalSerieProducto
-        const cantTotal = recepcionCantidades[linea.producto_id] ?? linea.cantidad_pedida
+        const cantTotal = modalSerieCantTotal > 0 ? modalSerieCantTotal : Math.max(recepcionCantidades[linea.producto_id] ?? linea.cantidad_pedida, 1)
         const FILAS_POR_PAGINA = 10
         const paginaActual = modalSerieUnidadActiva  // reutilizamos el estado como índice de página
         const totalPaginas = Math.ceil(cantTotal / FILAS_POR_PAGINA)
