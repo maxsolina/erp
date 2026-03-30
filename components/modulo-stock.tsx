@@ -535,6 +535,7 @@ export default function ModuloStock() {
   // Estados de selección para configuración
   const [selectedDeposito, setSelectedDeposito] = useState<Deposito | null>(null)
   const [selectedUbicacion, setSelectedUbicacion] = useState<Ubicacion | null>(null)
+  const [categoriasUbicacion, setCategoriasUbicacion] = useState<CategoriaUbicacion[]>([])
   const [selectedCategoria, setSelectedCategoria] = useState<CategoriaUbicacion | null>(null)
   const [creandoCategoria, setCreandoCategoria] = useState(false)
   const [editandoCategoria, setEditandoCategoria] = useState(false)
@@ -2958,9 +2959,9 @@ export default function ModuloStock() {
                   <div className="flex items-center gap-4">
                     <label className="w-40 text-sm text-gray-600">Categoría</label>
                     <select defaultValue={selectedUbicacion.categoria_id} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                      {mockCategoriasUbicacion.map(cat => (
-                        <option key={cat.id} value={cat.id}>{cat.nombre}</option>
-                      ))}
+              {categoriasUbicacion.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.nombre}</option>
+              ))}
                     </select>
                   </div>
                 </div>
@@ -3092,7 +3093,7 @@ export default function ModuloStock() {
                   <label className="w-40 text-sm text-gray-600">Categoría</label>
                   <select className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
                     <option value="">Seleccionar...</option>
-                    {mockCategoriasUbicacion.map(cat => (
+                    {categoriasUbicacion.map(cat => (
                       <option key={cat.id} value={cat.id}>{cat.nombre}</option>
                     ))}
                   </select>
@@ -3345,7 +3346,7 @@ export default function ModuloStock() {
 
   // Render Configuración - Categorías de Ubicación
   const renderConfigCategorias = () => {
-    const categoriasFiltradas = mockCategoriasUbicacion.filter(cat =>
+    const categoriasFiltradas = categoriasUbicacion.filter(cat =>
       cat.nombre.toLowerCase().includes(busquedaCategoria.toLowerCase()) ||
       cat.codigo.toLowerCase().includes(busquedaCategoria.toLowerCase())
     )
