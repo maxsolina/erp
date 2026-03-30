@@ -5493,7 +5493,10 @@ export default function ModuloCompras() {
                   onClick={() => {
                     const finales = Array.from({ length: cantTotal }, (_, i) => modalSerieUnidades[i] ?? { nro_serie: '', outlet: false })
                     setSeriesConfirmadas(prev => ({ ...prev, [linea.producto_id]: finales }))
-                    // Feedback visual: iluminar brevemente el botón
+                    // Sincronizar cant. recibida con las unidades que tienen serie completa
+                    const cantCompletas = finales.filter(u => unidadCompleta(u)).length
+                    setRecepcionCantidades(prev => ({ ...prev, [linea.producto_id]: cantCompletas }))
+                    // Feedback visual
                     const btn = document.getElementById('btn-guardar-serie')
                     if (btn) {
                       btn.textContent = '¡Guardado!'
@@ -5522,6 +5525,9 @@ export default function ModuloCompras() {
                     }
                     const finales = Array.from({ length: cantTotal }, (_, i) => modalSerieUnidades[i] ?? { nro_serie: '', outlet: false })
                     setSeriesConfirmadas(prev => ({ ...prev, [linea.producto_id]: finales }))
+                    // Sincronizar cant. recibida con las unidades completas
+                    const cantCompletas = finales.filter(u => unidadCompleta(u)).length
+                    setRecepcionCantidades(prev => ({ ...prev, [linea.producto_id]: cantCompletas }))
                     setModalSerieOpen(false)
                   }}
                   className="px-4 py-2 text-sm rounded-lg font-medium transition-colors bg-emerald-600 hover:bg-emerald-700 text-white"
