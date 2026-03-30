@@ -5480,66 +5480,84 @@ export default function ModuloCompras() {
                 )}
               </div>
 
-              {/* Footer */}
-              <div className="flex items-center justify-between px-6 py-4 border-t bg-gray-50 rounded-b-xl">
-                {/* Botones numerados de navegación rápida (máx 20 visible) */}
-                <div className="flex gap-1 flex-wrap max-w-xs">
-                  {Array.from({ length: Math.min(cantTotal, 20) }).map((_, i) => {
-                    const u = modalSerieUnidades[i] ?? { nro_serie: '', outlet: false }
-                    return (
-                      <button
-                        key={i}
-                        onClick={() => irA(i)}
-                        className={`w-6 h-6 rounded-full text-xs font-semibold border transition-colors ${
-                          i === unidadIdx
-                            ? 'bg-emerald-600 border-emerald-600 text-white'
-                            : unidadCompleta(u)
-                            ? 'bg-emerald-100 border-emerald-300 text-emerald-700'
-                            : 'bg-white border-gray-300 text-gray-500 hover:border-gray-400'
-                        }`}
-                      >
-                        {i + 1}
-                      </button>
-                    )
-                  })}
+              {/* Barra de navegación rápida — escala a cualquier cantidad */}
+              <div className="px-6 pb-1 pt-3 border-t bg-white">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs text-gray-400 shrink-0">Ir a:</span>
+                  <div className="flex gap-0.5 flex-1 overflow-x-auto pb-1">
+                    {Array.from({ length: cantTotal }).map((_, i) => {
+                      const u = modalSerieUnidades[i] ?? { nro_serie: '', outlet: false }
+                      const completa = unidadCompleta(u)
+                      const esActual = i === unidadIdx
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => irA(i)}
+                          title={`Unidad ${i + 1}${completa ? ' ✓' : ''}`}
+                          className={`shrink-0 h-6 min-w-[1.6rem] px-1 rounded text-xs font-semibold border transition-all ${
+                            esActual
+                              ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
+                              : completa
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100'
+                              : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400 hover:bg-gray-50'
+                          }`}
+                        >
+                          {i + 1}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setModalSerieOpen(false)}
-                    className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-700"
-                  >
-                    Cancelar
-                  </button>
-                  {/* Guardar: persiste los datos sin cerrar */}
-                  <button
-                    onClick={() => {
-                      const finales = Array.from({ length: cantTotal }, (_, i) => modalSerieUnidades[i] ?? { nro_serie: '', outlet: false })
-                      setSeriesConfirmadas(prev => ({ ...prev, [linea.producto_id]: finales }))
-                    }}
-                    className="px-4 py-2 text-sm border border-emerald-400 rounded-lg text-emerald-700 hover:bg-emerald-50 font-medium transition-colors"
-                  >
-                    Guardar
-                  </button>
-                  {/* Confirmar: valida, guarda y cierra */}
-                  <button
-                    onClick={() => {
-                      if (linea.tiene_serie) {
-                        const series = modalSerieUnidades.slice(0, cantTotal).map(u => u.nro_serie.trim()).filter(Boolean)
-                        const duplicados = series.filter((s, i) => series.indexOf(s) !== i)
-                        if (duplicados.length > 0) {
-                          alert(`N° de serie duplicado: ${duplicados[0]}`)
-                          return
-                        }
+              </div>
+
+              {/* Footer — botones de acción */}
+              <div className="flex items-center justify-end gap-2 px-6 py-3 bg-gray-50 rounded-b-xl border-t">
+                <button
+                  onClick={() => setModalSerieOpen(false)}
+                  className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-700"
+                >
+                  Cancelar
+                </button>
+                {/* Guardar: persiste sin cerrar, permite seguir editando */}
+                <button
+                  onClick={() => {
+                    const finales = Array.from({ length: cantTotal }, (_, i) => modalSerieUnidades[i] ?? { nro_serie: '', outlet: false })
+                    setSeriesConfirmadas(prev => ({ ...prev, [linea.producto_id]: finales }))
+                    // Feedback visual: iluminar brevemente el botón
+                    const btn = document.getElementById('btn-guardar-serie')
+                    if (btn) {
+                      btn.textContent = '¡Guardado!'
+                      btn.classList.add('bg-emerald-100', 'border-emerald-500', 'text-emerald-800')
+                      setTimeout(() => {
+                        btn.textContent = 'Guardar'
+                        btn.classList.remove('bg-emerald-100', 'border-emerald-500', 'text-emerald-800')
+                      }, 1500)
+                    }
+                  }}
+                  id="btn-guardar-serie"
+                  className="px-4 py-2 text-sm border border-emerald-400 rounded-lg text-emerald-700 hover:bg-emerald-50 font-medium transition-colors"
+                >
+                  Guardar
+                </button>
+                {/* Confirmar: valida duplicados, guarda y cierra */}
+                <button
+                  onClick={() => {
+                    if (linea.tiene_serie) {
+                      const series = modalSerieUnidades.slice(0, cantTotal).map(u => u.nro_serie.trim()).filter(Boolean)
+                      const duplicados = series.filter((s, i) => series.indexOf(s) !== i)
+                      if (duplicados.length > 0) {
+                        alert(`N° de serie duplicado: ${duplicados[0]}`)
+                        return
                       }
-                      const finales = Array.from({ length: cantTotal }, (_, i) => modalSerieUnidades[i] ?? { nro_serie: '', outlet: false })
-                      setSeriesConfirmadas(prev => ({ ...prev, [linea.producto_id]: finales }))
-                      setModalSerieOpen(false)
-                    }}
-                    className="px-4 py-2 text-sm rounded-lg font-medium transition-colors bg-emerald-600 hover:bg-emerald-700 text-white"
-                  >
-                    Confirmar ({completadas}/{cantTotal})
-                  </button>
-                </div>
+                    }
+                    const finales = Array.from({ length: cantTotal }, (_, i) => modalSerieUnidades[i] ?? { nro_serie: '', outlet: false })
+                    setSeriesConfirmadas(prev => ({ ...prev, [linea.producto_id]: finales }))
+                    setModalSerieOpen(false)
+                  }}
+                  className="px-4 py-2 text-sm rounded-lg font-medium transition-colors bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  Confirmar ({completadas}/{cantTotal})
+                </button>
               </div>
             </div>
           </div>
