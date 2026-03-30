@@ -10,6 +10,7 @@ import {
   updateCategoriaProveedor,
   deleteCategoriaProveedor,
 } from "@/lib/categorias-proveedor-actions"
+import { fetchProductos } from "@/lib/productos-actions"
 
 // ── Datos geográficos ────────────────────────────────────────────────────────
 
@@ -667,6 +668,12 @@ export default function ModuloCompras() {
     observaciones: "",
     lineas: []
   })
+
+  // OC — dropdown búsqueda de producto por línea
+  const [ocProductoSearch, setOcProductoSearch] = useState<Record<number, string>>({})
+  const [ocProductoOpciones, setOcProductoOpciones] = useState<Record<number, any[]>>({})
+  const [ocProductoDropdownAbierto, setOcProductoDropdownAbierto] = useState<Record<number, boolean>>({})
+  const ocProductoInputRefs = React.useRef<Record<number, HTMLInputElement | null>>({})
 
   // OdooFilterBar states
   const [savedFiltersOC, setSavedFiltersOC] = useState<SavedFilter[]>([])
@@ -2829,17 +2836,75 @@ export default function ModuloCompras() {
               {oc.lineas.map((linea, idx) => (
                 <tr key={idx} className="hover:bg-gray-50">
                   <td className="py-2 px-4">
-                    <input
-                      type="text"
-                      value={linea.producto_nombre}
-                      onChange={e => {
-                        const updated = [...oc.lineas]
-                        updated[idx] = { ...updated[idx], producto_nombre: e.target.value }
-                        setNuevaOC(prev => ({ ...prev, lineas: updated }))
-                      }}
-                      placeholder="Nombre del producto..."
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-blue-500"
-                    />
+                    <div className="relative">
+                      <input
+                        ref={el => { ocProductoInputRefs.current[idx] = el }}
+                        type="text"
+                        value={ocProductoSearch[idx] ?? linea.producto_nombre}
+                        onChange={async e => {
+                          const val = e.target.value
+                          setOcProductoSearch(prev => ({ ...prev, [idx]: val }))
+                          if (val.trim().length === 0) {
+                            setOcProductoOpciones(prev => ({ ...prev, [idx]: [] }))
+                            setOcProductoDropdownAbierto(prev => ({ ...prev, [idx]: false }))
+                            const updated = [...oc.lineas]
+                            updated[idx] = { ...updated[idx], producto_id: 0, producto_nombre: "" }
+                            setNuevaOC(prev => ({ ...prev, lineas: updated }))
+                            return
+                          }
+                          setOcProductoDropdownAbierto(prev => ({ ...prev, [idx]: true }))
+                          try {
+                            const res = await fetchProductos({ busqueda: val, activo: true })
+                            setOcProductoOpciones(prev => ({ ...prev, [idx]: res }))
+                          } catch {
+                            setOcProductoOpciones(prev => ({ ...prev, [idx]: [] }))
+                          }
+                        }}
+                        onFocus={() => {
+                          if ((ocProductoSearch[idx] ?? linea.producto_nombre).length > 0 && (ocProductoOpciones[idx] ?? []).length > 0) {
+                            setOcProductoDropdownAbierto(prev => ({ ...prev, [idx]: true }))
+                          }
+                        }}
+                        onBlur={() => {
+                          setTimeout(() => {
+                            setOcProductoDropdownAbierto(prev => ({ ...prev, [idx]: false }))
+                          }, 150)
+                        }}
+                        placeholder="Nombre del producto..."
+                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-blue-500"
+                      />
+                      {ocProductoDropdownAbierto[idx] && (
+                        <div className="absolute z-50 left-0 right-0 top-full mt-0.5 bg-white border border-gray-300 rounded shadow-lg max-h-48 overflow-y-auto">
+                          {(ocProductoOpciones[idx] ?? []).length === 0 ? (
+                            <div className="px-3 py-2 text-xs text-gray-400">Sin resultados</div>
+                          ) : (
+                            (ocProductoOpciones[idx] ?? []).map((p: any) => (
+                              <div
+                                key={p.id}
+                                onMouseDown={e => {
+                                  e.preventDefault()
+                                  const updated = [...oc.lineas]
+                                  updated[idx] = {
+                                    ...updated[idx],
+                                    producto_id: p.id,
+                                    producto_nombre: p.nombre,
+                                    descripcion: updated[idx].descripcion || p.descripcion || "",
+                                    precio_unitario: updated[idx].precio_unitario || p.precio_compra || 0,
+                                    subtotal: updated[idx].cantidad * (updated[idx].precio_unitario || p.precio_compra || 0),
+                                  }
+                                  setNuevaOC(prev => ({ ...prev, lineas: updated }))
+                                  setOcProductoSearch(prev => ({ ...prev, [idx]: p.nombre }))
+                                  setOcProductoDropdownAbierto(prev => ({ ...prev, [idx]: false }))
+                                }}
+                                className="px-3 py-1.5 hover:bg-blue-600 hover:text-white cursor-pointer text-xs"
+                              >
+                                <span className="font-medium">[{p.sku ?? p.codigo ?? "—"}]</span> {p.nombre}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td className="py-2 px-4">
                     <input
@@ -2887,7 +2952,12 @@ export default function ModuloCompras() {
                   </td>
                   <td className="py-2 px-4">
                     <button
-                      onClick={() => setNuevaOC(prev => ({ ...prev, lineas: prev.lineas.filter((_, i) => i !== idx) }))}
+                      onClick={() => {
+                        setNuevaOC(prev => ({ ...prev, lineas: prev.lineas.filter((_, i) => i !== idx) }))
+                        setOcProductoSearch(prev => { const n = { ...prev }; delete n[idx]; return n })
+                        setOcProductoOpciones(prev => { const n = { ...prev }; delete n[idx]; return n })
+                        setOcProductoDropdownAbierto(prev => { const n = { ...prev }; delete n[idx]; return n })
+                      }}
                       className="text-gray-400 hover:text-red-500"
                     >
                       <Trash2 className="w-4 h-4" />
