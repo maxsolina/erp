@@ -4254,10 +4254,10 @@ export default function ModuloCompras() {
                     </td>
                     {editable && (() => {
                       const necesitaTracking = linea.tiene_serie || linea.requiere_color || linea.requiere_bateria || linea.requiere_outlet || linea.requiere_observaciones
+                      const totalUnidades = linea.cantidad_pedida
                       const completadas = (seriesConfirmadas[linea.producto_id] || []).filter(u =>
                         (!linea.tiene_serie || u.nro_serie.trim() !== '')
                       ).length
-                      const totalUnidades = cantRec
                       const todoCompleto = completadas >= totalUnidades && totalUnidades > 0
                       return (
                         <td className="py-3 px-4 text-center">
@@ -4266,9 +4266,9 @@ export default function ModuloCompras() {
                               title="Registrar datos de unidades"
                               onClick={() => {
                                 const existentes = seriesConfirmadas[linea.producto_id]
-                                const iniciales = existentes && existentes.length > 0
-                                  ? existentes
-                                  : Array.from({ length: Math.max(cantRec, 1) }, () => ({ nro_serie: '', outlet: false }))
+                                const iniciales = existentes && existentes.length >= totalUnidades
+                                  ? existentes.slice(0, totalUnidades)
+                                  : Array.from({ length: totalUnidades }, (_, i) => existentes?.[i] ?? { nro_serie: '', outlet: false })
                                 setModalSerieProducto(linea)
                                 setModalSerieUnidades(iniciales)
                                 setModalSerieUnidadActiva(0)
@@ -5282,7 +5282,7 @@ export default function ModuloCompras() {
       {/* ===== MODAL WIZARD REGISTRO DE UNIDADES ===== */}
       {modalSerieOpen && modalSerieProducto && (() => {
         const linea = modalSerieProducto
-        const cantTotal = recepcionCantidades[linea.producto_id] ?? linea.cantidad_pedida
+        const cantTotal = Math.max(linea.cantidad_pedida, 1)
         const unidadIdx = Math.min(modalSerieUnidadActiva, cantTotal - 1)
         const unidadActual = modalSerieUnidades[unidadIdx] ?? { nro_serie: '', outlet: false }
 
@@ -5482,8 +5482,9 @@ export default function ModuloCompras() {
 
               {/* Footer */}
               <div className="flex items-center justify-between px-6 py-4 border-t bg-gray-50 rounded-b-xl">
-                <div className="flex gap-1.5">
-                  {Array.from({ length: cantTotal }).map((_, i) => {
+                {/* Botones numerados de navegación rápida (máx 20 visible) */}
+                <div className="flex gap-1 flex-wrap max-w-xs">
+                  {Array.from({ length: Math.min(cantTotal, 20) }).map((_, i) => {
                     const u = modalSerieUnidades[i] ?? { nro_serie: '', outlet: false }
                     return (
                       <button
@@ -5509,9 +5510,19 @@ export default function ModuloCompras() {
                   >
                     Cancelar
                   </button>
+                  {/* Guardar: persiste los datos sin cerrar */}
                   <button
                     onClick={() => {
-                      // Validar N° serie único si aplica
+                      const finales = Array.from({ length: cantTotal }, (_, i) => modalSerieUnidades[i] ?? { nro_serie: '', outlet: false })
+                      setSeriesConfirmadas(prev => ({ ...prev, [linea.producto_id]: finales }))
+                    }}
+                    className="px-4 py-2 text-sm border border-emerald-400 rounded-lg text-emerald-700 hover:bg-emerald-50 font-medium transition-colors"
+                  >
+                    Guardar
+                  </button>
+                  {/* Confirmar: valida, guarda y cierra */}
+                  <button
+                    onClick={() => {
                       if (linea.tiene_serie) {
                         const series = modalSerieUnidades.slice(0, cantTotal).map(u => u.nro_serie.trim()).filter(Boolean)
                         const duplicados = series.filter((s, i) => series.indexOf(s) !== i)
@@ -5524,13 +5535,9 @@ export default function ModuloCompras() {
                       setSeriesConfirmadas(prev => ({ ...prev, [linea.producto_id]: finales }))
                       setModalSerieOpen(false)
                     }}
-                    className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors ${
-                      completadas === cantTotal
-                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                        : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                    }`}
+                    className="px-4 py-2 text-sm rounded-lg font-medium transition-colors bg-emerald-600 hover:bg-emerald-700 text-white"
                   >
-                    {completadas === cantTotal ? 'Confirmar' : `Guardar (${completadas}/${cantTotal})`}
+                    Confirmar ({completadas}/{cantTotal})
                   </button>
                 </div>
               </div>
