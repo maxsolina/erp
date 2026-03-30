@@ -226,15 +226,6 @@ interface AjusteInventario {
   }[]
 }
 
-// Datos mock vacíos (se reemplazan por datos reales de Supabase al montar)
-const mockCategoriasUbicacion: CategoriaUbicacion[] = []
-const mockCategorias: CategoriaProducto[] = []
-const mockProductosStock: ProductoStock[] = []
-const mockTransferencias: TransferenciaInterna[] = []
-const mockPedidosAbastecimiento: PedidoAbastecimiento[] = []
-const mockControlesInventario: ControlInventario[] = []
-const mockAjustes: AjusteInventario[] = []
-
 // Sucursal actual
 const SUCURSAL_ACTUAL = "Puerto Norte"
 
@@ -419,12 +410,12 @@ export default function ModuloStock() {
   const [ubicaciones, setUbicaciones] = useState<Ubicacion[]>([])
   const [stockUnidades, setStockUnidades] = useState<any[]>([])
   const [cargandoStock, setCargandoStock] = useState(true)
-  const [productos, setProductos] = useState<ProductoStock[]>(mockProductosStock)
+  const [productos, setProductos] = useState<ProductoStock[]>([])
   const [lotesSeries, setLotesSeries] = useState<LoteSerie[]>([])
-  const [transferencias, setTransferencias] = useState<TransferenciaInterna[]>(mockTransferencias)
-  const [pedidosAbastecimiento, setPedidosAbastecimiento] = useState<PedidoAbastecimiento[]>(mockPedidosAbastecimiento)
-  const [controlesInventario, setControlesInventario] = useState<ControlInventario[]>(mockControlesInventario)
-  const [ajustes, setAjustes] = useState<AjusteInventario[]>(mockAjustes)
+  const [transferencias, setTransferencias] = useState<TransferenciaInterna[]>([])
+  const [pedidosAbastecimiento, setPedidosAbastecimiento] = useState<PedidoAbastecimiento[]>([])
+  const [controlesInventario, setControlesInventario] = useState<ControlInventario[]>([])
+  const [ajustes, setAjustes] = useState<AjusteInventario[]>([])
 
   // Cargar depósitos, ubicaciones y stock unidades desde Supabase
   useEffect(() => {
@@ -580,31 +571,27 @@ export default function ModuloStock() {
   const [lotesActiveGroupBy, setLotesActiveGroupBy] = useState<GroupByOption[]>([
     { id: "ubicacion", label: "Ubicación", field: "ubicacion_nombre" }
   ])
-  const [lotesSavedFilters, setLotesSavedFilters] = useState<SavedFilter[]>([
-    { id: "1", name: "Puerto Norte", filters: [{ id: "suc-pn", label: "Sucursal: Puerto Norte", field: "sucursal", value: "Puerto Norte" }], groupBy: [], isDefault: false, isShared: true, createdBy: "admin" },
-    { id: "2", name: "Equipos CC", filters: [{ id: "cat-eq", label: "Categoría: Equipos / Celulares / iPhone", field: "producto_categoria", value: "Equipos / Celulares / iPhone" }], groupBy: [{ id: "producto", label: "Producto", field: "producto_nombre" }], isDefault: false, isShared: true, createdBy: "admin" },
-    { id: "3", name: "Por Producto y Ubicación", filters: [], groupBy: [{ id: "producto", label: "Producto", field: "producto_nombre" }, { id: "ubicacion", label: "Ubicación", field: "ubicacion_nombre" }], isDefault: false, isShared: false, createdBy: "user" },
-  ])
+  const [lotesSavedFilters, setLotesSavedFilters] = useState<SavedFilter[]>([])
   
   // Opciones de filtros disponibles
   const lotesFilterOptions = useMemo(() => {
-    const ubicaciones = [...new Set(lotesSeries.map(l => l.ubicacion_nombre))]
+    const ubicacionesOpciones = [...new Set(lotesSeries.map(l => l.ubicacion_nombre))]
     const sucursales = [...new Set(lotesSeries.map(l => l.sucursal))]
-    const depositos = [...new Set(lotesSeries.map(l => l.deposito_nombre))]
+    const depositosOpciones = [...new Set(lotesSeries.map(l => l.deposito_nombre))]
     const categorias = [...new Set(lotesSeries.map(l => l.producto_categoria))]
-    const productos = [...new Set(lotesSeries.map(l => l.producto_nombre))]
+    const productosOpciones = [...new Set(lotesSeries.map(l => l.producto_nombre))]
     const marcas = [...new Set(lotesSeries.map(l => l.marca))]
     const colores = [...new Set(lotesSeries.map(l => l.color).filter(c => c !== null))] as string[]
     const estados = [...new Set(lotesSeries.map(l => l.estado))]
     
     return [
-      { field: "ubicacion_nombre", label: "Ubicación", values: ubicaciones.map(u => ({ value: u, label: u })) },
-      { field: "producto_nombre", label: "Producto", values: productos.map(p => ({ value: p, label: p })) },
+      { field: "ubicacion_nombre", label: "Ubicación", values: ubicacionesOpciones.map(u => ({ value: u, label: u })) },
+      { field: "producto_nombre", label: "Producto", values: productosOpciones.map(p => ({ value: p, label: p })) },
       { field: "marca", label: "Marca", values: marcas.map(m => ({ value: m, label: m })) },
       { field: "color", label: "Color", values: colores.map(c => ({ value: c, label: c })) },
       { field: "producto_categoria", label: "Categoría", values: categorias.map(c => ({ value: c, label: c })) },
       { field: "sucursal", label: "Sucursal", values: sucursales.map(s => ({ value: s, label: s })) },
-      { field: "deposito_nombre", label: "Depósito", values: depositos.map(d => ({ value: d, label: d })) },
+      { field: "deposito_nombre", label: "Depósito", values: depositosOpciones.map(d => ({ value: d, label: d })) },
       { field: "estado", label: "Estado", values: estados.map(e => ({ value: e, label: e === "disponible" ? "Disponible" : e === "reservado" ? "Reservado" : "Vendido" })) },
     ]
   }, [lotesSeries])
@@ -630,11 +617,7 @@ export default function ModuloStock() {
   const [seriesSearchTerm, setSeriesSearchTerm] = useState("")
   const [seriesActiveFilters, setSeriesActiveFilters] = useState<FilterOption[]>([])
   const [seriesActiveGroupBy, setSeriesActiveGroupBy] = useState<GroupByOption[]>([])
-  const [seriesSavedFilters, setSeriesSavedFilters] = useState<SavedFilter[]>([
-    { id: "s1", name: "En Stock", filters: [{ id: "est-disp", label: "Estado: Disponible", field: "estado", value: "disponible" }], groupBy: [], isDefault: false, isShared: true, createdBy: "admin" },
-    { id: "s2", name: "Vendidos", filters: [{ id: "est-vend", label: "Estado: Vendido", field: "estado", value: "vendido" }], groupBy: [], isDefault: false, isShared: true, createdBy: "admin" },
-    { id: "s3", name: "Por Producto", filters: [], groupBy: [{ id: "producto", label: "Producto", field: "producto_nombre" }], isDefault: false, isShared: true, createdBy: "admin" },
-  ])
+  const [seriesSavedFilters, setSeriesSavedFilters] = useState<SavedFilter[]>([])
   const [seriesExpandedGroups, setSeriesExpandedGroups] = useState<Set<string>>(new Set())
 
   // Estados para Cubo de Stock
@@ -663,23 +646,23 @@ export default function ModuloStock() {
   
   // Opciones de filtros para Lotes y Series
   const seriesFilterOptions = useMemo(() => {
-    const ubicaciones = [...new Set(todosIMEI.map(l => l.ubicacion_nombre))]
+    const ubicacionesOpciones = [...new Set(todosIMEI.map(l => l.ubicacion_nombre))]
     const sucursales = [...new Set(todosIMEI.map(l => l.sucursal))]
-    const depositos = [...new Set(todosIMEI.map(l => l.deposito_nombre))]
+    const depositosOpciones = [...new Set(todosIMEI.map(l => l.deposito_nombre))]
     const categorias = [...new Set(todosIMEI.map(l => l.producto_categoria))]
-    const productos = [...new Set(todosIMEI.map(l => l.producto_nombre))]
+    const productosOpciones = [...new Set(todosIMEI.map(l => l.producto_nombre))]
     const marcas = [...new Set(todosIMEI.map(l => l.marca))]
     const colores = [...new Set(todosIMEI.map(l => l.color).filter(c => c !== null))] as string[]
     const estados = [...new Set(todosIMEI.map(l => l.estado))]
     
     return [
-      { field: "ubicacion_nombre", label: "Ubicación", values: ubicaciones.map(u => ({ value: u, label: u })) },
-      { field: "producto_nombre", label: "Producto", values: productos.map(p => ({ value: p, label: p })) },
+      { field: "ubicacion_nombre", label: "Ubicación", values: ubicacionesOpciones.map(u => ({ value: u, label: u })) },
+      { field: "producto_nombre", label: "Producto", values: productosOpciones.map(p => ({ value: p, label: p })) },
       { field: "marca", label: "Marca", values: marcas.map(m => ({ value: m, label: m })) },
       { field: "color", label: "Color", values: colores.map(c => ({ value: c, label: c })) },
       { field: "producto_categoria", label: "Categoría", values: categorias.map(c => ({ value: c, label: c })) },
       { field: "sucursal", label: "Sucursal", values: sucursales.map(s => ({ value: s, label: s })) },
-      { field: "deposito_nombre", label: "Depósito", values: depositos.map(d => ({ value: d, label: d })) },
+      { field: "deposito_nombre", label: "Depósito", values: depositosOpciones.map(d => ({ value: d, label: d })) },
       { field: "estado", label: "Estado", values: estados.map(e => ({ value: e, label: e === "disponible" ? "Disponible" : e === "reservado" ? "Reservado" : "Vendido" })) },
     ]
   }, [todosIMEI])
