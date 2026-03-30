@@ -5459,12 +5459,41 @@ export default function ModuloCompras() {
 
               {/* ── Footer estilo Odoo ── */}
               <div className="flex items-center justify-between px-5 py-2.5 border-t border-gray-200 bg-white">
-                <button
-                  onClick={confirmar}
-                  className="text-sm text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                >
-                  {completadas === cantTotal ? 'Confirmar' : `Guardar (${completadas}/${cantTotal} completados)`}
-                </button>
+                {/* Izquierda: Guardar (sin cerrar) + Confirmar (guarda y cierra) */}
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => {
+                      if (linea.tiene_serie) {
+                        const series = Array.from({ length: cantTotal }, (_, i) => (modalSerieUnidades[i]?.nro_serie ?? '').trim()).filter(Boolean)
+                        const duplicados = series.filter((s, i) => series.indexOf(s) !== i)
+                        if (duplicados.length > 0) {
+                          alert(`N° de serie duplicado: ${duplicados[0]}`)
+                          return
+                        }
+                      }
+                      const finales = Array.from({ length: cantTotal }, (_, i) => modalSerieUnidades[i] ?? { nro_serie: '', outlet: false })
+                      setSeriesConfirmadas(prev => ({ ...prev, [linea.producto_id]: finales }))
+                    }}
+                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                  >
+                    Guardar
+                  </button>
+                  {completadas === cantTotal && (
+                    <button
+                      onClick={confirmar}
+                      className="text-sm font-semibold text-emerald-600 hover:text-emerald-800 hover:underline"
+                    >
+                      Confirmar ({completadas}/{cantTotal})
+                    </button>
+                  )}
+                  {completadas < cantTotal && (
+                    <span className="text-xs text-amber-600 font-medium">
+                      {completadas}/{cantTotal} completados
+                    </span>
+                  )}
+                </div>
+
+                {/* Derecha: Cerrar + paginación */}
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => setModalSerieOpen(false)}
