@@ -23,7 +23,12 @@ import {
   Activity,
   Eye,
   EyeOff,
-  Settings
+  Settings,
+  Target,
+  Pencil,
+  Check,
+  AlertTriangle,
+  CheckCircle2
 } from "lucide-react"
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
 
@@ -110,8 +115,60 @@ const datosVentasMock: DatoVenta[] = [
 // Sucursales disponibles
 const sucursalesDisponibles = ["Casa Central", "Puerto Norte", "Casilda"]
 
+// ─── Tipos presupuesto ─────────────────────────────────────────────────────
+interface FilaPresupuesto {
+  id: string
+  categoria: string
+  presupuestos: Record<string, number> // mes -> monto
+}
+
+const MESES_PRESUPUESTO = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+const ANIO_PRESUPUESTO = 2026
+
+// ─── Datos reales por mes (de datosVentasMock) ─────────────────────────────
+function getVentasRealesPorMes(datos: DatoVenta[]): Record<string, number> {
+  const map: Record<string, number> = {}
+  MESES_PRESUPUESTO.forEach(m => { map[m] = 0 })
+  datos.forEach(d => {
+    const mes = new Date(d.fecha).toLocaleString("es-AR", { month: "short" })
+    const mesCapital = mes.charAt(0).toUpperCase() + mes.slice(1, 3)
+    if (map[mesCapital] !== undefined) map[mesCapital] += d.total
+  })
+  return map
+}
+
+function getVentasRealesPorCategoriaMes(datos: DatoVenta[]): Record<string, Record<string, number>> {
+  const map: Record<string, Record<string, number>> = {}
+  datos.forEach(d => {
+    const mes = new Date(d.fecha).toLocaleString("es-AR", { month: "short" })
+    const mesCapital = mes.charAt(0).toUpperCase() + mes.slice(1, 3)
+    if (!map[d.categoria_producto]) map[d.categoria_producto] = {}
+    map[d.categoria_producto][mesCapital] = (map[d.categoria_producto][mesCapital] || 0) + d.total
+  })
+  return map
+}
+
+// ─── Presupuesto inicial (editable) ───────────────────────────────────────
+const filasIniciales: FilaPresupuesto[] = [
+  { id: "1", categoria: "Productos", presupuestos: { Ene: 8000000, Feb: 8500000, Mar: 9000000, Abr: 9500000, May: 10000000, Jun: 10000000, Jul: 9500000, Ago: 9000000, Sep: 9500000, Oct: 10000000, Nov: 11000000, Dic: 12000000 } },
+  { id: "2", categoria: "Repuestos", presupuestos: { Ene: 500000, Feb: 550000, Mar: 600000, Abr: 600000, May: 650000, Jun: 650000, Jul: 600000, Ago: 600000, Sep: 620000, Oct: 650000, Nov: 700000, Dic: 800000 } },
+  { id: "3", categoria: "Manos de Obra", presupuestos: { Ene: 300000, Feb: 280000, Mar: 350000, Abr: 350000, May: 380000, Jun: 400000, Jul: 380000, Ago: 360000, Sep: 380000, Oct: 400000, Nov: 420000, Dic: 450000 } },
+  { id: "4", categoria: "Finanzas", presupuestos: { Ene: 200000, Feb: 200000, Mar: 250000, Abr: 250000, May: 300000, Jun: 300000, Jul: 280000, Ago: 280000, Sep: 300000, Oct: 320000, Nov: 350000, Dic: 400000 } },
+]
+
 export default function ModuloInformes() {
-  // Estados del modal de filtros
+  // ─── Vista activa ────────────────────────────────────────────────────────
+  const [vistaActiva, setVistaActiva] = useState<"estadistica" | "presupuesto">("estadistica")
+
+  // ─── Estado presupuesto ──────────────────────────────────────────────────
+  const [filasPresupuesto, setFilasPresupuesto] = useState<FilaPresupuesto[]>(filasIniciales)
+  const [celdaEditando, setCeldaEditando] = useState<{ filaId: string; mes: string } | null>(null)
+  const [valorEditando, setValorEditando] = useState("")
+  const [nuevaCategoria, setNuevaCategoria] = useState("")
+  const [anioPresupuesto] = useState(ANIO_PRESUPUESTO)
+  const [mesVistaDetalle, setMesVistaDetalle] = useState<string | null>(null)
+
+  // ─── Estados del modal de filtros ───────────────────────────────────────
   const [showFilterModal, setShowFilterModal] = useState(false)
   const [filterSucursales, setFilterSucursales] = useState<string[]>([])
   const [filterFechaDesde, setFilterFechaDesde] = useState("2026-03-01")
@@ -350,10 +407,18 @@ export default function ModuloInformes() {
           <div className="mb-6">
             <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Informes</h3>
             <button
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm bg-emerald-50 text-emerald-700 rounded-lg font-medium"
+              onClick={() => setVistaActiva("estadistica")}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg font-medium mb-1 ${vistaActiva === "estadistica" ? "bg-emerald-50 text-emerald-700" : "text-gray-600 hover:bg-gray-50"}`}
             >
               <BarChart3 className="w-4 h-4" />
               Estadística de Ventas
+            </button>
+            <button
+              onClick={() => setVistaActiva("presupuesto")}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg font-medium ${vistaActiva === "presupuesto" ? "bg-emerald-50 text-emerald-700" : "text-gray-600 hover:bg-gray-50"}`}
+            >
+              <Target className="w-4 h-4" />
+              Proyección Presupuesto
             </button>
           </div>
         </div>
@@ -361,6 +426,239 @@ export default function ModuloInformes() {
 
       {/* Main Content */}
       <div className="ml-48 p-6">
+
+        {/* ══════════════════ VISTA PRESUPUESTO ══════════════════ */}
+        {vistaActiva === "presupuesto" && (() => {
+          const ventasRealesMes = getVentasRealesPorMes(datosVentasMock)
+          const ventasRealesCatMes = getVentasRealesPorCategoriaMes(datosVentasMock)
+
+          // Totales presupuesto por mes
+          const totalPresupuestoPorMes: Record<string, number> = {}
+          MESES_PRESUPUESTO.forEach(mes => {
+            totalPresupuestoPorMes[mes] = filasPresupuesto.reduce((s, f) => s + (f.presupuestos[mes] || 0), 0)
+          })
+
+          // Datos para el gráfico
+          const datosGrafico = MESES_PRESUPUESTO.map(mes => ({
+            mes,
+            Presupuesto: totalPresupuestoPorMes[mes],
+            Real: ventasRealesMes[mes] || 0,
+          }))
+
+          // Total general
+          const totalPresupuestoAnual = Object.values(totalPresupuestoPorMes).reduce((a, b) => a + b, 0)
+          const totalRealAnual = Object.values(ventasRealesMes).reduce((a, b) => a + b, 0)
+          const variacionAnual = totalPresupuestoAnual > 0
+            ? ((totalRealAnual - totalPresupuestoAnual) / totalPresupuestoAnual) * 100
+            : 0
+
+          const fmt = (n: number) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
+          const fmtK = (n: number) => n >= 1000000 ? `$${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `$${(n / 1000).toFixed(0)}K` : `$${n}`
+
+          const iniciarEdicion = (filaId: string, mes: string, valor: number) => {
+            setCeldaEditando({ filaId, mes })
+            setValorEditando(String(valor))
+          }
+          const confirmarEdicion = () => {
+            if (!celdaEditando) return
+            const num = parseFloat(valorEditando.replace(/[^0-9.]/g, "")) || 0
+            setFilasPresupuesto(prev => prev.map(f =>
+              f.id === celdaEditando.filaId
+                ? { ...f, presupuestos: { ...f.presupuestos, [celdaEditando.mes]: num } }
+                : f
+            ))
+            setCeldaEditando(null)
+          }
+          const agregarFila = () => {
+            if (!nuevaCategoria.trim()) return
+            setFilasPresupuesto(prev => [...prev, {
+              id: Date.now().toString(),
+              categoria: nuevaCategoria.trim(),
+              presupuestos: Object.fromEntries(MESES_PRESUPUESTO.map(m => [m, 0]))
+            }])
+            setNuevaCategoria("")
+          }
+          const eliminarFila = (id: string) => setFilasPresupuesto(prev => prev.filter(f => f.id !== id))
+
+          return (
+            <div>
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
+                    <span>Informes</span>
+                    <span>/</span>
+                    <span className="text-gray-700 font-medium">Proyección de Presupuesto {anioPresupuesto}</span>
+                  </div>
+                  <p className="text-xs text-gray-400">Ingresá los montos objetivo por categoría y mes. Se comparan automáticamente con las ventas reales.</p>
+                </div>
+                <button className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium">
+                  <Download className="w-4 h-4" />
+                  Exportar
+                </button>
+              </div>
+
+              {/* KPI cards */}
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="bg-white border border-gray-200 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Presupuesto Anual</p>
+                  <p className="text-2xl font-bold text-gray-900">{fmtK(totalPresupuestoAnual)}</p>
+                  <p className="text-xs text-gray-400 mt-1">Objetivo {anioPresupuesto}</p>
+                </div>
+                <div className="bg-white border border-gray-200 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Ventas Reales (YTD)</p>
+                  <p className="text-2xl font-bold text-gray-900">{fmtK(totalRealAnual)}</p>
+                  <p className="text-xs text-gray-400 mt-1">Acumulado {anioPresupuesto}</p>
+                </div>
+                <div className={`border rounded-xl p-4 ${variacionAnual >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                  <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Variación vs Presupuesto</p>
+                  <p className={`text-2xl font-bold ${variacionAnual >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                    {variacionAnual >= 0 ? "+" : ""}{variacionAnual.toFixed(1)}%
+                  </p>
+                  <div className="flex items-center gap-1 mt-1">
+                    {variacionAnual >= 0
+                      ? <><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /><span className="text-xs text-emerald-700">Por encima del objetivo</span></>
+                      : <><AlertTriangle className="w-3.5 h-3.5 text-red-500" /><span className="text-xs text-red-600">Por debajo del objetivo</span></>
+                    }
+                  </div>
+                </div>
+              </div>
+
+              {/* Gráfico Real vs Presupuesto */}
+              <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
+                <h3 className="text-sm font-semibold text-gray-800 mb-4">Real vs Presupuesto — {anioPresupuesto}</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={datosGrafico} barCategoryGap="30%">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
+                    <YAxis tickFormatter={fmtK} tick={{ fontSize: 11 }} width={60} />
+                    <Tooltip formatter={(value: number) => fmt(value)} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="Presupuesto" fill="#d1fae5" stroke="#6ee7b7" radius={[3,3,0,0]} />
+                    <Bar dataKey="Real" fill="#059669" radius={[3,3,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Tabla de presupuesto editable */}
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+                  <h3 className="text-sm font-semibold text-gray-800">Detalle por Categoría</h3>
+                  <span className="text-xs text-gray-400">Hacé clic en una celda para editar</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide sticky left-0 bg-gray-50 w-36">Categoría</th>
+                        {MESES_PRESUPUESTO.map(mes => (
+                          <th key={mes} className="px-2 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right min-w-[90px]">{mes}</th>
+                        ))}
+                        <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right min-w-[100px]">Total</th>
+                        <th className="w-8" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filasPresupuesto.map((fila, fi) => {
+                        const totalFila = MESES_PRESUPUESTO.reduce((s, m) => s + (fila.presupuestos[m] || 0), 0)
+                        return (
+                          <tr key={fila.id} className={`border-b border-gray-100 hover:bg-gray-50 group ${fi % 2 === 0 ? "" : "bg-gray-50/40"}`}>
+                            <td className="px-4 py-2 font-medium text-gray-800 sticky left-0 bg-white group-hover:bg-gray-50 text-sm">{fila.categoria}</td>
+                            {MESES_PRESUPUESTO.map(mes => {
+                              const presup = fila.presupuestos[mes] || 0
+                              const real = ventasRealesCatMes[fila.categoria]?.[mes] || 0
+                              const diff = presup > 0 ? ((real - presup) / presup) * 100 : null
+                              const editando = celdaEditando?.filaId === fila.id && celdaEditando?.mes === mes
+                              return (
+                                <td key={mes} className="px-2 py-1.5 text-right">
+                                  {editando ? (
+                                    <div className="flex items-center justify-end gap-1">
+                                      <input
+                                        autoFocus
+                                        type="number"
+                                        value={valorEditando}
+                                        onChange={e => setValorEditando(e.target.value)}
+                                        onBlur={confirmarEdicion}
+                                        onKeyDown={e => { if (e.key === "Enter") confirmarEdicion(); if (e.key === "Escape") setCeldaEditando(null) }}
+                                        className="w-24 px-2 py-1 border border-emerald-400 rounded text-right text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => iniciarEdicion(fila.id, mes, presup)}
+                                      className="w-full text-right group/cell"
+                                    >
+                                      <div className="text-gray-800 font-medium text-xs">{fmtK(presup)}</div>
+                                      {real > 0 && (
+                                        <div className={`text-[10px] font-medium ${diff !== null && diff >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                                          {real > 0 ? `R: ${fmtK(real)}` : ""}{diff !== null ? ` (${diff >= 0 ? "+" : ""}${diff.toFixed(0)}%)` : ""}
+                                        </div>
+                                      )}
+                                    </button>
+                                  )}
+                                </td>
+                              )
+                            })}
+                            <td className="px-4 py-2 text-right font-semibold text-gray-700 text-xs">{fmtK(totalFila)}</td>
+                            <td className="pr-3">
+                              <button onClick={() => eliminarFila(fila.id)} className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500 transition-opacity">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+
+                      {/* Fila Totales */}
+                      <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
+                        <td className="px-4 py-2.5 text-sm text-gray-900 sticky left-0 bg-gray-50">Total</td>
+                        {MESES_PRESUPUESTO.map(mes => {
+                          const presup = totalPresupuestoPorMes[mes]
+                          const real = ventasRealesMes[mes] || 0
+                          const diff = presup > 0 ? ((real - presup) / presup) * 100 : null
+                          return (
+                            <td key={mes} className="px-2 py-2.5 text-right">
+                              <div className="text-gray-900 font-bold text-xs">{fmtK(presup)}</div>
+                              {real > 0 && (
+                                <div className={`text-[10px] font-medium ${diff !== null && diff >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                                  R: {fmtK(real)}{diff !== null ? ` (${diff >= 0 ? "+" : ""}${diff.toFixed(0)}%)` : ""}
+                                </div>
+                              )}
+                            </td>
+                          )
+                        })}
+                        <td className="px-4 py-2.5 text-right font-bold text-gray-900 text-xs">{fmtK(totalPresupuestoAnual)}</td>
+                        <td />
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Agregar categoría */}
+                <div className="px-5 py-3 border-t border-gray-100 flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Nueva categoría..."
+                    value={nuevaCategoria}
+                    onChange={e => setNuevaCategoria(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") agregarFila() }}
+                    className="flex-1 max-w-xs px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  />
+                  <button
+                    onClick={agregarFila}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Agregar categoría
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* ══════════════════ VISTA ESTADÍSTICA ══════════════════ */}
+        {vistaActiva === "estadistica" && <div>
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -1239,6 +1537,9 @@ export default function ModuloInformes() {
           </div>
         </div>
       )}
+        </div>}
+
+      </div>
     </div>
   )
 }
