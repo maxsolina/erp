@@ -12,6 +12,25 @@ import {
 } from "@/lib/categorias-proveedor-actions"
 import { fetchProductos } from "@/lib/productos-actions"
 import { procesarEntradaRecepcion, fetchDepositos, fetchUbicaciones } from "@/lib/stock-actions"
+import { useERP } from "@/contexts/erp-context"
+import {
+  fetchProveedores,
+  guardarProveedor,
+  eliminarProveedor,
+  fetchOrdenesCompra,
+  guardarOrdenCompra,
+  eliminarOrdenCompra,
+  fetchRecepciones,
+  guardarRecepcion,
+  fetchFacturasCompra,
+  guardarFacturaCompra,
+  fetchOrdenesPago,
+  guardarOrdenPago,
+  fetchNotasCreditoCompra,
+  guardarNotaCreditoCompra,
+  fetchNotasDebitoCompra,
+  guardarNotaDebitoCompra,
+} from "@/lib/compras-actions"
 
 // ── Datos geográficos ────────────────────────────────────────────────────────
 
@@ -545,12 +564,36 @@ const UBICACIONES_OC = [
 ]
 
 export default function ModuloCompras() {
+  // Estado global persistente
+  const {
+    proveedores,
+    setProveedores,
+    ordenesCompra,
+    setOrdenesCompra,
+    recepciones,
+    setRecepciones,
+    facturasCompra,
+    setFacturasCompra,
+    ordenesPago,
+    setOrdenesPago,
+  } = useERP()
+
+  // Carga inicial desde Supabase
+  useEffect(() => {
+    fetchProveedores().then(data => setProveedores(data)).catch(console.error)
+    fetchOrdenesCompra().then(data => setOrdenesCompra(data)).catch(console.error)
+    fetchRecepciones().then(data => setRecepciones(data)).catch(console.error)
+    fetchFacturasCompra().then(data => setFacturasCompra(data)).catch(console.error)
+    fetchOrdenesPago().then(data => setOrdenesPago(data)).catch(console.error)
+    fetchNotasCreditoCompra().then(data => setNotasCreditoCompra(data)).catch(console.error)
+    fetchNotasDebitoCompra().then(data => setNotasDebitoCompra(data)).catch(console.error)
+  }, [])
+
   // Active view state
   const [activeView, setActiveView] = useState("proveedores")
   const [expandedSections, setExpandedSections] = useState<string[]>(["proveedores", "compras", "comprobantes", "pagos", "configuracion", "cfg_categorias"])
 
-  // Proveedores
-  const [proveedores, setProveedores] = useState<Proveedor[]>([])
+  // Proveedores — estado local de UI (no de datos)
   const [selectedProveedor, setSelectedProveedor] = useState<Proveedor | null>(null)
   const [creandoProveedor, setCreandoProveedor] = useState(false)
   const [editandoProveedor, setEditandoProveedor] = useState(false)
@@ -650,7 +693,6 @@ export default function ModuloCompras() {
   const [nuevoProveedor, setNuevoProveedor] = useState<Omit<Proveedor, "id" | "codigo" | "saldo">>(proveedorFormVacio)
 
   // Órdenes de Compra
-  const [ordenesCompra, setOrdenesCompra] = useState<OrdenCompra[]>([])
   const [selectedOC, setSelectedOC] = useState<OrdenCompra | null>(null)
   const [creandoOC, setCreandoOC] = useState(false)
   // UI state OC — listado
@@ -715,7 +757,6 @@ export default function ModuloCompras() {
   })
 
   // Recepciones
-  const [recepciones, setRecepciones] = useState<Recepcion[]>([])
   const [selectedRecepcion, setSelectedRecepcion] = useState<Recepcion | null>(null)
   const [creandoRecepcion, setCreandoRecepcion] = useState(false)
   // UI state recepciones
@@ -748,7 +789,6 @@ export default function ModuloCompras() {
   }, [])
 
   // Facturas de Compra
-  const [facturasCompra, setFacturasCompra] = useState<FacturaCompra[]>([])
   const [selectedFacturaCompra, setSelectedFacturaCompra] = useState<FacturaCompra | null>(null)
   const [creandoFacturaCompra, setCreandoFacturaCompra] = useState(false)
 
@@ -763,7 +803,6 @@ export default function ModuloCompras() {
   const [creandoNDCompra, setCreandoNDCompra] = useState(false)
 
   // Órdenes de Pago
-  const [ordenesPago, setOrdenesPago] = useState<OrdenPago[]>([])
   const [selectedOP, setSelectedOP] = useState<OrdenPago | null>(null)
   const [creandoOP, setCreandoOP] = useState(false)
 
@@ -993,9 +1032,10 @@ export default function ModuloCompras() {
   // =====================================================
   const renderProveedores = () => {
     const filteredProveedores = proveedores.filter(p => {
-      const matchesSearch = p.nombre.toLowerCase().includes(proveedorSearchText.toLowerCase()) ||
-                           p.codigo.toLowerCase().includes(proveedorSearchText.toLowerCase()) ||
-                           p.cuit.includes(proveedorSearchText)
+      const searchLower = proveedorSearchText.toLowerCase()
+      const matchesSearch = (p.nombre?.toLowerCase() ?? "").includes(searchLower) ||
+                           (p.codigo?.toLowerCase() ?? "").includes(searchLower) ||
+                           (p.cuit ?? "").includes(proveedorSearchText)
       const matchesCategoria = proveedorFiltroCategoria === "todos" || p.categoria === proveedorFiltroCategoria
       const matchesTipo = proveedorFiltroTipo === "todos" || p.tipo === proveedorFiltroTipo
       return matchesSearch && matchesCategoria && matchesTipo
@@ -1386,30 +1426,42 @@ export default function ModuloCompras() {
     const prov = nuevoProveedor
     const setP = (patch: Partial<typeof prov>) => setNuevoProveedor(prev => ({ ...prev, ...patch }))
 
-    const handleGuardar = () => {
+    const handleGuardar = async () => {
       if (!prov.nombre.trim()) return
       if (prov.tipo_documento !== "Sin documento" && !prov.numero_documento.trim()) return
 
-      if (modoEdicion && selectedProveedor) {
-        setProveedores(prev => prev.map(p =>
-          p.id === selectedProveedor.id
-            ? { ...p, ...prov, cuit: prov.numero_documento, codigo: p.codigo, saldo: p.saldo }
-            : p
-        ))
-        setSelectedProveedor(prev => prev ? { ...prev, ...prov, cuit: prov.numero_documento } : null)
-        setEditandoProveedor(false)
-      } else {
-        const nuevo: Proveedor = {
-          ...prov,
-          id: Date.now(),
-          codigo: `PROV-${String(proveedores.length + 1).padStart(3, "0")}`,
-          cuit: prov.numero_documento,
-          saldo: 0,
+      const payload = {
+        razon_social: prov.nombre,
+        nombre_fantasia: prov.nombre_fantasia || null,
+        cuit: prov.numero_documento || null,
+        categoria: prov.categoria || "privado",
+        tipo: prov.tipo || "nacional",
+        email: prov.email || null,
+        telefono: prov.telefono || null,
+        direccion: prov.direccion || null,
+        ciudad: prov.ciudad || null,
+        pais: prov.pais || "Argentina",
+        condicion_pago: prov.condicion_pago || null,
+        moneda_habitual: prov.moneda_habitual || "ARS",
+        estado: prov.activo ? "activo" : "inactivo",
+      }
+
+      try {
+        if (modoEdicion && selectedProveedor) {
+          const updated = await guardarProveedor(payload, selectedProveedor.id)
+          setProveedores(prev => prev.map(p => p.id === selectedProveedor.id ? { ...p, ...updated } : p))
+          setSelectedProveedor(prev => prev ? { ...prev, ...updated } : null)
+          setEditandoProveedor(false)
+        } else {
+          const codigoAuto = `PROV-${String(proveedores.length + 1).padStart(3, "0")}`
+          const created = await guardarProveedor({ ...payload, codigo: codigoAuto, saldo: 0 })
+          setProveedores(prev => [...prev, created])
+          setCreandoProveedor(false)
+          setNuevoProveedor(proveedorFormVacio)
+          setProveedorTabActivo("contactos")
         }
-        setProveedores(prev => [...prev, nuevo])
-        setCreandoProveedor(false)
-        setNuevoProveedor(proveedorFormVacio)
-        setProveedorTabActivo("contactos")
+      } catch (err: any) {
+        console.error("[v0] Error al guardar proveedor:", err.message)
       }
     }
 
@@ -2133,58 +2185,51 @@ export default function ModuloCompras() {
     )
   }
 
-  const confirmarOC = (oc: OrdenCompra) => {
+  const confirmarOC = async (oc: OrdenCompra) => {
     const ahora = new Date().toISOString()
-    const nuevoId = Math.max(...recepciones.map(r => r.id), 0) + 1
     const esInmediato = oc.metodo_compra === 'inmediato'
+    const nuevoNumRec = Math.max(...recepciones.map(r => r.id ?? 0), 0) + 1
 
-    const nuevaRec: Recepcion = {
-      id: nuevoId,
-      numero: `REC-${String(nuevoId).padStart(5, '0')}`,
+    const recPayload = {
+      numero: `REC-${String(nuevoNumRec).padStart(5, '0')}`,
       fecha: ahora,
-      sucursal: oc.sucursal,
-      proveedor_id: oc.proveedor_id,
-      proveedor_nombre: oc.proveedor_nombre,
-      deposito_destino: oc.deposito_destino,
-      ubicacion_destino: oc.ubicacion_destino,
-      documento_origen_tipo: "oc",
-      documento_origen_id: oc.id,
-      documento_origen_ref: oc.numero,
       orden_compra_id: oc.id,
       orden_compra_numero: oc.numero,
-      fecha_pedido: oc.fecha.slice(0, 10),
-      fecha_entrega_esperada: oc.fecha_entrega_estimada,
-      estado: esInmediato ? "recibida" : "esperando_recepcion",
-      fecha_recepcion_real: esInmediato ? ahora : undefined,
-      lineas: oc.lineas.map(l => ({
+      proveedor_id: oc.proveedor_id,
+      proveedor_nombre: oc.proveedor_nombre,
+      estado: esInmediato ? "confirmada" : "borrador",
+      items: oc.lineas.map(l => ({
         producto_id: l.producto_id,
         producto_nombre: l.producto_nombre,
-        producto_sku: l.producto_sku ?? l.producto_nombre.substring(0, 8).toUpperCase().replace(/\s/g, '-'),
-        tiene_serie: l.tiene_serie ?? false,
-        requiere_color: l.requiere_color ?? false,
-        requiere_bateria: l.requiere_bateria ?? false,
-        requiere_outlet: l.requiere_outlet ?? false,
-        requiere_observaciones: l.requiere_observaciones ?? false,
-        cantidad_pedida: l.cantidad,
-        cantidad_recibida: esInmediato ? l.cantidad : 0,
-        udm: "un",
+        cantidad: esInmediato ? l.cantidad : 0,
         precio_unitario: l.precio_unitario,
-        estado_linea: esInmediato ? "recibido" : "pendiente"
-      }))
+      })),
+      total: esInmediato ? oc.total : 0,
     }
 
-    const ocConfirmada: OrdenCompra = {
-      ...oc,
-      estado: esInmediato ? "recibida" : "confirmada",
-      lineas: oc.lineas.map(l => ({
-        ...l,
-        cantidad_recibida: esInmediato ? l.cantidad : 0
-      }))
-    }
+    const ocEstadoNuevo = esInmediato ? "completa" : "confirmada"
 
-    setRecepciones(prev => [...prev, nuevaRec])
-    setOrdenesCompra(prev => prev.map(o => o.id === oc.id ? ocConfirmada : o))
-    setSelectedOC(ocConfirmada)
+    try {
+      const [recCreada, ocActualizada] = await Promise.all([
+        guardarRecepcion(recPayload),
+        guardarOrdenCompra({ estado: ocEstadoNuevo }, oc.id),
+      ])
+      const nuevaRec: Recepcion = { ...recCreada, lineas: oc.lineas.map(l => ({
+        producto_id: l.producto_id, producto_nombre: l.producto_nombre,
+        producto_sku: l.producto_sku ?? "", cantidad_pedida: l.cantidad,
+        cantidad_recibida: esInmediato ? l.cantidad : 0,
+        precio_unitario: l.precio_unitario, estado_linea: esInmediato ? "recibido" : "pendiente",
+        tiene_serie: false, requiere_color: false, requiere_bateria: false,
+        requiere_outlet: false, requiere_observaciones: false, udm: "un",
+      })) }
+      const ocConfirmada: OrdenCompra = { ...oc, ...ocActualizada, lineas: oc.lineas }
+      setRecepciones(prev => [...prev, nuevaRec])
+      setOrdenesCompra(prev => prev.map(o => o.id === oc.id ? ocConfirmada : o))
+      setSelectedOC(ocConfirmada)
+    } catch (err: any) {
+      console.error("[v0] Error al confirmar OC:", err.message)
+      alert("Error al confirmar OC: " + err.message)
+    }
   }
 
   const renderFichaOC = () => {
@@ -2611,38 +2656,34 @@ export default function ModuloCompras() {
     const oc = nuevaOC
     const totalOC = oc.lineas.reduce((s, l) => s + l.subtotal, 0)
 
-    const guardarOC = () => {
+    const guardarOC = async () => {
       if (!oc.proveedor_nombre || !oc.deposito_destino || oc.lineas.length === 0) {
         alert("Complete proveedor, depósito destino y al menos una línea.")
         return
       }
-      const nuevoId = Math.max(...ordenesCompra.map(o => o.id), 0) + 1
-      const nuevaOrden: OrdenCompra = {
-        id: nuevoId,
-        numero: `OC-${String(nuevoId).padStart(5, '0')}`,
-        fecha: oc.fecha || new Date().toISOString().slice(0, 10),
-        sucursal: oc.sucursal || "",
+      const nextNum = Math.max(...ordenesCompra.map(o => o.id ?? 0), 0) + 1
+      const payload = {
+        numero: `OC-${String(nextNum).padStart(5, '0')}`,
+        fecha: oc.fecha || new Date().toISOString(),
         proveedor_id: oc.proveedor_id || 0,
         proveedor_nombre: oc.proveedor_nombre || "",
-        termino_pago: oc.termino_pago || "Contado",
-        tipo_compra: oc.tipo_compra || "nacional",
-        metodo_compra: oc.metodo_compra || "estandar",
         estado: "borrador",
-        fecha_entrega_estimada: oc.fecha_entrega_estimada || "",
-        deposito_destino: oc.deposito_destino || "",
-        ubicacion_destino: oc.ubicacion_destino || "",
         moneda: oc.moneda || "ARS",
-        tipo_cambio: oc.tipo_cambio || 1,
+        items: oc.lineas,
         subtotal: totalOC,
-        impuestos: 0,
         total: totalOC,
-        observaciones: oc.observaciones || "",
-        lineas: oc.lineas
       }
-      setOrdenesCompra(prev => [...prev, nuevaOrden])
-      setCreandoOC(false)
-      setSelectedOC(nuevaOrden)
-      setOcTabActivo("productos")
+      try {
+        const created = await guardarOrdenCompra(payload)
+        const nuevaOrden: OrdenCompra = { ...created, lineas: oc.lineas }
+        setOrdenesCompra(prev => [...prev, nuevaOrden])
+        setCreandoOC(false)
+        setSelectedOC(nuevaOrden)
+        setOcTabActivo("productos")
+      } catch (err: any) {
+        console.error("[v0] Error al guardar OC:", err.message)
+        alert("Error al guardar la orden de compra: " + err.message)
+      }
     }
 
     return (
@@ -3070,7 +3111,7 @@ export default function ModuloCompras() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr className="text-xs text-gray-500 uppercase">
-                <th className="text-left py-3 px-4">Número</th>
+                <th className="text-left py-3 px-4">N��mero</th>
                 <th className="text-left py-3 px-4">Nombre</th>
                 <th className="text-left py-3 px-4">Fecha Apertura</th>
                 <th className="text-left py-3 px-4">Despachante</th>
@@ -3664,7 +3705,7 @@ export default function ModuloCompras() {
   // =====================================================
   // LÓGICA CONFIRMAR RECEPCIÓN
   // =====================================================
-  const handleConfirmarRecepcion = () => {
+  const handleConfirmarRecepcion = async () => {
     if (!selectedRecepcion) return
     const rec = selectedRecepcion
 
@@ -3751,23 +3792,46 @@ export default function ModuloCompras() {
       lineas: lineasActualizadas,
       recepcion_complementaria_id: recCompId
     }
-    setRecepciones(prev => prev.map(r => r.id === rec.id ? recActualizada : r))
-    setSelectedRecepcion(recActualizada)
 
-    // Actualizar OC vinculada
-    if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
-      setOrdenesCompra(prev => prev.map(oc => {
-        if (oc.id !== rec.documento_origen_id) return oc
-        const todasRecibidas = lineasActualizadas.every(l => l.estado_linea === 'recibido')
-        return {
-          ...oc,
-          estado: todasRecibidas && !hayParcial ? 'recibida' : 'recibida_parcial',
-          lineas: oc.lineas.map(ol => {
-            const linRec = lineasActualizadas.find(l => l.producto_id === ol.producto_id)
-            return linRec ? { ...ol, cantidad_recibida: ol.cantidad_recibida + linRec.cantidad_recibida } : ol
-          })
+    try {
+      // Persistir recepción actualizada a la API
+      await guardarRecepcion({
+        estado: "confirmada",
+        items: lineasActualizadas.map(l => ({
+          producto_id: l.producto_id,
+          producto_nombre: l.producto_nombre,
+          cantidad: l.cantidad_recibida,
+          precio_unitario: l.precio_unitario,
+        })),
+        total: lineasActualizadas.reduce((s, l) => s + l.cantidad_recibida * l.precio_unitario, 0),
+      }, rec.id)
+
+      setRecepciones(prev => prev.map(r => r.id === rec.id ? recActualizada : r))
+      setSelectedRecepcion(recActualizada)
+
+      // Actualizar OC vinculada
+      if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
+        const ocVinculada = ordenesCompra.find(o => o.id === rec.documento_origen_id)
+        if (ocVinculada) {
+          const todasRecibidas = lineasActualizadas.every(l => l.estado_linea === 'recibido')
+          await guardarOrdenCompra({ estado: todasRecibidas && !hayParcial ? "completa" : "parcial" }, ocVinculada.id)
+          setOrdenesCompra(prev => prev.map(oc => {
+            if (oc.id !== rec.documento_origen_id) return oc
+            return {
+              ...oc,
+              estado: todasRecibidas && !hayParcial ? 'recibida' : 'recibida_parcial',
+              lineas: oc.lineas.map(ol => {
+                const linRec = lineasActualizadas.find(l => l.producto_id === ol.producto_id)
+                return linRec ? { ...ol, cantidad_recibida: ol.cantidad_recibida + linRec.cantidad_recibida } : ol
+              })
+            }
+          }))
         }
-      }))
+      }
+    } catch (err: any) {
+      console.error("[v0] Error al confirmar recepción:", err.message)
+      alert("Error al confirmar recepción: " + err.message)
+      return
     }
 
     // Disparar entrada de stock en Supabase (async, no bloquea la UI)
