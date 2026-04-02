@@ -3913,18 +3913,29 @@ export default function ModuloCompras() {
       }))
     }
 
-    // Persistir recepción a Supabase via .then() sin await
+    // Persistir recepción a Supabase y luego procesar stock con el ID real
     const todasRecibidasFinal = lineasActualizadas.every(l => l.estado_linea === 'recibido')
     guardarRecepcion({
       estado: "confirmada",
+      fecha_recepcion_real: ahora,
       items: lineasActualizadas.map(l => ({
-        producto_id: l.producto_id,
-        producto_nombre: l.producto_nombre,
-        cantidad: l.cantidad_recibida,
-        precio_unitario: l.precio_unitario,
+        producto_id:            l.producto_id,
+        producto_nombre:        l.producto_nombre,
+        producto_sku:           l.producto_sku ?? "",
+        cantidad_pedida:        l.cantidad_pedida,
+        cantidad_recibida:      l.cantidad_recibida,
+        precio_unitario:        l.precio_unitario,
+        udm:                    l.udm ?? "un",
+        estado_linea:           l.estado_linea,
+        tiene_serie:            l.tiene_serie ?? false,
+        requiere_color:         l.requiere_color ?? false,
+        requiere_bateria:       l.requiere_bateria ?? false,
+        requiere_outlet:        l.requiere_outlet ?? false,
+        requiere_observaciones: l.requiere_observaciones ?? false,
       })),
-      total: lineasActualizadas.reduce((s, l) => s + l.cantidad_recibida * l.precio_unitario, 0),
-    }, rec.id).then(() => {
+      total: lineasActualizadas.reduce((s, l) => s + l.cantidad_recibida * (l.precio_unitario ?? 0), 0),
+    }, rec.id).then((recGuardada: any) => {
+      // Actualizar OC vinculada
       if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
         const ocVinculada = ordenesCompra.find(o => o.id === rec.documento_origen_id)
         if (ocVinculada) {
