@@ -1,8 +1,24 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient()
+  const { searchParams } = new URL(request.url)
+
+  // ?siguiente_numero=1 → devuelve el próximo número REC disponible
+  if (searchParams.get("siguiente_numero") === "1") {
+    const { data, error } = await supabase
+      .from("recepciones")
+      .select("numero")
+      .order("numero", { ascending: false })
+      .limit(1)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    const ultimo = data?.[0]?.numero ?? "REC-00000"
+    const match = ultimo.match(/REC-(\d+)/)
+    const siguiente = match ? Number(match[1]) + 1 : 1
+    return NextResponse.json({ siguiente_numero: String(siguiente).padStart(5, "0") })
+  }
+
   const { data, error } = await supabase
     .from("recepciones")
     .select("*")

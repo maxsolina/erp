@@ -388,7 +388,6 @@ export function ERPProvider({ children }: { children: ReactNode }) {
     fetch("/api/sucursales")
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
       .then((data: Sucursal[]) => {
-        console.log("[v0] sucursales cargadas:", data)
         if (Array.isArray(data) && data.length > 0) {
           setSucursales(data)
           const guardada = localStorage.getItem("sucursal_activa_id")

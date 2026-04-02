@@ -559,11 +559,10 @@ export default function ModuloCompras() {
   // Carga inicial desde Supabase
   useEffect(() => {
     fetchProveedores().then(data => {
-      console.log("[v0] proveedores raw:", data)
       setProveedores(
         (data ?? []).map((p: any) => ({ ...p, nombre: p.nombre ?? p.razon_social ?? "" }))
       )
-    }).catch(e => console.error("[v0] fetchProveedores error:", e))
+    }).catch(console.error)
     fetchOrdenesCompra().then(data => setOrdenesCompra(data)).catch(console.error)
     fetchRecepciones().then(data => setRecepciones(data)).catch(console.error)
     fetchFacturasCompra().then(data => setFacturasCompra(data)).catch(console.error)
@@ -2197,10 +2196,17 @@ export default function ModuloCompras() {
   const confirmarOC = async (oc: OrdenCompra) => {
     const ahora = new Date().toISOString()
     const esInmediato = oc.metodo_compra === 'inmediato'
-    const nuevoNumRec = Math.max(...recepciones.map(r => r.id ?? 0), 0) + 1
+
+    // Obtener el próximo número de recepción desde la DB para evitar duplicados
+    let siguienteNumero = "00001"
+    try {
+      const r = await fetch("/api/compras/recepciones?siguiente_numero=1")
+      const d = await r.json()
+      if (d.siguiente_numero) siguienteNumero = d.siguiente_numero
+    } catch { /* usa fallback */ }
 
     const recPayload = {
-      numero: `REC-${String(nuevoNumRec).padStart(5, '0')}`,
+      numero: `REC-${siguienteNumero}`,
       fecha: ahora,
       orden_compra_id: oc.id,
       orden_compra_numero: oc.numero,
@@ -3786,12 +3792,18 @@ export default function ModuloCompras() {
         }))
 
       if (lineasPendientes.length > 0) {
-        const nuevoId = Math.max(...recepciones.map(r => r.id)) + 1
+        let sigNumComp = "00001"
+        try {
+          const rComp = await fetch("/api/compras/recepciones?siguiente_numero=1")
+          const dComp = await rComp.json()
+          if (dComp.siguiente_numero) sigNumComp = dComp.siguiente_numero
+        } catch { /* fallback */ }
+        const nuevoId = recepciones.length + 1
         recCompId = nuevoId
         const recComp: Recepcion = {
           ...rec,
           id: nuevoId,
-          numero: `REC-${String(nuevoId).padStart(5, '0')}`,
+          numero: `REC-${sigNumComp}`,
           fecha: ahora,
           estado: 'esperando_recepcion',
           fecha_recepcion_real: undefined,
