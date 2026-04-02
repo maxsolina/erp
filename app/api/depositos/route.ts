@@ -12,8 +12,7 @@ export async function GET() {
   const supabase = getSupabase()
   const { data, error } = await supabase
     .from("depositos")
-    .select("*, sucursales(nombre)")
-    .eq("activo", true)
+    .select("id, codigo, nombre, activo")
     .order("nombre")
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

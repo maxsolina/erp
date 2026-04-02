@@ -281,7 +281,10 @@ export default function ModuloConfigSucursales() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch("/api/depositos").then(r => r.json()).then(d => setDepositos(d ?? [])).catch(console.error)
+    fetch("/api/depositos")
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setDepositos(Array.isArray(d) ? d : []))
+      .catch(() => setDepositos([]))
   }, [])
 
   const handleGuardar = async (form: typeof FORM_VACIO) => {
