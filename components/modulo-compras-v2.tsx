@@ -572,12 +572,22 @@ export default function ModuloCompras() {
       })))
     ).catch(console.error)
     fetchRecepciones().then(data =>
-      setRecepciones((data ?? []).map((r: any) => ({
-        ...r,
-        lineas: Array.isArray(r.lineas) ? r.lineas
-              : Array.isArray(r.items)  ? r.items
-              : [],
-      })))
+      setRecepciones((data ?? []).map((r: any) => {
+        const rawLineas = Array.isArray(r.lineas) ? r.lineas
+                        : Array.isArray(r.items)  ? r.items
+                        : []
+        return {
+          ...r,
+          lineas: rawLineas.map((l: any) => ({
+            ...l,
+            cantidad_pedida:   l.cantidad_pedida   ?? l.cantidad ?? 0,
+            cantidad_recibida: l.cantidad_recibida ?? 0,
+            producto_sku:      l.producto_sku      ?? "",
+            udm:               l.udm               ?? "un",
+            estado_linea:      l.estado_linea      ?? "pendiente",
+          })),
+        }
+      }))
     ).catch(console.error)
     fetchFacturasCompra().then(data => setFacturasCompra(data)).catch(console.error)
     fetchOrdenesPago().then(data => setOrdenesPago(data)).catch(console.error)
@@ -2158,7 +2168,10 @@ export default function ModuloCompras() {
                 </tr>
               )}
               {ocsFiltradas.map(oc => {
-                const recsVinculadas = recepciones.filter(r => r.documento_origen_id === oc.id)
+    const recsVinculadas = recepciones.filter(r =>
+      Number(r.documento_origen_id) === Number(oc.id) ||
+      Number(r.orden_compra_id)     === Number(oc.id)
+    )
                 const recEstado = recsVinculadas.length === 0 ? null :
                   recsVinculadas.every(r => r.estado === 'recibida') ? 'recibida' :
                   recsVinculadas.some(r => r.estado === 'recibida') ? 'parcial' : 'esperando'
@@ -2220,18 +2233,29 @@ export default function ModuloCompras() {
     } catch { /* usa fallback */ }
 
     const recPayload = {
-      numero: `REC-${siguienteNumero}`,
-      fecha: ahora,
-      orden_compra_id: oc.id,
-      orden_compra_numero: oc.numero,
-      proveedor_id: oc.proveedor_id,
-      proveedor_nombre: oc.proveedor_nombre,
-      estado: esInmediato ? "confirmada" : "borrador",
+      numero:                  `REC-${siguienteNumero}`,
+      fecha:                   ahora,
+      orden_compra_id:         oc.id,
+      orden_compra_numero:     oc.numero,
+      proveedor_id:            oc.proveedor_id,
+      proveedor_nombre:        oc.proveedor_nombre,
+      estado:                  esInmediato ? "confirmada" : "borrador",
+      // nuevos campos para la ficha
+      documento_origen_tipo:   "oc",
+      documento_origen_id:     oc.id,
+      documento_origen_ref:    oc.numero,
+      sucursal:                oc.sucursal ?? "",
+      deposito_destino:        oc.deposito_destino ?? "",
+      fecha_esperada:          oc.fecha_entrega_esperada ?? null,
       items: (oc.lineas ?? []).map(l => ({
-        producto_id: l.producto_id,
-        producto_nombre: l.producto_nombre,
-        cantidad: esInmediato ? l.cantidad : 0,
-        precio_unitario: l.precio_unitario,
+        producto_id:       l.producto_id,
+        producto_nombre:   l.producto_nombre,
+        producto_sku:      l.producto_sku ?? "",
+        cantidad_pedida:   l.cantidad,
+        cantidad_recibida: esInmediato ? l.cantidad : 0,
+        precio_unitario:   l.precio_unitario,
+        udm:               l.udm ?? "un",
+        estado_linea:      esInmediato ? "recibido" : "pendiente",
       })),
       total: esInmediato ? oc.total : 0,
     }
@@ -2243,14 +2267,26 @@ export default function ModuloCompras() {
         guardarRecepcion(recPayload),
         guardarOrdenCompra({ estado: ocEstadoNuevo }, oc.id),
       ])
-      const nuevaRec: Recepcion = { ...recCreada, lineas: (oc.lineas ?? []).map(l => ({
-        producto_id: l.producto_id, producto_nombre: l.producto_nombre,
-        producto_sku: l.producto_sku ?? "", cantidad_pedida: l.cantidad,
-        cantidad_recibida: esInmediato ? l.cantidad : 0,
-        precio_unitario: l.precio_unitario, estado_linea: esInmediato ? "recibido" : "pendiente",
-        tiene_serie: false, requiere_color: false, requiere_bateria: false,
-        requiere_outlet: false, requiere_observaciones: false, udm: "un",
-      })) }
+      const nuevaRec: Recepcion = {
+        ...recCreada,
+        documento_origen_tipo: "oc",
+        documento_origen_id:   oc.id,
+        documento_origen_ref:  oc.numero,
+        sucursal:              oc.sucursal ?? "",
+        deposito_destino:      oc.deposito_destino ?? "",
+        lineas: (oc.lineas ?? []).map(l => ({
+          producto_id:       l.producto_id,
+          producto_nombre:   l.producto_nombre,
+          producto_sku:      l.producto_sku ?? "",
+          cantidad_pedida:   l.cantidad,
+          cantidad_recibida: esInmediato ? l.cantidad : 0,
+          precio_unitario:   l.precio_unitario,
+          estado_linea:      esInmediato ? "recibido" : "pendiente",
+          udm:               l.udm ?? "un",
+          tiene_serie: false, requiere_color: false, requiere_bateria: false,
+          requiere_outlet: false, requiere_observaciones: false,
+        })),
+      }
       const ocConfirmada: OrdenCompra = { ...oc, ...ocActualizada, lineas: oc.lineas }
       setRecepciones(prev => [...prev, nuevaRec])
       setOrdenesCompra(prev => prev.map(o => o.id === oc.id ? ocConfirmada : o))
@@ -4099,16 +4135,24 @@ export default function ModuloCompras() {
   const renderFichaRecepcion = () => {
     if (!selectedRecepcion) return null
     const rec = selectedRecepcion
-    const editable = rec.estado === "esperando_recepcion"
+    const editable = ["borrador", "esperando_recepcion"].includes(rec.estado ?? "")
 
     const estadoColor: Record<string, string> = {
-      recibida:             'bg-green-100 text-green-700',
+      borrador:             'bg-gray-100 text-gray-600',
       esperando_recepcion:  'bg-amber-100 text-amber-700',
+      parcial:              'bg-orange-100 text-orange-700',
+      confirmada:           'bg-blue-100 text-blue-700',
+      recibida:             'bg-green-100 text-green-700',
+      completa:             'bg-green-100 text-green-700',
       cancelada:            'bg-red-100 text-red-700',
     }
     const estadoLabel: Record<string, string> = {
+      borrador:             'Borrador',
+      esperando_recepcion:  'Esperando recepción',
+      parcial:              'Parcial',
+      confirmada:           'Confirmada',
       recibida:             'Recibida',
-      esperando_recepcion:  'Esperando Recepción',
+      completa:             'Completa',
       cancelada:            'Cancelada',
     }
     const estadoLineaColor: Record<string, string> = {
