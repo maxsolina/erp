@@ -226,6 +226,15 @@ interface AjusteInventario {
   }[]
 }
 
+// Categorías de Ubicación (datos base)
+const mockCategoriasUbicacion: CategoriaUbicacion[] = [
+  { id: 1, codigo: "STOCK", nombre: "Stock", descripcion: "Ubicaciones de stock general" },
+  { id: 2, codigo: "TRANS", nombre: "Transitoria", descripcion: "Ubicaciones transitorias o en tránsito" },
+  { id: 3, codigo: "CONS", nombre: "Cliente en Consignacion", descripcion: "Productos en consignación en cliente" },
+  { id: 4, codigo: "BDU", nombre: "Bienes de Uso", descripcion: "Bienes de uso interno" },
+  { id: 5, codigo: "REP", nombre: "En Reparación", descripcion: "Productos en proceso de reparación" },
+]
+
 // Sucursal actual
 const SUCURSAL_ACTUAL = "Puerto Norte"
 
