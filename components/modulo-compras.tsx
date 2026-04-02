@@ -538,7 +538,7 @@ interface MovimientoCtaCteProveedor {
   saldo: number
 }
 
-// Depósitos y ubicaciones se cargan desde Supabase dinámicamente
+// Depósitos y ubicaciones se cargan desde Supabase dinámicamente (v2)
 
 export default function ModuloCompras() {
   // Estado global persistente
@@ -2597,7 +2597,7 @@ export default function ModuloCompras() {
                     <div className="text-sm text-red-700">
                       {recsVinculadas.some(r => r.estado === 'recibida')
                         ? 'Existe una recepción confirmada vinculada. Cancela primero la recepción para poder cancelar la OC.'
-                        : 'Esta acción cancelará también las recepciones en estado "Esperando recepción" vinculadas.'}
+                        : 'Esta acción cancelará también las recepciones en estado "Esperando recepci��n" vinculadas.'}
                     </div>
                   </div>
                 )}
