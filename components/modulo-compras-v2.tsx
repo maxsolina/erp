@@ -571,7 +571,14 @@ export default function ModuloCompras() {
               : [],
       })))
     ).catch(console.error)
-    fetchRecepciones().then(data => setRecepciones(data)).catch(console.error)
+    fetchRecepciones().then(data =>
+      setRecepciones((data ?? []).map((r: any) => ({
+        ...r,
+        lineas: Array.isArray(r.lineas) ? r.lineas
+              : Array.isArray(r.items)  ? r.items
+              : [],
+      })))
+    ).catch(console.error)
     fetchFacturasCompra().then(data => setFacturasCompra(data)).catch(console.error)
     fetchOrdenesPago().then(data => setOrdenesPago(data)).catch(console.error)
     fetchNotasCreditoCompra().then(data => setNotasCreditoCompra(data)).catch(console.error)
@@ -2028,7 +2035,7 @@ export default function ModuloCompras() {
       const matchBusqueda = !q ||
         oc.numero.toLowerCase().includes(q) ||
         oc.proveedor_nombre.toLowerCase().includes(q) ||
-        oc.lineas.some(l => l.producto_nombre.toLowerCase().includes(q))
+        (oc.lineas ?? []).some(l => l.producto_nombre?.toLowerCase().includes(q))
       return matchEstado && matchMetodo && matchBusqueda
     })
 
@@ -2220,7 +2227,7 @@ export default function ModuloCompras() {
       proveedor_id: oc.proveedor_id,
       proveedor_nombre: oc.proveedor_nombre,
       estado: esInmediato ? "confirmada" : "borrador",
-      items: oc.lineas.map(l => ({
+      items: (oc.lineas ?? []).map(l => ({
         producto_id: l.producto_id,
         producto_nombre: l.producto_nombre,
         cantidad: esInmediato ? l.cantidad : 0,
@@ -2236,7 +2243,7 @@ export default function ModuloCompras() {
         guardarRecepcion(recPayload),
         guardarOrdenCompra({ estado: ocEstadoNuevo }, oc.id),
       ])
-      const nuevaRec: Recepcion = { ...recCreada, lineas: oc.lineas.map(l => ({
+      const nuevaRec: Recepcion = { ...recCreada, lineas: (oc.lineas ?? []).map(l => ({
         producto_id: l.producto_id, producto_nombre: l.producto_nombre,
         producto_sku: l.producto_sku ?? "", cantidad_pedida: l.cantidad,
         cantidad_recibida: esInmediato ? l.cantidad : 0,
@@ -2276,11 +2283,11 @@ export default function ModuloCompras() {
 
     const recsVinculadas = recepciones.filter(r => r.documento_origen_id === oc.id)
     const facturasVinculadas = facturasCompra.filter(f => f.orden_compra_id === oc.id)
-    const totalRecibido = oc.lineas.reduce((s, l) => s + l.cantidad_recibida, 0)
-    const totalPedido = oc.lineas.reduce((s, l) => s + l.cantidad, 0)
+        const totalRecibido = (oc.lineas ?? []).reduce((s, l) => s + (l.cantidad_recibida ?? 0), 0)
+        const totalPedido = (oc.lineas ?? []).reduce((s, l) => s + (l.cantidad ?? 0), 0)
 
     const tabs = [
-      { key: "productos",     label: "Productos",                           count: oc.lineas.length },
+      { key: "productos",     label: "Productos",                           count: (oc.lineas ?? []).length },
       { key: "recepciones",   label: "Entregas / Recepciones",              count: recsVinculadas.length },
       { key: "facturas",      label: "Facturas vinculadas",                 count: facturasVinculadas.length },
       { key: "observaciones", label: "Observaciones",                       count: null },
@@ -2473,10 +2480,10 @@ export default function ModuloCompras() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {oc.lineas.length === 0 && (
+                  {(oc.lineas ?? []).length === 0 && (
                     <tr><td colSpan={6} className="py-8 text-center text-sm text-gray-400">Sin líneas</td></tr>
                   )}
-                  {oc.lineas.map((l, idx) => (
+                  {(oc.lineas ?? []).map((l, idx) => (
                     <tr key={idx} className="hover:bg-gray-50">
                       <td className="py-3 px-4 font-medium">{l.producto_nombre}</td>
                       <td className="py-3 px-4 text-gray-500">{l.descripcion || '-'}</td>
@@ -2520,7 +2527,7 @@ export default function ModuloCompras() {
                       key={r.id}
                       onClick={() => {
                         setSelectedRecepcion(r)
-                        setRecepcionCantidades(Object.fromEntries(r.lineas.map(l => [l.producto_id, l.cantidad_recibida])))
+                        setRecepcionCantidades(Object.fromEntries((r.lineas ?? []).map(l => [l.producto_id, l.cantidad_recibida])))
                         setSelectedOC(null)
                         setActiveView("recepciones")
                       }}
@@ -2528,7 +2535,7 @@ export default function ModuloCompras() {
                     >
                       <span className="font-medium text-emerald-700">{r.numero}</span>
                       <span className="text-gray-500">{new Date(r.fecha).toLocaleDateString('es-AR')}</span>
-                      <span className="text-gray-500">{r.lineas.length} producto{r.lineas.length !== 1 ? 's' : ''}</span>
+                      <span className="text-gray-500">{(r.lineas ?? []).length} producto{(r.lineas ?? []).length !== 1 ? 's' : ''}</span>
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                         r.estado === 'recibida' ? 'bg-green-100 text-green-700' :
                         r.estado === 'esperando_recepcion' ? 'bg-amber-100 text-amber-700' :
@@ -2676,10 +2683,10 @@ export default function ModuloCompras() {
 
   const renderCrearOC = () => {
     const oc = nuevaOC
-    const totalOC = oc.lineas.reduce((s, l) => s + l.subtotal, 0)
+    const totalOC = (oc.lineas ?? []).reduce((s, l) => s + (l.subtotal ?? 0), 0)
 
     const guardarOC = async () => {
-      if (!oc.proveedor_nombre || !oc.deposito_destino || oc.lineas.length === 0) {
+      if (!oc.proveedor_nombre || !oc.deposito_destino || (oc.lineas ?? []).length === 0) {
         alert("Complete proveedor, depósito destino y al menos una línea.")
         return
       }
@@ -2918,14 +2925,14 @@ export default function ModuloCompras() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {oc.lineas.length === 0 && (
+              {(oc.lineas ?? []).length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-sm text-gray-400">
                     No hay productos. Agregue una linea para comenzar.
                   </td>
                 </tr>
               )}
-              {oc.lineas.map((linea, idx) => (
+              {(oc.lineas ?? []).map((linea, idx) => (
                 <tr key={idx} className="hover:bg-gray-50">
                   <td className="py-2 px-4">
                     <div className="relative">
@@ -3051,7 +3058,7 @@ export default function ModuloCompras() {
                   <td className="py-2 px-4">
                     <button
                       onClick={() => {
-                        setNuevaOC(prev => ({ ...prev, lineas: prev.lineas.filter((_, i) => i !== idx) }))
+                        setNuevaOC(prev => ({ ...prev, lineas: (prev.lineas ?? []).filter((_, i) => i !== idx) }))
                         setOcProductoSearch(prev => { const n = { ...prev }; delete n[idx]; return n })
                         setOcProductoOpciones(prev => { const n = { ...prev }; delete n[idx]; return n })
                         setOcProductoDropdownAbierto(prev => { const n = { ...prev }; delete n[idx]; return n })
@@ -3745,7 +3752,7 @@ export default function ModuloCompras() {
     const rec = selectedRecepcion
 
     // Validación: cantidades > 0
-    const lineasConCantidad = rec.lineas.filter(l => (recepcionCantidades[l.producto_id] ?? 0) > 0)
+    const lineasConCantidad = (rec.lineas ?? []).filter(l => (recepcionCantidades[l.producto_id] ?? 0) > 0)
     if (lineasConCantidad.length === 0) {
       alert("Debe ingresar al menos una cantidad recibida mayor a 0.")
       return
@@ -3767,7 +3774,7 @@ export default function ModuloCompras() {
     }
 
     const ahora = new Date().toISOString()
-    const lineasActualizadas: RecepcionLinea[] = rec.lineas.map(l => {
+    const lineasActualizadas: RecepcionLinea[] = (rec.lineas ?? []).map(l => {
       const cantRec = recepcionCantidades[l.producto_id] ?? 0
       const estadoLinea: RecepcionLinea['estado_linea'] = cantRec === 0
         ? 'pendiente'
@@ -3844,7 +3851,7 @@ export default function ModuloCompras() {
         return {
           ...oc,
           estado: todasRecibidas && !hayParcial ? 'recibida' : 'recibida_parcial',
-          lineas: oc.lineas.map(ol => {
+          lineas: (oc.lineas ?? []).map(ol => {
             const linRec = lineasActualizadas.find(l => l.producto_id === ol.producto_id)
             return linRec ? { ...ol, cantidad_recibida: ol.cantidad_recibida + linRec.cantidad_recibida } : ol
           })
@@ -3943,7 +3950,7 @@ export default function ModuloCompras() {
         r.numero.toLowerCase().includes(q) ||
         (r.proveedor_nombre || '').toLowerCase().includes(q) ||
         r.documento_origen_ref.toLowerCase().includes(q) ||
-        r.lineas.some(l =>
+        (r.lineas ?? []).some(l =>
           l.producto_nombre.toLowerCase().includes(q) ||
           l.producto_sku.toLowerCase().includes(q) ||
           (l.unidades_serie || []).some(u => u.nro_serie.toLowerCase().includes(q))
@@ -4050,7 +4057,7 @@ export default function ModuloCompras() {
                   onClick={() => {
                     setSelectedRecepcion(rec)
                     setRecepcionCantidades(
-                      Object.fromEntries(rec.lineas.map(l => [l.producto_id, l.cantidad_recibida]))
+                      Object.fromEntries((rec.lineas ?? []).map(l => [l.producto_id, l.cantidad_recibida]))
                     )
                   }}
                 >
@@ -4068,7 +4075,7 @@ export default function ModuloCompras() {
                   <td className="py-3 px-4">
                     <span className="text-sm text-blue-600 font-medium">{rec.documento_origen_ref}</span>
                   </td>
-                  <td className="py-3 px-4 text-center text-sm">{rec.lineas.length}</td>
+                  <td className="py-3 px-4 text-center text-sm">{(rec.lineas ?? []).length}</td>
                   <td className="py-3 px-4 text-center">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${estadoColor[rec.estado] || 'bg-gray-100 text-gray-600'}`}>
                       {estadoLabel[rec.estado] || rec.estado}
@@ -4121,7 +4128,7 @@ export default function ModuloCompras() {
     }
 
     // Check si todas las cantidades recibidas = pedidas (para "Recibir todo")
-    const todasCompletas = rec.lineas.every(l => (recepcionCantidades[l.producto_id] ?? l.cantidad_recibida) >= l.cantidad_pedida)
+      const todasCompletas = (rec.lineas ?? []).every(l => (recepcionCantidades[l.producto_id] ?? l.cantidad_recibida) >= l.cantidad_pedida)
 
     const ocVinculada = rec.documento_origen_tipo === "oc" && rec.documento_origen_id
       ? ordenesCompra.find(o => o.id === rec.documento_origen_id)
@@ -4162,7 +4169,7 @@ export default function ModuloCompras() {
               <button
                 onClick={() => {
                   setSelectedRecepcion(recAnterior)
-                  setRecepcionCantidades(Object.fromEntries(recAnterior.lineas.map(l => [l.producto_id, l.cantidad_recibida])))
+                  setRecepcionCantidades(Object.fromEntries((recAnterior.lineas ?? []).map(l => [l.producto_id, l.cantidad_recibida])))
                 }}
                 className="flex items-center gap-2 px-3 py-1.5 text-xs bg-gray-50 border border-gray-200 text-gray-700 rounded-full hover:bg-gray-100 transition-colors"
               >
@@ -4174,7 +4181,7 @@ export default function ModuloCompras() {
               <button
                 onClick={() => {
                   setSelectedRecepcion(recComplementaria)
-                  setRecepcionCantidades(Object.fromEntries(recComplementaria.lineas.map(l => [l.producto_id, l.cantidad_recibida])))
+                  setRecepcionCantidades(Object.fromEntries((recComplementaria.lineas ?? []).map(l => [l.producto_id, l.cantidad_recibida])))
                 }}
                 className="flex items-center gap-2 px-3 py-1.5 text-xs bg-amber-50 border border-amber-200 text-amber-700 rounded-full hover:bg-amber-100 transition-colors"
               >
@@ -4330,11 +4337,11 @@ export default function ModuloCompras() {
                   onChange={e => {
                     if (e.target.checked) {
                       const nuevo: Record<number, number> = {}
-                      rec.lineas.forEach(l => { nuevo[l.producto_id] = l.cantidad_pedida })
+                      ;(rec.lineas ?? []).forEach(l => { nuevo[l.producto_id] = l.cantidad_pedida })
                       setRecepcionCantidades(nuevo)
                     } else {
                       const nuevo: Record<number, number> = {}
-                      rec.lineas.forEach(l => { nuevo[l.producto_id] = 0 })
+                      ;(rec.lineas ?? []).forEach(l => { nuevo[l.producto_id] = 0 })
                       setRecepcionCantidades(nuevo)
                     }
                   }}
@@ -4357,7 +4364,7 @@ export default function ModuloCompras() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {rec.lineas.map((linea, idx) => {
+              {(rec.lineas ?? []).map((linea, idx) => {
                 const cantRec = recepcionCantidades[linea.producto_id] ?? linea.cantidad_recibida
                 const estadoLinea = editable
                   ? (cantRec === 0 ? 'pendiente' : cantRec < linea.cantidad_pedida ? 'recibido_parcial' : 'recibido')
