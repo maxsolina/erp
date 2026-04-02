@@ -3705,7 +3705,7 @@ export default function ModuloCompras() {
   // =====================================================
   // LÓGICA CONFIRMAR RECEPCIÓN
   // =====================================================
-  const handleConfirmarRecepcion = () => {
+  const handleConfirmarRecepcion = async () => {
     if (!selectedRecepcion) return
     const rec = selectedRecepcion
 
