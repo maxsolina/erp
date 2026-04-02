@@ -15,8 +15,7 @@ export async function GET(req: Request) {
 
   let query = supabase
     .from("ubicaciones")
-    .select("*, depositos(nombre, codigo)")
-    .eq("activa", true)
+    .select("id, deposito_id, codigo, nombre, tipo, es_reparacion, es_defecto")
     .order("nombre")
 
   if (depositoId) query = query.eq("deposito_id", Number(depositoId))
@@ -38,7 +37,6 @@ export async function POST(req: Request) {
       tipo: body.tipo ?? "interna",
       es_reparacion: body.es_reparacion ?? false,
       es_defecto: body.es_defecto ?? false,
-      activa: true,
     })
     .select()
     .single()

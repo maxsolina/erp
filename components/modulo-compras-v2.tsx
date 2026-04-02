@@ -558,7 +558,9 @@ export default function ModuloCompras() {
 
   // Carga inicial desde Supabase
   useEffect(() => {
-    fetchProveedores().then(data => setProveedores(data)).catch(console.error)
+    fetchProveedores().then(data => setProveedores(
+      (data ?? []).map((p: any) => ({ ...p, nombre: p.nombre ?? p.razon_social ?? "" }))
+    )).catch(console.error)
     fetchOrdenesCompra().then(data => setOrdenesCompra(data)).catch(console.error)
     fetchRecepciones().then(data => setRecepciones(data)).catch(console.error)
     fetchFacturasCompra().then(data => setFacturasCompra(data)).catch(console.error)
