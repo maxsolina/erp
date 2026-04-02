@@ -12,6 +12,7 @@ import {
 } from "@/lib/categorias-proveedor-actions"
 import { fetchProductos } from "@/lib/productos-actions"
 import { procesarEntradaRecepcion, fetchDepositos, fetchUbicaciones } from "@/lib/stock-actions"
+import { useERP } from "@/contexts/erp-context"
 
 // ── Datos geográficos ────────────────────────────────────────────────────────
 
@@ -545,12 +546,25 @@ const UBICACIONES_OC = [
 ]
 
 export default function ModuloCompras() {
+  // Estado global persistente
+  const {
+    proveedores,
+    setProveedores,
+    ordenesCompra,
+    setOrdenesCompra,
+    recepciones,
+    setRecepciones,
+    facturasCompra,
+    setFacturasCompra,
+    ordenesPago,
+    setOrdenesPago,
+  } = useERP()
+
   // Active view state
   const [activeView, setActiveView] = useState("proveedores")
   const [expandedSections, setExpandedSections] = useState<string[]>(["proveedores", "compras", "comprobantes", "pagos", "configuracion", "cfg_categorias"])
 
-  // Proveedores
-  const [proveedores, setProveedores] = useState<Proveedor[]>([])
+  // Proveedores — estado local de UI (no de datos)
   const [selectedProveedor, setSelectedProveedor] = useState<Proveedor | null>(null)
   const [creandoProveedor, setCreandoProveedor] = useState(false)
   const [editandoProveedor, setEditandoProveedor] = useState(false)
@@ -650,7 +664,6 @@ export default function ModuloCompras() {
   const [nuevoProveedor, setNuevoProveedor] = useState<Omit<Proveedor, "id" | "codigo" | "saldo">>(proveedorFormVacio)
 
   // Órdenes de Compra
-  const [ordenesCompra, setOrdenesCompra] = useState<OrdenCompra[]>([])
   const [selectedOC, setSelectedOC] = useState<OrdenCompra | null>(null)
   const [creandoOC, setCreandoOC] = useState(false)
   // UI state OC — listado
@@ -715,7 +728,6 @@ export default function ModuloCompras() {
   })
 
   // Recepciones
-  const [recepciones, setRecepciones] = useState<Recepcion[]>([])
   const [selectedRecepcion, setSelectedRecepcion] = useState<Recepcion | null>(null)
   const [creandoRecepcion, setCreandoRecepcion] = useState(false)
   // UI state recepciones
@@ -748,7 +760,6 @@ export default function ModuloCompras() {
   }, [])
 
   // Facturas de Compra
-  const [facturasCompra, setFacturasCompra] = useState<FacturaCompra[]>([])
   const [selectedFacturaCompra, setSelectedFacturaCompra] = useState<FacturaCompra | null>(null)
   const [creandoFacturaCompra, setCreandoFacturaCompra] = useState(false)
 
@@ -763,7 +774,6 @@ export default function ModuloCompras() {
   const [creandoNDCompra, setCreandoNDCompra] = useState(false)
 
   // Órdenes de Pago
-  const [ordenesPago, setOrdenesPago] = useState<OrdenPago[]>([])
   const [selectedOP, setSelectedOP] = useState<OrdenPago | null>(null)
   const [creandoOP, setCreandoOP] = useState(false)
 
