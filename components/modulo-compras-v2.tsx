@@ -249,7 +249,9 @@ interface OrdenCompra {
   estado: "borrador" | "confirmada" | "recibida_parcial" | "recibida" | "cancelada"
   fecha_entrega_estimada: string
   deposito_destino: string
+  deposito_destino_id?: number
   ubicacion_destino?: string
+  ubicacion_destino_id?: number
   moneda: "ARS" | "USD" | "EUR"
   tipo_cambio: number
   subtotal: number
@@ -301,7 +303,9 @@ interface Recepcion {
   proveedor_id?: number
   proveedor_nombre?: string
   deposito_destino: string
+  deposito_destino_id?: number
   ubicacion_destino?: string
+  ubicacion_destino_id?: number
   documento_origen_tipo: "oc" | "toma_equipo" | "transferencia"
   documento_origen_id?: number
   documento_origen_ref: string
@@ -2251,6 +2255,7 @@ export default function ModuloCompras() {
       documento_origen_ref:    oc.numero,
       sucursal:                oc.sucursal ?? "",
       deposito_destino:        oc.deposito_destino ?? "",
+      deposito_destino_id:     oc.deposito_destino_id ?? null,
       fecha_esperada:          oc.fecha_entrega_esperada ?? null,
       items: (oc.lineas ?? []).map(l => ({
         producto_id:            l.producto_id,
@@ -3931,14 +3936,35 @@ export default function ModuloCompras() {
 
     // Entrada de stock en Supabase via .then() sin await
     fetchDepositos().then(depositos => {
-      const depositoDestino = depositos.find(
-        (d: any) => d.nombre?.toLowerCase() === recActualizada.deposito_destino?.toLowerCase()
-          || d.codigo?.toLowerCase() === recActualizada.deposito_destino?.toLowerCase()
-      ) ?? depositos[0]
-      if (!depositoDestino) return
+      // Usar deposito_destino_id si existe, sino buscar por nombre/código, sino primer depósito
+      const depositoDestino =
+        depositos.find((d: any) => d.id === recActualizada.deposito_destino_id) ??
+        depositos.find((d: any) =>
+          d.nombre?.toLowerCase() === recActualizada.deposito_destino?.toLowerCase() ||
+          d.codigo?.toLowerCase() === recActualizada.deposito_destino?.toLowerCase()
+        ) ??
+        depositos[0]
+      if (!depositoDestino) {
+        console.error("[v0] Sin depósito destino para entrada de stock")
+        return
+      }
       fetchUbicaciones(depositoDestino.id).then(ubicaciones => {
-        const ubicacionDestino = ubicaciones.find((u: any) => u.es_defecto) ?? ubicaciones[0]
-        if (!ubicacionDestino) return
+        // Usar ubicacion_destino_id si existe, sino es_defecto, sino primera ubicación
+        const ubicacionDestino =
+          ubicaciones.find((u: any) => u.id === recActualizada.ubicacion_destino_id) ??
+          ubicaciones.find((u: any) => u.es_defecto) ??
+          ubicaciones[0]
+        if (!ubicacionDestino) {
+          console.error("[v0] Sin ubicación destino para entrada de stock — depósito:", depositoDestino.nombre)
+          return
+        }
+        // Persistir los IDs de depósito y ubicación en la recepción
+        guardarRecepcion({
+          deposito_destino_id: depositoDestino.id,
+          ubicacion_destino_id: ubicacionDestino.id,
+          deposito_destino: depositoDestino.nombre,
+        }, rec.id).catch((e: any) => console.error("[v0] Error guardando IDs depósito:", e.message))
+
         procesarEntradaRecepcion({
           recepcion_id: recActualizada.id,
           recepcion_numero: recActualizada.numero,
