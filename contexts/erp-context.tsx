@@ -350,11 +350,8 @@ const clientesIniciales: Cliente[] = [
   { id: 3, codigo: "CLI-003", nombre: "Roberto Sánchez", tipo_documento: "DNI", numero_documento: "28765432", categoria: "publico", tipo_cliente: "minorista", email: "rsanchez@gmail.com", telefono: "0341-155678901", direccion: "Mendoza 456", ciudad: "Rosario", provincia: "Santa Fe", codigo_postal: "2000", limite_credito: 100000, saldo: 0, estado: "activo", condicion_iva: "Consumidor Final" },
 ]
 
-const proveedoresIniciales: Proveedor[] = [
-  { id: 1, codigo: "PROV-001", razon_social: "Tech Import SA", nombre_fantasia: "Tech Import", cuit: "30-12345678-9", categoria: "privado", tipo: "internacional", email: "ventas@techimport.com", telefono: "011-45671234", direccion: "Zona Franca", ciudad: "Buenos Aires", pais: "Argentina", condicion_pago: "30 días", moneda_habitual: "USD", saldo: 2500000, estado: "activo" },
-  { id: 2, codigo: "PROV-002", razon_social: "Distribuidora Norte SRL", nombre_fantasia: "Distribuidora Norte", cuit: "30-98765432-1", categoria: "privado", tipo: "nacional", email: "pedidos@distnorte.com", telefono: "0341-4567890", direccion: "Av. Circunvalación 2500", ciudad: "Rosario", pais: "Argentina", condicion_pago: "15 días", moneda_habitual: "ARS", saldo: 450000, estado: "activo" },
-  { id: 3, codigo: "PROV-003", razon_social: "Global Logistics", nombre_fantasia: "Global Logistics", cuit: "30-55544433-2", categoria: "privado", tipo: "despachante", email: "despachos@globallog.com", telefono: "011-43215678", direccion: "Puerto Madero 100", ciudad: "Buenos Aires", pais: "Argentina", condicion_pago: "Contado", moneda_habitual: "USD", saldo: 0, estado: "activo" },
-]
+// Proveedores se cargan desde Supabase en modulo-compras.tsx
+const proveedoresIniciales: Proveedor[] = []
 
 const productosIniciales: Producto[] = [
   { id: 1, sku: "IP15PM-256-BLK", nombre: "iPhone 15 Pro Max 256GB Negro", descripcion: "Apple iPhone 15 Pro Max", categoria: "Smartphones", marca: "Apple", modelo: "iPhone 15 Pro Max", unidad_medida: "UN", precio_costo: 1200000, precio_venta: 1850000, iva: 21, stock_actual: 15, stock_reservado: 3, stock_minimo: 5, estado: "activo" },
