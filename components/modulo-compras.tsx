@@ -538,30 +538,7 @@ interface MovimientoCtaCteProveedor {
   saldo: number
 }
 
-// Depósitos y ubicaciones (compartidos con modulo-stock)
-const DEPOSITOS_OC = [
-  { id: 1, codigo: "CC", nombre: "Casa Central" },
-  { id: 2, codigo: "PN", nombre: "Puerto Norte" },
-  { id: 3, codigo: "CS", nombre: "Casilda" },
-]
-const UBICACIONES_OC = [
-  { id: 1,   deposito_id: 1, codigo: "CC/Stock",              nombre: "Stock" },
-  { id: 2,   deposito_id: 1, codigo: "CC/Usados",             nombre: "Usados" },
-  { id: 3,   deposito_id: 1, codigo: "CC/Deposito B",         nombre: "Depósito B" },
-  { id: 4,   deposito_id: 1, codigo: "CC/Deposito C",         nombre: "Depósito C" },
-  { id: 5,   deposito_id: 1, codigo: "CC/En Reparación",      nombre: "En Reparación" },
-  { id: 101, deposito_id: 1, codigo: "CC/Input",              nombre: "Entrada" },
-  { id: 102, deposito_id: 1, codigo: "CC/Quality Control",    nombre: "Control de Calidad" },
-  { id: 103, deposito_id: 1, codigo: "CC/Zona empaquetado",   nombre: "Zona de Empaquetado" },
-  { id: 104, deposito_id: 1, codigo: "CC/Salida",             nombre: "Salida" },
-  { id: 8,   deposito_id: 2, codigo: "PN/Stock",              nombre: "Stock" },
-  { id: 9,   deposito_id: 2, codigo: "PN/Outlet",             nombre: "Outlet" },
-  { id: 201, deposito_id: 2, codigo: "PN/Input",              nombre: "Entrada" },
-  { id: 202, deposito_id: 2, codigo: "PN/Output",             nombre: "Salida" },
-  { id: 12,  deposito_id: 3, codigo: "CS/Stock",              nombre: "Stock" },
-  { id: 301, deposito_id: 3, codigo: "CS/Input",              nombre: "Entrada" },
-  { id: 302, deposito_id: 3, codigo: "CS/Output",             nombre: "Salida" },
-]
+// Depósitos y ubicaciones se cargan desde Supabase dinámicamente
 
 export default function ModuloCompras() {
   // Estado global persistente
@@ -704,6 +681,32 @@ export default function ModuloCompras() {
   // UI state OC — cancelación
   const [ocModalCancelacionOpen, setOcModalCancelacionOpen] = useState(false)
   const [ocCancelacionMotivo, setOcCancelacionMotivo] = useState("")
+  // UI state OC — depósitos y ubicaciones desde Supabase
+  const [depositosOC, setDepositosOC] = useState<{ id: number; nombre: string; codigo: string }[]>([])
+  const [ubicacionesOC, setUbicacionesOC] = useState<{ id: number; nombre: string; codigo: string }[]>([])
+  const [loadingUbicacionesOC, setLoadingUbicacionesOC] = useState(false)
+
+  // Cargar depósitos al montar
+  useEffect(() => {
+    fetchDepositos().then(data => setDepositosOC(data ?? [])).catch(console.error)
+  }, [])
+
+  // Cargar ubicaciones cuando cambia el depósito seleccionado
+  const handleDepositoOCChange = async (depositoId: number, depositoNombre: string) => {
+    setNuevaOC(prev => ({ ...prev, deposito_destino: depositoNombre, deposito_destino_id: depositoId, ubicacion_destino: "", ubicacion_destino_id: undefined }))
+    if (!depositoId) { setUbicacionesOC([]); return }
+    setLoadingUbicacionesOC(true)
+    try {
+      const data = await fetchUbicaciones(depositoId)
+      setUbicacionesOC(data ?? [])
+    } catch (e) {
+      console.error("[v0] Error cargando ubicaciones:", e)
+      setUbicacionesOC([])
+    } finally {
+      setLoadingUbicacionesOC(false)
+    }
+  }
+
   // UI state OC — creación/edición
   const [nuevaOC, setNuevaOC] = useState<Partial<OrdenCompra> & { lineas: OrdenCompraLinea[] }>({
     sucursal: "",
@@ -2817,13 +2820,17 @@ export default function ModuloCompras() {
               <div>
                 <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Deposito Destino <span className="text-red-500">*</span></label>
                 <select
-                  value={oc.deposito_destino || ""}
-                  onChange={e => setNuevaOC(prev => ({ ...prev, deposito_destino: e.target.value, ubicacion_destino: "" }))}
+                  value={(oc as any).deposito_destino_id || ""}
+                  onChange={e => {
+                    const id = Number(e.target.value)
+                    const dep = depositosOC.find(d => d.id === id)
+                    handleDepositoOCChange(id, dep?.nombre ?? "")
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white"
                 >
-                  <option value="">Seleccionar deposito...</option>
-                  {DEPOSITOS_OC.map(d => (
-                    <option key={d.id} value={d.nombre}>{d.nombre}</option>
+                  <option value="">Seleccionar depósito...</option>
+                  {depositosOC.map(d => (
+                    <option key={d.id} value={d.id}>{d.nombre}</option>
                   ))}
                 </select>
               </div>
@@ -2832,22 +2839,31 @@ export default function ModuloCompras() {
                   Ubicacion Destino
                 </label>
                 <select
-                  value={oc.ubicacion_destino || ""}
-                  onChange={e => setNuevaOC(prev => ({ ...prev, ubicacion_destino: e.target.value }))}
-                  disabled={!oc.deposito_destino}
+                  value={(oc as any).ubicacion_destino_id || ""}
+                  onChange={e => {
+                    const id = Number(e.target.value)
+                    const ub = ubicacionesOC.find(u => u.id === id)
+                    setNuevaOC(prev => ({ ...prev, ubicacion_destino: ub?.nombre ?? "", ubicacion_destino_id: id }))
+                  }}
+                  disabled={!oc.deposito_destino || loadingUbicacionesOC}
                   className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white transition-colors ${
                     oc.deposito_destino
                       ? "border-gray-300 text-gray-900"
                       : "border-gray-200 text-gray-400 cursor-not-allowed bg-gray-50"
                   }`}
                 >
-                  <option value="">{oc.deposito_destino ? "Seleccionar ubicación..." : "Seleccione un depósito primero"}</option>
-                  {oc.deposito_destino && UBICACIONES_OC
-                    .filter(u => DEPOSITOS_OC.find(d => d.nombre === oc.deposito_destino)?.id === u.deposito_id)
-                    .map(u => (
-                      <option key={u.id} value={u.codigo}>{u.nombre}</option>
-                    ))
-                  }
+                  <option value="">
+                    {loadingUbicacionesOC
+                      ? "Cargando ubicaciones..."
+                      : oc.deposito_destino
+                        ? ubicacionesOC.length === 0
+                          ? "Sin ubicaciones en este depósito"
+                          : "Seleccionar ubicación..."
+                        : "Seleccione un depósito primero"}
+                  </option>
+                  {ubicacionesOC.map(u => (
+                    <option key={u.id} value={u.id}>{u.nombre}</option>
+                  ))}
                 </select>
               </div>
               <div>
