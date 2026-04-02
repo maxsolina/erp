@@ -3719,9 +3719,9 @@ export default function ModuloCompras() {
   }
 
   // =====================================================
-  // LÓGICA CONFIRMAR RECEPCIÓN
+  // LÓGICA CONFIRMAR RECEPCIÓN (async - persiste en Supabase)
   // =====================================================
-  const handleConfirmarRecepcion = async () => {
+  const handleConfirmarRecepcion = async (): Promise<void> => {
     if (!selectedRecepcion) return
     const rec = selectedRecepcion
 
@@ -3809,48 +3809,50 @@ export default function ModuloCompras() {
       recepcion_complementaria_id: recCompId
     }
 
-    try {
-      // Persistir recepción actualizada a la API
-      await guardarRecepcion({
-        estado: "confirmada",
-        items: lineasActualizadas.map(l => ({
-          producto_id: l.producto_id,
-          producto_nombre: l.producto_nombre,
-          cantidad: l.cantidad_recibida,
-          precio_unitario: l.precio_unitario,
-        })),
-        total: lineasActualizadas.reduce((s, l) => s + l.cantidad_recibida * l.precio_unitario, 0),
-      }, rec.id)
-
-      setRecepciones(prev => prev.map(r => r.id === rec.id ? recActualizada : r))
-      setSelectedRecepcion(recActualizada)
-
-      // Actualizar OC vinculada
-      if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
-        const ocVinculada = ordenesCompra.find(o => o.id === rec.documento_origen_id)
-        if (ocVinculada) {
-          const todasRecibidas = lineasActualizadas.every(l => l.estado_linea === 'recibido')
-          await guardarOrdenCompra({ estado: todasRecibidas && !hayParcial ? "completa" : "parcial" }, ocVinculada.id)
-          setOrdenesCompra(prev => prev.map(oc => {
-            if (oc.id !== rec.documento_origen_id) return oc
-            return {
-              ...oc,
-              estado: todasRecibidas && !hayParcial ? 'recibida' : 'recibida_parcial',
-              lineas: oc.lineas.map(ol => {
-                const linRec = lineasActualizadas.find(l => l.producto_id === ol.producto_id)
-                return linRec ? { ...ol, cantidad_recibida: ol.cantidad_recibida + linRec.cantidad_recibida } : ol
-              })
-            }
-          }))
+    // Actualizar UI de forma síncrona
+    setRecepciones(prev => prev.map(r => r.id === rec.id ? recActualizada : r))
+    setSelectedRecepcion(recActualizada)
+    if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
+      const todasRecibidas = lineasActualizadas.every(l => l.estado_linea === 'recibido')
+      setOrdenesCompra(prev => prev.map(oc => {
+        if (oc.id !== rec.documento_origen_id) return oc
+        return {
+          ...oc,
+          estado: todasRecibidas && !hayParcial ? 'recibida' : 'recibida_parcial',
+          lineas: oc.lineas.map(ol => {
+            const linRec = lineasActualizadas.find(l => l.producto_id === ol.producto_id)
+            return linRec ? { ...ol, cantidad_recibida: ol.cantidad_recibida + linRec.cantidad_recibida } : ol
+          })
         }
-      }
-    } catch (err: any) {
-      console.error("[v0] Error al confirmar recepción:", err.message)
-      alert("Error al confirmar recepción: " + err.message)
-      return
+      }))
     }
 
-    // Disparar entrada de stock en Supabase (async, no bloquea la UI)
+    // Persistir a Supabase de forma async sin bloquear la UI
+    ;(async () => {
+      try {
+        const todasRecibidas = lineasActualizadas.every(l => l.estado_linea === 'recibido')
+        await guardarRecepcion({
+          estado: "confirmada",
+          items: lineasActualizadas.map(l => ({
+            producto_id: l.producto_id,
+            producto_nombre: l.producto_nombre,
+            cantidad: l.cantidad_recibida,
+            precio_unitario: l.precio_unitario,
+          })),
+          total: lineasActualizadas.reduce((s, l) => s + l.cantidad_recibida * l.precio_unitario, 0),
+        }, rec.id)
+        if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
+          const ocVinculada = ordenesCompra.find(o => o.id === rec.documento_origen_id)
+          if (ocVinculada) {
+            await guardarOrdenCompra({ estado: todasRecibidas && !hayParcial ? "completa" : "parcial" }, ocVinculada.id)
+          }
+        }
+      } catch (err: any) {
+        console.error("[v0] Error al persistir recepción:", err.message)
+      }
+    })()
+
+    // Entrada de stock en Supabase
     ;(async () => {
       try {
         // Obtener el depósito destino por nombre desde Supabase
