@@ -386,17 +386,17 @@ export function ERPProvider({ children }: { children: ReactNode }) {
   // Cargar sucursales desde Supabase al iniciar
   useEffect(() => {
     fetch("/api/sucursales")
-      .then(r => r.json())
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
       .then((data: Sucursal[]) => {
+        console.log("[v0] sucursales cargadas:", data)
         if (Array.isArray(data) && data.length > 0) {
           setSucursales(data)
-          // Restaurar última sucursal activa desde localStorage
           const guardada = localStorage.getItem("sucursal_activa_id")
           const encontrada = guardada ? data.find(s => s.id === Number(guardada)) : null
           setSucursalActivaState(encontrada ?? data[0])
         }
       })
-      .catch(console.error)
+      .catch(e => console.warn("[v0] sucursales no disponibles:", e.message))
   }, [])
 
   const setSucursalActiva = (s: Sucursal) => {

@@ -558,9 +558,12 @@ export default function ModuloCompras() {
 
   // Carga inicial desde Supabase
   useEffect(() => {
-    fetchProveedores().then(data => setProveedores(
-      (data ?? []).map((p: any) => ({ ...p, nombre: p.nombre ?? p.razon_social ?? "" }))
-    )).catch(console.error)
+    fetchProveedores().then(data => {
+      console.log("[v0] proveedores raw:", data)
+      setProveedores(
+        (data ?? []).map((p: any) => ({ ...p, nombre: p.nombre ?? p.razon_social ?? "" }))
+      )
+    }).catch(e => console.error("[v0] fetchProveedores error:", e))
     fetchOrdenesCompra().then(data => setOrdenesCompra(data)).catch(console.error)
     fetchRecepciones().then(data => setRecepciones(data)).catch(console.error)
     fetchFacturasCompra().then(data => setFacturasCompra(data)).catch(console.error)
@@ -2758,7 +2761,7 @@ export default function ModuloCompras() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white"
                 >
                   <option value="">Seleccionar proveedor...</option>
-                  {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre || p.razon_social || `Proveedor #${p.id}`}</option>)}
                 </select>
               </div>
               <div>
