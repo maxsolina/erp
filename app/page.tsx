@@ -9,6 +9,7 @@ import ModuloInformes from "@/components/modulo-informes"
 import ModuloContabilidad from "@/components/modulo-contabilidad"
 import ModuloFinanzas from "@/components/modulo-finanzas"
 import ERPWrapper from "@/components/erp-wrapper"
+import ModuloConfigSucursales from "@/components/modulo-config-sucursales"
 
 // Types
 interface Cliente {
@@ -2572,6 +2573,32 @@ function CellHomeERPContent() {
       ) : activeModule === "informes" ? (
         <div className="pt-11">
           <ModuloInformes />
+        </div>
+      ) : activeModule === "config" ? (
+        <div className="flex pt-11">
+          {/* Sidebar Config */}
+          <aside className="w-52 bg-white border-r border-gray-200 fixed top-11 left-0 bottom-0 overflow-y-auto">
+            <div className="p-4">
+              <div className="mb-6">
+                <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">General</h3>
+                <button
+                  onClick={() => setActiveView("sucursales")}
+                  className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${activeView === "sucursales" ? "bg-indigo-100 text-indigo-800 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
+                >
+                  Sucursales
+                </button>
+              </div>
+            </div>
+          </aside>
+          {/* Contenido Config */}
+          <main className="ml-52 flex-1 p-6 min-h-[calc(100vh-44px)]">
+            {activeView === "sucursales" && <ModuloConfigSucursales />}
+            {activeView === "dashboard" && (
+              <div className="flex items-center justify-center h-96 text-gray-400 text-sm">
+                Seleccioná una sección del menú lateral
+              </div>
+            )}
+          </main>
         </div>
       ) : (
         <div className="flex pt-11">

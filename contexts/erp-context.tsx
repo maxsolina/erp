@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, ReactNode } from "react"
 
 // =====================================================
 // TIPOS E INTERFACES
@@ -23,9 +23,18 @@ export interface Sucursal {
   id: number
   codigo: string
   nombre: string
-  direccion: string
-  telefono: string
+  direccion?: string
+  telefono?: string
+  deposito_id?: number | null
   activa: boolean
+}
+
+export interface UsuarioSucursal {
+  id: number
+  usuario_id: number
+  sucursal_id: number
+  es_principal: boolean
+  ver_nv_otras_sucursales: boolean
 }
 
 export interface Cliente {
@@ -274,6 +283,10 @@ interface ERPContextType {
 
   // Datos maestros
   sucursales: Sucursal[]
+  setSucursales: React.Dispatch<React.SetStateAction<Sucursal[]>>
+  sucursalActiva: Sucursal | null
+  setSucursalActiva: (s: Sucursal) => void
+  usuarios: Usuario[]
   clientes: Cliente[]
   setClientes: React.Dispatch<React.SetStateAction<Cliente[]>>
   proveedores: Proveedor[]
@@ -332,11 +345,8 @@ const ERPContext = createContext<ERPContextType | undefined>(undefined)
 // DATOS INICIALES
 // =====================================================
 
-const sucursalesIniciales: Sucursal[] = [
-  { id: 1, codigo: "PN", nombre: "Puerto Norte", direccion: "Av. Rivadavia 1234", telefono: "0341-4561234", activa: true },
-  { id: 2, codigo: "CE", nombre: "Centro", direccion: "San Martín 567", telefono: "0341-4567890", activa: true },
-  { id: 3, codigo: "SU", nombre: "Sur", direccion: "Ovidio Lagos 890", telefono: "0341-4559876", activa: true },
-]
+// Sucursales se cargan desde Supabase
+const sucursalesIniciales: Sucursal[] = []
 
 const usuariosIniciales: Usuario[] = [
   { id: 1, username: "admin", nombre: "Administrador", email: "admin@cellhome.com", rol: "admin", sucursal_id: 1, sucursal_nombre: "Puerto Norte", activo: true, ultimo_acceso: "2026-03-16T10:00:00" },
@@ -370,7 +380,30 @@ export function ERPProvider({ children }: { children: ReactNode }) {
   const [usuarios] = useState<Usuario[]>(usuariosIniciales)
 
   // Datos maestros
-  const [sucursales] = useState<Sucursal[]>(sucursalesIniciales)
+  const [sucursales, setSucursales] = useState<Sucursal[]>(sucursalesIniciales)
+  const [sucursalActiva, setSucursalActivaState] = useState<Sucursal | null>(null)
+
+  // Cargar sucursales desde Supabase al iniciar
+  useEffect(() => {
+    fetch("/api/sucursales")
+      .then(r => r.json())
+      .then((data: Sucursal[]) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setSucursales(data)
+          // Restaurar última sucursal activa desde localStorage
+          const guardada = localStorage.getItem("sucursal_activa_id")
+          const encontrada = guardada ? data.find(s => s.id === Number(guardada)) : null
+          setSucursalActivaState(encontrada ?? data[0])
+        }
+      })
+      .catch(console.error)
+  }, [])
+
+  const setSucursalActiva = (s: Sucursal) => {
+    setSucursalActivaState(s)
+    localStorage.setItem("sucursal_activa_id", String(s.id))
+  }
+
   const [clientes, setClientes] = useState<Cliente[]>(clientesIniciales)
   const [proveedores, setProveedores] = useState<Proveedor[]>(proveedoresIniciales)
   const [productos, setProductos] = useState<Producto[]>(productosIniciales)
@@ -822,9 +855,13 @@ export function ERPProvider({ children }: { children: ReactNode }) {
     logout,
     changePassword,
 
-    // Datos maestros
-    sucursales,
-    clientes,
+      // Datos maestros
+      sucursales,
+      setSucursales,
+      sucursalActiva,
+      setSucursalActiva,
+      usuarios,
+      clientes,
     setClientes,
     proveedores,
     setProveedores,
