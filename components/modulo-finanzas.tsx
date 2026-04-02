@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useMemo } from "react"
+import { useERP } from "@/contexts/erp-context"
 import {
   Plus, Trash2, Edit, X, Check, Search, ChevronDown, AlertCircle,
   CreditCard, Building2, Percent, Calendar, ToggleLeft, ToggleRight,
@@ -128,7 +129,7 @@ const DIAS_LABELS = [
   { key: "dom", label: "D" },
 ] as const
 
-const SUCURSALES = ["Puerto Norte", "Centro", "Rosario Central"]
+// SUCURSALES se obtiene del contexto ERP
 const CUOTAS_OPTIONS = [1, 2, 3, 4, 5, 6, 9, 12, 18, 24]
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
@@ -505,6 +506,7 @@ function SeccionRecargos({ tarjetas, grupos, recargos, setRecargos }: {
   tarjetas: Tarjeta[]; grupos: GrupoTarjeta[]
   recargos: RecargoTarjeta[]; setRecargos: React.Dispatch<React.SetStateAction<RecargoTarjeta[]>>
 }) {
+  const { sucursales } = useERP()
   const [editando, setEditando] = useState<RecargoTarjeta | null>(null)
   const [creando, setCreando] = useState(false)
   const [form, setForm] = useState<Partial<RecargoTarjeta>>({})
@@ -558,7 +560,7 @@ function SeccionRecargos({ tarjetas, grupos, recargos, setRecargos }: {
               <select value={form.sucursal || ""} onChange={e => setForm(f => ({ ...f, sucursal: e.target.value }))}
                 className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none">
                 <option value="">Seleccionar...</option>
-                {SUCURSALES.map(s => <option key={s} value={s}>{s}</option>)}
+                {sucursales.filter(s => s.activa).map(s => <option key={s.id} value={s.nombre}>{s.nombre}</option>)}
               </select>
             </div>
             <div>
