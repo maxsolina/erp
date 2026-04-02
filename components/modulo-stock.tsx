@@ -6,6 +6,7 @@ import OdooFilterBar, { FilterOption, GroupByOption, SavedFilter } from "./odoo-
 import BotonVolver from "./ui/boton-volver"
 import ModuloProductos from "./modulo-productos"
 import { useERP } from "@/contexts/erp-context"
+import { crearUbicacion } from "@/lib/stock-actions"
 
 // Types para Stock/Deposito
 interface Deposito {
@@ -706,6 +707,26 @@ export default function ModuloStock() {
   const [creandoControl, setCreandoControl] = useState(false)
   const [creandoDeposito, setCreandoDeposito] = useState(false)
   const [creandoUbicacion, setCreandoUbicacion] = useState(false)
+  const [formUbicacion, setFormUbicacion] = useState({ codigo: "", nombre: "", tipo: "interna", deposito_id: 0, es_reparacion: false, es_defecto: false })
+  const [guardandoUbicacion, setGuardandoUbicacion] = useState(false)
+  const [errorUbicacion, setErrorUbicacion] = useState<string | null>(null)
+
+  const handleGuardarUbicacion = () => {
+    if (!formUbicacion.codigo.trim() || !formUbicacion.nombre.trim() || !formUbicacion.deposito_id) {
+      setErrorUbicacion("Código, nombre y depósito son obligatorios.")
+      return
+    }
+    setGuardandoUbicacion(true)
+    setErrorUbicacion(null)
+    crearUbicacion(formUbicacion)
+      .then(nueva => {
+        setUbicaciones(prev => [...prev, nueva])
+        setCreandoUbicacion(false)
+        setFormUbicacion({ codigo: "", nombre: "", tipo: "interna", deposito_id: 0, es_reparacion: false, es_defecto: false })
+      })
+      .catch(err => setErrorUbicacion(err.message ?? "Error al crear ubicación"))
+      .finally(() => setGuardandoUbicacion(false))
+  }
   const [editandoUbicacion, setEditandoUbicacion] = useState(false)
   const [editandoDeposito, setEditandoDeposito] = useState(false)
   const [menuExpandido, setMenuExpandido] = useState({ 
@@ -3206,19 +3227,38 @@ export default function ModuloStock() {
           
           <div className="bg-white rounded-lg shadow-sm p-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Nueva Ubicación</h2>
+            {errorUbicacion && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{errorUbicacion}</div>
+            )}
             <div className="grid grid-cols-2 gap-x-12 gap-y-4">
               <div className="space-y-4">
                 <div className="flex items-center gap-4">
                   <label className="w-40 text-sm text-gray-600">Código *</label>
-                  <input type="text" placeholder="Ej: CC/Stock/A1" className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <input
+                    type="text"
+                    value={formUbicacion.codigo}
+                    onChange={e => setFormUbicacion(f => ({ ...f, codigo: e.target.value }))}
+                    placeholder="Ej: DEP/Stock/A1"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
                 </div>
                 <div className="flex items-center gap-4">
                   <label className="w-40 text-sm text-gray-600">Nombre *</label>
-                  <input type="text" placeholder="Nombre de la ubicación" className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  <input
+                    type="text"
+                    value={formUbicacion.nombre}
+                    onChange={e => setFormUbicacion(f => ({ ...f, nombre: e.target.value }))}
+                    placeholder="Nombre de la ubicación"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
                 </div>
                 <div className="flex items-center gap-4">
                   <label className="w-40 text-sm text-gray-600">Tipo *</label>
-                  <select className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                  <select
+                    value={formUbicacion.tipo}
+                    onChange={e => setFormUbicacion(f => ({ ...f, tipo: e.target.value }))}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
                     <option value="interna">Ubicación interna</option>
                     <option value="cliente">Cliente</option>
                     <option value="proveedor">Proveedor</option>
@@ -3227,20 +3267,15 @@ export default function ModuloStock() {
                     <option value="transito">Tránsito</option>
                   </select>
                 </div>
-                <div className="flex items-center gap-4">
-                  <label className="w-40 text-sm text-gray-600">Categoría</label>
-                  <select className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                    <option value="">Seleccionar...</option>
-                    {mockCategoriasUbicacion.map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.nombre}</option>
-                    ))}
-                  </select>
-                </div>
               </div>
               <div className="space-y-4">
                 <div className="flex items-center gap-4">
                   <label className="w-40 text-sm text-gray-600">Depósito *</label>
-                  <select className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                  <select
+                    value={formUbicacion.deposito_id || ""}
+                    onChange={e => setFormUbicacion(f => ({ ...f, deposito_id: Number(e.target.value) }))}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
                     <option value="">Seleccionar...</option>
                     {depositos.map(dep => (
                       <option key={dep.id} value={dep.id}>{dep.nombre}</option>
@@ -3248,29 +3283,38 @@ export default function ModuloStock() {
                   </select>
                 </div>
                 <div className="flex items-center gap-4">
-                  <label className="w-40 text-sm text-gray-600">Es Scrap</label>
-                  <input type="checkbox" className="rounded border-gray-300" />
+                  <label className="w-40 text-sm text-gray-600">Es Reparación</label>
+                  <input
+                    type="checkbox"
+                    checked={formUbicacion.es_reparacion}
+                    onChange={e => setFormUbicacion(f => ({ ...f, es_reparacion: e.target.checked }))}
+                    className="rounded border-gray-300"
+                  />
                 </div>
                 <div className="flex items-center gap-4">
-                  <label className="w-40 text-sm text-gray-600">Es Devolución</label>
-                  <input type="checkbox" className="rounded border-gray-300" />
-                </div>
-                <div className="flex items-center gap-4">
-                  <label className="w-40 text-sm text-gray-600">Disponible NV</label>
-                  <input type="checkbox" defaultChecked className="rounded border-gray-300" />
-                </div>
-                <div className="flex items-center gap-4">
-                  <label className="w-40 text-sm text-gray-600">Activa</label>
-                  <input type="checkbox" defaultChecked className="rounded border-gray-300" />
+                  <label className="w-40 text-sm text-gray-600">Ubicación por defecto</label>
+                  <input
+                    type="checkbox"
+                    checked={formUbicacion.es_defecto}
+                    onChange={e => setFormUbicacion(f => ({ ...f, es_defecto: e.target.checked }))}
+                    className="rounded border-gray-300"
+                  />
                 </div>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
-              <button onClick={() => setCreandoUbicacion(false)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
+              <button
+                onClick={() => { setCreandoUbicacion(false); setErrorUbicacion(null) }}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm"
+              >
                 Cancelar
               </button>
-              <button onClick={() => setCreandoUbicacion(false)} className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 text-sm">
-                Guardar
+              <button
+                onClick={handleGuardarUbicacion}
+                disabled={guardandoUbicacion}
+                className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 text-sm disabled:opacity-50"
+              >
+                {guardandoUbicacion ? "Guardando..." : "Guardar"}
               </button>
             </div>
           </div>
