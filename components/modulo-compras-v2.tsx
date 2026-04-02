@@ -558,6 +558,7 @@ export default function ModuloCompras() {
     ordenesPago,
     setOrdenesPago,
     sucursales,
+    recargarProductos,
   } = useERP()
 
   // Carga inicial desde Supabase
@@ -3977,10 +3978,10 @@ export default function ModuloCompras() {
         }, rec.id).catch((e: any) => console.error("[v0] Error guardando IDs depósito:", e.message))
 
         procesarEntradaRecepcion({
-          recepcion_id: recActualizada.id,
-          recepcion_numero: recActualizada.numero,
-          deposito_id: depositoDestino.id,
-          ubicacion_id: ubicacionDestino.id,
+          recepcion_id:      recActualizada.id,
+          recepcion_numero:  recActualizada.numero,
+          deposito_id:       depositoDestino.id,
+          ubicacion_id:      ubicacionDestino.id,
           lineas: lineasActualizadas
             .filter(l => l.cantidad_recibida > 0)
             .map(l => ({
@@ -3998,6 +3999,9 @@ export default function ModuloCompras() {
                   }))
                 : undefined,
             })),
+        }).then(() => {
+          // Recargar stock_real de productos en el contexto global
+          recargarProductos()
         }).catch((err: any) => console.error("[stock] Error procesando entrada de stock:", err))
       }).catch((err: any) => console.error("[stock] Error obteniendo ubicaciones:", err))
     }).catch((err: any) => console.error("[stock] Error obteniendo depósitos:", err))

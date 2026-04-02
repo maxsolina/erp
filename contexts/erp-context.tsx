@@ -293,6 +293,7 @@ interface ERPContextType {
   setProveedores: React.Dispatch<React.SetStateAction<Proveedor[]>>
   productos: Producto[]
   setProductos: React.Dispatch<React.SetStateAction<Producto[]>>
+  recargarProductos: () => Promise<void>
 
   // Movimientos
   movimientosStock: MovimientoStock[]
@@ -406,6 +407,18 @@ export function ERPProvider({ children }: { children: ReactNode }) {
   const [clientes, setClientes] = useState<Cliente[]>(clientesIniciales)
   const [proveedores, setProveedores] = useState<Proveedor[]>(proveedoresIniciales)
   const [productos, setProductos] = useState<Producto[]>(productosIniciales)
+
+  // Cargar productos desde Supabase al iniciar (para tener stock_real actualizado)
+  const recargarProductos = async () => {
+    try {
+      const r = await fetch("/api/productos")
+      if (!r.ok) return
+      const data = await r.json()
+      if (Array.isArray(data) && data.length > 0) setProductos(data)
+    } catch { /* fallback a datos iniciales */ }
+  }
+
+  useEffect(() => { recargarProductos() }, [])
 
   // Movimientos
   const [movimientosStock, setMovimientosStock] = useState<MovimientoStock[]>([])
@@ -866,6 +879,7 @@ export function ERPProvider({ children }: { children: ReactNode }) {
     setProveedores,
     productos,
     setProductos,
+    recargarProductos,
 
     // Movimientos
     movimientosStock,
