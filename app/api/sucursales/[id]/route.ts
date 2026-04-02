@@ -8,31 +8,31 @@ function getSupabase() {
   )
 }
 
-export async function GET() {
-  const supabase = getSupabase()
-  const { data, error } = await supabase
-    .from("sucursales")
-    .select("id, codigo, nombre, direccion, telefono, deposito_id, activa")
-    .order("nombre")
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data ?? [])
-}
-
-export async function POST(req: Request) {
+export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const supabase = getSupabase()
   const body = await req.json()
   const { data, error } = await supabase
     .from("sucursales")
-    .insert({
+    .update({
       codigo: body.codigo,
       nombre: body.nombre,
       direccion: body.direccion ?? null,
       telefono: body.telefono ?? null,
       deposito_id: body.deposito_id ?? null,
-      activa: body.activa ?? true,
+      activa: body.activa,
     })
+    .eq("id", id)
     .select()
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data, { status: 201 })
+  return NextResponse.json(data)
+}
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const supabase = getSupabase()
+  const { error } = await supabase.from("sucursales").delete().eq("id", id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
 }
