@@ -538,7 +538,7 @@ interface MovimientoCtaCteProveedor {
   saldo: number
 }
 
-// Depósitos y ubicaciones se cargan desde Supabase dinámicamente (v2)
+// Depósitos y ubicaciones se cargan desde Supabase dinámicamente
 
 export default function ModuloCompras() {
   // Estado global persistente
