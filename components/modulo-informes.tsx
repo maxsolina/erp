@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useMemo } from "react"
+import { useERP } from "@/contexts/erp-context"
 import { 
   BarChart3, 
   FileText, 
@@ -107,10 +108,9 @@ const datosVentasMock: DatoVenta[] = [
   { id: 14, fecha: "2026-03-14", mes: "2026 Mar", anio: 2026, sucursal: "Puerto Norte", vendedor: "Ana García", cliente: "Empresa XYZ", categoria_cliente: "Corporativo", producto: "Plan Mantenimiento", categoria_producto: "Finanzas", subcategoria_producto: "Servicios", marca: "-", cantidad: 1, precio_unitario: 150000, total: 150000, descuento: 0, impuestos: 31500, costo: 50000, margen: 100000 },
 ]
 
-// Sucursales disponibles
-const sucursalesDisponibles = ["Casa Central", "Puerto Norte", "Casilda"]
-
 export default function ModuloInformes() {
+  const { sucursales } = useERP()
+  const sucursalesDisponibles = sucursales.filter(s => s.activa).map(s => s.nombre)
   // Estados del modal de filtros
   const [showFilterModal, setShowFilterModal] = useState(false)
   const [filterSucursales, setFilterSucursales] = useState<string[]>([])

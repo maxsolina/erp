@@ -5,6 +5,8 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from "react"
 import { useClientes } from "@/hooks/use-clientes"
 import { crearCliente as apiCrearCliente, actualizarCliente as apiActualizarCliente } from "@/hooks/use-clientes"
 import type { ClienteDB } from "@/hooks/use-clientes"
+import { useERP } from "@/contexts/erp-context"
+import { fetchDepositos } from "@/lib/stock-actions"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History } from "lucide-react"
  import BotonVolver from "./ui/boton-volver"
 import ProductoDropdown from "./producto-dropdown"
@@ -1047,6 +1049,12 @@ interface ModuloVentasProps {
 
 
 export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: ModuloVentasProps = {}) {
+  const { sucursales } = useERP()
+  const [depositos, setDepositos] = useState<{ id: number; nombre: string; codigo: string }[]>([])
+  useEffect(() => {
+    fetchDepositos().then(d => setDepositos(Array.isArray(d) ? d : [])).catch(console.error)
+  }, [])
+
   // Navigation state
   const [activeSection, setActiveSection] = useState<string>("clientes")
   const [activeView, setActiveView] = useState<string>("listado")
@@ -11195,10 +11203,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Depósito</label>
-                <select name="deposito" defaultValue={editingItem?.deposito || "Puerto Norte"}
+                <select name="deposito" defaultValue={editingItem?.deposito || ""}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                  <option value="Puerto Norte">Puerto Norte</option>
-                  <option value="Pichincha">Pichincha</option>
+                  <option value="">Seleccionar depósito...</option>
+                  {depositos.map(d => (
+                    <option key={d.id} value={d.nombre}>{d.nombre}</option>
+                  ))}
                 </select>
               </div>
             </div>

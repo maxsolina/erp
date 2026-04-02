@@ -5,6 +5,7 @@ import { Search, Filter, ChevronDown, X, Plus, FileText, Truck, Package, ArrowRi
 import OdooFilterBar, { FilterOption, GroupByOption, SavedFilter } from "./odoo-filter-bar"
 import BotonVolver from "./ui/boton-volver"
 import ModuloProductos from "./modulo-productos"
+import { useERP } from "@/contexts/erp-context"
 
 // Types para Stock/Deposito
 interface Deposito {
@@ -235,8 +236,7 @@ const mockCategoriasUbicacion: CategoriaUbicacion[] = [
   { id: 5, codigo: "REP", nombre: "En Reparación", descripcion: "Productos en proceso de reparación" },
 ]
 
-// Sucursal actual
-const SUCURSAL_ACTUAL = "Puerto Norte"
+// SUCURSAL_ACTUAL se obtiene del contexto ERP dinámicamente
 
 // Helper functions
 const formatDate = (dateString: string) => {
@@ -570,6 +570,7 @@ function FormNuevoDeposito({
 
 // Component Principal
 export default function ModuloStock() {
+  const { sucursales, sucursalActiva } = useERP()
   // Estados principales
   const [activeView, setActiveView] = useState<string>("productos")
   const [searchTerm, setSearchTerm] = useState("")
@@ -932,7 +933,7 @@ export default function ModuloStock() {
           </div>
           <div>
             <h2 className="font-semibold text-gray-900">Deposito</h2>
-            <p className="text-xs text-amber-600">{SUCURSAL_ACTUAL}</p>
+            <p className="text-xs text-amber-600">{sucursalActiva?.nombre ?? ""}</p>
           </div>
         </div>
 
@@ -1688,9 +1689,9 @@ export default function ModuloStock() {
                   onChange={(e) => setTransFormSucursal(e.target.value)}
                   className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500"
                 >
-                  <option value="Puerto Norte">Puerto Norte</option>
-                  <option value="Casa Central">Casa Central</option>
-                  <option value="Casilda">Casilda</option>
+                  {sucursales.filter(s => s.activa).map(s => (
+                    <option key={s.id} value={s.nombre}>{s.nombre}</option>
+                  ))}
                 </select>
               </div>
             </div>

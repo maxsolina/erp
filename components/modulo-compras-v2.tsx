@@ -553,6 +553,7 @@ export default function ModuloCompras() {
     setFacturasCompra,
     ordenesPago,
     setOrdenesPago,
+    sucursales,
   } = useERP()
 
   // Carga inicial desde Supabase
@@ -623,7 +624,7 @@ export default function ModuloCompras() {
   // CATEGORIAS_PROVEEDOR es ahora dinámico
   const CATEGORIAS_PROVEEDOR = categoriasProveedor.map(c => c.nombre)
 
-  const SUCURSALES_LISTA = ["Puerto Norte", "Centro", "Sur"]
+  const SUCURSALES_LISTA = sucursales.map(s => s.nombre)
   const MONEDAS_LISTA: Array<"ARS" | "USD" | "EUR"> = ["ARS", "USD", "EUR"]
   const CUENTAS_GASTOS = ["5.1.1 - Compras Mercadería", "5.1.2 - Gastos Importación", "5.2.1 - Servicios", "5.2.2 - Flete y Aduanas"]
   const TIPOS_COTIZACION = ["Dólar Oficial", "Dólar MEP", "Dólar Blue"]
@@ -2738,9 +2739,9 @@ export default function ModuloCompras() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Seleccionar sucursal...</option>
-                  <option value="Puerto Norte">Puerto Norte</option>
-                  <option value="Centro">Centro</option>
-                  <option value="Sur">Sur</option>
+                  {sucursales.filter(s => s.activa).map(s => (
+                    <option key={s.id} value={s.nombre}>{s.nombre}</option>
+                  ))}
                 </select>
               </div>
               <div>
