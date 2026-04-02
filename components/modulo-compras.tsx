@@ -3827,50 +3827,38 @@ export default function ModuloCompras() {
       }))
     }
 
-    // Persistir a Supabase de forma async sin bloquear la UI
-    ;(async () => {
-      try {
-        const todasRecibidas = lineasActualizadas.every(l => l.estado_linea === 'recibido')
-        await guardarRecepcion({
-          estado: "confirmada",
-          items: lineasActualizadas.map(l => ({
-            producto_id: l.producto_id,
-            producto_nombre: l.producto_nombre,
-            cantidad: l.cantidad_recibida,
-            precio_unitario: l.precio_unitario,
-          })),
-          total: lineasActualizadas.reduce((s, l) => s + l.cantidad_recibida * l.precio_unitario, 0),
-        }, rec.id)
-        if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
-          const ocVinculada = ordenesCompra.find(o => o.id === rec.documento_origen_id)
-          if (ocVinculada) {
-            await guardarOrdenCompra({ estado: todasRecibidas && !hayParcial ? "completa" : "parcial" }, ocVinculada.id)
-          }
+    // Persistir recepción a Supabase via .then() sin await
+    const todasRecibidasFinal = lineasActualizadas.every(l => l.estado_linea === 'recibido')
+    guardarRecepcion({
+      estado: "confirmada",
+      items: lineasActualizadas.map(l => ({
+        producto_id: l.producto_id,
+        producto_nombre: l.producto_nombre,
+        cantidad: l.cantidad_recibida,
+        precio_unitario: l.precio_unitario,
+      })),
+      total: lineasActualizadas.reduce((s, l) => s + l.cantidad_recibida * l.precio_unitario, 0),
+    }, rec.id).then(() => {
+      if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
+        const ocVinculada = ordenesCompra.find(o => o.id === rec.documento_origen_id)
+        if (ocVinculada) {
+          guardarOrdenCompra({ estado: todasRecibidasFinal && !hayParcial ? "completa" : "parcial" }, ocVinculada.id)
+            .catch((err: any) => console.error("[v0] Error al actualizar OC:", err.message))
         }
-      } catch (err: any) {
-        console.error("[v0] Error al persistir recepción:", err.message)
       }
-    })()
+    }).catch((err: any) => console.error("[v0] Error al persistir recepción:", err.message))
 
-    // Entrada de stock en Supabase
-    ;(async () => {
-      try {
-        // Obtener el depósito destino por nombre desde Supabase
-        const depositos = await fetchDepositos()
-        const depositoDestino = depositos.find(
-          (d: any) => d.nombre?.toLowerCase() === recActualizada.deposito_destino?.toLowerCase()
-            || d.codigo?.toLowerCase() === recActualizada.deposito_destino?.toLowerCase()
-        ) ?? depositos[0]
-
-        if (!depositoDestino) return
-
-        // Obtener ubicación destino por defecto del depósito
-        const ubicaciones = await fetchUbicaciones(depositoDestino.id)
+    // Entrada de stock en Supabase via .then() sin await
+    fetchDepositos().then(depositos => {
+      const depositoDestino = depositos.find(
+        (d: any) => d.nombre?.toLowerCase() === recActualizada.deposito_destino?.toLowerCase()
+          || d.codigo?.toLowerCase() === recActualizada.deposito_destino?.toLowerCase()
+      ) ?? depositos[0]
+      if (!depositoDestino) return
+      fetchUbicaciones(depositoDestino.id).then(ubicaciones => {
         const ubicacionDestino = ubicaciones.find((u: any) => u.es_defecto) ?? ubicaciones[0]
-
         if (!ubicacionDestino) return
-
-        await procesarEntradaRecepcion({
+        procesarEntradaRecepcion({
           recepcion_id: recActualizada.id,
           recepcion_numero: recActualizada.numero,
           deposito_id: depositoDestino.id,
@@ -3892,11 +3880,9 @@ export default function ModuloCompras() {
                   }))
                 : undefined,
             })),
-        })
-      } catch (err) {
-        console.error("[stock] Error procesando entrada de stock:", err)
-      }
-    })()
+        }).catch((err: any) => console.error("[stock] Error procesando entrada de stock:", err))
+      }).catch((err: any) => console.error("[stock] Error obteniendo ubicaciones:", err))
+    }).catch((err: any) => console.error("[stock] Error obteniendo depósitos:", err))
 
     // Limpiar estado temporal
     setSeriesConfirmadas({})
