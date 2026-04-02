@@ -563,7 +563,14 @@ export default function ModuloCompras() {
         (data ?? []).map((p: any) => ({ ...p, nombre: p.nombre ?? p.razon_social ?? "" }))
       )
     }).catch(console.error)
-    fetchOrdenesCompra().then(data => setOrdenesCompra(data)).catch(console.error)
+    fetchOrdenesCompra().then(data =>
+      setOrdenesCompra((data ?? []).map((oc: any) => ({
+        ...oc,
+        lineas: Array.isArray(oc.lineas) ? oc.lineas
+              : Array.isArray(oc.items)  ? oc.items
+              : [],
+      })))
+    ).catch(console.error)
     fetchRecepciones().then(data => setRecepciones(data)).catch(console.error)
     fetchFacturasCompra().then(data => setFacturasCompra(data)).catch(console.error)
     fetchOrdenesPago().then(data => setOrdenesPago(data)).catch(console.error)
