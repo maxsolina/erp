@@ -391,6 +391,183 @@ function SeguimientoPanel({
   )
 }
 
+// Formulario de nuevo depósito como componente independiente
+function FormNuevoDeposito({
+  onCancel,
+  onGuardado,
+}: {
+  onCancel: () => void
+  onGuardado: (dep: Deposito) => void
+}) {
+  const [nombre, setNombre] = useState("")
+  const [codigo, setCodigo] = useState("")
+  const [sucursalId, setSucursalId] = useState<number | "">("")
+  const [direccion, setDireccion] = useState("")
+  const [distribucion, setDistribucion] = useState(false)
+  const [tercero, setTercero] = useState(false)
+  const [activo, setActivo] = useState(true)
+  const [sucursales, setSucursales] = useState<{ id: number; nombre: string; codigo: string }[]>([])
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch("/api/sucursales")
+      .then(r => r.json())
+      .then(data => {
+        setSucursales(data ?? [])
+        // Pre-seleccionar la primera sucursal si solo hay una
+        if (data?.length === 1) setSucursalId(data[0].id)
+      })
+      .catch(console.error)
+  }, [])
+
+  const handleGuardar = async () => {
+    if (!nombre.trim()) { setError("El nombre es obligatorio"); return }
+    if (!codigo.trim()) { setError("El código es obligatorio"); return }
+    if (sucursalId === "") { setError("La sucursal es obligatoria"); return }
+    setError(null)
+    setGuardando(true)
+    try {
+      const res = await fetch("/api/depositos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre, codigo, sucursal_id: sucursalId, direccion, activo }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error ?? "Error al guardar")
+      }
+      const raw = await res.json()
+      const sucNombre = sucursales.find(s => s.id === sucursalId)?.nombre ?? ""
+      const dep: Deposito = {
+        id: raw.id,
+        codigo: raw.codigo,
+        nombre: raw.nombre,
+        sucursal: sucNombre,
+        direccion: direccion,
+        subcompanias: [],
+        deposito_distribucion: distribucion,
+        deposito_tercero: tercero,
+        activo: raw.activo,
+        ubicacion_entrada_id: null,
+        ubicacion_control_calidad_id: null,
+        ubicacion_empaquetado_id: null,
+        ubicacion_salida_id: null,
+        ubicacion_stock_id: null,
+        recepcion_automatica: false,
+        albaranes_entrada: "manual",
+        envios_salientes: "manual",
+        depositos_reabastecimiento: [],
+      }
+      onGuardado(dep)
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+        <button onClick={onCancel} className="hover:text-amber-700">Depósitos</button>
+        <span>/</span>
+        <span className="font-medium text-gray-900">Nuevo Depósito</span>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm p-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">Nuevo Depósito</h2>
+
+        {error && (
+          <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-x-12 gap-y-4">
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <label className="w-40 text-sm text-gray-600">Nombre *</label>
+              <input
+                type="text"
+                value={nombre}
+                onChange={e => setNombre(e.target.value)}
+                placeholder="Nombre del depósito"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+            </div>
+            <div className="flex items-center gap-4">
+              <label className="w-40 text-sm text-gray-600">Código *</label>
+              <input
+                type="text"
+                value={codigo}
+                onChange={e => setCodigo(e.target.value.toUpperCase())}
+                placeholder="Ej: CC, PN"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+            </div>
+            <div className="flex items-center gap-4">
+              <label className="w-40 text-sm text-gray-600">Sucursal *</label>
+              <select
+                value={sucursalId}
+                onChange={e => setSucursalId(e.target.value === "" ? "" : Number(e.target.value))}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+              >
+                <option value="">Seleccionar sucursal...</option>
+                {sucursales.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.nombre} ({s.codigo})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-4">
+              <label className="w-40 text-sm text-gray-600">Dirección</label>
+              <input
+                type="text"
+                value={direccion}
+                onChange={e => setDireccion(e.target.value)}
+                placeholder="Dirección completa"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <label className="w-40 text-sm text-gray-600">Distribución</label>
+              <input type="checkbox" checked={distribucion} onChange={e => setDistribucion(e.target.checked)} className="rounded border-gray-300" />
+            </div>
+            <div className="flex items-center gap-4">
+              <label className="w-40 text-sm text-gray-600">De Tercero</label>
+              <input type="checkbox" checked={tercero} onChange={e => setTercero(e.target.checked)} className="rounded border-gray-300" />
+            </div>
+            <div className="flex items-center gap-4">
+              <label className="w-40 text-sm text-gray-600">Activo</label>
+              <input type="checkbox" checked={activo} onChange={e => setActivo(e.target.checked)} className="rounded border-gray-300" />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleGuardar}
+            disabled={guardando}
+            className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 text-sm disabled:opacity-50"
+          >
+            {guardando ? "Guardando..." : "Guardar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Component Principal
 export default function ModuloStock() {
   // Estados principales
@@ -2803,61 +2980,13 @@ export default function ModuloStock() {
     
     // Formulario de crear depósito
     if (creandoDeposito) {
-      return (
-        <div>
-          <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
-            <button onClick={() => setCreandoDeposito(false)} className="hover:text-amber-700">Depósitos</button>
-            <span>/</span>
-            <span className="font-medium text-gray-900">Nuevo Depósito</span>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Nuevo Depósito</h2>
-            <div className="grid grid-cols-2 gap-x-12 gap-y-4">
-              <div className="space-y-4">
-                <div className="flex items-center gap-4">
-                  <label className="w-40 text-sm text-gray-600">Nombre *</label>
-                  <input type="text" placeholder="Nombre del depósito" className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                </div>
-                <div className="flex items-center gap-4">
-                  <label className="w-40 text-sm text-gray-600">Código *</label>
-                  <input type="text" placeholder="Ej: CC, PN" className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                </div>
-                <div className="flex items-center gap-4">
-                  <label className="w-40 text-sm text-gray-600">Sucursal *</label>
-                  <input type="text" placeholder="Sucursal" className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                </div>
-                <div className="flex items-center gap-4">
-                  <label className="w-40 text-sm text-gray-600">Dirección</label>
-                  <input type="text" placeholder="Dirección completa" className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                </div>
-              </div>
-              <div className="space-y-4">
-                <div className="flex items-center gap-4">
-                  <label className="w-40 text-sm text-gray-600">Distribución</label>
-                  <input type="checkbox" className="rounded border-gray-300" />
-                </div>
-                <div className="flex items-center gap-4">
-                  <label className="w-40 text-sm text-gray-600">De Tercero</label>
-                  <input type="checkbox" className="rounded border-gray-300" />
-                </div>
-                <div className="flex items-center gap-4">
-                  <label className="w-40 text-sm text-gray-600">Activo</label>
-                  <input type="checkbox" defaultChecked className="rounded border-gray-300" />
-                </div>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
-              <button onClick={() => setCreandoDeposito(false)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
-                Cancelar
-              </button>
-              <button onClick={() => setCreandoDeposito(false)} className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 text-sm">
-                Guardar
-              </button>
-            </div>
-          </div>
-        </div>
-      )
+      return <FormNuevoDeposito
+        onCancel={() => setCreandoDeposito(false)}
+        onGuardado={(dep) => {
+          setDepositos(prev => [...prev, dep])
+          setCreandoDeposito(false)
+        }}
+      />
     }
 
     // Lista de depósitos
