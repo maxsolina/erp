@@ -1003,9 +1003,10 @@ export default function ModuloCompras() {
   // =====================================================
   const renderProveedores = () => {
     const filteredProveedores = proveedores.filter(p => {
-      const matchesSearch = p.nombre.toLowerCase().includes(proveedorSearchText.toLowerCase()) ||
-                           p.codigo.toLowerCase().includes(proveedorSearchText.toLowerCase()) ||
-                           p.cuit.includes(proveedorSearchText)
+      const searchLower = proveedorSearchText.toLowerCase()
+      const matchesSearch = (p.nombre?.toLowerCase() ?? "").includes(searchLower) ||
+                           (p.codigo?.toLowerCase() ?? "").includes(searchLower) ||
+                           (p.cuit ?? "").includes(proveedorSearchText)
       const matchesCategoria = proveedorFiltroCategoria === "todos" || p.categoria === proveedorFiltroCategoria
       const matchesTipo = proveedorFiltroTipo === "todos" || p.tipo === proveedorFiltroTipo
       return matchesSearch && matchesCategoria && matchesTipo
@@ -3080,7 +3081,7 @@ export default function ModuloCompras() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr className="text-xs text-gray-500 uppercase">
-                <th className="text-left py-3 px-4">Número</th>
+                <th className="text-left py-3 px-4">N��mero</th>
                 <th className="text-left py-3 px-4">Nombre</th>
                 <th className="text-left py-3 px-4">Fecha Apertura</th>
                 <th className="text-left py-3 px-4">Despachante</th>
