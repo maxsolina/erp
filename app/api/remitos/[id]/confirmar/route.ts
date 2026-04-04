@@ -28,7 +28,9 @@ export async function POST(
     lineas,   // Array<{ producto_id, producto_nombre, cantidad, requiere_serie, series_seleccionadas }>
   } = body
 
+  console.log("[v0] confirmar remito - id:", remitoId, "lineas recibidas:", JSON.stringify(lineas))
   if (!lineas || !Array.isArray(lineas) || lineas.length === 0) {
+    console.log("[v0] confirmar remito - RECHAZADO: lineas vacías o no array")
     return NextResponse.json({ error: "Se requieren líneas del remito" }, { status: 400 })
   }
 

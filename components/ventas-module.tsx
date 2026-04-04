@@ -1244,6 +1244,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         requiere_serie: l.requiere_serie ?? false,
         series_seleccionadas: l.series_seleccionadas ?? [],
       }))
+      console.log("[v0] confirmar remito id:", remito.id, "estado:", remito.estado, "lineas:", JSON.stringify(lineas))
 
       const res = await fetch(`/api/remitos/${remito.id}/confirmar`, {
         method: "POST",
