@@ -71,7 +71,7 @@ interface ListaPrecios {
   activa: boolean
   no_visible: boolean
   dias_validez: number
-  estado: "borrador" | "activa" | "inactiva"
+  estado: "borrador" | "creada" | "activa" | "inactiva"
   usuarios_admin: number[]
   usuarios_habilitados: number[]
   observaciones_filtro: string
@@ -1858,6 +1858,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       setSelectedNV(null)
                       setSelectedAjuste(null)
                       setClientePanel("ficha")
+                      // Limpiar selección de versión al navegar a versiones desde sidebar
+                      if (item.id === "versiones_lista") {
+                        setSelectedVersion(null)
+                        setEditingVersion(null)
+                        setCreandoVersion(false)
+                        setModoEdicionVersion(false)
+                      }
+                      // Limpiar selección de lista al navegar a listas desde sidebar
+                      if (item.id === "listas_precios") {
+                        setSelectedListaPrecios(null)
+                        setEditingListaPrecios(null)
+                        setCreandoListaPrecios(false)
+                        setModoEdicionListaPrecios(false)
+                      }
                     }}
                     className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center gap-2 ${section.id === "config_notas_credito" ? "text-xs" : "text-sm"} ${
                       activeView === item.id 
@@ -9248,6 +9262,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       const nuevaLista: ListaPrecios = {
         ...editingListaPrecios,
         id: nuevoId,
+        estado: editingListaPrecios.estado === "borrador" ? "creada" : editingListaPrecios.estado,
         seguimiento: [{
           id: 1,
           fecha: fechaActual,
@@ -9322,6 +9337,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setEditingVersion(nuevaVersion)
     setCreandoVersion(true)
     setModoEdicionVersion(true)
+    setActiveView("versiones_lista")
   }
 
   const crearVersionBasadaEnOtra = (versionBase: VersionListaPrecios) => {
@@ -9865,6 +9881,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <td className="py-3 px-4 text-center">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                         lista.estado === 'activa' ? 'bg-green-100 text-green-800' :
+                        lista.estado === 'creada' ? 'bg-blue-100 text-blue-800' :
                         lista.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' :
                         'bg-red-100 text-red-800'
                       }`}>
@@ -9996,12 +10013,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               {isEditing ? (
                 <select value={currentLista.estado} onChange={(e) => setEditingListaPrecios({ ...currentLista, estado: e.target.value as ListaPrecios["estado"] })} className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
                   <option value="borrador">Borrador</option>
+                  <option value="creada">Creada</option>
                   <option value="activa">Activa</option>
                   <option value="inactiva">Inactiva</option>
                 </select>
               ) : (
                 <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
                   currentLista.estado === 'activa' ? 'bg-green-100 text-green-800' :
+                  currentLista.estado === 'creada' ? 'bg-blue-100 text-blue-800' :
                   currentLista.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
                 }`}>{currentLista.estado.charAt(0).toUpperCase() + currentLista.estado.slice(1)}</span>
               )}
@@ -10209,9 +10228,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   // ==================== VERSIONES DE LISTA ====================
   
   const renderVersionesLista = () => {
-    if (selectedVersion) {
-      return renderDetalleVersion()
-    }
+    if (selectedVersion) return renderDetalleVersion()
     return renderListaVersiones()
   }
 
