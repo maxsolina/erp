@@ -1,6 +1,4 @@
-"use server"
-
-import { createClient } from "@/lib/supabase/server"
+import { createClient } from "@/lib/supabase/client"
 
 export interface CategoriaProveedorDB {
   id: number
@@ -16,7 +14,7 @@ export interface CategoriaProveedorDB {
 }
 
 export async function getCategoriaProveedores(): Promise<CategoriaProveedorDB[]> {
-  const supabase = await createClient()
+  const supabase = createClient()
   const { data, error } = await supabase
     .from("categorias_proveedor")
     .select("*")
@@ -29,7 +27,7 @@ export async function getCategoriaProveedores(): Promise<CategoriaProveedorDB[]>
 export async function createCategoriaProveedor(
   payload: Omit<CategoriaProveedorDB, "id" | "created_at">
 ): Promise<CategoriaProveedorDB> {
-  const supabase = await createClient()
+  const supabase = createClient()
   const { data, error } = await supabase
     .from("categorias_proveedor")
     .insert(payload)
@@ -44,7 +42,7 @@ export async function updateCategoriaProveedor(
   id: number,
   payload: Partial<Omit<CategoriaProveedorDB, "id" | "created_at">>
 ): Promise<CategoriaProveedorDB> {
-  const supabase = await createClient()
+  const supabase = createClient()
   const { data, error } = await supabase
     .from("categorias_proveedor")
     .update(payload)
@@ -57,7 +55,7 @@ export async function updateCategoriaProveedor(
 }
 
 export async function deleteCategoriaProveedor(id: number): Promise<void> {
-  const supabase = await createClient()
+  const supabase = createClient()
   const { error } = await supabase
     .from("categorias_proveedor")
     .delete()

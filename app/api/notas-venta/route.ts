@@ -8,22 +8,58 @@ function getSupabase() {
   )
 }
 
-// GET — listar NVs
+// GET — listar NVs con sus líneas (dos queries separadas, sin FK PostgREST)
 export async function GET(req: Request) {
   const supabase = getSupabase()
   const { searchParams } = new URL(req.url)
   const numero = searchParams.get("numero")
 
-  let query = supabase
+  // 1. Cabeceras
+  let nvQuery = supabase
     .from("notas_venta")
-    .select("*, notas_venta_lineas(*)")
+    .select("*")
     .order("created_at", { ascending: false })
+  if (numero) nvQuery = nvQuery.eq("numero", numero)
 
-  if (numero) query = query.eq("numero", numero)
+  const { data: nvs, error: nvErr } = await nvQuery
+  if (nvErr) return NextResponse.json({ error: nvErr.message }, { status: 500 })
+  if (!nvs || nvs.length === 0) return NextResponse.json([])
 
-  const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+  // 2. Líneas de todas las NVs
+  const nvIds = nvs.map((n: any) => n.id)
+  const { data: lineas, error: lineasErr } = await supabase
+    .from("notas_venta_lineas")
+    .select("*")
+    .in("nota_venta_id", nvIds)
+
+  if (lineasErr) return NextResponse.json({ error: lineasErr.message }, { status: 500 })
+
+  // 3. Enriquecer con datos de clientes
+  const clienteIds = [...new Set(nvs.map((n: any) => n.cliente_id).filter(Boolean))]
+  let clientesMap: Record<number, any> = {}
+  if (clienteIds.length > 0) {
+    const { data: clientes } = await supabase
+      .from("clientes")
+      .select("id, nombre, codigo")
+      .in("id", clienteIds)
+    ;(clientes ?? []).forEach((c: any) => { clientesMap[c.id] = c })
+  }
+
+  // 4. Combinar líneas
+  const lineasPorNV: Record<number, any[]> = {}
+  ;(lineas ?? []).forEach((l: any) => {
+    if (!lineasPorNV[l.nota_venta_id]) lineasPorNV[l.nota_venta_id] = []
+    lineasPorNV[l.nota_venta_id].push(l)
+  })
+
+  const result = nvs.map((nv: any) => ({
+    ...nv,
+    cliente_nombre: clientesMap[nv.cliente_id]?.nombre ?? nv.cliente_nombre ?? "",
+    cliente_codigo: clientesMap[nv.cliente_id]?.codigo ?? "",
+    notas_venta_lineas: lineasPorNV[nv.id] ?? [],
+  }))
+
+  return NextResponse.json(result)
 }
 
 // POST — crear NV con sus líneas
@@ -43,21 +79,25 @@ export async function POST(req: Request) {
     lineas = [],
   } = body
 
-  if (!numero || !cliente_id) {
-    return NextResponse.json({ error: "numero y cliente_id son requeridos" }, { status: 400 })
+  if (!numero) {
+    return NextResponse.json({ error: "numero es requerido" }, { status: 400 })
   }
+
+  // Mapear estado al enum válido de Supabase
+  const ESTADOS_VALIDOS = ["abierta", "facturada", "cancelada", "parcial"]
+  const estadoNormalizado = ESTADOS_VALIDOS.includes(estado) ? estado : "abierta"
 
   // Insertar cabecera de NV
   const { data: nv, error: nvErr } = await supabase
     .from("notas_venta")
     .insert({
       numero,
-      cliente_id,
+      cliente_id: cliente_id ?? null,
       vendedor_id: vendedor_id ?? null,
       sucursal_id: sucursal_id ?? null,
       moneda: moneda ?? "ARS",
-      estado: estado ?? "abierta",
-      total: total ?? 0,
+      estado: estadoNormalizado,
+      total: Number(total ?? 0),
       notas: notas ?? null,
     })
     .select()
@@ -66,17 +106,23 @@ export async function POST(req: Request) {
   if (nvErr) return NextResponse.json({ error: nvErr.message }, { status: 500 })
 
   // Insertar líneas si las hay
-  if (lineas.length > 0) {
-    const lineasInsert = lineas.map((l: any) => ({
-      nota_venta_id: nv.id,
-      producto_id: l.producto_id ?? null,
-      producto_nombre: l.producto_nombre,
-      descripcion: l.descripcion ?? null,
-      cantidad: l.cantidad,
-      precio_unitario: l.precio_unitario ?? 0,
-      descuento: l.descuento ?? 0,
-      subtotal: l.subtotal ?? (l.cantidad * (l.precio_unitario ?? 0)),
-    }))
+  if (Array.isArray(lineas) && lineas.length > 0) {
+    const lineasInsert = lineas.map((l: any) => {
+      const cant = Number(l.cantidad ?? 1)
+      const precio = Number(l.precio_unitario ?? 0)
+      const desc = Number(l.descuento ?? 0)
+      const sub = Number(l.subtotal ?? (cant * precio))
+      return {
+        nota_venta_id: nv.id,
+        producto_id: l.producto_id ?? null,
+        producto_nombre: String(l.producto_nombre ?? ""),
+        descripcion: l.descripcion ?? null,
+        cantidad: cant,
+        precio_unitario: precio,
+        descuento: desc,
+        subtotal: isNaN(sub) ? 0 : sub,
+      }
+    })
 
     const { error: lineasErr } = await supabase
       .from("notas_venta_lineas")

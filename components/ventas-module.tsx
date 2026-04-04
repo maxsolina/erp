@@ -179,7 +179,7 @@ interface NotaVenta {
   vendedor_id: number
   vendedor_nombre: string
   fecha: string
-  estado: "borrador" | "a_facturar" | "verificacion_factura" | "verificacion_oe" | "finalizada" | "cancelada"
+  estado: "borrador" | "a_facturar" | "verificacion_factura" | "verificacion_oe" | "finalizada" | "cancelada" | "abierta" | "facturada" | "parcial"
   moneda: "ARS" | "USD"
   tipo_cotizacion: "blue" | "oficial"
   cotizacion: number
@@ -205,7 +205,7 @@ interface OrdenEntrega {
   nota_venta_numero: string
   cliente_id: number
   cliente_nombre: string
-  estado: "borrador" | "esperando" | "parcial" | "disponible" | "confirmada"
+  estado: "borrador" | "esperando" | "parcial" | "disponible" | "confirmada" | "finalizada"
   fecha_creacion: string
   fecha_entrega: string
   domicilio_envio: string
@@ -237,7 +237,7 @@ interface Remito {
   orden_entrega_numero: string
   cliente_id: number
   cliente_nombre: string
-  estado: "en_ejecucion" | "aprobado" | "entregado" | "borrador"
+  estado: "en_ejecucion" | "aprobado" | "entregado" | "borrador" | "confirmado"
   fecha: string
   fecha_entrega: string
   domicilio_envio: string
@@ -520,28 +520,9 @@ const mockNotasVenta: NotaVenta[] = [
   },
 ]
 
-const mockOrdenesEntrega: OrdenEntrega[] = [
-  {
-    id: 1, numero: "OE X 10000-00011502", nota_venta_id: 1, nota_venta_numero: "NV X 10000-00010735",
-    cliente_id: 1, cliente_nombre: "Alejandra Gallo", estado: "disponible",
-    fecha_creacion: "2024-01-20T10:35:00", fecha_entrega: "2024-01-20", domicilio_envio: "Av. Rivadavia 1234, Rosario",
-    deposito: "Puerto Norte", sucursal: "Puerto Norte", remito_numero: null,
-    productos: [
-      { producto_id: 1, producto_nombre: "iPhone 15 Pro Max 256GB", cantidad: 1, reserva: 1, estado: "confirmado" }
-    ]
-  },
-]
+const mockOrdenesEntrega: OrdenEntrega[] = []
 
-const mockRemitos: Remito[] = [
-  {
-    id: 1, numero: "RE R 10000-00011196", orden_entrega_id: 2, orden_entrega_numero: "OE X 10000-00011500",
-    cliente_id: 3, cliente_nombre: "Juan Carlos Méndez", estado: "aprobado",
-    fecha: "2024-01-19T17:00:00", fecha_entrega: "2024-01-19", domicilio_envio: "Córdoba 890, Rosario",
-    transporte: "Retira en local", chofer: "", factura_numero: "FC C 10000-00012375",
-    nota_venta_numero: "NV X 10000-00010734", sucursal: "Puerto Norte", deposito: "Puerto Norte",
-    peso_kg: 0.5, peso_neto_kg: 0.3, bultos: 1, valor_declarado: 517275, control_factura: "facturado"
-  },
-]
+const mockRemitos: Remito[] = []
 
 const mockFacturas: Factura[] = [
   {
@@ -1236,13 +1217,17 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     if (confirmandoRemito) return
     setConfirmandoRemito(true)
     try {
-      // Construir las líneas desde el remito
-      const lineas = (remito.lineas ?? []).map((l: any) => ({
+      // Construir las líneas desde remito.lineas o remito.productos como fallback
+      const fuenteLineas = (remito.lineas && remito.lineas.length > 0)
+        ? remito.lineas
+        : (remito.productos ?? [])
+
+      const lineas = fuenteLineas.map((l: any) => ({
         producto_id: l.producto_id,
         producto_nombre: l.producto_nombre ?? l.nombre ?? "",
         cantidad: l.cantidad ?? 1,
         requiere_serie: l.requiere_serie ?? false,
-        series_seleccionadas: l.series_seleccionadas ?? [],
+        series_seleccionadas: l.series_seleccionadas ?? l.series ?? [],
       }))
       const res = await fetch(`/api/remitos/${remito.id}/confirmar`, {
         method: "POST",
@@ -1584,14 +1569,75 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               requiere_serie: false,
               series_seleccionadas: [],
             })),
-            subtotal: nv.total ?? 0,
+            subtotal: Number(nv.total ?? 0),
             descuento_global: 0,
             impuestos: 0,
-            total: nv.total ?? 0,
+            cotizacion: Number(nv.cotizacion ?? 1150),
+            cotizacion_tipo: nv.tipo_cotizacion ?? "blue",
+            total: Number(nv.total ?? 0),
             sucursal: nv.sucursal ?? "Puerto Norte",
             punto_venta: nv.punto_venta ?? "10000",
           }))
           setNotasVenta(mapeadas)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  // Cargar OEs desde Supabase al iniciar
+  useEffect(() => {
+    fetch("/api/ordenes-entrega")
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setOrdenesEntrega(data.map((oe: any) => ({
+            id: oe.id,
+            numero: oe.numero,
+            nota_venta_id: oe.nota_venta_id ?? 0,
+            nota_venta_numero: oe.nota_venta_numero ?? "",
+            cliente_id: oe.cliente_id ?? 0,
+            cliente_nombre: oe.cliente_nombre ?? "",
+            fecha: oe.fecha ?? oe.created_at,
+            fecha_entrega_programada: oe.fecha_entrega_programada ?? oe.fecha ?? "",
+            estado: oe.estado ?? "confirmada",
+            tipo: oe.tipo ?? "venta",
+            deposito_origen: oe.deposito_origen ?? "",
+            ubicacion_origen: oe.ubicacion_origen ?? "",
+            total_productos: oe.total_productos ?? 0,
+            productos_entregados: oe.productos_entregados ?? 0,
+            productos: oe.productos ?? [],
+            seguimiento: oe.seguimiento ?? [],
+          })))
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  // Cargar Remitos desde Supabase al iniciar
+  useEffect(() => {
+    fetch("/api/remitos-venta")
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setRemitos(data.map((r: any) => ({
+            id: r.id,
+            numero: r.numero,
+            orden_entrega_id: r.orden_entrega_id ?? 0,
+            orden_entrega_numero: r.orden_entrega_numero ?? "",
+            nota_venta_numero: r.nota_venta_numero ?? "",
+            cliente_id: r.cliente_id ?? 0,
+            cliente_nombre: r.cliente_nombre ?? "",
+            fecha: r.fecha ?? r.created_at,
+            estado: r.estado ?? "confirmado",
+            tipo: r.tipo ?? "salida",
+            deposito: r.deposito ?? "",
+            ubicacion: r.ubicacion ?? "",
+            total_bultos: r.total_bultos ?? 1,
+            observaciones: r.observaciones ?? "",
+            productos: r.productos ?? [],
+            lineas: r.lineas ?? [],
+            seguimiento: r.seguimiento ?? [],
+          })))
         }
       })
       .catch(() => {})
@@ -1839,7 +1885,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       label: "Logística",
       icon: Truck,
       items: [
-        { id: "ordenes_entrega", label: "Órdenes de Entrega", icon: Truck },
+        { id: "ordenes_entrega", label: "��rdenes de Entrega", icon: Truck },
         { id: "remitos", label: "Remitos", icon: Package },
       ]
     },
@@ -3503,7 +3549,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   // Función para crear NV (usada desde previsualización)
-  const handleCrearNVFinal = (tipoVenta: "inmediata" | "pedido") => {
+  const handleCrearNVFinal = async (tipoVenta: "inmediata" | "pedido") => {
     const cliente = clientes.find(c => c.id === nvClienteId)
     const lineasValidas = nvLineas.filter(l => l.producto_id > 0 && l.producto_nombre.trim() !== "")
     
@@ -3583,6 +3629,33 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       }]
     }
     
+    // ── Persistir NV en Supabase ──────────────────────────────────────────
+    try {
+      const res = await fetch("/api/notas-venta", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          numero: nvNumero,
+          cliente_id: cliente.id,
+          vendedor_id: vendedorId,
+          moneda,
+          estado: tipoVenta === "inmediata" ? "facturada" : "abierta",
+          total: totalValido,
+          lineas: lineasValidas.map(l => ({
+            producto_id: l.producto_id,
+            producto_nombre: l.producto_nombre,
+            descripcion: l.descripcion ?? null,
+            cantidad: l.cantidad,
+            precio_unitario: l.precio_unitario ?? 0,
+            descuento: l.descuento ?? 0,
+            subtotal: l.subtotal,
+          })),
+        }),
+      })
+    } catch (_) {
+      // Error de red — la NV sigue en el state local
+    }
+
     // Si estamos editando, actualizar; si no, agregar nueva
     if (editingNVId) {
       setNotasVenta(prev => prev.map(nv => nv.id === editingNVId ? newNV : nv))
@@ -3620,6 +3693,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "OE creada desde venta inmediata" }]
       }
       setOrdenesEntrega(prev => [...prev, newOE])
+      // Persistir OE en Supabase
+      fetch("/api/ordenes-entrega", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newOE),
+      }).catch(() => {})
 
       // Crear Remito
       const remitoNumero = `REM X 10000-000${100 + remitos.length}`
@@ -3648,6 +3727,41 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "Remito creado desde venta inmediata" }]
       }
       setRemitos(prev => [...prev, newRemito])
+      // Persistir Remito en Supabase
+      fetch("/api/remitos-venta", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...newRemito,
+          lineas: lineasValidas.map(l => ({
+            producto_id: l.producto_id,
+            producto_nombre: l.producto_nombre,
+            cantidad: l.cantidad,
+            requiere_serie: l.requiere_serie ?? false,
+            series_seleccionadas: l.series_seleccionadas ?? [],
+          })),
+        }),
+      }).catch(() => {})
+
+      // Descontar stock: usar endpoint confirmar con nv_numero y lineas directas
+      fetch(`/api/remitos/0/confirmar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          remito_numero: remitoNumero,
+          nv_numero: nvNumero,
+          oe_numero: oeNumero,
+          deposito_nombre: deposito,
+          usuario: vendedorNombre,
+          lineas: lineasValidas.map(l => ({
+            producto_id: l.producto_id,
+            producto_nombre: l.producto_nombre,
+            cantidad: l.cantidad,
+            requiere_serie: l.requiere_serie ?? false,
+            series_seleccionadas: l.series_seleccionadas ?? [],
+          })),
+        }),
+      }).catch(() => {})
 
       // Crear Factura en borrador
       const facturaNumero = `FC X 10000-000${13460 + facturas.length}`
@@ -11361,7 +11475,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               vendedor_id: vendedorId,
               vendedor_nombre: vendedorNombre,
               fecha: fechaHoy,
-              estado: tipoVenta === "inmediata" ? "finalizada" : "borrador",
+                  estado: tipoVenta === "inmediata" ? "facturada" : "abierta",
               moneda: moneda,
               tipo_cotizacion: "blue",
               cotizacion: 1150,
@@ -11389,7 +11503,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   cliente_id: cliente.id,
                   vendedor_id: vendedorId,
                   moneda,
-                  estado: tipoVenta === "inmediata" ? "finalizada" : "borrador",
+          estado: tipoVenta === "inmediata" ? "facturada" : "abierta",
                   total: isNaN(subtotal) ? 0 : subtotal,
                   lineas: nvLineas.map(l => ({
                     producto_id: l.producto_id,
@@ -11403,7 +11517,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 }),
               })
             } catch (_) {
-              // Error de red — la NV sigue en el state local igual
+              // Error de red — la NV sigue en el state local
             }
 
             if (editingItem) {
