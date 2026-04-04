@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   const body = await req.json()
   const { data, error } = await supabase
     .from("listas_precios")
-    .insert([body])
+    .insert(body)
     .select()
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
