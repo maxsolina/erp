@@ -3606,8 +3606,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           })),
         }),
       })
-    } catch (_) {
-      // Error de red — la NV sigue en el state local
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        console.log("[v0] NV guardado error:", res.status, JSON.stringify(err))
+        alert(`Error al guardar NV (${res.status}): ${err.error ?? "error desconocido"}`)
+      }
+    } catch (err: any) {
+      console.log("[v0] NV fetch error:", err?.message)
     }
 
     // Si estamos editando, actualizar; si no, agregar nueva
