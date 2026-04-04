@@ -6,6 +6,7 @@ const COTIZACION_DOLAR_MOCK = 1200
 
 interface ProductoDropdownProps {
   nvClienteId: number | null
+  nvListaPreciosId: number | null
   clientes: any[]
   listasPrecios: any[]
   versionesLista: any[]
@@ -17,6 +18,7 @@ interface ProductoDropdownProps {
 
 export default function ProductoDropdown({
   nvClienteId,
+  nvListaPreciosId,
   clientes,
   listasPrecios,
   versionesLista,
@@ -38,20 +40,26 @@ export default function ProductoDropdown({
   }, [anchorRef])
 
   const clienteNV = clientes.find((c: any) => c.id === nvClienteId)
-  const listaId = clienteNV?.lista_precios_id ?? null
+  // Prioridad: lista seleccionada manualmente en la NV → lista del cliente → null
+  const listaId = nvListaPreciosId ?? clienteNV?.lista_precios_id ?? null
 
   const versionesDeEstaLista = listaId
     ? versionesLista.filter((v: any) => v.lista_precios_id === listaId)
     : []
 
+  // Prioridad: activa → confirmada → cualquier otra con lineas → ultima de la lista
   const versionActiva =
     versionesDeEstaLista.find((v: any) =>
-      v.activa === true ||
-      v.estado === "activa" ||
-      v.estado === "Activa" ||
-      v.estado === "activo" ||
-      v.estado === "Activo"
-    ) ?? versionesDeEstaLista[versionesDeEstaLista.length - 1] ?? null
+      (v.activa === true || v.estado === "activa" || v.estado === "Activa" || v.estado === "activo" || v.estado === "Activo") &&
+      Array.isArray(v.lineas) && v.lineas.length > 0
+    ) ??
+    versionesDeEstaLista.find((v: any) =>
+      (v.estado === "confirmada" || v.estado === "Confirmada") &&
+      Array.isArray(v.lineas) && v.lineas.length > 0
+    ) ??
+    versionesDeEstaLista.find((v: any) => Array.isArray(v.lineas) && v.lineas.length > 0) ??
+    versionesDeEstaLista[versionesDeEstaLista.length - 1] ??
+    null
 
   const tieneLineas = versionActiva && Array.isArray(versionActiva.lineas) && versionActiva.lineas.length > 0
 
@@ -82,8 +90,9 @@ export default function ProductoDropdown({
         return { precioUnitario: precioARS, moneda: "ARS" as const, precioUSD: parseFloat((precioARS / cotiz).toFixed(2)), precioARS }
       }
     }
-    const precioARS = p.precio_venta ?? 0
-    return { precioUnitario: precioARS, moneda: "ARS" as const, precioUSD: parseFloat((precioARS / COTIZACION_DOLAR_MOCK).toFixed(2)), precioARS }
+    // Fallback: usar costo_manual del producto si existe (precio base)
+    const precioARS = p.precio_venta ?? p.costo_manual ?? 0
+    return { precioUnitario: precioARS, moneda: (p.moneda_costo === "USD" ? "USD" : "ARS") as "ARS" | "USD", precioUSD: parseFloat((precioARS / COTIZACION_DOLAR_MOCK).toFixed(2)), precioARS }
   }
 
   if (!pos) return null

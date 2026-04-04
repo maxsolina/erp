@@ -1477,6 +1477,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       descripcion: p.observaciones ?? "",
       precio_venta: p.precio_venta ?? 0,
       costo: p.costo_manual ?? 0,
+      costo_manual: p.costo_manual ?? 0,
+      moneda_costo: p.moneda_costo ?? "ARS",
       stock: p.stock_real ?? 0,
       categoria: p.categoria ?? "",
       requiere_serie: p.tiene_numero_serie ?? false,
@@ -3955,6 +3957,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                               {productoSearchIndex === index
                                 ? <ProductoDropdown
                                     nvClienteId={nvClienteId}
+                                    nvListaPreciosId={nvListaPreciosId}
                                     clientes={clientes}
                                     listasPrecios={listasPrecios}
                                     versionesLista={versionesLista}
