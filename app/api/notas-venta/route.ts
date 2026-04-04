@@ -8,22 +8,45 @@ function getSupabase() {
   )
 }
 
-// GET — listar NVs
+// GET — listar NVs con sus líneas (dos queries separadas, sin FK PostgREST)
 export async function GET(req: Request) {
   const supabase = getSupabase()
   const { searchParams } = new URL(req.url)
   const numero = searchParams.get("numero")
 
-  let query = supabase
+  // 1. Cabeceras
+  let nvQuery = supabase
     .from("notas_venta")
-    .select("*, notas_venta_lineas(*)")
+    .select("*")
     .order("created_at", { ascending: false })
+  if (numero) nvQuery = nvQuery.eq("numero", numero)
 
-  if (numero) query = query.eq("numero", numero)
+  const { data: nvs, error: nvErr } = await nvQuery
+  if (nvErr) return NextResponse.json({ error: nvErr.message }, { status: 500 })
+  if (!nvs || nvs.length === 0) return NextResponse.json([])
 
-  const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+  // 2. Líneas de todas las NVs
+  const nvIds = nvs.map((n: any) => n.id)
+  const { data: lineas, error: lineasErr } = await supabase
+    .from("notas_venta_lineas")
+    .select("*")
+    .in("nota_venta_id", nvIds)
+
+  if (lineasErr) return NextResponse.json({ error: lineasErr.message }, { status: 500 })
+
+  // 3. Combinar
+  const lineasPorNV: Record<number, any[]> = {}
+  ;(lineas ?? []).forEach((l: any) => {
+    if (!lineasPorNV[l.nota_venta_id]) lineasPorNV[l.nota_venta_id] = []
+    lineasPorNV[l.nota_venta_id].push(l)
+  })
+
+  const result = nvs.map((nv: any) => ({
+    ...nv,
+    notas_venta_lineas: lineasPorNV[nv.id] ?? [],
+  }))
+
+  return NextResponse.json(result)
 }
 
 // POST — crear NV con sus líneas
