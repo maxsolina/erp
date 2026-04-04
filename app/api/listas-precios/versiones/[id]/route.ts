@@ -37,10 +37,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     .select()
     .single()
 
-  if (vErr) {
-    console.log("[v0] PUT versiones - error:", JSON.stringify(vErr), "id:", id)
-    return NextResponse.json({ error: vErr.message }, { status: 500 })
-  }
+  if (vErr) return NextResponse.json({ error: vErr.message }, { status: 500 })
 
   // Reemplazar líneas: borrar las actuales e insertar las nuevas
   const { error: delErr } = await supabase
