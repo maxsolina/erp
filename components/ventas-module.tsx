@@ -413,16 +413,8 @@ const motivosCancelacionRecibo = [
   { id: 5, codigo: "OTRO", nombre: "Otro motivo" },
 ]
 
-// Productos con info de si requieren serie
-const productosConSerie: ProductoVenta[] = [
-  { id: 1, sku: "IPH12U", nombre: "iPhone 12 Usado", descripcion: "iPhone 12 reacondicionado", precio_venta: 450000, stock: 5, categoria: "Usados", requiere_serie: true },
-  { id: 2, sku: "IPH13U", nombre: "iPhone 13 Usado", descripcion: "iPhone 13 reacondicionado", precio_venta: 580000, stock: 3, categoria: "Usados", requiere_serie: true },
-  { id: 3, sku: "IPH15PM", nombre: "iPhone 15 Pro Max 256GB", descripcion: "iPhone 15 Pro Max nuevo", precio_venta: 1850000, stock: 8, categoria: "Nuevos", requiere_serie: true },
-  { id: 4, sku: "SGS24U", nombre: "Samsung Galaxy S24 Ultra", descripcion: "Samsung Galaxy S24 Ultra nuevo", precio_venta: 1500000, stock: 4, categoria: "Nuevos", requiere_serie: true },
-  { id: 5, sku: "FUNDAIPH", nombre: "Funda iPhone Silicona", descripcion: "Funda de silicona para iPhone", precio_venta: 15000, stock: 50, categoria: "Accesorios", requiere_serie: false },
-  { id: 6, sku: "CARGUSB", nombre: "Cargador USB-C 20W", descripcion: "Cargador rápido USB-C", precio_venta: 25000, stock: 30, categoria: "Accesorios", requiere_serie: false },
-  { id: 7, sku: "APP2", nombre: "AirPods Pro 2", descripcion: "AirPods Pro 2da generación", precio_venta: 450000, stock: 10, categoria: "Audio", requiere_serie: true },
-]
+// Array vacío — los productos reales se cargan desde Supabase via productosMaestro (estado del componente)
+const productosConSerie: ProductoVenta[] = []
 
 // Series/IMEI disponibles por producto y ubicación
 const seriesDisponibles: SerieDisponible[] = [
@@ -3878,7 +3870,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                     clientes={clientes}
                                     listasPrecios={listasPrecios}
                                     versionesLista={versionesLista}
-                                    productosConSerie={nvListaPreciosId ? productosNV : productosConSerie}
+                                    productosConSerie={nvListaPreciosId ? productosNV : productosMaestro}
                                     productoSearchText={productoSearchText}
                                     anchorRef={{ current: productoInputRefs.current[index] } as React.RefObject<HTMLInputElement>}
                                     onSelect={(p, precioUnitario, moneda, precioUSD, precioARS) => {
@@ -6344,14 +6336,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           {/* Dropdown de sugerencias */}
                           {facturaProductoSearchIndex === index && (
                             <div className="absolute left-0 top-full z-50 w-full mt-1 bg-white border border-gray-300 shadow-lg rounded-md max-h-48 overflow-y-auto">
-                              {productosConSerie
+                              {productosMaestro
                                 .filter(p =>
                                   p.nombre.toLowerCase().includes(facturaProductoSearchText.toLowerCase()) ||
                                   p.sku.toLowerCase().includes(facturaProductoSearchText.toLowerCase())
                                 )
                                 .map(p => {
-                                  // Obtener precio según lista de precios seleccionada
-                                  const precioLista = p.precios?.find(pr => pr.lista_id === facturaListaPreciosId)?.precio || p.precio_venta
+                                  const precioLista = p.precios?.find((pr: any) => pr.lista_id === facturaListaPreciosId)?.precio || p.precio_venta
                                   return (
                                     <div
                                       key={p.id}
@@ -6373,7 +6364,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                   )
                                 })
                               }
-                              {productosConSerie.filter(p =>
+                              {productosMaestro.filter(p =>
                                 p.nombre.toLowerCase().includes(facturaProductoSearchText.toLowerCase()) ||
                                 p.sku.toLowerCase().includes(facturaProductoSearchText.toLowerCase())
                               ).length === 0 && (
