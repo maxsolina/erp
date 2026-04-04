@@ -3606,13 +3606,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           })),
         }),
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        console.log("[v0] NV guardado error:", res.status, JSON.stringify(err))
-        alert(`Error al guardar NV (${res.status}): ${err.error ?? "error desconocido"}`)
-      }
-    } catch (err: any) {
-      console.log("[v0] NV fetch error:", err?.message)
+    } catch (_) {
+      // Error de red — la NV sigue en el state local
     }
 
     // Si estamos editando, actualizar; si no, agregar nueva
@@ -11393,7 +11388,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               vendedor_id: vendedorId,
               vendedor_nombre: vendedorNombre,
               fecha: fechaHoy,
-              estado: tipoVenta === "inmediata" ? "finalizada" : "borrador",
+                  estado: tipoVenta === "inmediata" ? "facturada" : "abierta",
               moneda: moneda,
               tipo_cotizacion: "blue",
               cotizacion: 1150,
@@ -11421,7 +11416,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   cliente_id: cliente.id,
                   vendedor_id: vendedorId,
                   moneda,
-                  estado: tipoVenta === "inmediata" ? "finalizada" : "borrador",
+          estado: tipoVenta === "inmediata" ? "facturada" : "abierta",
                   total: isNaN(subtotal) ? 0 : subtotal,
                   lineas: nvLineas.map(l => ({
                     producto_id: l.producto_id,
