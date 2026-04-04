@@ -3503,7 +3503,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   // Función para crear NV (usada desde previsualización)
-  const handleCrearNVFinal = (tipoVenta: "inmediata" | "pedido") => {
+  const handleCrearNVFinal = async (tipoVenta: "inmediata" | "pedido") => {
     const cliente = clientes.find(c => c.id === nvClienteId)
     const lineasValidas = nvLineas.filter(l => l.producto_id > 0 && l.producto_nombre.trim() !== "")
     
@@ -3583,6 +3583,33 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       }]
     }
     
+    // ── Persistir NV en Supabase ──────────────────────────────────────────
+    try {
+      const res = await fetch("/api/notas-venta", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          numero: nvNumero,
+          cliente_id: cliente.id,
+          vendedor_id: vendedorId,
+          moneda,
+          estado: tipoVenta === "inmediata" ? "finalizada" : "borrador",
+          total: totalValido,
+          lineas: lineasValidas.map(l => ({
+            producto_id: l.producto_id,
+            producto_nombre: l.producto_nombre,
+            descripcion: l.descripcion ?? null,
+            cantidad: l.cantidad,
+            precio_unitario: l.precio_unitario ?? 0,
+            descuento: l.descuento ?? 0,
+            subtotal: l.subtotal,
+          })),
+        }),
+      })
+    } catch (_) {
+      // Error de red — la NV sigue en el state local
+    }
+
     // Si estamos editando, actualizar; si no, agregar nueva
     if (editingNVId) {
       setNotasVenta(prev => prev.map(nv => nv.id === editingNVId ? newNV : nv))
@@ -11380,9 +11407,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             }
 
             // ── Persistir NV en Supabase ──────────────────────────────
-            console.log("[v0] onSubmit NV - iniciando fetch, nvNumero:", nvNumero, "cliente_id:", cliente?.id)
             try {
-              const nvRes = await fetch("/api/notas-venta", {
+              await fetch("/api/notas-venta", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -11403,10 +11429,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   })),
                 }),
               })
-              const nvData = await nvRes.json()
-              console.log("[v0] POST notas-venta respuesta:", nvRes.status, JSON.stringify(nvData))
-            } catch (err: any) {
-              console.log("[v0] POST notas-venta ERROR:", err?.message)
+            } catch (_) {
+              // Error de red — la NV sigue en el state local
             }
 
             if (editingItem) {
