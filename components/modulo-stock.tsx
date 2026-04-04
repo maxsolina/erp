@@ -610,10 +610,11 @@ export default function ModuloStock() {
     async function cargarDatos() {
       setCargandoStock(true)
       try {
-        const [deps, ubics, unidades] = await Promise.all([
+        const [deps, ubics, unidades, prods] = await Promise.all([
           fetch("/api/depositos").then(r => r.json()),
           fetch("/api/ubicaciones").then(r => r.json()),
           fetch("/api/stock/unidades").then(r => r.json()),
+          fetch("/api/productos").then(r => r.json()),
         ])
 
         // Mapear depositos al tipo interno
@@ -653,14 +654,58 @@ export default function ModuloStock() {
           disponible_venta: u.tipo === "interna",
         }))
 
+        // Mapear productos de la API al tipo interno ProductoStock
+        const productosMapped: ProductoStock[] = (prods ?? []).map((p: any) => ({
+          id: p.id,
+          codigo: p.codigo_interno ?? "",
+          nombre: p.nombre ?? "",
+          descripcion: p.observaciones ?? "",
+          categoria_id: 0,
+          categoria_ruta: p.categoria ?? "",
+          tipo: p.tipo ?? "almacenable",
+          tracking: p.tiene_numero_serie ? "serie" : "ninguno",
+          puede_venderse: p.puede_venderse ?? true,
+          puede_comprarse: p.puede_comprarse ?? true,
+          precio_venta: 0,
+          precio_costo: p.costo_manual ?? 0,
+          moneda_costo: p.moneda_costo ?? "ARS",
+          ubicacion_id: 0,
+          ubicacion_codigo: "",
+          deposito_id: 0,
+          deposito_codigo: "",
+          stock_real: p.stock_real ?? 0,
+          stock_entrante: 0,
+          stock_saliente: 0,
+          stock_disponible: p.stock_real ?? 0,
+          stock_virtual: p.stock_real ?? 0,
+          stock_minimo: p.stock_minimo ?? 0,
+          stock_maximo: p.stock_maximo ?? 0,
+          stock_critico: p.stock_critico ?? 0,
+          punto_pedido: 0,
+          marca: p.marca ?? "",
+          modelo: p.modelo ?? "",
+          color: p.color ?? "",
+          origen: "",
+          codigo_barras: "",
+          codigo_dun14: "",
+          cuenta_analitica: "",
+          imagen_url: p.imagen_url ?? null,
+          activo: p.activo ?? true,
+        }))
+
+        // Mapa rápido producto_id → datos del producto para enriquecer lotes
+        const prodMap = new Map<number, any>((prods ?? []).map((p: any) => [p.id, p]))
+
         // Mapear stock_unidades → LoteSerie (para vista IMEI en Stock)
-        const lotesMapped: LoteSerie[] = (unidades ?? []).map((u: any) => ({
+        const lotesMapped: LoteSerie[] = (unidades ?? []).map((u: any) => {
+          const prod = prodMap.get(u.producto_id) ?? {}
+          return {
           id: u.id,
           producto_id: u.producto_id,
-          producto_codigo: u.productos?.codigo_interno ?? "",
-          producto_nombre: u.productos?.nombre ?? "",
-          producto_categoria: "",
-          marca: "",
+          producto_codigo: u.productos?.codigo_interno ?? prod.codigo_interno ?? "",
+          producto_nombre: u.productos?.nombre ?? prod.nombre ?? "",
+          producto_categoria: prod.categoria ?? "",
+          marca: prod.marca ?? "",
           numero: u.nro_serie ?? "",
           referencia_interna: u.nro_serie ?? "",
           cantidad: 1,
@@ -673,13 +718,15 @@ export default function ModuloStock() {
           bateria: u.bateria_pct ?? null,
           color: u.color ?? null,
           estado: u.estado === "disponible" ? "disponible" : u.estado === "reservado" ? "reservado" : "vendido",
-        }))
+        }
+        })
 
         setDepositos(depositosMapped)
         setUbicaciones(ubicacionesMapped)
         setStockUnidades(unidades ?? [])
         setLotesSeries(lotesMapped)
         setTodosIMEI(lotesMapped)
+        setProductos(productosMapped)
       } catch (err) {
         console.error("[stock] Error cargando datos:", err)
       } finally {
@@ -1351,7 +1398,7 @@ export default function ModuloStock() {
                   <AlertCircle className="w-5 h-5" />
                   <span className="font-medium">Stock Crítico</span>
                 </div>
-                <p className="text-sm text-red-600 mt-1">El stock está por debajo del nivel crítico.</p>
+                <p className="text-sm text-red-600 mt-1">El stock est�� por debajo del nivel crítico.</p>
               </div>
             )}
             {selectedProducto.stock_real <= selectedProducto.punto_pedido && selectedProducto.stock_real > selectedProducto.stock_critico && (
@@ -3398,6 +3445,7 @@ export default function ModuloStock() {
       tracking: string
       estado_lote: string
       cantidad: number
+      cantidad_disponible: number
       costo: number
       valor_total: number
       stock_minimo: number
@@ -3405,38 +3453,70 @@ export default function ModuloStock() {
     }> = []
 
     productos.forEach(p => {
-          const ubicacion = ubicaciones.find(u => u.id === p.ubicacion_id)
-          const deposito = depositos.find(d => d.id === p.deposito_id)
-      
-      const lotesProducto = lotesSeries.filter(l => l.producto_id === p.id)
-      
-      if (lotesProducto.length > 0) {
-        lotesProducto.forEach(lote => {
-          datos.push({
-            producto: p.nombre,
-            categoria: p.categoria_ruta.split(" / ").pop() || p.categoria_ruta,
-            marca: p.marca || "-",
-            deposito: deposito?.codigo || "-",
-            ubicacion: ubicacion?.codigo || "-",
-            tracking: p.tracking === "serie" ? "Serie (IMEI)" : p.tracking === "lote" ? "Lote" : "Ninguno",
-            estado_lote: lote.estado,
-            cantidad: lote.cantidad_disponible,
-            costo: p.precio_costo,
-            valor_total: lote.cantidad_disponible * p.precio_costo,
-            stock_minimo: p.stock_minimo,
-            stock_maximo: p.stock_maximo,
+      const tracking = p.tracking === "serie" ? "Serie (IMEI)" : p.tracking === "lote" ? "Lote" : "Ninguno"
+      const categoria = p.categoria_ruta?.split(" / ").pop() || p.categoria_ruta || "-"
+
+      if (p.tracking === "serie") {
+        // Productos con serie: una fila por depósito con cantidad de unidades disponibles
+        const unidadesProducto = stockUnidades.filter((u: any) => u.producto_id === p.id)
+        if (unidadesProducto.length > 0) {
+          // Agrupar por depósito
+          const porDeposito = new Map<number, { deposito: string; ubicacion: string; cantidad: number }>()
+          unidadesProducto.forEach((u: any) => {
+            const dep = depositos.find(d => d.id === u.deposito_id)
+            const ubi = ubicaciones.find(v => v.id === u.ubicacion_id)
+            const key = u.deposito_id ?? 0
+            const prev = porDeposito.get(key)
+            if (prev) {
+              prev.cantidad += u.estado === "disponible" ? 1 : 0
+            } else {
+              porDeposito.set(key, {
+                deposito: dep?.nombre || dep?.codigo || "-",
+                ubicacion: ubi?.nombre || ubi?.codigo || "-",
+                cantidad: u.estado === "disponible" ? 1 : 0,
+              })
+            }
           })
-        })
+          porDeposito.forEach(({ deposito, ubicacion, cantidad }) => {
+            datos.push({
+              producto: p.nombre,
+              categoria,
+              marca: p.marca || "-",
+              deposito,
+              ubicacion,
+              tracking,
+              estado_lote: "disponible",
+              cantidad,
+              cantidad_disponible: cantidad,
+              costo: p.precio_costo,
+              valor_total: cantidad * p.precio_costo,
+              stock_minimo: p.stock_minimo,
+              stock_maximo: p.stock_maximo,
+            })
+          })
+        }
+        // Si no hay unidades, igual mostrar el producto con 0
+        if (unidadesProducto.length === 0) {
+          datos.push({
+            producto: p.nombre, categoria, marca: p.marca || "-",
+            deposito: "-", ubicacion: "-", tracking, estado_lote: "-",
+            cantidad: 0, cantidad_disponible: 0,
+            costo: p.precio_costo, valor_total: 0,
+            stock_minimo: p.stock_minimo, stock_maximo: p.stock_maximo,
+          })
+        }
       } else {
+        // Productos sin serie: usar stock_real total
         datos.push({
           producto: p.nombre,
-          categoria: p.categoria_ruta.split(" / ").pop() || p.categoria_ruta,
+          categoria,
           marca: p.marca || "-",
-          deposito: deposito?.codigo || "-",
-          ubicacion: ubicacion?.codigo || "-",
-          tracking: p.tracking === "serie" ? "Serie (IMEI)" : p.tracking === "lote" ? "Lote" : "Ninguno",
+          deposito: "-",
+          ubicacion: "-",
+          tracking,
           estado_lote: "-",
           cantidad: p.stock_real,
+          cantidad_disponible: p.stock_real,
           costo: p.precio_costo,
           valor_total: p.stock_real * p.precio_costo,
           stock_minimo: p.stock_minimo,
@@ -3446,7 +3526,7 @@ export default function ModuloStock() {
     })
 
     return datos
-  }, [productos, lotesSeries])
+  }, [productos, stockUnidades, depositos, ubicaciones])
 
   // Datos agrupados del cubo con estructura jerárquica (memoizado)
   const cuboDatosAgrupados = useMemo(() => {
