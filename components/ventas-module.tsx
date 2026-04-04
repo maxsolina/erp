@@ -71,7 +71,7 @@ interface ListaPrecios {
   activa: boolean
   no_visible: boolean
   dias_validez: number
-  estado: "borrador" | "activa" | "inactiva"
+  estado: "borrador" | "creada" | "activa" | "inactiva"
   usuarios_admin: number[]
   usuarios_habilitados: number[]
   observaciones_filtro: string
@@ -121,9 +121,11 @@ interface ProductoVenta {
   nombre: string
   descripcion: string
   precio_venta: number
+  costo?: number
   stock: number
   categoria: string
   requiere_serie: boolean // Si requiere selección de IMEI/Serie
+  precios?: { lista_id: number; precio: number }[]
 }
 
 // Tipo para el sistema de seguimiento (tracking de cambios estilo Odoo)
@@ -413,16 +415,8 @@ const motivosCancelacionRecibo = [
   { id: 5, codigo: "OTRO", nombre: "Otro motivo" },
 ]
 
-// Productos con info de si requieren serie
-const productosConSerie: ProductoVenta[] = [
-  { id: 1, sku: "IPH12U", nombre: "iPhone 12 Usado", descripcion: "iPhone 12 reacondicionado", precio_venta: 450000, stock: 5, categoria: "Usados", requiere_serie: true },
-  { id: 2, sku: "IPH13U", nombre: "iPhone 13 Usado", descripcion: "iPhone 13 reacondicionado", precio_venta: 580000, stock: 3, categoria: "Usados", requiere_serie: true },
-  { id: 3, sku: "IPH15PM", nombre: "iPhone 15 Pro Max 256GB", descripcion: "iPhone 15 Pro Max nuevo", precio_venta: 1850000, stock: 8, categoria: "Nuevos", requiere_serie: true },
-  { id: 4, sku: "SGS24U", nombre: "Samsung Galaxy S24 Ultra", descripcion: "Samsung Galaxy S24 Ultra nuevo", precio_venta: 1500000, stock: 4, categoria: "Nuevos", requiere_serie: true },
-  { id: 5, sku: "FUNDAIPH", nombre: "Funda iPhone Silicona", descripcion: "Funda de silicona para iPhone", precio_venta: 15000, stock: 50, categoria: "Accesorios", requiere_serie: false },
-  { id: 6, sku: "CARGUSB", nombre: "Cargador USB-C 20W", descripcion: "Cargador rápido USB-C", precio_venta: 25000, stock: 30, categoria: "Accesorios", requiere_serie: false },
-  { id: 7, sku: "APP2", nombre: "AirPods Pro 2", descripcion: "AirPods Pro 2da generación", precio_venta: 450000, stock: 10, categoria: "Audio", requiere_serie: true },
-]
+// Array vacío — los productos reales se cargan desde Supabase via productosMaestro (estado del componente)
+const productosConSerie: ProductoVenta[] = []
 
 // Series/IMEI disponibles por producto y ubicación
 const seriesDisponibles: SerieDisponible[] = [
@@ -1342,6 +1336,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [modalNuevaVersionBasada, setModalNuevaVersionBasada] = useState(false)
   const [nuevaVersionBasadaForm, setNuevaVersionBasadaForm] = useState({ nombre: "", fecha_inicial: "", fecha_final: "", copiar_lineas: true })
   
+  // Estados para lista de precios y productos reales en NV
+  const [nvListaPreciosId, setNvListaPreciosId] = useState<number | null>(null)
+  const [productosNV, setProductosNV] = useState<ProductoVenta[]>([])
+  const [productosNVCargando, setProductosNVCargando] = useState(false)
+  // Maestro de productos reales (todos los productos de la DB, para selectores de lista de precios)
+  const [productosMaestro, setProductosMaestro] = useState<ProductoVenta[]>([])
+
   // Estados para ubicación de stock en NV
   const [nvDepositoId, setNvDepositoId] = useState<number>(1) // Casa Central por defecto
   const [nvUbicacionId, setNvUbicacionId] = useState<number>(1) // Stock por defecto
@@ -1430,6 +1431,67 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     onDeleteFilter: (id: string) => setter(prev => prev.filter(sf => sf.id !== id)),
     onApplyFilter: (f: SavedFilter) => { setActiveFilters(f.filters); setActiveGroupBy(f.groupBy); setSearch("") }
   })
+
+  // Helper para mapear productos de la API al tipo interno
+  function mapearProductos(data: any[]): ProductoVenta[] {
+    return data.map(p => ({
+      id: p.id,
+      sku: p.codigo_interno ?? "",
+      nombre: p.nombre ?? "",
+      descripcion: p.observaciones ?? "",
+      precio_venta: p.precio_venta ?? 0,
+      costo: p.costo_manual ?? 0,
+      stock: p.stock_real ?? 0,
+      categoria: p.categoria ?? "",
+      requiere_serie: p.tiene_numero_serie ?? false,
+    }))
+  }
+
+  // Cargar listas de precios al iniciar
+  useEffect(() => {
+    fetch("/api/listas-precios")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data) && data.length > 0) setListasPrecios(data) })
+      .catch(() => {})
+  }, [])
+
+  // Cargar maestro de productos al iniciar (fetch inline para evitar closure stale)
+  useEffect(() => {
+    fetch("/api/productos")
+      .then(r => r.json())
+      .then((data: any[]) => {
+        if (!Array.isArray(data) || data.length === 0) return
+        setProductosMaestro(mapearProductos(data))
+      })
+      .catch(() => {})
+  }, [])
+
+  // Recargar productos al entrar a vistas que lo necesitan
+  useEffect(() => {
+    if (activeView === "versiones_lista" || activeView === "listas_precios") {
+      fetch("/api/productos")
+        .then(r => r.json())
+        .then((data: any[]) => {
+          if (!Array.isArray(data) || data.length === 0) return
+          setProductosMaestro(mapearProductos(data))
+        })
+        .catch(() => {})
+    }
+  }, [activeView])
+
+  // Cargar productos de la lista de precios seleccionada cuando cambia nvListaPreciosId
+  useEffect(() => {
+    if (!nvListaPreciosId) {
+      setProductosNV([])
+      return
+    }
+    setProductosNVCargando(true)
+    fetch(`/api/listas-precios/items?lista_id=${nvListaPreciosId}`)
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setProductosNV(data) })
+      .catch(() => {})
+      .finally(() => setProductosNVCargando(false))
+  }, [nvListaPreciosId])
 
   // Helper functions
   const formatCurrency = (amount: number, currency: "ARS" | "USD" = "ARS") => {
@@ -1813,6 +1875,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       setSelectedNV(null)
                       setSelectedAjuste(null)
                       setClientePanel("ficha")
+                      // Limpiar selección de versión al navegar a versiones desde sidebar
+                      if (item.id === "versiones_lista") {
+                        setSelectedVersion(null)
+                        setEditingVersion(null)
+                        setCreandoVersion(false)
+                        setModoEdicionVersion(false)
+                      }
+                      // Limpiar selección de lista al navegar a listas desde sidebar
+                      if (item.id === "listas_precios") {
+                        setSelectedListaPrecios(null)
+                        setEditingListaPrecios(null)
+                        setCreandoListaPrecios(false)
+                        setModoEdicionListaPrecios(false)
+                      }
                     }}
                     className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center gap-2 ${section.id === "config_notas_credito" ? "text-xs" : "text-sm"} ${
                       activeView === item.id 
@@ -3639,13 +3715,27 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
                   <select
                     value={nvClienteId || ""}
-                    onChange={(e) => setNvClienteId(parseInt(e.target.value))}
+                    onChange={(e) => {
+                      if (e.target.value === "__nuevo__") {
+                        setEditingItem(null)
+                        setFormClienteCategoriaId(null)
+                        setModalType("cliente")
+                        setShowModal(true)
+                      } else {
+                        const id = parseInt(e.target.value)
+                        setNvClienteId(id)
+                        // Auto-seleccionar la lista de precios del cliente
+                        const cliente = clientes.find(c => c.id === id)
+                        if (cliente?.lista_precios_id) setNvListaPreciosId(cliente.lista_precios_id)
+                      }
+                    }}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
                     <option value="">Seleccionar cliente...</option>
                     {clientes.map(c => (
                       <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
                     ))}
+                    <option value="__nuevo__" className="text-emerald-600 font-medium">+ Crear nuevo cliente</option>
                   </select>
                 </div>
                 {selectedCliente && (
@@ -3668,6 +3758,41 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     </div>
                   </>
                 )}
+              </div>
+            </div>
+
+            {/* Lista de Precios */}
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <Tag className="w-4 h-4" /> Lista de Precios
+              </h3>
+              <div className="grid grid-cols-2 gap-4 items-end">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Lista de precios *</label>
+                  <select
+                    value={nvListaPreciosId ?? ""}
+                    onChange={(e) => setNvListaPreciosId(e.target.value ? parseInt(e.target.value) : null)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="">Seleccionar lista...</option>
+                    {listasPrecios.filter(l => l.activa).map(l => (
+                      <option key={l.id} value={l.id}>{l.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="text-sm text-gray-500">
+                  {nvListaPreciosId && (
+                    <span>
+                      {productosNVCargando
+                        ? "Cargando productos..."
+                        : `${productosNV.length} producto${productosNV.length !== 1 ? "s" : ""} en esta lista`
+                      }
+                    </span>
+                  )}
+                  {!nvListaPreciosId && (
+                    <span className="text-amber-600">Seleccione una lista para agregar productos</span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -3781,7 +3906,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                     clientes={clientes}
                                     listasPrecios={listasPrecios}
                                     versionesLista={versionesLista}
-                                    productosConSerie={productosConSerie}
+                                    productosConSerie={nvListaPreciosId ? productosNV : productosMaestro}
                                     productoSearchText={productoSearchText}
                                     anchorRef={{ current: productoInputRefs.current[index] } as React.RefObject<HTMLInputElement>}
                                     onSelect={(p, precioUnitario, moneda, precioUSD, precioARS) => {
@@ -5448,7 +5573,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <th className="text-right py-3 px-4">Precio Base</th>
                 <th className="text-right py-3 px-4">Descuentos</th>
                 <th className="text-right py-3 px-4">Precio Final</th>
-                <th className="text-center py-3 px-4">Operación</th>
+                <th className="text-center py-3 px-4">Operaci��n</th>
                 <th className="text-center py-3 px-4">Recepción</th>
                 <th className="text-center py-3 px-4">Estado</th>
               </tr>
@@ -6247,14 +6372,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           {/* Dropdown de sugerencias */}
                           {facturaProductoSearchIndex === index && (
                             <div className="absolute left-0 top-full z-50 w-full mt-1 bg-white border border-gray-300 shadow-lg rounded-md max-h-48 overflow-y-auto">
-                              {productosConSerie
+                              {productosMaestro
                                 .filter(p =>
                                   p.nombre.toLowerCase().includes(facturaProductoSearchText.toLowerCase()) ||
                                   p.sku.toLowerCase().includes(facturaProductoSearchText.toLowerCase())
                                 )
                                 .map(p => {
-                                  // Obtener precio según lista de precios seleccionada
-                                  const precioLista = p.precios?.find(pr => pr.lista_id === facturaListaPreciosId)?.precio || p.precio_venta
+                                  const precioLista = p.precios?.find((pr: any) => pr.lista_id === facturaListaPreciosId)?.precio || p.precio_venta
                                   return (
                                     <div
                                       key={p.id}
@@ -6276,7 +6400,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                   )
                                 })
                               }
-                              {productosConSerie.filter(p =>
+                              {productosMaestro.filter(p =>
                                 p.nombre.toLowerCase().includes(facturaProductoSearchText.toLowerCase()) ||
                                 p.sku.toLowerCase().includes(facturaProductoSearchText.toLowerCase())
                               ).length === 0 && (
@@ -9155,6 +9279,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       const nuevaLista: ListaPrecios = {
         ...editingListaPrecios,
         id: nuevoId,
+        estado: editingListaPrecios.estado === "borrador" ? "creada" : editingListaPrecios.estado,
         seguimiento: [{
           id: 1,
           fecha: fechaActual,
@@ -9229,6 +9354,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setEditingVersion(nuevaVersion)
     setCreandoVersion(true)
     setModoEdicionVersion(true)
+    setActiveView("versiones_lista")
   }
 
   const crearVersionBasadaEnOtra = (versionBase: VersionListaPrecios) => {
@@ -9772,6 +9898,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <td className="py-3 px-4 text-center">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                         lista.estado === 'activa' ? 'bg-green-100 text-green-800' :
+                        lista.estado === 'creada' ? 'bg-blue-100 text-blue-800' :
                         lista.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' :
                         'bg-red-100 text-red-800'
                       }`}>
@@ -9903,12 +10030,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               {isEditing ? (
                 <select value={currentLista.estado} onChange={(e) => setEditingListaPrecios({ ...currentLista, estado: e.target.value as ListaPrecios["estado"] })} className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
                   <option value="borrador">Borrador</option>
+                  <option value="creada">Creada</option>
                   <option value="activa">Activa</option>
                   <option value="inactiva">Inactiva</option>
                 </select>
               ) : (
                 <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
                   currentLista.estado === 'activa' ? 'bg-green-100 text-green-800' :
+                  currentLista.estado === 'creada' ? 'bg-blue-100 text-blue-800' :
                   currentLista.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
                 }`}>{currentLista.estado.charAt(0).toUpperCase() + currentLista.estado.slice(1)}</span>
               )}
@@ -10116,9 +10245,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   // ==================== VERSIONES DE LISTA ====================
   
   const renderVersionesLista = () => {
-    if (selectedVersion) {
-      return renderDetalleVersion()
-    }
+    if (selectedVersion) return renderDetalleVersion()
     return renderListaVersiones()
   }
 
@@ -10390,11 +10517,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       </td>
                       <td className="py-1.5 px-2">
                         <select value={nuevaLineaVersion.producto_id || ""} onChange={(e) => {
-                          const prod = productosConSerie.find(p => p.id === Number(e.target.value))
+                          const prod = productosMaestro.find(p => p.id === Number(e.target.value))
                           if (prod) setNuevaLineaVersion({ ...nuevaLineaVersion, producto_id: prod.id, producto_codigo: prod.sku, producto_nombre: prod.nombre, costo_importe: prod.costo || 0 })
                         }} className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500">
                           <option value="">Seleccionar producto...</option>
-                          {productosConSerie.map(prod => <option key={prod.id} value={prod.id}>{prod.sku} - {prod.nombre}</option>)}
+                          {productosMaestro.map(prod => <option key={prod.id} value={prod.id}>{prod.sku} - {prod.nombre}</option>)}
                         </select>
                       </td>
                       <td className="py-1.5 px-2">
@@ -10816,7 +10943,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <X className="w-5 h-5" />
           </button>
         </div>
-        <form onSubmit={(e) => { handleSubmitClienteModal(e, editingItem, formClienteCategoriaId, categoriasCliente, setShowModal, setEditingItem, onNuevoCliente) }} className="p-4 space-y-4">
+        <form onSubmit={(e) => { handleSubmitClienteModal(e, editingItem, formClienteCategoriaId, categoriasCliente, setShowModal, setEditingItem, (c) => {
+          // Si el modal se abrió desde una NV o desde el módulo Ventas activo, auto-seleccionar el cliente creado
+          if (creandoNV) setNvClienteId(c.id)
+          onNuevoCliente?.(c)
+        }) }} className="p-4 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre / Razón Social *</label>
@@ -11148,12 +11279,26 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <div className="grid grid-cols-4 gap-4">
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
-                <select value={nvClienteId || ""} onChange={(e) => setNvClienteId(parseInt(e.target.value))}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" required>
+                <select
+                  value={nvClienteId || ""}
+                  onChange={(e) => {
+                    if (e.target.value === "__nuevo__") {
+                      setEditingItem(null)
+                      setFormClienteCategoriaId(null)
+                      setModalType("cliente")
+                      setShowModal(true)
+                    } else {
+                      setNvClienteId(parseInt(e.target.value))
+                    }
+                  }}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  required
+                >
                   <option value="">Seleccionar cliente...</option>
                   {clientes.map(c => (
                     <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
                   ))}
+                  <option value="__nuevo__" className="text-emerald-600 font-medium">+ Crear nuevo cliente</option>
                 </select>
               </div>
               <div>

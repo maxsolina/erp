@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { NextResponse } from "next/server"
 
 function getSupabase() {
   return createClient(
@@ -11,8 +11,8 @@ function getSupabase() {
 export async function GET() {
   const supabase = getSupabase()
   const { data, error } = await supabase
-    .from("sucursales")
-    .select("id, codigo, nombre, direccion, telefono, deposito_id, activa")
+    .from("listas_precios")
+    .select("*")
     .order("nombre")
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data ?? [])
@@ -22,17 +22,10 @@ export async function POST(req: Request) {
   const supabase = getSupabase()
   const body = await req.json()
   const { data, error } = await supabase
-    .from("sucursales")
-    .insert({
-      codigo: body.codigo,
-      nombre: body.nombre,
-      direccion: body.direccion ?? null,
-      telefono: body.telefono ?? null,
-      deposito_id: body.deposito_id ?? null,
-      activa: body.activa ?? true,
-    })
+    .from("listas_precios")
+    .insert(body)
     .select()
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data, { status: 201 })
+  return NextResponse.json(data)
 }

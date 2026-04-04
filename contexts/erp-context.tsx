@@ -293,6 +293,7 @@ interface ERPContextType {
   setProveedores: React.Dispatch<React.SetStateAction<Proveedor[]>>
   productos: Producto[]
   setProductos: React.Dispatch<React.SetStateAction<Producto[]>>
+  recargarProductos: () => Promise<void>
 
   // Movimientos
   movimientosStock: MovimientoStock[]
@@ -386,17 +387,16 @@ export function ERPProvider({ children }: { children: ReactNode }) {
   // Cargar sucursales desde Supabase al iniciar
   useEffect(() => {
     fetch("/api/sucursales")
-      .then(r => r.json())
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
       .then((data: Sucursal[]) => {
         if (Array.isArray(data) && data.length > 0) {
           setSucursales(data)
-          // Restaurar última sucursal activa desde localStorage
           const guardada = localStorage.getItem("sucursal_activa_id")
           const encontrada = guardada ? data.find(s => s.id === Number(guardada)) : null
           setSucursalActivaState(encontrada ?? data[0])
         }
       })
-      .catch(console.error)
+      .catch(e => console.warn("[v0] sucursales no disponibles:", e.message))
   }, [])
 
   const setSucursalActiva = (s: Sucursal) => {
@@ -407,6 +407,18 @@ export function ERPProvider({ children }: { children: ReactNode }) {
   const [clientes, setClientes] = useState<Cliente[]>(clientesIniciales)
   const [proveedores, setProveedores] = useState<Proveedor[]>(proveedoresIniciales)
   const [productos, setProductos] = useState<Producto[]>(productosIniciales)
+
+  // Cargar productos desde Supabase al iniciar (para tener stock_real actualizado)
+  const recargarProductos = async () => {
+    try {
+      const r = await fetch("/api/productos")
+      if (!r.ok) return
+      const data = await r.json()
+      if (Array.isArray(data) && data.length > 0) setProductos(data)
+    } catch { /* fallback a datos iniciales */ }
+  }
+
+  useEffect(() => { recargarProductos() }, [])
 
   // Movimientos
   const [movimientosStock, setMovimientosStock] = useState<MovimientoStock[]>([])
@@ -867,6 +879,7 @@ export function ERPProvider({ children }: { children: ReactNode }) {
     setProveedores,
     productos,
     setProductos,
+    recargarProductos,
 
     // Movimientos
     movimientosStock,

@@ -249,7 +249,9 @@ interface OrdenCompra {
   estado: "borrador" | "confirmada" | "recibida_parcial" | "recibida" | "cancelada"
   fecha_entrega_estimada: string
   deposito_destino: string
+  deposito_destino_id?: number
   ubicacion_destino?: string
+  ubicacion_destino_id?: number
   moneda: "ARS" | "USD" | "EUR"
   tipo_cambio: number
   subtotal: number
@@ -301,7 +303,9 @@ interface Recepcion {
   proveedor_id?: number
   proveedor_nombre?: string
   deposito_destino: string
+  deposito_destino_id?: number
   ubicacion_destino?: string
+  ubicacion_destino_id?: number
   documento_origen_tipo: "oc" | "toma_equipo" | "transferencia"
   documento_origen_id?: number
   documento_origen_ref: string
@@ -554,15 +558,47 @@ export default function ModuloCompras() {
     ordenesPago,
     setOrdenesPago,
     sucursales,
+    recargarProductos,
   } = useERP()
 
   // Carga inicial desde Supabase
   useEffect(() => {
-    fetchProveedores().then(data => setProveedores(
-      (data ?? []).map((p: any) => ({ ...p, nombre: p.nombre ?? p.razon_social ?? "" }))
-    )).catch(console.error)
-    fetchOrdenesCompra().then(data => setOrdenesCompra(data)).catch(console.error)
-    fetchRecepciones().then(data => setRecepciones(data)).catch(console.error)
+    fetchProveedores().then(data => {
+      setProveedores(
+        (data ?? []).map((p: any) => ({ ...p, nombre: p.nombre ?? p.razon_social ?? "" }))
+      )
+    }).catch(console.error)
+    fetchOrdenesCompra().then(data =>
+      setOrdenesCompra((data ?? []).map((oc: any) => ({
+        ...oc,
+        lineas: Array.isArray(oc.lineas) ? oc.lineas
+              : Array.isArray(oc.items)  ? oc.items
+              : [],
+      })))
+    ).catch(console.error)
+    fetchRecepciones().then(data =>
+      setRecepciones((data ?? []).map((r: any) => {
+        const rawLineas = Array.isArray(r.lineas) ? r.lineas
+                        : Array.isArray(r.items)  ? r.items
+                        : []
+        return {
+          ...r,
+          lineas: rawLineas.map((l: any) => ({
+            ...l,
+            cantidad_pedida:        l.cantidad_pedida        ?? l.cantidad ?? 0,
+            cantidad_recibida:      l.cantidad_recibida      ?? 0,
+            producto_sku:           l.producto_sku           ?? "",
+            udm:                    l.udm                    ?? "un",
+            estado_linea:           l.estado_linea           ?? "pendiente",
+            tiene_serie:            l.tiene_serie            ?? false,
+            requiere_color:         l.requiere_color         ?? false,
+            requiere_bateria:       l.requiere_bateria       ?? false,
+            requiere_outlet:        l.requiere_outlet        ?? false,
+            requiere_observaciones: l.requiere_observaciones ?? false,
+          })),
+        }
+      }))
+    ).catch(console.error)
     fetchFacturasCompra().then(data => setFacturasCompra(data)).catch(console.error)
     fetchOrdenesPago().then(data => setOrdenesPago(data)).catch(console.error)
     fetchNotasCreditoCompra().then(data => setNotasCreditoCompra(data)).catch(console.error)
@@ -2019,7 +2055,7 @@ export default function ModuloCompras() {
       const matchBusqueda = !q ||
         oc.numero.toLowerCase().includes(q) ||
         oc.proveedor_nombre.toLowerCase().includes(q) ||
-        oc.lineas.some(l => l.producto_nombre.toLowerCase().includes(q))
+        (oc.lineas ?? []).some(l => l.producto_nombre?.toLowerCase().includes(q))
       return matchEstado && matchMetodo && matchBusqueda
     })
 
@@ -2142,7 +2178,10 @@ export default function ModuloCompras() {
                 </tr>
               )}
               {ocsFiltradas.map(oc => {
-                const recsVinculadas = recepciones.filter(r => r.documento_origen_id === oc.id)
+    const recsVinculadas = recepciones.filter(r =>
+      Number(r.documento_origen_id) === Number(oc.id) ||
+      Number(r.orden_compra_id)     === Number(oc.id)
+    )
                 const recEstado = recsVinculadas.length === 0 ? null :
                   recsVinculadas.every(r => r.estado === 'recibida') ? 'recibida' :
                   recsVinculadas.some(r => r.estado === 'recibida') ? 'parcial' : 'esperando'
@@ -2194,21 +2233,45 @@ export default function ModuloCompras() {
   const confirmarOC = async (oc: OrdenCompra) => {
     const ahora = new Date().toISOString()
     const esInmediato = oc.metodo_compra === 'inmediato'
-    const nuevoNumRec = Math.max(...recepciones.map(r => r.id ?? 0), 0) + 1
+
+    // Obtener el próximo número de recepción desde la DB para evitar duplicados
+    let siguienteNumero = "00001"
+    try {
+      const r = await fetch("/api/compras/recepciones?siguiente_numero=1")
+      const d = await r.json()
+      if (d.siguiente_numero) siguienteNumero = d.siguiente_numero
+    } catch { /* usa fallback */ }
 
     const recPayload = {
-      numero: `REC-${String(nuevoNumRec).padStart(5, '0')}`,
-      fecha: ahora,
-      orden_compra_id: oc.id,
-      orden_compra_numero: oc.numero,
-      proveedor_id: oc.proveedor_id,
-      proveedor_nombre: oc.proveedor_nombre,
-      estado: esInmediato ? "confirmada" : "borrador",
-      items: oc.lineas.map(l => ({
-        producto_id: l.producto_id,
-        producto_nombre: l.producto_nombre,
-        cantidad: esInmediato ? l.cantidad : 0,
-        precio_unitario: l.precio_unitario,
+      numero:                  `REC-${siguienteNumero}`,
+      fecha:                   ahora,
+      orden_compra_id:         oc.id,
+      orden_compra_numero:     oc.numero,
+      proveedor_id:            oc.proveedor_id,
+      proveedor_nombre:        oc.proveedor_nombre,
+      estado:                  esInmediato ? "confirmada" : "borrador",
+      // nuevos campos para la ficha
+      documento_origen_tipo:   "oc",
+      documento_origen_id:     oc.id,
+      documento_origen_ref:    oc.numero,
+      sucursal:                oc.sucursal ?? "",
+      deposito_destino:        oc.deposito_destino ?? "",
+      deposito_destino_id:     oc.deposito_destino_id ?? null,
+      fecha_esperada:          oc.fecha_entrega_esperada ?? null,
+      items: (oc.lineas ?? []).map(l => ({
+        producto_id:            l.producto_id,
+        producto_nombre:        l.producto_nombre,
+        producto_sku:           l.producto_sku            ?? "",
+        cantidad_pedida:        l.cantidad,
+        cantidad_recibida:      esInmediato ? l.cantidad : 0,
+        precio_unitario:        l.precio_unitario,
+        udm:                    l.udm                     ?? "un",
+        estado_linea:           esInmediato ? "recibido" : "pendiente",
+        tiene_serie:            l.tiene_serie             ?? false,
+        requiere_color:         l.requiere_color          ?? false,
+        requiere_bateria:       l.requiere_bateria        ?? false,
+        requiere_outlet:        l.requiere_outlet         ?? false,
+        requiere_observaciones: l.requiere_observaciones  ?? false,
       })),
       total: esInmediato ? oc.total : 0,
     }
@@ -2220,14 +2283,29 @@ export default function ModuloCompras() {
         guardarRecepcion(recPayload),
         guardarOrdenCompra({ estado: ocEstadoNuevo }, oc.id),
       ])
-      const nuevaRec: Recepcion = { ...recCreada, lineas: oc.lineas.map(l => ({
-        producto_id: l.producto_id, producto_nombre: l.producto_nombre,
-        producto_sku: l.producto_sku ?? "", cantidad_pedida: l.cantidad,
-        cantidad_recibida: esInmediato ? l.cantidad : 0,
-        precio_unitario: l.precio_unitario, estado_linea: esInmediato ? "recibido" : "pendiente",
-        tiene_serie: false, requiere_color: false, requiere_bateria: false,
-        requiere_outlet: false, requiere_observaciones: false, udm: "un",
-      })) }
+      const nuevaRec: Recepcion = {
+        ...recCreada,
+        documento_origen_tipo: "oc",
+        documento_origen_id:   oc.id,
+        documento_origen_ref:  oc.numero,
+        sucursal:              oc.sucursal ?? "",
+        deposito_destino:      oc.deposito_destino ?? "",
+        lineas: (oc.lineas ?? []).map(l => ({
+          producto_id:       l.producto_id,
+          producto_nombre:   l.producto_nombre,
+          producto_sku:      l.producto_sku ?? "",
+          cantidad_pedida:   l.cantidad,
+          cantidad_recibida: esInmediato ? l.cantidad : 0,
+          precio_unitario:   l.precio_unitario,
+          estado_linea:      esInmediato ? "recibido" : "pendiente",
+          udm:               l.udm ?? "un",
+          tiene_serie:            l.tiene_serie            ?? false,
+          requiere_color:         l.requiere_color         ?? false,
+          requiere_bateria:       l.requiere_bateria       ?? false,
+          requiere_outlet:        l.requiere_outlet        ?? false,
+          requiere_observaciones: l.requiere_observaciones ?? false,
+        })),
+      }
       const ocConfirmada: OrdenCompra = { ...oc, ...ocActualizada, lineas: oc.lineas }
       setRecepciones(prev => [...prev, nuevaRec])
       setOrdenesCompra(prev => prev.map(o => o.id === oc.id ? ocConfirmada : o))
@@ -2260,11 +2338,11 @@ export default function ModuloCompras() {
 
     const recsVinculadas = recepciones.filter(r => r.documento_origen_id === oc.id)
     const facturasVinculadas = facturasCompra.filter(f => f.orden_compra_id === oc.id)
-    const totalRecibido = oc.lineas.reduce((s, l) => s + l.cantidad_recibida, 0)
-    const totalPedido = oc.lineas.reduce((s, l) => s + l.cantidad, 0)
+        const totalRecibido = (oc.lineas ?? []).reduce((s, l) => s + (l.cantidad_recibida ?? 0), 0)
+        const totalPedido = (oc.lineas ?? []).reduce((s, l) => s + (l.cantidad ?? 0), 0)
 
     const tabs = [
-      { key: "productos",     label: "Productos",                           count: oc.lineas.length },
+      { key: "productos",     label: "Productos",                           count: (oc.lineas ?? []).length },
       { key: "recepciones",   label: "Entregas / Recepciones",              count: recsVinculadas.length },
       { key: "facturas",      label: "Facturas vinculadas",                 count: facturasVinculadas.length },
       { key: "observaciones", label: "Observaciones",                       count: null },
@@ -2457,10 +2535,10 @@ export default function ModuloCompras() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {oc.lineas.length === 0 && (
+                  {(oc.lineas ?? []).length === 0 && (
                     <tr><td colSpan={6} className="py-8 text-center text-sm text-gray-400">Sin líneas</td></tr>
                   )}
-                  {oc.lineas.map((l, idx) => (
+                  {(oc.lineas ?? []).map((l, idx) => (
                     <tr key={idx} className="hover:bg-gray-50">
                       <td className="py-3 px-4 font-medium">{l.producto_nombre}</td>
                       <td className="py-3 px-4 text-gray-500">{l.descripcion || '-'}</td>
@@ -2504,7 +2582,7 @@ export default function ModuloCompras() {
                       key={r.id}
                       onClick={() => {
                         setSelectedRecepcion(r)
-                        setRecepcionCantidades(Object.fromEntries(r.lineas.map(l => [l.producto_id, l.cantidad_recibida])))
+                        setRecepcionCantidades(Object.fromEntries((r.lineas ?? []).map(l => [l.producto_id, l.cantidad_recibida])))
                         setSelectedOC(null)
                         setActiveView("recepciones")
                       }}
@@ -2512,7 +2590,7 @@ export default function ModuloCompras() {
                     >
                       <span className="font-medium text-emerald-700">{r.numero}</span>
                       <span className="text-gray-500">{new Date(r.fecha).toLocaleDateString('es-AR')}</span>
-                      <span className="text-gray-500">{r.lineas.length} producto{r.lineas.length !== 1 ? 's' : ''}</span>
+                      <span className="text-gray-500">{(r.lineas ?? []).length} producto{(r.lineas ?? []).length !== 1 ? 's' : ''}</span>
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                         r.estado === 'recibida' ? 'bg-green-100 text-green-700' :
                         r.estado === 'esperando_recepcion' ? 'bg-amber-100 text-amber-700' :
@@ -2660,10 +2738,10 @@ export default function ModuloCompras() {
 
   const renderCrearOC = () => {
     const oc = nuevaOC
-    const totalOC = oc.lineas.reduce((s, l) => s + l.subtotal, 0)
+    const totalOC = (oc.lineas ?? []).reduce((s, l) => s + (l.subtotal ?? 0), 0)
 
     const guardarOC = async () => {
-      if (!oc.proveedor_nombre || !oc.deposito_destino || oc.lineas.length === 0) {
+      if (!oc.proveedor_nombre || !oc.deposito_destino || (oc.lineas ?? []).length === 0) {
         alert("Complete proveedor, depósito destino y al menos una línea.")
         return
       }
@@ -2758,7 +2836,7 @@ export default function ModuloCompras() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white"
                 >
                   <option value="">Seleccionar proveedor...</option>
-                  {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre || p.razon_social || `Proveedor #${p.id}`}</option>)}
                 </select>
               </div>
               <div>
@@ -2902,14 +2980,14 @@ export default function ModuloCompras() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {oc.lineas.length === 0 && (
+              {(oc.lineas ?? []).length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-sm text-gray-400">
                     No hay productos. Agregue una linea para comenzar.
                   </td>
                 </tr>
               )}
-              {oc.lineas.map((linea, idx) => (
+              {(oc.lineas ?? []).map((linea, idx) => (
                 <tr key={idx} className="hover:bg-gray-50">
                   <td className="py-2 px-4">
                     <div className="relative">
@@ -3035,7 +3113,7 @@ export default function ModuloCompras() {
                   <td className="py-2 px-4">
                     <button
                       onClick={() => {
-                        setNuevaOC(prev => ({ ...prev, lineas: prev.lineas.filter((_, i) => i !== idx) }))
+                        setNuevaOC(prev => ({ ...prev, lineas: (prev.lineas ?? []).filter((_, i) => i !== idx) }))
                         setOcProductoSearch(prev => { const n = { ...prev }; delete n[idx]; return n })
                         setOcProductoOpciones(prev => { const n = { ...prev }; delete n[idx]; return n })
                         setOcProductoDropdownAbierto(prev => { const n = { ...prev }; delete n[idx]; return n })
@@ -3729,7 +3807,7 @@ export default function ModuloCompras() {
     const rec = selectedRecepcion
 
     // Validación: cantidades > 0
-    const lineasConCantidad = rec.lineas.filter(l => (recepcionCantidades[l.producto_id] ?? 0) > 0)
+    const lineasConCantidad = (rec.lineas ?? []).filter(l => (recepcionCantidades[l.producto_id] ?? 0) > 0)
     if (lineasConCantidad.length === 0) {
       alert("Debe ingresar al menos una cantidad recibida mayor a 0.")
       return
@@ -3751,7 +3829,7 @@ export default function ModuloCompras() {
     }
 
     const ahora = new Date().toISOString()
-    const lineasActualizadas: RecepcionLinea[] = rec.lineas.map(l => {
+    const lineasActualizadas: RecepcionLinea[] = (rec.lineas ?? []).map(l => {
       const cantRec = recepcionCantidades[l.producto_id] ?? 0
       const estadoLinea: RecepcionLinea['estado_linea'] = cantRec === 0
         ? 'pendiente'
@@ -3783,12 +3861,18 @@ export default function ModuloCompras() {
         }))
 
       if (lineasPendientes.length > 0) {
-        const nuevoId = Math.max(...recepciones.map(r => r.id)) + 1
+        let sigNumComp = "00001"
+        try {
+          const rComp = await fetch("/api/compras/recepciones?siguiente_numero=1")
+          const dComp = await rComp.json()
+          if (dComp.siguiente_numero) sigNumComp = dComp.siguiente_numero
+        } catch { /* fallback */ }
+        const nuevoId = recepciones.length + 1
         recCompId = nuevoId
         const recComp: Recepcion = {
           ...rec,
           id: nuevoId,
-          numero: `REC-${String(nuevoId).padStart(5, '0')}`,
+          numero: `REC-${sigNumComp}`,
           fecha: ahora,
           estado: 'esperando_recepcion',
           fecha_recepcion_real: undefined,
@@ -3822,7 +3906,7 @@ export default function ModuloCompras() {
         return {
           ...oc,
           estado: todasRecibidas && !hayParcial ? 'recibida' : 'recibida_parcial',
-          lineas: oc.lineas.map(ol => {
+          lineas: (oc.lineas ?? []).map(ol => {
             const linRec = lineasActualizadas.find(l => l.producto_id === ol.producto_id)
             return linRec ? { ...ol, cantidad_recibida: ol.cantidad_recibida + linRec.cantidad_recibida } : ol
           })
@@ -3830,18 +3914,29 @@ export default function ModuloCompras() {
       }))
     }
 
-    // Persistir recepción a Supabase via .then() sin await
+    // Persistir recepción a Supabase y luego procesar stock con el ID real
     const todasRecibidasFinal = lineasActualizadas.every(l => l.estado_linea === 'recibido')
     guardarRecepcion({
       estado: "confirmada",
+      fecha_recepcion_real: ahora,
       items: lineasActualizadas.map(l => ({
-        producto_id: l.producto_id,
-        producto_nombre: l.producto_nombre,
-        cantidad: l.cantidad_recibida,
-        precio_unitario: l.precio_unitario,
+        producto_id:            l.producto_id,
+        producto_nombre:        l.producto_nombre,
+        producto_sku:           l.producto_sku ?? "",
+        cantidad_pedida:        l.cantidad_pedida,
+        cantidad_recibida:      l.cantidad_recibida,
+        precio_unitario:        l.precio_unitario,
+        udm:                    l.udm ?? "un",
+        estado_linea:           l.estado_linea,
+        tiene_serie:            l.tiene_serie ?? false,
+        requiere_color:         l.requiere_color ?? false,
+        requiere_bateria:       l.requiere_bateria ?? false,
+        requiere_outlet:        l.requiere_outlet ?? false,
+        requiere_observaciones: l.requiere_observaciones ?? false,
       })),
-      total: lineasActualizadas.reduce((s, l) => s + l.cantidad_recibida * l.precio_unitario, 0),
-    }, rec.id).then(() => {
+      total: lineasActualizadas.reduce((s, l) => s + l.cantidad_recibida * (l.precio_unitario ?? 0), 0),
+    }, rec.id).then((recGuardada: any) => {
+      // Actualizar OC vinculada
       if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
         const ocVinculada = ordenesCompra.find(o => o.id === rec.documento_origen_id)
         if (ocVinculada) {
@@ -3853,19 +3948,40 @@ export default function ModuloCompras() {
 
     // Entrada de stock en Supabase via .then() sin await
     fetchDepositos().then(depositos => {
-      const depositoDestino = depositos.find(
-        (d: any) => d.nombre?.toLowerCase() === recActualizada.deposito_destino?.toLowerCase()
-          || d.codigo?.toLowerCase() === recActualizada.deposito_destino?.toLowerCase()
-      ) ?? depositos[0]
-      if (!depositoDestino) return
+      // Usar deposito_destino_id si existe, sino buscar por nombre/código, sino primer depósito
+      const depositoDestino =
+        depositos.find((d: any) => d.id === recActualizada.deposito_destino_id) ??
+        depositos.find((d: any) =>
+          d.nombre?.toLowerCase() === recActualizada.deposito_destino?.toLowerCase() ||
+          d.codigo?.toLowerCase() === recActualizada.deposito_destino?.toLowerCase()
+        ) ??
+        depositos[0]
+      if (!depositoDestino) {
+        console.error("[v0] Sin depósito destino para entrada de stock")
+        return
+      }
       fetchUbicaciones(depositoDestino.id).then(ubicaciones => {
-        const ubicacionDestino = ubicaciones.find((u: any) => u.es_defecto) ?? ubicaciones[0]
-        if (!ubicacionDestino) return
+        // Usar ubicacion_destino_id si existe, sino es_defecto, sino primera ubicación
+        const ubicacionDestino =
+          ubicaciones.find((u: any) => u.id === recActualizada.ubicacion_destino_id) ??
+          ubicaciones.find((u: any) => u.es_defecto) ??
+          ubicaciones[0]
+        if (!ubicacionDestino) {
+          console.error("[v0] Sin ubicación destino para entrada de stock — depósito:", depositoDestino.nombre)
+          return
+        }
+        // Persistir los IDs de depósito y ubicación en la recepción
+        guardarRecepcion({
+          deposito_destino_id: depositoDestino.id,
+          ubicacion_destino_id: ubicacionDestino.id,
+          deposito_destino: depositoDestino.nombre,
+        }, rec.id).catch((e: any) => console.error("[v0] Error guardando IDs depósito:", e.message))
+
         procesarEntradaRecepcion({
-          recepcion_id: recActualizada.id,
-          recepcion_numero: recActualizada.numero,
-          deposito_id: depositoDestino.id,
-          ubicacion_id: ubicacionDestino.id,
+          recepcion_id:      recActualizada.id,
+          recepcion_numero:  recActualizada.numero,
+          deposito_id:       depositoDestino.id,
+          ubicacion_id:      ubicacionDestino.id,
           lineas: lineasActualizadas
             .filter(l => l.cantidad_recibida > 0)
             .map(l => ({
@@ -3883,6 +3999,9 @@ export default function ModuloCompras() {
                   }))
                 : undefined,
             })),
+        }).then(() => {
+          // Recargar stock_real de productos en el contexto global
+          recargarProductos()
         }).catch((err: any) => console.error("[stock] Error procesando entrada de stock:", err))
       }).catch((err: any) => console.error("[stock] Error obteniendo ubicaciones:", err))
     }).catch((err: any) => console.error("[stock] Error obteniendo depósitos:", err))
@@ -3921,7 +4040,7 @@ export default function ModuloCompras() {
         r.numero.toLowerCase().includes(q) ||
         (r.proveedor_nombre || '').toLowerCase().includes(q) ||
         r.documento_origen_ref.toLowerCase().includes(q) ||
-        r.lineas.some(l =>
+        (r.lineas ?? []).some(l =>
           l.producto_nombre.toLowerCase().includes(q) ||
           l.producto_sku.toLowerCase().includes(q) ||
           (l.unidades_serie || []).some(u => u.nro_serie.toLowerCase().includes(q))
@@ -4028,7 +4147,7 @@ export default function ModuloCompras() {
                   onClick={() => {
                     setSelectedRecepcion(rec)
                     setRecepcionCantidades(
-                      Object.fromEntries(rec.lineas.map(l => [l.producto_id, l.cantidad_recibida]))
+                      Object.fromEntries((rec.lineas ?? []).map(l => [l.producto_id, l.cantidad_recibida]))
                     )
                   }}
                 >
@@ -4046,7 +4165,7 @@ export default function ModuloCompras() {
                   <td className="py-3 px-4">
                     <span className="text-sm text-blue-600 font-medium">{rec.documento_origen_ref}</span>
                   </td>
-                  <td className="py-3 px-4 text-center text-sm">{rec.lineas.length}</td>
+                  <td className="py-3 px-4 text-center text-sm">{(rec.lineas ?? []).length}</td>
                   <td className="py-3 px-4 text-center">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${estadoColor[rec.estado] || 'bg-gray-100 text-gray-600'}`}>
                       {estadoLabel[rec.estado] || rec.estado}
@@ -4070,16 +4189,24 @@ export default function ModuloCompras() {
   const renderFichaRecepcion = () => {
     if (!selectedRecepcion) return null
     const rec = selectedRecepcion
-    const editable = rec.estado === "esperando_recepcion"
+    const editable = ["borrador", "esperando_recepcion"].includes(rec.estado ?? "")
 
     const estadoColor: Record<string, string> = {
-      recibida:             'bg-green-100 text-green-700',
+      borrador:             'bg-gray-100 text-gray-600',
       esperando_recepcion:  'bg-amber-100 text-amber-700',
+      parcial:              'bg-orange-100 text-orange-700',
+      confirmada:           'bg-blue-100 text-blue-700',
+      recibida:             'bg-green-100 text-green-700',
+      completa:             'bg-green-100 text-green-700',
       cancelada:            'bg-red-100 text-red-700',
     }
     const estadoLabel: Record<string, string> = {
+      borrador:             'Borrador',
+      esperando_recepcion:  'Esperando recepción',
+      parcial:              'Parcial',
+      confirmada:           'Confirmada',
       recibida:             'Recibida',
-      esperando_recepcion:  'Esperando Recepción',
+      completa:             'Completa',
       cancelada:            'Cancelada',
     }
     const estadoLineaColor: Record<string, string> = {
@@ -4099,7 +4226,7 @@ export default function ModuloCompras() {
     }
 
     // Check si todas las cantidades recibidas = pedidas (para "Recibir todo")
-    const todasCompletas = rec.lineas.every(l => (recepcionCantidades[l.producto_id] ?? l.cantidad_recibida) >= l.cantidad_pedida)
+      const todasCompletas = (rec.lineas ?? []).every(l => (recepcionCantidades[l.producto_id] ?? l.cantidad_recibida) >= l.cantidad_pedida)
 
     const ocVinculada = rec.documento_origen_tipo === "oc" && rec.documento_origen_id
       ? ordenesCompra.find(o => o.id === rec.documento_origen_id)
@@ -4140,7 +4267,7 @@ export default function ModuloCompras() {
               <button
                 onClick={() => {
                   setSelectedRecepcion(recAnterior)
-                  setRecepcionCantidades(Object.fromEntries(recAnterior.lineas.map(l => [l.producto_id, l.cantidad_recibida])))
+                  setRecepcionCantidades(Object.fromEntries((recAnterior.lineas ?? []).map(l => [l.producto_id, l.cantidad_recibida])))
                 }}
                 className="flex items-center gap-2 px-3 py-1.5 text-xs bg-gray-50 border border-gray-200 text-gray-700 rounded-full hover:bg-gray-100 transition-colors"
               >
@@ -4152,7 +4279,7 @@ export default function ModuloCompras() {
               <button
                 onClick={() => {
                   setSelectedRecepcion(recComplementaria)
-                  setRecepcionCantidades(Object.fromEntries(recComplementaria.lineas.map(l => [l.producto_id, l.cantidad_recibida])))
+                  setRecepcionCantidades(Object.fromEntries((recComplementaria.lineas ?? []).map(l => [l.producto_id, l.cantidad_recibida])))
                 }}
                 className="flex items-center gap-2 px-3 py-1.5 text-xs bg-amber-50 border border-amber-200 text-amber-700 rounded-full hover:bg-amber-100 transition-colors"
               >
@@ -4308,11 +4435,11 @@ export default function ModuloCompras() {
                   onChange={e => {
                     if (e.target.checked) {
                       const nuevo: Record<number, number> = {}
-                      rec.lineas.forEach(l => { nuevo[l.producto_id] = l.cantidad_pedida })
+                      ;(rec.lineas ?? []).forEach(l => { nuevo[l.producto_id] = l.cantidad_pedida })
                       setRecepcionCantidades(nuevo)
                     } else {
                       const nuevo: Record<number, number> = {}
-                      rec.lineas.forEach(l => { nuevo[l.producto_id] = 0 })
+                      ;(rec.lineas ?? []).forEach(l => { nuevo[l.producto_id] = 0 })
                       setRecepcionCantidades(nuevo)
                     }
                   }}
@@ -4335,7 +4462,7 @@ export default function ModuloCompras() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {rec.lineas.map((linea, idx) => {
+              {(rec.lineas ?? []).map((linea, idx) => {
                 const cantRec = recepcionCantidades[linea.producto_id] ?? linea.cantidad_recibida
                 const estadoLinea = editable
                   ? (cantRec === 0 ? 'pendiente' : cantRec < linea.cantidad_pedida ? 'recibido_parcial' : 'recibido')
