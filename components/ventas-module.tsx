@@ -1432,41 +1432,50 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     onApplyFilter: (f: SavedFilter) => { setActiveFilters(f.filters); setActiveGroupBy(f.groupBy); setSearch("") }
   })
 
-  // Función reutilizable para cargar maestro de productos
-  const cargarProductosMaestro = () => {
-    fetch("/api/productos")
-      .then(r => r.json())
-      .then((data: any[]) => {
-        if (!Array.isArray(data) || data.length === 0) return
-        const mapped: ProductoVenta[] = data.map(p => ({
-          id: p.id,
-          sku: p.codigo_interno ?? "",
-          nombre: p.nombre ?? "",
-          descripcion: p.observaciones ?? "",
-          precio_venta: p.precio_venta ?? 0,
-          costo: p.costo_manual ?? 0,
-          stock: p.stock_real ?? 0,
-          categoria: p.categoria ?? "",
-          requiere_serie: p.tiene_numero_serie ?? false,
-        }))
-        setProductosMaestro(mapped)
-      })
-      .catch(() => {})
+  // Helper para mapear productos de la API al tipo interno
+  function mapearProductos(data: any[]): ProductoVenta[] {
+    return data.map(p => ({
+      id: p.id,
+      sku: p.codigo_interno ?? "",
+      nombre: p.nombre ?? "",
+      descripcion: p.observaciones ?? "",
+      precio_venta: p.precio_venta ?? 0,
+      costo: p.costo_manual ?? 0,
+      stock: p.stock_real ?? 0,
+      categoria: p.categoria ?? "",
+      requiere_serie: p.tiene_numero_serie ?? false,
+    }))
   }
 
-  // Cargar listas de precios y maestro de productos al iniciar
+  // Cargar listas de precios al iniciar
   useEffect(() => {
     fetch("/api/listas-precios")
       .then(r => r.json())
       .then(data => { if (Array.isArray(data) && data.length > 0) setListasPrecios(data) })
       .catch(() => {})
-    cargarProductosMaestro()
   }, [])
 
-  // Recargar productos cuando el usuario entra a versiones de lista (por si falló al iniciar)
+  // Cargar maestro de productos al iniciar (fetch inline para evitar closure stale)
+  useEffect(() => {
+    fetch("/api/productos")
+      .then(r => r.json())
+      .then((data: any[]) => {
+        if (!Array.isArray(data) || data.length === 0) return
+        setProductosMaestro(mapearProductos(data))
+      })
+      .catch(() => {})
+  }, [])
+
+  // Recargar productos al entrar a vistas que lo necesitan
   useEffect(() => {
     if (activeView === "versiones_lista" || activeView === "listas_precios") {
-      if (productosMaestro.length === 0) cargarProductosMaestro()
+      fetch("/api/productos")
+        .then(r => r.json())
+        .then((data: any[]) => {
+          if (!Array.isArray(data) || data.length === 0) return
+          setProductosMaestro(mapearProductos(data))
+        })
+        .catch(() => {})
     }
   }, [activeView])
 
@@ -5564,7 +5573,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <th className="text-right py-3 px-4">Precio Base</th>
                 <th className="text-right py-3 px-4">Descuentos</th>
                 <th className="text-right py-3 px-4">Precio Final</th>
-                <th className="text-center py-3 px-4">Operación</th>
+                <th className="text-center py-3 px-4">Operaci��n</th>
                 <th className="text-center py-3 px-4">Recepción</th>
                 <th className="text-center py-3 px-4">Estado</th>
               </tr>
