@@ -1489,7 +1489,17 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   useEffect(() => {
     fetch("/api/listas-precios")
       .then(r => r.json())
-      .then(data => { if (Array.isArray(data) && data.length > 0) setListasPrecios(data) })
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          const mapeadas = data.map((l: any) => ({
+            ...l,
+            // Normalizar campos que la DB devuelve con nombres distintos
+            moneda_base: l.moneda_base ?? l.moneda ?? "ARS",
+            estado: l.estado ?? (l.activa ? "activa" : "borrador"),
+          }))
+          setListasPrecios(mapeadas)
+        }
+      })
       .catch(() => {})
   }, [])
 
