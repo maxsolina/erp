@@ -1,10 +1,17 @@
-import { createClient } from "@/lib/supabase-server"
+import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
 
 // GET /api/listas-precios/items?lista_id=1
 // Devuelve los items con join a productos para tener sku, nombre, categoria, etc.
 export async function GET(req: Request) {
-  const supabase = await createClient()
+  const supabase = getSupabase()
   const { searchParams } = new URL(req.url)
   const listaId = searchParams.get("lista_id")
 
@@ -51,7 +58,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const supabase = await createClient()
+  const supabase = getSupabase()
   const body = await req.json()
   const { data, error } = await supabase
     .from("lista_precios_items")
