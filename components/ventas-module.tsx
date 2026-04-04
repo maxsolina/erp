@@ -1346,6 +1346,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [nvListaPreciosId, setNvListaPreciosId] = useState<number | null>(null)
   const [productosNV, setProductosNV] = useState<ProductoVenta[]>([])
   const [productosNVCargando, setProductosNVCargando] = useState(false)
+  // Maestro de productos reales (todos los productos de la DB, para selectores de lista de precios)
+  const [productosMaestro, setProductosMaestro] = useState<ProductoVenta[]>([])
 
   // Estados para ubicación de stock en NV
   const [nvDepositoId, setNvDepositoId] = useState<number>(1) // Casa Central por defecto
@@ -1436,11 +1438,30 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     onApplyFilter: (f: SavedFilter) => { setActiveFilters(f.filters); setActiveGroupBy(f.groupBy); setSearch("") }
   })
 
-  // Cargar listas de precios reales desde Supabase al iniciar
+  // Cargar listas de precios y maestro de productos desde Supabase al iniciar
   useEffect(() => {
     fetch("/api/listas-precios")
       .then(r => r.json())
       .then(data => { if (Array.isArray(data) && data.length > 0) setListasPrecios(data) })
+      .catch(() => {})
+
+    fetch("/api/productos")
+      .then(r => r.json())
+      .then((data: any[]) => {
+        if (!Array.isArray(data)) return
+        const mapped: ProductoVenta[] = data.map(p => ({
+          id: p.id,
+          sku: p.codigo_interno ?? "",
+          nombre: p.nombre ?? "",
+          descripcion: p.observaciones ?? "",
+          precio_venta: p.precio_venta ?? 0,
+          costo: p.costo_manual ?? 0,
+          stock: p.stock_real ?? 0,
+          categoria: p.categoria ?? "",
+          requiere_serie: p.tiene_numero_serie ?? false,
+        }))
+        setProductosMaestro(mapped)
+      })
       .catch(() => {})
   }, [])
 
@@ -10466,11 +10487,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       </td>
                       <td className="py-1.5 px-2">
                         <select value={nuevaLineaVersion.producto_id || ""} onChange={(e) => {
-                          const prod = productosConSerie.find(p => p.id === Number(e.target.value))
+                          const prod = productosMaestro.find(p => p.id === Number(e.target.value))
                           if (prod) setNuevaLineaVersion({ ...nuevaLineaVersion, producto_id: prod.id, producto_codigo: prod.sku, producto_nombre: prod.nombre, costo_importe: prod.costo || 0 })
                         }} className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500">
                           <option value="">Seleccionar producto...</option>
-                          {productosConSerie.map(prod => <option key={prod.id} value={prod.id}>{prod.sku} - {prod.nombre}</option>)}
+                          {productosMaestro.map(prod => <option key={prod.id} value={prod.id}>{prod.sku} - {prod.nombre}</option>)}
                         </select>
                       </td>
                       <td className="py-1.5 px-2">
