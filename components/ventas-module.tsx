@@ -1432,16 +1432,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     onApplyFilter: (f: SavedFilter) => { setActiveFilters(f.filters); setActiveGroupBy(f.groupBy); setSearch("") }
   })
 
-  // Cargar listas de precios desde Supabase al iniciar
-  useEffect(() => {
-    fetch("/api/listas-precios")
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data) && data.length > 0) setListasPrecios(data) })
-      .catch(() => {})
-  }, [])
-
-  // Cargar maestro de productos desde Supabase al iniciar (independiente de listas de precios)
-  useEffect(() => {
+  // Función reutilizable para cargar maestro de productos
+  const cargarProductosMaestro = () => {
     fetch("/api/productos")
       .then(r => r.json())
       .then((data: any[]) => {
@@ -1460,7 +1452,23 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         setProductosMaestro(mapped)
       })
       .catch(() => {})
+  }
+
+  // Cargar listas de precios y maestro de productos al iniciar
+  useEffect(() => {
+    fetch("/api/listas-precios")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data) && data.length > 0) setListasPrecios(data) })
+      .catch(() => {})
+    cargarProductosMaestro()
   }, [])
+
+  // Recargar productos cuando el usuario entra a versiones de lista (por si falló al iniciar)
+  useEffect(() => {
+    if (activeView === "versiones_lista" || activeView === "listas_precios") {
+      if (productosMaestro.length === 0) cargarProductosMaestro()
+    }
+  }, [activeView])
 
   // Cargar productos de la lista de precios seleccionada cuando cambia nvListaPreciosId
   useEffect(() => {
