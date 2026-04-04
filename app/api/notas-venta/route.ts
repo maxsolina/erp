@@ -34,7 +34,18 @@ export async function GET(req: Request) {
 
   if (lineasErr) return NextResponse.json({ error: lineasErr.message }, { status: 500 })
 
-  // 3. Combinar
+  // 3. Enriquecer con datos de clientes
+  const clienteIds = [...new Set(nvs.map((n: any) => n.cliente_id).filter(Boolean))]
+  let clientesMap: Record<number, any> = {}
+  if (clienteIds.length > 0) {
+    const { data: clientes } = await supabase
+      .from("clientes")
+      .select("id, nombre, codigo")
+      .in("id", clienteIds)
+    ;(clientes ?? []).forEach((c: any) => { clientesMap[c.id] = c })
+  }
+
+  // 4. Combinar líneas
   const lineasPorNV: Record<number, any[]> = {}
   ;(lineas ?? []).forEach((l: any) => {
     if (!lineasPorNV[l.nota_venta_id]) lineasPorNV[l.nota_venta_id] = []
@@ -43,6 +54,8 @@ export async function GET(req: Request) {
 
   const result = nvs.map((nv: any) => ({
     ...nv,
+    cliente_nombre: clientesMap[nv.cliente_id]?.nombre ?? nv.cliente_nombre ?? "",
+    cliente_codigo: clientesMap[nv.cliente_id]?.codigo ?? "",
     notas_venta_lineas: lineasPorNV[nv.id] ?? [],
   }))
 

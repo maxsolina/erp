@@ -1597,6 +1597,64 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       .catch(() => {})
   }, [])
 
+  // Cargar OEs desde Supabase al iniciar
+  useEffect(() => {
+    fetch("/api/ordenes-entrega")
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setOrdenesEntrega(data.map((oe: any) => ({
+            id: oe.id,
+            numero: oe.numero,
+            nota_venta_id: oe.nota_venta_id ?? 0,
+            nota_venta_numero: oe.nota_venta_numero ?? "",
+            cliente_id: oe.cliente_id ?? 0,
+            cliente_nombre: oe.cliente_nombre ?? "",
+            fecha: oe.fecha ?? oe.created_at,
+            fecha_entrega_programada: oe.fecha_entrega_programada ?? oe.fecha ?? "",
+            estado: oe.estado ?? "confirmada",
+            tipo: oe.tipo ?? "venta",
+            deposito_origen: oe.deposito_origen ?? "",
+            ubicacion_origen: oe.ubicacion_origen ?? "",
+            total_productos: oe.total_productos ?? 0,
+            productos_entregados: oe.productos_entregados ?? 0,
+            productos: oe.productos ?? [],
+            seguimiento: oe.seguimiento ?? [],
+          })))
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  // Cargar Remitos desde Supabase al iniciar
+  useEffect(() => {
+    fetch("/api/remitos-venta")
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setRemitos(data.map((r: any) => ({
+            id: r.id,
+            numero: r.numero,
+            orden_entrega_id: r.orden_entrega_id ?? 0,
+            orden_entrega_numero: r.orden_entrega_numero ?? "",
+            nota_venta_numero: r.nota_venta_numero ?? "",
+            cliente_id: r.cliente_id ?? 0,
+            cliente_nombre: r.cliente_nombre ?? "",
+            fecha: r.fecha ?? r.created_at,
+            estado: r.estado ?? "confirmado",
+            tipo: r.tipo ?? "salida",
+            deposito: r.deposito ?? "",
+            ubicacion: r.ubicacion ?? "",
+            total_bultos: r.total_bultos ?? 1,
+            observaciones: r.observaciones ?? "",
+            productos: r.productos ?? [],
+            seguimiento: r.seguimiento ?? [],
+          })))
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   // Cargar listas de precios al iniciar
   useEffect(() => {
     fetch("/api/listas-precios")
@@ -3647,6 +3705,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "OE creada desde venta inmediata" }]
       }
       setOrdenesEntrega(prev => [...prev, newOE])
+      // Persistir OE en Supabase
+      fetch("/api/ordenes-entrega", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newOE),
+      }).catch(() => {})
 
       // Crear Remito
       const remitoNumero = `REM X 10000-000${100 + remitos.length}`
@@ -3675,6 +3739,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "Remito creado desde venta inmediata" }]
       }
       setRemitos(prev => [...prev, newRemito])
+      // Persistir Remito en Supabase
+      fetch("/api/remitos-venta", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newRemito),
+      }).catch(() => {})
 
       // Crear Factura en borrador
       const facturaNumero = `FC X 10000-000${13460 + facturas.length}`
