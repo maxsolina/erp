@@ -1455,6 +1455,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       .catch(() => {})
   }, [])
 
+  // Cargar versiones de listas de precios al iniciar
+  useEffect(() => {
+    fetch("/api/listas-precios/versiones")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setVersionesLista(data) })
+      .catch(() => {})
+  }, [])
+
   // Cargar maestro de productos al iniciar (fetch inline para evitar closure stale)
   useEffect(() => {
     fetch("/api/productos")
@@ -9365,8 +9373,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setActiveView("versiones_lista")
   }
 
-  const crearVersionBasadaEnOtra = (versionBase: VersionListaPrecios) => {
-    const nuevaVersion: VersionListaPrecios = {
+  const crearVersionBasadaEnOtra = async (versionBase: VersionListaPrecios) => {
+    const fechaActual = new Date().toISOString()
+    const payload: VersionListaPrecios = {
       id: 0,
       lista_precios_id: versionBase.lista_precios_id,
       lista_precios_nombre: versionBase.lista_precios_nombre,
@@ -9375,22 +9384,27 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       fecha_final: nuevaVersionBasadaForm.fecha_final || null,
       activa: false,
       estado: "borrador",
-      ultima_actualizacion: new Date().toISOString(),
-      lineas: nuevaVersionBasadaForm.copiar_lineas ? versionBase.lineas.map((l, idx) => ({ ...l, id: idx + 1 })) : [],
+      ultima_actualizacion: fechaActual,
+      lineas: nuevaVersionBasadaForm.copiar_lineas ? versionBase.lineas.map(l => ({ ...l, id: 0 })) : [],
       seguimiento: [{
         id: 1,
-        fecha: new Date().toISOString(),
+        fecha: fechaActual,
         usuario: "Max Solina",
         tipo: "creacion" as const,
         descripcion: `Versión creada basada en "${versionBase.nombre}"`
       }]
     }
-    
-    const nuevoId = Math.max(...versionesLista.map(v => v.id), 0) + 1
-    nuevaVersion.id = nuevoId
-    
-    setVersionesLista(prev => [...prev, nuevaVersion])
-    setSelectedVersion(nuevaVersion)
+
+    const res = await fetch("/api/listas-precios/versiones", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    if (res.ok) {
+      const nuevaVersion: VersionListaPrecios = await res.json()
+      setVersionesLista(prev => [nuevaVersion, ...prev])
+      setSelectedVersion(nuevaVersion)
+    }
     setEditingVersion(null)
     setCreandoVersion(false)
     setModoEdicionVersion(false)
@@ -9398,16 +9412,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setNuevaVersionBasadaForm({ nombre: "", fecha_inicial: "", fecha_final: "", copiar_lineas: true })
   }
 
-  const guardarVersion = () => {
+  const guardarVersion = async () => {
     if (!editingVersion || !editingVersion.nombre.trim()) return
     
     const fechaActual = new Date().toISOString()
     
     if (creandoVersion) {
-      const nuevoId = Math.max(...versionesLista.map(v => v.id), 0) + 1
-      const nuevaVersion: VersionListaPrecios = {
+      const payload: VersionListaPrecios = {
         ...editingVersion,
-        id: nuevoId,
+        id: 0,
         ultima_actualizacion: fechaActual,
         seguimiento: [{
           id: 1,
@@ -9417,8 +9430,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           descripcion: "Versión creada"
         }]
       }
-      setVersionesLista(prev => [...prev, nuevaVersion])
-      setSelectedVersion(nuevaVersion)
+      const res = await fetch("/api/listas-precios/versiones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      if (res.ok) {
+        const nuevaVersion: VersionListaPrecios = await res.json()
+        setVersionesLista(prev => [nuevaVersion, ...prev])
+        setSelectedVersion(nuevaVersion)
+      }
       setEditingVersion(null)
       setCreandoVersion(false)
       setModoEdicionVersion(false)
@@ -9442,8 +9463,19 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         ultima_actualizacion: fechaActual,
         seguimiento: seguimientoActualizado 
       }
-      setVersionesLista(prev => prev.map(v => v.id === editingVersion.id ? versionActualizada : v))
-      setSelectedVersion(versionActualizada)
+      const res = await fetch(`/api/listas-precios/versiones/${editingVersion.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(versionActualizada),
+      })
+      if (res.ok) {
+        const saved: VersionListaPrecios = await res.json()
+        setVersionesLista(prev => prev.map(v => v.id === saved.id ? saved : v))
+        setSelectedVersion(saved)
+      } else {
+        setVersionesLista(prev => prev.map(v => v.id === editingVersion.id ? versionActualizada : v))
+        setSelectedVersion(versionActualizada)
+      }
       setEditingVersion(null)
       setModoEdicionVersion(false)
       setEditandoLineas(false)
