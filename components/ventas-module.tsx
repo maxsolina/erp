@@ -11333,7 +11333,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <X className="w-5 h-5" />
             </button>
           </div>
-          <form onSubmit={(e) => {
+          <form onSubmit={async (e) => {
             e.preventDefault()
             const formData = new FormData(e.currentTarget)
             const cliente = clientes.find(c => c.id === nvClienteId)
