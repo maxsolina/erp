@@ -1548,6 +1548,55 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     }))
   }
 
+  // Cargar notas de venta desde Supabase al iniciar
+  useEffect(() => {
+    fetch("/api/notas-venta")
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          const mapeadas = data.map((nv: any) => ({
+            id: nv.id,
+            numero: nv.numero,
+            cliente_id: nv.cliente_id,
+            cliente_nombre: nv.cliente_nombre ?? "",
+            cliente_codigo: nv.cliente_codigo ?? "",
+            vendedor_id: nv.vendedor_id ?? 1,
+            vendedor_nombre: nv.vendedor_nombre ?? "",
+            fecha: nv.fecha ?? nv.created_at,
+            estado: nv.estado ?? "abierta",
+            moneda: nv.moneda ?? "ARS",
+            tipo_cotizacion: nv.tipo_cotizacion ?? "blue",
+            cotizacion: nv.cotizacion ?? 1150,
+            lista_precios_id: nv.lista_precios_id ?? 1,
+            termino_pago_id: nv.termino_pago_id ?? 1,
+            termino_pago_nombre: nv.termino_pago_nombre ?? "Contado",
+            deposito: nv.deposito ?? "",
+            tipo_venta: nv.tipo_venta ?? "inmediata",
+            lineas: (nv.notas_venta_lineas ?? []).map((l: any) => ({
+              id: l.id,
+              producto_id: l.producto_id,
+              producto_nombre: l.producto_nombre,
+              descripcion: l.descripcion ?? "",
+              cantidad: l.cantidad,
+              precio_unitario: l.precio_unitario,
+              descuento: l.descuento ?? 0,
+              subtotal: l.subtotal,
+              requiere_serie: false,
+              series_seleccionadas: [],
+            })),
+            subtotal: nv.total ?? 0,
+            descuento_global: 0,
+            impuestos: 0,
+            total: nv.total ?? 0,
+            sucursal: nv.sucursal ?? "Puerto Norte",
+            punto_venta: nv.punto_venta ?? "10000",
+          }))
+          setNotasVenta(mapeadas)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   // Cargar listas de precios al iniciar
   useEffect(() => {
     fetch("/api/listas-precios")
@@ -11284,7 +11333,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <X className="w-5 h-5" />
             </button>
           </div>
-          <form onSubmit={(e) => {
+          <form onSubmit={async (e) => {
             e.preventDefault()
             const formData = new FormData(e.currentTarget)
             const cliente = clientes.find(c => c.id === nvClienteId)
@@ -11328,6 +11377,33 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               total: subtotal,
               sucursal: "Puerto Norte",
               punto_venta: "10000"
+            }
+
+            // ── Persistir NV en Supabase ──────────────────────────────
+            try {
+              await fetch("/api/notas-venta", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  numero: nvNumero,
+                  cliente_id: cliente.id,
+                  vendedor_id: vendedorId,
+                  moneda,
+                  estado: tipoVenta === "inmediata" ? "finalizada" : "borrador",
+                  total: isNaN(subtotal) ? 0 : subtotal,
+                  lineas: nvLineas.map(l => ({
+                    producto_id: l.producto_id,
+                    producto_nombre: l.producto_nombre,
+                    descripcion: l.descripcion ?? null,
+                    cantidad: l.cantidad,
+                    precio_unitario: l.precio_unitario ?? 0,
+                    descuento: l.descuento ?? 0,
+                    subtotal: l.subtotal ?? l.cantidad * (l.precio_unitario ?? 0),
+                  })),
+                }),
+              })
+            } catch (_) {
+              // Error de red — la NV sigue en el state local igual
             }
 
             if (editingItem) {
