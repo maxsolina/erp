@@ -1218,6 +1218,58 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [selectedOE, setSelectedOE] = useState<OrdenEntrega | null>(null)
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null)
   const [selectedRemito, setSelectedRemito] = useState<Remito | null>(null)
+  const [confirmandoRemito, setConfirmandoRemito] = useState(false)
+
+  const handleConfirmarEntregaRemito = async (remito: Remito) => {
+    if (confirmandoRemito) return
+    setConfirmandoRemito(true)
+    try {
+      // Construir las líneas desde el remito
+      const lineas = (remito.lineas ?? []).map((l: any) => ({
+        producto_id: l.producto_id,
+        producto_nombre: l.producto_nombre ?? l.nombre ?? "",
+        cantidad: l.cantidad ?? 1,
+        requiere_serie: l.requiere_serie ?? false,
+        series_seleccionadas: l.series_seleccionadas ?? [],
+      }))
+
+      const res = await fetch(`/api/remitos/${remito.id}/confirmar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          remito_numero: remito.numero,
+          nv_numero: remito.nota_venta_numero ?? null,
+          oe_numero: remito.orden_entrega_numero ?? null,
+          deposito_id: remito.deposito_id ?? null,
+          deposito_nombre: remito.deposito ?? null,
+          ubicacion_id: remito.ubicacion_id ?? null,
+          ubicacion_nombre: remito.ubicacion ?? null,
+          usuario: "admin",
+          lineas,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (res.ok && data.ok) {
+        // Actualizar estado local del remito a entregado
+        const remitoActualizado: Remito = {
+          ...remito,
+          estado: "entregado",
+        }
+        setRemitos(prev => prev.map(r => r.id === remito.id ? remitoActualizado : r))
+        setSelectedRemito(remitoActualizado)
+        alert(`Entrega confirmada. ${data.movimientos_registrados} movimiento(s) de stock registrado(s).`)
+      } else {
+        const msgs = data.errores?.join("\n") ?? data.error ?? "Error al confirmar"
+        alert(`Hubo problemas al confirmar:\n${msgs}`)
+      }
+    } catch (e) {
+      alert("Error de red al confirmar la entrega")
+    } finally {
+      setConfirmandoRemito(false)
+    }
+  }
   const [selectedRecibo, setSelectedRecibo] = useState<Recibo | null>(null)
   const [creandoCliente, setCreandoCliente] = useState(false)
   const [editandoCliente, setEditandoCliente] = useState(false)
@@ -5856,6 +5908,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
               Ver Factura
+            </button>
+          )}
+          {selectedRemito.estado === "aprobado" && (
+            <button
+              onClick={() => handleConfirmarEntregaRemito(selectedRemito)}
+              disabled={confirmandoRemito}
+              className="ml-auto px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+            >
+              {confirmandoRemito ? "Confirmando..." : "Confirmar Entrega"}
             </button>
           )}
         </div>
