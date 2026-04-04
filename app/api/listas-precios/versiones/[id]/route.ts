@@ -17,15 +17,19 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
   const { lineas, lista_precios_nombre, id: _id, created_at, ...versionData } = body
 
+  const ESTADOS_VALIDOS = ["borrador", "confirmada", "activa", "cerrada"]
+  const estadoRaw = (versionData.estado ?? "borrador").toLowerCase()
+  const estadoNorm = ESTADOS_VALIDOS.includes(estadoRaw) ? estadoRaw : "borrador"
+
   // Actualizar la versión
   const { data: version, error: vErr } = await supabase
     .from("versiones_lista_precios")
     .update({
       nombre: versionData.nombre,
-      fecha_inicial: versionData.fecha_inicial,
+      fecha_inicial: versionData.fecha_inicial ?? new Date().toISOString().split("T")[0],
       fecha_final: versionData.fecha_final ?? null,
       activa: versionData.activa ?? false,
-      estado: versionData.estado ?? "borrador",
+      estado: estadoNorm,
       seguimiento: versionData.seguimiento ?? [],
       ultima_actualizacion: new Date().toISOString(),
     })

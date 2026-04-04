@@ -72,15 +72,19 @@ export async function POST(req: Request) {
 
   const { lineas, lista_precios_nombre, ...versionData } = body
 
+  const ESTADOS_VALIDOS = ["borrador", "confirmada", "activa", "cerrada"]
+  const estadoRaw = (versionData.estado ?? "borrador").toLowerCase()
+  const estadoNorm = ESTADOS_VALIDOS.includes(estadoRaw) ? estadoRaw : "borrador"
+
   const { data: version, error: vErr } = await supabase
     .from("versiones_lista_precios")
     .insert({
       lista_precios_id: versionData.lista_precios_id,
       nombre: versionData.nombre,
-      fecha_inicial: versionData.fecha_inicial,
+      fecha_inicial: versionData.fecha_inicial ?? new Date().toISOString().split("T")[0],
       fecha_final: versionData.fecha_final ?? null,
       activa: versionData.activa ?? false,
-      estado: versionData.estado ?? "borrador",
+      estado: estadoNorm,
       seguimiento: versionData.seguimiento ?? [],
       ultima_actualizacion: new Date().toISOString(),
     })
