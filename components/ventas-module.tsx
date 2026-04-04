@@ -1342,6 +1342,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [modalNuevaVersionBasada, setModalNuevaVersionBasada] = useState(false)
   const [nuevaVersionBasadaForm, setNuevaVersionBasadaForm] = useState({ nombre: "", fecha_inicial: "", fecha_final: "", copiar_lineas: true })
   
+  // Estados para lista de precios y productos reales en NV
+  const [nvListaPreciosId, setNvListaPreciosId] = useState<number | null>(null)
+  const [productosNV, setProductosNV] = useState<ProductoVenta[]>([])
+  const [productosNVCargando, setProductosNVCargando] = useState(false)
+
   // Estados para ubicación de stock en NV
   const [nvDepositoId, setNvDepositoId] = useState<number>(1) // Casa Central por defecto
   const [nvUbicacionId, setNvUbicacionId] = useState<number>(1) // Stock por defecto
@@ -1430,6 +1435,28 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     onDeleteFilter: (id: string) => setter(prev => prev.filter(sf => sf.id !== id)),
     onApplyFilter: (f: SavedFilter) => { setActiveFilters(f.filters); setActiveGroupBy(f.groupBy); setSearch("") }
   })
+
+  // Cargar listas de precios reales desde Supabase al iniciar
+  useEffect(() => {
+    fetch("/api/listas-precios")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data) && data.length > 0) setListasPrecios(data) })
+      .catch(() => {})
+  }, [])
+
+  // Cargar productos de la lista de precios seleccionada cuando cambia nvListaPreciosId
+  useEffect(() => {
+    if (!nvListaPreciosId) {
+      setProductosNV([])
+      return
+    }
+    setProductosNVCargando(true)
+    fetch(`/api/listas-precios/items?lista_id=${nvListaPreciosId}`)
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setProductosNV(data) })
+      .catch(() => {})
+      .finally(() => setProductosNVCargando(false))
+  }, [nvListaPreciosId])
 
   // Helper functions
   const formatCurrency = (amount: number, currency: "ARS" | "USD" = "ARS") => {
@@ -3646,7 +3673,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         setModalType("cliente")
                         setShowModal(true)
                       } else {
-                        setNvClienteId(parseInt(e.target.value))
+                        const id = parseInt(e.target.value)
+                        setNvClienteId(id)
+                        // Auto-seleccionar la lista de precios del cliente
+                        const cliente = clientes.find(c => c.id === id)
+                        if (cliente?.lista_precios_id) setNvListaPreciosId(cliente.lista_precios_id)
                       }
                     }}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -3678,6 +3709,41 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     </div>
                   </>
                 )}
+              </div>
+            </div>
+
+            {/* Lista de Precios */}
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <Tag className="w-4 h-4" /> Lista de Precios
+              </h3>
+              <div className="grid grid-cols-2 gap-4 items-end">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Lista de precios *</label>
+                  <select
+                    value={nvListaPreciosId ?? ""}
+                    onChange={(e) => setNvListaPreciosId(e.target.value ? parseInt(e.target.value) : null)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="">Seleccionar lista...</option>
+                    {listasPrecios.filter(l => l.activa).map(l => (
+                      <option key={l.id} value={l.id}>{l.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="text-sm text-gray-500">
+                  {nvListaPreciosId && (
+                    <span>
+                      {productosNVCargando
+                        ? "Cargando productos..."
+                        : `${productosNV.length} producto${productosNV.length !== 1 ? "s" : ""} en esta lista`
+                      }
+                    </span>
+                  )}
+                  {!nvListaPreciosId && (
+                    <span className="text-amber-600">Seleccione una lista para agregar productos</span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -3791,7 +3857,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                     clientes={clientes}
                                     listasPrecios={listasPrecios}
                                     versionesLista={versionesLista}
-                                    productosConSerie={productosConSerie}
+                                    productosConSerie={nvListaPreciosId ? productosNV : productosConSerie}
                                     productoSearchText={productoSearchText}
                                     anchorRef={{ current: productoInputRefs.current[index] } as React.RefObject<HTMLInputElement>}
                                     onSelect={(p, precioUnitario, moneda, precioUSD, precioARS) => {
