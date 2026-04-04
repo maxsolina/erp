@@ -1352,6 +1352,42 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [showSerieModal, setShowSerieModal] = useState(false)
   const [serieModalLineaIndex, setSerieModalLineaIndex] = useState<number | null>(null)
   const [seriesSeleccionadasTemp, setSeriesSeleccionadasTemp] = useState<number[]>([])
+  const [seriesReales, setSeriesReales] = useState<SerieDisponible[]>([])
+  const [seriesRealesCargando, setSeriesRealesCargando] = useState(false)
+
+  const abrirModalSerie = async (index: number, seriesYaSeleccionadas: number[] = []) => {
+    const linea = nvLineas[index]
+    if (!linea?.producto_id) return
+    setSerieModalLineaIndex(index)
+    setSeriesSeleccionadasTemp(seriesYaSeleccionadas)
+    setSeriesRealesCargando(true)
+    setShowSerieModal(true)
+    try {
+      const params = new URLSearchParams({
+        producto_id: String(linea.producto_id),
+        ubicacion_id: String(nvUbicacionId),
+        estado: "disponible",
+      })
+      const res = await fetch(`/api/stock/unidades?${params}`)
+      const data = await res.json()
+      const mapeadas: SerieDisponible[] = (Array.isArray(data) ? data : []).map((u: any) => ({
+        id: u.id,
+        producto_id: u.producto_id,
+        serie: u.nro_serie || `ID:${u.id}`,
+        lote: u.origen_numero || null,
+        estado: u.estado,
+        ubicacion_id: u.ubicacion_id,
+        ubicacion_nombre: u.ubicaciones?.codigo || "",
+        detalles: [u.color, u.bateria_pct ? `Batería ${u.bateria_pct}%` : null, u.observaciones].filter(Boolean).join(" - "),
+        fecha_ingreso: u.created_at?.split("T")[0] || "",
+      }))
+      setSeriesReales(mapeadas)
+    } catch {
+      setSeriesReales([])
+    } finally {
+      setSeriesRealesCargando(false)
+    }
+  }
   
   // Estados para búsqueda de productos en líneas
   const [productoSearchIndex, setProductoSearchIndex] = useState<number | null>(null)
@@ -1452,6 +1488,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     fetch("/api/listas-precios")
       .then(r => r.json())
       .then(data => { if (Array.isArray(data) && data.length > 0) setListasPrecios(data) })
+      .catch(() => {})
+  }, [])
+
+  // Cargar versiones de listas de precios al iniciar
+  useEffect(() => {
+    fetch("/api/listas-precios/versiones")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setVersionesLista(data) })
       .catch(() => {})
   }, [])
 
@@ -3933,11 +3977,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                       setProductoSearchIndex(null)
                                       setProductoSearchText("")
                                       if (p.requiere_serie) {
-                                        setTimeout(() => {
-                                          setSerieModalLineaIndex(index)
-                                          setSeriesSeleccionadasTemp([])
-                                          setShowSerieModal(true)
-                                        }, 100)
+                                        setTimeout(() => abrirModalSerie(index, []), 100)
                                       }
                                     }}
                                   />
@@ -3947,11 +3987,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                             {linea.requiere_serie && linea.producto_id > 0 && (
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setSerieModalLineaIndex(index)
-                                  setSeriesSeleccionadasTemp(linea.series_seleccionadas?.map(s => s.id) || [])
-                                  setShowSerieModal(true)
-                                }}
+                                onClick={() => abrirModalSerie(index, linea.series_seleccionadas?.map(s => s.id) || [])}
                                 className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${
                                   (linea.series_seleccionadas?.length || 0) === linea.cantidad 
                                     ? 'bg-emerald-100 text-emerald-700' 
@@ -3979,9 +4015,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                             }
                             setNvLineas(updated)
                             if (updated[index].requiere_serie && (updated[index].series_seleccionadas?.length || 0) < newCantidad) {
-                              setSerieModalLineaIndex(index)
-                              setSeriesSeleccionadasTemp(updated[index].series_seleccionadas?.map(s => s.id) || [])
-                              setShowSerieModal(true)
+                              abrirModalSerie(index, updated[index].series_seleccionadas?.map(s => s.id) || [])
                             }
                           }}
                           className="w-10 border border-gray-300 rounded px-1 py-1 text-sm text-center"
@@ -9365,8 +9399,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setActiveView("versiones_lista")
   }
 
-  const crearVersionBasadaEnOtra = (versionBase: VersionListaPrecios) => {
-    const nuevaVersion: VersionListaPrecios = {
+  const crearVersionBasadaEnOtra = async (versionBase: VersionListaPrecios) => {
+    const fechaActual = new Date().toISOString()
+    const payload: VersionListaPrecios = {
       id: 0,
       lista_precios_id: versionBase.lista_precios_id,
       lista_precios_nombre: versionBase.lista_precios_nombre,
@@ -9375,22 +9410,27 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       fecha_final: nuevaVersionBasadaForm.fecha_final || null,
       activa: false,
       estado: "borrador",
-      ultima_actualizacion: new Date().toISOString(),
-      lineas: nuevaVersionBasadaForm.copiar_lineas ? versionBase.lineas.map((l, idx) => ({ ...l, id: idx + 1 })) : [],
+      ultima_actualizacion: fechaActual,
+      lineas: nuevaVersionBasadaForm.copiar_lineas ? versionBase.lineas.map(l => ({ ...l, id: 0 })) : [],
       seguimiento: [{
         id: 1,
-        fecha: new Date().toISOString(),
+        fecha: fechaActual,
         usuario: "Max Solina",
         tipo: "creacion" as const,
         descripcion: `Versión creada basada en "${versionBase.nombre}"`
       }]
     }
-    
-    const nuevoId = Math.max(...versionesLista.map(v => v.id), 0) + 1
-    nuevaVersion.id = nuevoId
-    
-    setVersionesLista(prev => [...prev, nuevaVersion])
-    setSelectedVersion(nuevaVersion)
+
+    const res = await fetch("/api/listas-precios/versiones", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    if (res.ok) {
+      const nuevaVersion: VersionListaPrecios = await res.json()
+      setVersionesLista(prev => [nuevaVersion, ...prev])
+      setSelectedVersion(nuevaVersion)
+    }
     setEditingVersion(null)
     setCreandoVersion(false)
     setModoEdicionVersion(false)
@@ -9398,16 +9438,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setNuevaVersionBasadaForm({ nombre: "", fecha_inicial: "", fecha_final: "", copiar_lineas: true })
   }
 
-  const guardarVersion = () => {
+  const guardarVersion = async () => {
     if (!editingVersion || !editingVersion.nombre.trim()) return
     
     const fechaActual = new Date().toISOString()
     
     if (creandoVersion) {
-      const nuevoId = Math.max(...versionesLista.map(v => v.id), 0) + 1
-      const nuevaVersion: VersionListaPrecios = {
+      const payload: VersionListaPrecios = {
         ...editingVersion,
-        id: nuevoId,
+        id: 0,
         ultima_actualizacion: fechaActual,
         seguimiento: [{
           id: 1,
@@ -9417,8 +9456,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           descripcion: "Versión creada"
         }]
       }
-      setVersionesLista(prev => [...prev, nuevaVersion])
-      setSelectedVersion(nuevaVersion)
+      const res = await fetch("/api/listas-precios/versiones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      if (res.ok) {
+        const nuevaVersion: VersionListaPrecios = await res.json()
+        setVersionesLista(prev => [nuevaVersion, ...prev])
+        setSelectedVersion(nuevaVersion)
+      }
       setEditingVersion(null)
       setCreandoVersion(false)
       setModoEdicionVersion(false)
@@ -9442,8 +9489,19 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         ultima_actualizacion: fechaActual,
         seguimiento: seguimientoActualizado 
       }
-      setVersionesLista(prev => prev.map(v => v.id === editingVersion.id ? versionActualizada : v))
-      setSelectedVersion(versionActualizada)
+      const res = await fetch(`/api/listas-precios/versiones/${editingVersion.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(versionActualizada),
+      })
+      if (res.ok) {
+        const saved: VersionListaPrecios = await res.json()
+        setVersionesLista(prev => prev.map(v => v.id === saved.id ? saved : v))
+        setSelectedVersion(saved)
+      } else {
+        setVersionesLista(prev => prev.map(v => v.id === editingVersion.id ? versionActualizada : v))
+        setSelectedVersion(versionActualizada)
+      }
       setEditingVersion(null)
       setModoEdicionVersion(false)
       setEditandoLineas(false)
@@ -11940,24 +11998,29 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </span>
               </div>
               <div className="space-y-2">
-                {seriesDisponibles
-                  .filter(s => 
-                    s.producto_id === nvLineas[serieModalLineaIndex]?.producto_id && 
-                    s.estado === "disponible" &&
-                    s.ubicacion_id === nvUbicacionId
-                  )
-                  .map(serie => {
+                {seriesRealesCargando ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                    <p className="text-sm">Cargando series disponibles...</p>
+                  </div>
+                ) : seriesReales.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                    <p>No hay series disponibles en esta ubicación</p>
+                    <p className="text-sm mt-1">Cambie la ubicación de stock o verifique el inventario</p>
+                  </div>
+                ) : (
+                  seriesReales.map(serie => {
                     const isSelected = seriesSeleccionadasTemp.includes(serie.id)
-                    const cantidadRequerida = nvLineas[serieModalLineaIndex]?.cantidad || 0
+                    const cantidadRequerida = nvLineas[serieModalLineaIndex!]?.cantidad || 0
                     const puedeSeleccionar = seriesSeleccionadasTemp.length < cantidadRequerida
-                    
                     return (
                       <label
                         key={serie.id}
                         className={`flex items-center gap-4 p-4 rounded-lg border cursor-pointer transition-all ${
-                          isSelected 
-                            ? 'border-emerald-500 bg-emerald-50' 
-                            : puedeSeleccionar 
+                          isSelected
+                            ? 'border-emerald-500 bg-emerald-50'
+                            : puedeSeleccionar
                               ? 'border-gray-200 hover:bg-gray-50'
                               : 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
                         }`}
@@ -11982,22 +12045,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                               <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Lote: {serie.lote}</span>
                             )}
                           </div>
-                          <div className="text-sm text-gray-600 mt-1">{serie.detalles}</div>
+                          {serie.detalles && <div className="text-sm text-gray-600 mt-1">{serie.detalles}</div>}
                           <div className="text-xs text-gray-400 mt-1">Ingreso: {formatDate(serie.fecha_ingreso)}</div>
                         </div>
                       </label>
                     )
-                  })}
-                {seriesDisponibles.filter(s => 
-                  s.producto_id === nvLineas[serieModalLineaIndex]?.producto_id && 
-                  s.estado === "disponible" &&
-                  s.ubicacion_id === nvUbicacionId
-                ).length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
-                    <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                    <p>No hay series disponibles en esta ubicación</p>
-                    <p className="text-sm mt-1">Cambie la ubicación de stock o verifique el inventario</p>
-                  </div>
+                  })
                 )}
               </div>
             </div>
@@ -12018,7 +12071,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   onClick={() => {
                     const updated = [...nvLineas]
                     updated[serieModalLineaIndex].series_seleccionadas = seriesSeleccionadasTemp.map(id => {
-                      const serie = seriesDisponibles.find(s => s.id === id)!
+                      const serie = seriesReales.find(s => s.id === id)!
                       return { id: serie.id, serie: serie.serie, detalles: serie.detalles }
                     })
                     setNvLineas(updated)
