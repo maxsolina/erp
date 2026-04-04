@@ -22,10 +22,7 @@ export async function GET(req: Request) {
   if (numero) nvQuery = nvQuery.eq("numero", numero)
 
   const { data: nvs, error: nvErr } = await nvQuery
-  if (nvErr) {
-    console.log("[v0] GET notas-venta error:", JSON.stringify(nvErr))
-    return NextResponse.json({ error: nvErr.message }, { status: 500 })
-  }
+  if (nvErr) return NextResponse.json({ error: nvErr.message }, { status: 500 })
   if (!nvs || nvs.length === 0) return NextResponse.json([])
 
   // 2. Líneas de todas las NVs
@@ -89,10 +86,7 @@ export async function POST(req: Request) {
     .select()
     .single()
 
-  if (nvErr) {
-    console.log("[v0] POST notas-venta insert error:", JSON.stringify(nvErr))
-    return NextResponse.json({ error: nvErr.message }, { status: 500 })
-  }
+  if (nvErr) return NextResponse.json({ error: nvErr.message }, { status: 500 })
 
   // Insertar líneas si las hay
   if (Array.isArray(lineas) && lineas.length > 0) {

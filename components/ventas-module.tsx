@@ -3593,7 +3593,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           cliente_id: cliente.id,
           vendedor_id: vendedorId,
           moneda,
-          estado: tipoVenta === "inmediata" ? "finalizada" : "borrador",
+          estado: tipoVenta === "inmediata" ? "facturada" : "abierta",
           total: totalValido,
           lineas: lineasValidas.map(l => ({
             producto_id: l.producto_id,
