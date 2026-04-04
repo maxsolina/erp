@@ -1575,8 +1575,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     return `ARS ${formatted}`
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('es-AR', { 
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return "-"
+    const d = new Date(dateString)
+    if (isNaN(d.getTime())) return "-"
+    return d.toLocaleDateString('es-AR', { 
       day: '2-digit', 
       month: '2-digit', 
       year: 'numeric' 
@@ -5815,9 +5818,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
             selectedRemito.estado === 'entregado' ? 'bg-green-100 text-green-700' :
             selectedRemito.estado === 'en_transito' ? 'bg-blue-100 text-blue-700' :
-            'bg-amber-100 text-amber-700'
+            selectedRemito.estado === 'aprobado' ? 'bg-emerald-100 text-emerald-700' :
+            selectedRemito.estado === 'borrador' ? 'bg-amber-100 text-amber-700' :
+            'bg-gray-100 text-gray-700'
           }`}>
-            {selectedRemito.estado === 'entregado' ? 'Entregado' : selectedRemito.estado === 'en_transito' ? 'En Transito' : 'Borrador'}
+            {selectedRemito.estado === 'entregado' ? 'Entregado' :
+             selectedRemito.estado === 'en_transito' ? 'En Tránsito' :
+             selectedRemito.estado === 'aprobado' ? 'Aprobado' :
+             selectedRemito.estado === 'borrador' ? 'Borrador' :
+             selectedRemito.estado}
           </span>
         </div>
 
@@ -11309,7 +11318,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 peso_kg: 0,
                 peso_neto_kg: 0,
                 bultos: 1,
-                valor_declarado: total,
+                valor_declarado: isNaN(total) || total == null ? 0 : total,
                 control_factura: "facturado"
               }
               setRemitos(prev => [...prev, newRemito])
