@@ -1221,6 +1221,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       const fuenteLineas = (remito.lineas && remito.lineas.length > 0)
         ? remito.lineas
         : (remito.productos ?? [])
+      console.log("[v0] confirmar remito id:", remito.id, "lineas:", fuenteLineas.length, "nv:", remito.nota_venta_numero)
       const lineas = fuenteLineas.map((l: any) => ({
         producto_id: l.producto_id,
         producto_nombre: l.producto_nombre ?? l.nombre ?? "",
@@ -1245,6 +1246,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       })
 
       const data = await res.json()
+      console.log("[v0] confirmar remito respuesta:", res.status, JSON.stringify(data))
 
       if (res.ok && data.ok) {
         // Actualizar estado local del remito a entregado
