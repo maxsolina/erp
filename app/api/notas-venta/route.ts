@@ -43,8 +43,8 @@ export async function POST(req: Request) {
     lineas = [],
   } = body
 
-  if (!numero || !cliente_id) {
-    return NextResponse.json({ error: "numero y cliente_id son requeridos" }, { status: 400 })
+  if (!numero) {
+    return NextResponse.json({ error: "numero es requerido" }, { status: 400 })
   }
 
   // Insertar cabecera de NV
@@ -52,12 +52,12 @@ export async function POST(req: Request) {
     .from("notas_venta")
     .insert({
       numero,
-      cliente_id,
+      cliente_id: cliente_id ?? null,
       vendedor_id: vendedor_id ?? null,
       sucursal_id: sucursal_id ?? null,
       moneda: moneda ?? "ARS",
       estado: estado ?? "abierta",
-      total: total ?? 0,
+      total: Number(total ?? 0),
       notas: notas ?? null,
     })
     .select()
@@ -66,17 +66,23 @@ export async function POST(req: Request) {
   if (nvErr) return NextResponse.json({ error: nvErr.message }, { status: 500 })
 
   // Insertar líneas si las hay
-  if (lineas.length > 0) {
-    const lineasInsert = lineas.map((l: any) => ({
-      nota_venta_id: nv.id,
-      producto_id: l.producto_id ?? null,
-      producto_nombre: l.producto_nombre,
-      descripcion: l.descripcion ?? null,
-      cantidad: l.cantidad,
-      precio_unitario: l.precio_unitario ?? 0,
-      descuento: l.descuento ?? 0,
-      subtotal: l.subtotal ?? (l.cantidad * (l.precio_unitario ?? 0)),
-    }))
+  if (Array.isArray(lineas) && lineas.length > 0) {
+    const lineasInsert = lineas.map((l: any) => {
+      const cant = Number(l.cantidad ?? 1)
+      const precio = Number(l.precio_unitario ?? 0)
+      const desc = Number(l.descuento ?? 0)
+      const sub = Number(l.subtotal ?? (cant * precio))
+      return {
+        nota_venta_id: nv.id,
+        producto_id: l.producto_id ?? null,
+        producto_nombre: String(l.producto_nombre ?? ""),
+        descripcion: l.descripcion ?? null,
+        cantidad: cant,
+        precio_unitario: precio,
+        descuento: desc,
+        subtotal: isNaN(sub) ? 0 : sub,
+      }
+    })
 
     const { error: lineasErr } = await supabase
       .from("notas_venta_lineas")
