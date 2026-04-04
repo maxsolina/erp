@@ -1488,10 +1488,18 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setProductosNVCargando(true)
     fetch(`/api/listas-precios/items?lista_id=${nvListaPreciosId}`)
       .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setProductosNV(data) })
-      .catch(() => {})
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          // Hay items específicos en la lista — usarlos
+          setProductosNV(data)
+        } else {
+          // La tabla lista_precios_items está vacía — usar el maestro completo de productos
+          setProductosNV(productosMaestro)
+        }
+      })
+      .catch(() => { setProductosNV(productosMaestro) })
       .finally(() => setProductosNVCargando(false))
-  }, [nvListaPreciosId])
+  }, [nvListaPreciosId, productosMaestro.length])
 
   // Helper functions
   const formatCurrency = (amount: number, currency: "ARS" | "USD" = "ARS") => {
@@ -3775,7 +3783,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
                     <option value="">Seleccionar lista...</option>
-                    {listasPrecios.filter(l => l.activa).map(l => (
+                    {listasPrecios.filter(l => l.activa || l.estado === "activa" || l.estado === "creada" || l.estado === "confirmada").map(l => (
                       <option key={l.id} value={l.id}>{l.nombre}</option>
                     ))}
                   </select>
