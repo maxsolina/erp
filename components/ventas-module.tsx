@@ -520,28 +520,9 @@ const mockNotasVenta: NotaVenta[] = [
   },
 ]
 
-const mockOrdenesEntrega: OrdenEntrega[] = [
-  {
-    id: 1, numero: "OE X 10000-00011502", nota_venta_id: 1, nota_venta_numero: "NV X 10000-00010735",
-    cliente_id: 1, cliente_nombre: "Alejandra Gallo", estado: "disponible",
-    fecha_creacion: "2024-01-20T10:35:00", fecha_entrega: "2024-01-20", domicilio_envio: "Av. Rivadavia 1234, Rosario",
-    deposito: "Puerto Norte", sucursal: "Puerto Norte", remito_numero: null,
-    productos: [
-      { producto_id: 1, producto_nombre: "iPhone 15 Pro Max 256GB", cantidad: 1, reserva: 1, estado: "confirmado" }
-    ]
-  },
-]
+const mockOrdenesEntrega: OrdenEntrega[] = []
 
-const mockRemitos: Remito[] = [
-  {
-    id: 1, numero: "RE R 10000-00011196", orden_entrega_id: 2, orden_entrega_numero: "OE X 10000-00011500",
-    cliente_id: 3, cliente_nombre: "Juan Carlos Méndez", estado: "aprobado",
-    fecha: "2024-01-19T17:00:00", fecha_entrega: "2024-01-19", domicilio_envio: "Córdoba 890, Rosario",
-    transporte: "Retira en local", chofer: "", factura_numero: "FC C 10000-00012375",
-    nota_venta_numero: "NV X 10000-00010734", sucursal: "Puerto Norte", deposito: "Puerto Norte",
-    peso_kg: 0.5, peso_neto_kg: 0.3, bultos: 1, valor_declarado: 517275, control_factura: "facturado"
-  },
-]
+const mockRemitos: Remito[] = []
 
 const mockFacturas: Factura[] = [
   {
@@ -1236,13 +1217,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     if (confirmandoRemito) return
     setConfirmandoRemito(true)
     try {
-      // Construir las líneas desde el remito
-      const lineas = (remito.lineas ?? []).map((l: any) => ({
+      // Construir las líneas desde remito.lineas o remito.productos como fallback
+      const fuenteLineas = (remito.lineas && remito.lineas.length > 0)
+        ? remito.lineas
+        : (remito.productos ?? [])
+      const lineas = fuenteLineas.map((l: any) => ({
         producto_id: l.producto_id,
         producto_nombre: l.producto_nombre ?? l.nombre ?? "",
         cantidad: l.cantidad ?? 1,
         requiere_serie: l.requiere_serie ?? false,
-        series_seleccionadas: l.series_seleccionadas ?? [],
+        series_seleccionadas: l.series_seleccionadas ?? l.series ?? [],
       }))
       const res = await fetch(`/api/remitos/${remito.id}/confirmar`, {
         method: "POST",
@@ -1584,10 +1568,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               requiere_serie: false,
               series_seleccionadas: [],
             })),
-            subtotal: nv.total ?? 0,
+            subtotal: Number(nv.total ?? 0),
             descuento_global: 0,
             impuestos: 0,
-            total: nv.total ?? 0,
+            cotizacion: Number(nv.cotizacion ?? 1150),
+            cotizacion_tipo: nv.tipo_cotizacion ?? "blue",
+            total: Number(nv.total ?? 0),
             sucursal: nv.sucursal ?? "Puerto Norte",
             punto_venta: nv.punto_venta ?? "10000",
           }))
@@ -1648,6 +1634,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             total_bultos: r.total_bultos ?? 1,
             observaciones: r.observaciones ?? "",
             productos: r.productos ?? [],
+            lineas: r.lineas ?? [],
             seguimiento: r.seguimiento ?? [],
           })))
         }
@@ -3739,11 +3726,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "Remito creado desde venta inmediata" }]
       }
       setRemitos(prev => [...prev, newRemito])
-      // Persistir Remito en Supabase
+      // Persistir Remito en Supabase (con lineas para poder confirmar stock)
       fetch("/api/remitos-venta", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newRemito),
+        body: JSON.stringify({
+          ...newRemito,
+          lineas: lineasValidas.map(l => ({
+            producto_id: l.producto_id,
+            producto_nombre: l.producto_nombre,
+            cantidad: l.cantidad,
+            requiere_serie: l.requiere_serie ?? false,
+            series_seleccionadas: l.series_seleccionadas ?? [],
+          })),
+        }),
       }).catch(() => {})
 
       // Crear Factura en borrador
