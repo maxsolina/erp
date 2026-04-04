@@ -86,7 +86,7 @@ interface VersionListaPrecios {
   fecha_inicial: string
   fecha_final: string | null
   activa: boolean
-  estado: "borrador" | "activa" | "cerrada"
+  estado: "borrador" | "confirmada" | "activa" | "cerrada"
   ultima_actualizacion: string
   lineas: LineaListaPrecios[]
   seguimiento?: SeguimientoEntry[]
@@ -10116,9 +10116,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         <td className="py-2 px-3 text-center text-gray-600">{version.fecha_final ? new Date(version.fecha_final).toLocaleDateString("es-AR") : "-"}</td>
                         <td className="py-2 px-3 text-center">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                            version.estado === 'activa' ? 'bg-green-100 text-green-800' :
-                            version.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
-                          }`}>{version.estado.charAt(0).toUpperCase() + version.estado.slice(1)}</span>
+                        version.estado === 'activa' ? 'bg-green-100 text-green-800' :
+                        version.estado === 'confirmada' ? 'bg-blue-100 text-blue-800' :
+                        version.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
+                        }`}>{version.estado === 'confirmada' ? 'Confirmada' : version.estado.charAt(0).toUpperCase() + version.estado.slice(1)}</span>
+
                         </td>
                         <td className="py-2 px-3 text-center text-gray-600">{version.lineas.length}</td>
                         <td className="py-2 px-3 text-center text-gray-500 text-xs">{new Date(version.ultima_actualizacion).toLocaleString("es-AR")}</td>
@@ -10312,9 +10314,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <td className="py-3 px-4 text-center text-gray-600">{version.fecha_final ? new Date(version.fecha_final).toLocaleDateString("es-AR") : "-"}</td>
                   <td className="py-3 px-4 text-center">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                      version.estado === 'activa' ? 'bg-green-100 text-green-800' :
-                      version.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
-                    }`}>{version.estado.charAt(0).toUpperCase() + version.estado.slice(1)}</span>
+                        version.estado === 'activa' ? 'bg-green-100 text-green-800' :
+                        version.estado === 'confirmada' ? 'bg-blue-100 text-blue-800' :
+                        version.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
+                        }`}>{version.estado === 'confirmada' ? 'Confirmada' : version.estado.charAt(0).toUpperCase() + version.estado.slice(1)}</span>
+
                   </td>
                   <td className="py-3 px-4 text-center text-gray-600">{version.lineas.length}</td>
                   <td className="py-3 px-4 text-center text-gray-500 text-xs">{new Date(version.ultima_actualizacion).toLocaleString("es-AR")}</td>
@@ -10373,6 +10377,19 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           )}
 
           <div className="flex items-center gap-2">
+            {!isEditing && !creandoVersion && currentVersion.estado === "borrador" && (
+              <button
+                onClick={() => {
+                  const updated = { ...currentVersion, estado: "confirmada" as const, ultima_actualizacion: new Date().toISOString() }
+                  setVersionesLista(prev => prev.map(v => v.id === updated.id ? updated : v))
+                  setSelectedVersion(updated)
+                  setEditingVersion(null)
+                }}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-colors font-medium"
+              >
+                <CheckCircle className="w-4 h-4" /> Confirmar Lista
+              </button>
+            )}
             {!isEditing && !creandoVersion && (
               <button onClick={iniciarEdicionVersion} className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">
                 <Edit className="w-4 h-4" /> Editar
@@ -10441,12 +10458,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <select value={currentVersion.estado} onChange={(e) => setEditingVersion({ ...currentVersion, estado: e.target.value as VersionListaPrecios["estado"] })}
                   className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500">
                   <option value="borrador">Borrador</option>
+                  <option value="confirmada">Confirmada</option>
                   <option value="activa">Activa</option>
                   <option value="cerrada">Cerrada</option>
                 </select>
               ) : (
                 <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
                   currentVersion.estado === 'activa' ? 'bg-green-100 text-green-800' :
+                  currentVersion.estado === 'confirmada' ? 'bg-blue-100 text-blue-800' :
                   currentVersion.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
                 }`}>{currentVersion.estado.charAt(0).toUpperCase() + currentVersion.estado.slice(1)}</span>
               )}
