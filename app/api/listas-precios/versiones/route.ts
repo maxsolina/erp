@@ -72,22 +72,37 @@ export async function POST(req: Request) {
 
   const { lineas, lista_precios_nombre, ...versionData } = body
 
+  const ESTADOS_VALIDOS = ["borrador", "confirmada", "activa", "cerrada"]
+  const estadoRaw = (versionData.estado ?? "borrador").toLowerCase()
+  const estadoNorm = ESTADOS_VALIDOS.includes(estadoRaw) ? estadoRaw : "borrador"
+
+  console.log("[v0] POST versiones - payload a insertar:", {
+    lista_precios_id: versionData.lista_precios_id,
+    nombre: versionData.nombre,
+    fecha_inicial: versionData.fecha_inicial,
+    estado: estadoNorm,
+  })
+
   const { data: version, error: vErr } = await supabase
     .from("versiones_lista_precios")
     .insert({
       lista_precios_id: versionData.lista_precios_id,
       nombre: versionData.nombre,
-      fecha_inicial: versionData.fecha_inicial,
+      fecha_inicial: versionData.fecha_inicial ?? new Date().toISOString().split("T")[0],
       fecha_final: versionData.fecha_final ?? null,
       activa: versionData.activa ?? false,
-      estado: versionData.estado ?? "borrador",
+      estado: estadoNorm,
       seguimiento: versionData.seguimiento ?? [],
       ultima_actualizacion: new Date().toISOString(),
     })
     .select()
     .single()
 
-  if (vErr) return NextResponse.json({ error: vErr.message }, { status: 500 })
+  if (vErr) {
+    console.log("[v0] POST versiones - error inserting version:", JSON.stringify(vErr))
+    console.log("[v0] POST versiones - body recibido:", JSON.stringify(versionData))
+    return NextResponse.json({ error: vErr.message }, { status: 500 })
+  }
 
   // Insertar líneas si vienen
   let lineasInsertadas: any[] = []
