@@ -121,9 +121,11 @@ interface ProductoVenta {
   nombre: string
   descripcion: string
   precio_venta: number
+  costo?: number
   stock: number
   categoria: string
   requiere_serie: boolean // Si requiere selección de IMEI/Serie
+  precios?: { lista_id: number; precio: number }[]
 }
 
 // Tipo para el sistema de seguimiento (tracking de cambios estilo Odoo)
@@ -1430,17 +1432,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     onApplyFilter: (f: SavedFilter) => { setActiveFilters(f.filters); setActiveGroupBy(f.groupBy); setSearch("") }
   })
 
-  // Cargar listas de precios y maestro de productos desde Supabase al iniciar
+  // Cargar listas de precios desde Supabase al iniciar
   useEffect(() => {
     fetch("/api/listas-precios")
       .then(r => r.json())
       .then(data => { if (Array.isArray(data) && data.length > 0) setListasPrecios(data) })
       .catch(() => {})
+  }, [])
 
+  // Cargar maestro de productos desde Supabase al iniciar (independiente de listas de precios)
+  useEffect(() => {
     fetch("/api/productos")
       .then(r => r.json())
       .then((data: any[]) => {
-        if (!Array.isArray(data)) return
+        if (!Array.isArray(data) || data.length === 0) return
         const mapped: ProductoVenta[] = data.map(p => ({
           id: p.id,
           sku: p.codigo_interno ?? "",
