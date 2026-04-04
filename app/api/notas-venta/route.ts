@@ -70,6 +70,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "numero es requerido" }, { status: 400 })
   }
 
+  // Mapear estado al enum válido de Supabase
+  const ESTADOS_VALIDOS = ["abierta", "facturada", "cancelada", "parcial"]
+  const estadoNormalizado = ESTADOS_VALIDOS.includes(estado) ? estado : "abierta"
+
   // Insertar cabecera de NV
   const { data: nv, error: nvErr } = await supabase
     .from("notas_venta")
@@ -79,7 +83,7 @@ export async function POST(req: Request) {
       vendedor_id: vendedor_id ?? null,
       sucursal_id: sucursal_id ?? null,
       moneda: moneda ?? "ARS",
-      estado: estado ?? "abierta",
+      estado: estadoNormalizado,
       total: Number(total ?? 0),
       notas: notas ?? null,
     })
