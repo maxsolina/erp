@@ -222,6 +222,14 @@ interface OrdenEntrega {
   seguimiento?: SeguimientoEntry[]
 }
 
+interface RemitoLinea {
+  producto_id: number
+  producto_nombre: string
+  cantidad: number
+  requiere_serie: boolean
+  series_seleccionadas: { id: number; serie: string; detalles?: string }[]
+}
+
 interface Remito {
   id: number
   numero: string
@@ -229,7 +237,7 @@ interface Remito {
   orden_entrega_numero: string
   cliente_id: number
   cliente_nombre: string
-  estado: "en_ejecucion" | "aprobado"
+  estado: "en_ejecucion" | "aprobado" | "entregado" | "borrador"
   fecha: string
   fecha_entrega: string
   domicilio_envio: string
@@ -239,11 +247,15 @@ interface Remito {
   nota_venta_numero: string
   sucursal: string
   deposito: string
+  deposito_id?: number
+  ubicacion_id?: number
+  ubicacion?: string
   peso_kg: number
   peso_neto_kg: number
   bultos: number
   valor_declarado: number
   control_factura: "facturado" | "pendiente"
+  lineas?: RemitoLinea[]
   seguimiento?: SeguimientoEntry[]
 }
 
@@ -11376,11 +11388,25 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 nota_venta_numero: nvNumero,
                 sucursal: "Puerto Norte",
                 deposito: deposito,
+                deposito_id: nvDepositoId,
+                ubicacion_id: nvUbicacionId,
+                ubicacion: ubicacionesVenta.find(u => u.id === nvUbicacionId)?.codigo ?? null,
                 peso_kg: 0,
                 peso_neto_kg: 0,
                 bultos: 1,
                 valor_declarado: isNaN(total) || total == null ? 0 : total,
-                control_factura: "facturado"
+                control_factura: "facturado",
+                lineas: nvLineas.map(l => ({
+                  producto_id: l.producto_id,
+                  producto_nombre: l.producto_nombre,
+                  cantidad: l.cantidad,
+                  requiere_serie: l.requiere_serie ?? false,
+                  series_seleccionadas: (l.series_seleccionadas ?? []).map((s: any) => ({
+                    id: s.id,
+                    serie: s.serie,
+                    detalles: s.detalles ?? "",
+                  })),
+                })),
               }
               setRemitos(prev => [...prev, newRemito])
 
