@@ -179,7 +179,7 @@ interface NotaVenta {
   vendedor_id: number
   vendedor_nombre: string
   fecha: string
-  estado: "borrador" | "a_facturar" | "verificacion_factura" | "verificacion_oe" | "finalizada" | "cancelada"
+  estado: "borrador" | "a_facturar" | "verificacion_factura" | "verificacion_oe" | "finalizada" | "cancelada" | "abierta" | "facturada" | "parcial"
   moneda: "ARS" | "USD"
   tipo_cotizacion: "blue" | "oficial"
   cotizacion: number
@@ -205,7 +205,7 @@ interface OrdenEntrega {
   nota_venta_numero: string
   cliente_id: number
   cliente_nombre: string
-  estado: "borrador" | "esperando" | "parcial" | "disponible" | "confirmada"
+  estado: "borrador" | "esperando" | "parcial" | "disponible" | "confirmada" | "finalizada"
   fecha_creacion: string
   fecha_entrega: string
   domicilio_envio: string
@@ -237,7 +237,7 @@ interface Remito {
   orden_entrega_numero: string
   cliente_id: number
   cliente_nombre: string
-  estado: "en_ejecucion" | "aprobado" | "entregado" | "borrador"
+  estado: "en_ejecucion" | "aprobado" | "entregado" | "borrador" | "confirmado"
   fecha: string
   fecha_entrega: string
   domicilio_envio: string
@@ -3727,48 +3727,41 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "Remito creado desde venta inmediata" }]
       }
       setRemitos(prev => [...prev, newRemito])
-      // Persistir Remito en Supabase y luego confirmar stock
-      try {
-        const remitoRes = await fetch("/api/remitos-venta", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...newRemito,
-            lineas: lineasValidas.map(l => ({
-              producto_id: l.producto_id,
-              producto_nombre: l.producto_nombre,
-              cantidad: l.cantidad,
-              requiere_serie: l.requiere_serie ?? false,
-              series_seleccionadas: l.series_seleccionadas ?? [],
-            })),
-          }),
-        })
-        const remitoData = await remitoRes.json()
-        const remitoIdDB = remitoData?.id ?? remitoData?.data?.id
+      // Persistir Remito en Supabase
+      fetch("/api/remitos-venta", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...newRemito,
+          lineas: lineasValidas.map(l => ({
+            producto_id: l.producto_id,
+            producto_nombre: l.producto_nombre,
+            cantidad: l.cantidad,
+            requiere_serie: l.requiere_serie ?? false,
+            series_seleccionadas: l.series_seleccionadas ?? [],
+          })),
+        }),
+      }).catch(() => {})
 
-        // Confirmar stock: llamar al endpoint con el ID del remito en Supabase
-        const confirmarId = remitoIdDB ?? newRemito.id
-        await fetch(`/api/remitos/${confirmarId}/confirmar`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            remito_numero: remitoNumero,
-            nv_numero: nvNumero,
-            oe_numero: oeNumero,
-            deposito_nombre: deposito,
-            usuario: vendedorNombre,
-            lineas: lineasValidas.map(l => ({
-              producto_id: l.producto_id,
-              producto_nombre: l.producto_nombre,
-              cantidad: l.cantidad,
-              requiere_serie: l.requiere_serie ?? false,
-              series_seleccionadas: l.series_seleccionadas ?? [],
-            })),
-          }),
-        })
-      } catch (_) {
-        // Error de red — el stock se puede descontar manualmente después
-      }
+      // Descontar stock: usar endpoint confirmar con nv_numero y lineas directas
+      fetch(`/api/remitos/0/confirmar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          remito_numero: remitoNumero,
+          nv_numero: nvNumero,
+          oe_numero: oeNumero,
+          deposito_nombre: deposito,
+          usuario: vendedorNombre,
+          lineas: lineasValidas.map(l => ({
+            producto_id: l.producto_id,
+            producto_nombre: l.producto_nombre,
+            cantidad: l.cantidad,
+            requiere_serie: l.requiere_serie ?? false,
+            series_seleccionadas: l.series_seleccionadas ?? [],
+          })),
+        }),
+      }).catch(() => {})
 
       // Crear Factura en borrador
       const facturaNumero = `FC X 10000-000${13460 + facturas.length}`
