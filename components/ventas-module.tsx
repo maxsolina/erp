@@ -3639,13 +3639,23 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
                   <select
                     value={nvClienteId || ""}
-                    onChange={(e) => setNvClienteId(parseInt(e.target.value))}
+                    onChange={(e) => {
+                      if (e.target.value === "__nuevo__") {
+                        setEditingItem(null)
+                        setFormClienteCategoriaId(null)
+                        setModalType("cliente")
+                        setShowModal(true)
+                      } else {
+                        setNvClienteId(parseInt(e.target.value))
+                      }
+                    }}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
                     <option value="">Seleccionar cliente...</option>
                     {clientes.map(c => (
                       <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
                     ))}
+                    <option value="__nuevo__" className="text-emerald-600 font-medium">+ Crear nuevo cliente</option>
                   </select>
                 </div>
                 {selectedCliente && (
@@ -10816,7 +10826,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <X className="w-5 h-5" />
           </button>
         </div>
-        <form onSubmit={(e) => { handleSubmitClienteModal(e, editingItem, formClienteCategoriaId, categoriasCliente, setShowModal, setEditingItem, onNuevoCliente) }} className="p-4 space-y-4">
+        <form onSubmit={(e) => { handleSubmitClienteModal(e, editingItem, formClienteCategoriaId, categoriasCliente, setShowModal, setEditingItem, (c) => {
+          // Si el modal se abrió desde una NV o desde el módulo Ventas activo, auto-seleccionar el cliente creado
+          if (creandoNV) setNvClienteId(c.id)
+          onNuevoCliente?.(c)
+        }) }} className="p-4 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre / Razón Social *</label>
@@ -11148,12 +11162,26 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <div className="grid grid-cols-4 gap-4">
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
-                <select value={nvClienteId || ""} onChange={(e) => setNvClienteId(parseInt(e.target.value))}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" required>
+                <select
+                  value={nvClienteId || ""}
+                  onChange={(e) => {
+                    if (e.target.value === "__nuevo__") {
+                      setEditingItem(null)
+                      setFormClienteCategoriaId(null)
+                      setModalType("cliente")
+                      setShowModal(true)
+                    } else {
+                      setNvClienteId(parseInt(e.target.value))
+                    }
+                  }}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  required
+                >
                   <option value="">Seleccionar cliente...</option>
                   {clientes.map(c => (
                     <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
                   ))}
+                  <option value="__nuevo__" className="text-emerald-600 font-medium">+ Crear nuevo cliente</option>
                 </select>
               </div>
               <div>
