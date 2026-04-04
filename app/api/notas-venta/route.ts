@@ -43,6 +43,8 @@ export async function POST(req: Request) {
     lineas = [],
   } = body
 
+  console.log("[v0] POST notas-venta - numero:", numero, "cliente_id:", cliente_id, "lineas:", lineas?.length)
+
   if (!numero || !cliente_id) {
     return NextResponse.json({ error: "numero y cliente_id son requeridos" }, { status: 400 })
   }

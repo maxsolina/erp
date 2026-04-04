@@ -1839,7 +1839,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       label: "Logística",
       icon: Truck,
       items: [
-        { id: "ordenes_entrega", label: "Órdenes de Entrega", icon: Truck },
+        { id: "ordenes_entrega", label: "��rdenes de Entrega", icon: Truck },
         { id: "remitos", label: "Remitos", icon: Package },
       ]
     },
@@ -11380,8 +11380,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             }
 
             // ── Persistir NV en Supabase ──────────────────────────────
+            console.log("[v0] onSubmit NV - iniciando fetch, nvNumero:", nvNumero, "cliente_id:", cliente?.id)
             try {
-              await fetch("/api/notas-venta", {
+              const nvRes = await fetch("/api/notas-venta", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -11402,8 +11403,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   })),
                 }),
               })
-            } catch (_) {
-              // Error de red — la NV sigue en el state local igual
+              const nvData = await nvRes.json()
+              console.log("[v0] POST notas-venta respuesta:", nvRes.status, JSON.stringify(nvData))
+            } catch (err: any) {
+              console.log("[v0] POST notas-venta ERROR:", err?.message)
             }
 
             if (editingItem) {
