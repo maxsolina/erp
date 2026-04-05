@@ -3931,6 +3931,11 @@ export default function ModuloCompras() {
       recGuardada = await guardarRecepcion({
         estado: "confirmada",
         fecha_recepcion_real: ahora,
+        sucursal: rec.sucursal ?? "",
+        sucursal_id: rec.sucursal_id ?? null,
+        deposito_destino: rec.deposito_destino ?? "",
+        deposito_destino_id: rec.deposito_destino_id ?? null,
+        ubicacion: rec.ubicacion ?? "",
         items: lineasActualizadas.map(l => ({
           producto_id:            l.producto_id,
           producto_nombre:        l.producto_nombre,
@@ -4424,15 +4429,56 @@ export default function ModuloCompras() {
           <div className="grid grid-cols-3 gap-x-8 gap-y-4 text-sm">
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Sucursal</p>
-              <p className="font-medium">{rec.sucursal}</p>
+              {editable ? (
+                <select
+                  value={rec.sucursal || ''}
+                  onChange={e => setSelectedRecepcion(prev => prev ? { ...prev, sucursal: e.target.value } : prev)}
+                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-emerald-500"
+                >
+                  <option value="">- Seleccionar sucursal -</option>
+                  {sucursales.map(s => <option key={s.id} value={s.nombre}>{s.nombre}</option>)}
+                </select>
+              ) : (
+                <p className="font-medium">{rec.sucursal || '-'}</p>
+              )}
             </div>
             <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Depósito Destino</p>
-              <p className="font-medium">{rec.deposito_destino}</p>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">
+                Depósito Destino <span className="text-red-500">*</span>
+              </p>
+              {editable ? (
+                <select
+                  value={rec.deposito_destino_id || ''}
+                  onChange={e => {
+                    const dep = depositosOC.find(d => d.id === Number(e.target.value))
+                    setSelectedRecepcion(prev => prev ? {
+                      ...prev,
+                      deposito_destino_id: dep?.id ?? null,
+                      deposito_destino: dep?.nombre ?? ''
+                    } : prev)
+                  }}
+                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-emerald-500"
+                >
+                  <option value="">- Seleccionar depósito -</option>
+                  {depositosOC.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+                </select>
+              ) : (
+                <p className="font-medium">{rec.deposito_destino || '-'}</p>
+              )}
             </div>
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Ubicación</p>
-              <p className="font-medium">{rec.ubicacion_destino || '-'}</p>
+              {editable ? (
+                <input
+                  type="text"
+                  value={rec.ubicacion || ''}
+                  onChange={e => setSelectedRecepcion(prev => prev ? { ...prev, ubicacion: e.target.value } : prev)}
+                  placeholder="Ej: Estante A-3"
+                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-emerald-500"
+                />
+              ) : (
+                <p className="font-medium">{rec.ubicacion || '-'}</p>
+              )}
             </div>
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Documento Origen</p>
