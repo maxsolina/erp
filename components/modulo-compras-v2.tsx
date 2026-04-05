@@ -2403,15 +2403,24 @@ export default function ModuloCompras() {
                 Crear Factura
               </button>
             )}
-            {!editable && (oc.estado === 'confirmada' || oc.estado === 'recibida_parcial') && (
-              <button
-                onClick={() => setActiveView("recepciones")}
-                className="flex items-center gap-1.5 px-3 py-1.5 border border-emerald-300 text-emerald-700 bg-emerald-50 rounded-lg text-xs font-medium hover:bg-emerald-100"
-              >
-                <Truck className="w-3.5 h-3.5" />
-                Ir a Recepción
-              </button>
-            )}
+            {!editable && (oc.estado === 'confirmada' || oc.estado === 'recibida_parcial') && (() => {
+              const recVinculada = recepciones.find(r => Number(r.documento_origen_id) === Number(oc.id) && r.estado !== 'cancelada')
+              if (!recVinculada) return null
+              return (
+                <button
+                  onClick={() => {
+                    setSelectedRecepcion(recVinculada)
+                    setRecepcionCantidades(Object.fromEntries((recVinculada.lineas ?? []).map(l => [l.producto_id, l.cantidad_recibida])))
+                    setSelectedOC(null)
+                    setActiveView("recepciones")
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 border border-emerald-300 text-emerald-700 bg-emerald-50 rounded-lg text-xs font-medium hover:bg-emerald-100"
+                >
+                  <Truck className="w-3.5 h-3.5" />
+                  Ir a Recepción
+                </button>
+              )
+            })()}
             {!editable && (
               <button
                 onClick={() => setOcModalCancelacionOpen(true)}
