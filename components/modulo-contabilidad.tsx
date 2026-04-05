@@ -121,7 +121,7 @@ const monedasIniciales: Moneda[] = [
     id: 2,
     nombre: "USD",
     simbolo: "$",
-    cotizacion_actual: 1450000,
+    cotizacion_actual: 1450,
     cotizacion_automatica: false,
     tipo_cotizacion_defecto: "Blue",
     factor_redondeo: 0.010000,
@@ -132,20 +132,20 @@ const monedasIniciales: Moneda[] = [
     activo: true,
     fecha_tasa: "2026-03-17",
     cotizaciones: [
-      { id: 1, fecha: "2026-03-17", tipo: "Blue", tasa: 1450000 },
-      { id: 2, fecha: "2026-03-16", tipo: "Blue", tasa: 1448500 },
-      { id: 3, fecha: "2026-03-15", tipo: "Blue", tasa: 1445000 },
-      { id: 4, fecha: "2026-03-14", tipo: "Blue", tasa: 1442000 },
-      { id: 5, fecha: "2026-03-13", tipo: "Blue", tasa: 1438000 },
-      { id: 6, fecha: "2026-03-12", tipo: "Blue", tasa: 1435000 },
-      { id: 7, fecha: "2026-03-11", tipo: "Blue", tasa: 1432000 },
-      { id: 8, fecha: "2026-03-10", tipo: "Blue", tasa: 1430000 },
+      { id: 1, fecha: "2026-03-17", tipo: "Blue", tasa: 1450 },
+      { id: 2, fecha: "2026-03-16", tipo: "Blue", tasa: 1448.5 },
+      { id: 3, fecha: "2026-03-15", tipo: "Blue", tasa: 1445 },
+      { id: 4, fecha: "2026-03-14", tipo: "Blue", tasa: 1442 },
+      { id: 5, fecha: "2026-03-13", tipo: "Blue", tasa: 1438 },
+      { id: 6, fecha: "2026-03-12", tipo: "Blue", tasa: 1435 },
+      { id: 7, fecha: "2026-03-11", tipo: "Blue", tasa: 1432 },
+      { id: 8, fecha: "2026-03-10", tipo: "Blue", tasa: 1430 },
       // Más datos históricos para paginación
       ...Array.from({ length: 72 }, (_, i) => ({
         id: i + 9,
         fecha: new Date(2026, 2, 9 - i).toISOString().split("T")[0],
         tipo: "Blue" as const,
-        tasa: 1430000 - (i * 2500)
+        tasa: 1430 - (i * 2.5)
       }))
     ]
   }

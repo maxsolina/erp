@@ -1194,8 +1194,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }, [buildClienteFromForm, clientesDB, mutateClientes])
 
   const [notasVenta, setNotasVenta] = useState<NotaVenta[]>(mockNotasVenta)
-  const [ordenesEntrega, setOrdenesEntrega] = useState<OrdenEntrega[]>(mockOrdenesEntrega)
-  const [remitos, setRemitos] = useState<Remito[]>(mockRemitos)
+  const [ordenesEntrega, setOrdenesEntrega] = useState<OrdenEntrega[]>([])
+  const [remitos, setRemitos] = useState<Remito[]>([])
   const [facturas, setFacturas] = useState<Factura[]>([])
   const [recibos, setRecibos] = useState<Recibo[]>(mockRecibos)
   const [ajustes, setAjustes] = useState<AjusteCliente[]>(mockAjustes)
@@ -1552,7 +1552,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             estado: nv.estado ?? "abierta",
             moneda: nv.moneda ?? "ARS",
             tipo_cotizacion: nv.tipo_cotizacion ?? "blue",
-            cotizacion: nv.cotizacion ?? 1150,
+            cotizacion: Number(nv.cotizacion) || 1450,
             lista_precios_id: nv.lista_precios_id ?? 1,
             termino_pago_id: nv.termino_pago_id ?? 1,
             termino_pago_nombre: nv.termino_pago_nombre ?? "Contado",
@@ -1573,7 +1573,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             subtotal: Number(nv.total ?? 0),
             descuento_global: 0,
             impuestos: 0,
-            cotizacion: Number(nv.cotizacion ?? 1150),
             cotizacion_tipo: nv.tipo_cotizacion ?? "blue",
             total: Number(nv.total ?? 0),
             sucursal: nv.sucursal ?? "Puerto Norte",
