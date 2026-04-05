@@ -7012,10 +7012,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <div className="flex justify-end">
             <div className="w-64 space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-gray-500">Subtotal:</span><span>{formatCurrency(selectedFactura.subtotal, selectedFactura.moneda)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Descuento:</span><span>{formatCurrency(selectedFactura.descuento, selectedFactura.moneda)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Impuestos:</span><span>{formatCurrency(selectedFactura.impuestos, selectedFactura.moneda)}</span></div>
+              {(selectedFactura.descuento ?? 0) > 0 && (
+                <div className="flex justify-between"><span className="text-gray-500">Descuento:</span><span>-{formatCurrency(selectedFactura.descuento ?? 0, selectedFactura.moneda)}</span></div>
+              )}
+              {(selectedFactura.impuestos ?? 0) > 0 && (
+                <div className="flex justify-between"><span className="text-gray-500">Recargos / Impuestos:</span><span>{formatCurrency(selectedFactura.impuestos ?? 0, selectedFactura.moneda)}</span></div>
+              )}
               <div className="flex justify-between font-bold text-lg border-t pt-2"><span>Total:</span><span>{formatCurrency(selectedFactura.total, selectedFactura.moneda)}</span></div>
-              <div className="flex justify-between text-red-600 font-medium"><span>Saldo:</span><span>{formatCurrency(selectedFactura.saldo, selectedFactura.moneda)}</span></div>
+              <div className="flex justify-between text-red-600 font-medium"><span>Saldo:</span><span>{formatCurrency(selectedFactura.saldo ?? 0, selectedFactura.moneda)}</span></div>
             </div>
           </div>
 
@@ -7072,18 +7076,31 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   } as MovimientoCuentaCorriente
                 })
               setMovimientosCC(prev => [...prev, ...nuevosMovimientos])
-              // Actualizar saldo del cliente
-              const totalCreditado = lineasPago.reduce((s, l) => s + l.monto, 0)
-              setClientes(prev => prev.map(c =>
-                c.id === selectedFactura.cliente_id
-                  ? { ...c, saldo_cuenta_corriente: c.saldo_cuenta_corriente - totalCreditado }
-                  : c
-              ))
-              // Marcar factura como pagada si el saldo queda en 0
+              // Actualizar total de factura sumando recargos (si aún no fueron aplicados)
+              const totalFinalConRecargos = selectedFactura.subtotal + totalRecargos
               setFacturas(prev => prev.map(f =>
                 f.id === selectedFactura.id
-                  ? { ...f, saldo: Math.max(0, (f.saldo || 0) - totalCreditado), estado: Math.max(0, (f.saldo || 0) - totalCreditado) <= 0 ? "pagada" as const : f.estado }
+                  ? {
+                      ...f,
+                      impuestos: totalRecargos,
+                      total: totalFinalConRecargos,
+                      saldo: Math.max(0, totalFinalConRecargos - totalConRecargos),
+                      estado: Math.max(0, totalFinalConRecargos - totalConRecargos) <= 0 ? "pagada" as const : f.estado
+                    }
                   : f
+              ))
+              setSelectedFactura(prev => prev ? {
+                ...prev,
+                impuestos: totalRecargos,
+                total: totalFinalConRecargos,
+                saldo: Math.max(0, totalFinalConRecargos - totalConRecargos),
+                estado: Math.max(0, totalFinalConRecargos - totalConRecargos) <= 0 ? "pagada" as const : prev.estado
+              } : prev)
+              // Actualizar saldo del cliente con el total real pagado (base + recargos)
+              setClientes(prev => prev.map(c =>
+                c.id === selectedFactura.cliente_id
+                  ? { ...c, saldo_cuenta_corriente: c.saldo_cuenta_corriente - totalConRecargos }
+                  : c
               ))
             }}
             onEstadoPagoChange={(estado) => setFichaEstadoPago(estado)}
