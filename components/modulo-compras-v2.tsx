@@ -5829,9 +5829,33 @@ export default function ModuloCompras() {
                 >
                   Guardar
                 </button>
-                {/* Confirmar: valida duplicados, guarda y cierra */}
+                {/* Confirmar: valida duplicados, valida incompletas y cierra */}
                 <button
                   onClick={() => {
+                    // Validar unidades parcialmente completadas:
+                    // Una unidad "parcialmente" llenada es aquella donde empezaron a escribir
+                    // el IMEI pero le faltan campos obligatorios, o viceversa.
+                    const unidadParcialmenteCompleta = (u: UnidadSerie) => {
+                      const tieneAlgo =
+                        u.nro_serie.trim() !== '' ||
+                        (linea.requiere_color && (u.color ?? '').trim() !== '') ||
+                        (linea.requiere_bateria && u.bateria_pct !== undefined && u.bateria_pct !== null)
+                      return tieneAlgo && !unidadCompleta(u)
+                    }
+
+                    for (let i = 0; i < cantTotal; i++) {
+                      const u = modalSerieUnidades[i] ?? { nro_serie: '', outlet: false }
+                      if (unidadParcialmenteCompleta(u)) {
+                        const faltantes: string[] = []
+                        if (linea.tiene_serie && u.nro_serie.trim() === '') faltantes.push('N° Serie / IMEI')
+                        if (linea.requiere_color && (u.color ?? '').trim() === '') faltantes.push('Color')
+                        if (linea.requiere_bateria && (u.bateria_pct === undefined || u.bateria_pct === null)) faltantes.push('% Batería')
+                        alert(`Unidad ${i + 1}: faltan completar los campos obligatorios: ${faltantes.join(', ')}`)
+                        irA(i)
+                        return
+                      }
+                    }
+
                     if (linea.tiene_serie) {
                       const series = modalSerieUnidades.slice(0, cantTotal).map(u => u.nro_serie.trim()).filter(Boolean)
                       const duplicados = series.filter((s, i) => series.indexOf(s) !== i)
