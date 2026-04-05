@@ -2249,6 +2249,8 @@ export default function ModuloCompras() {
       sucursal:                oc.sucursal ?? "",
       deposito_destino:        oc.deposito_destino ?? "",
       deposito_destino_id:     oc.deposito_destino_id ?? null,
+      ubicacion_destino:       oc.ubicacion_destino ?? "",
+      ubicacion_destino_id:    oc.ubicacion_destino_id ?? null,
       fecha_esperada:          oc.fecha_entrega_esperada ?? null,
       items: (oc.lineas ?? []).map(l => ({
         producto_id:            l.producto_id,
@@ -2282,6 +2284,9 @@ export default function ModuloCompras() {
         documento_origen_ref:  oc.numero,
         sucursal:              oc.sucursal ?? "",
         deposito_destino:      oc.deposito_destino ?? "",
+        deposito_destino_id:   oc.deposito_destino_id ?? null,
+        ubicacion_destino:     oc.ubicacion_destino ?? "",
+        ubicacion_destino_id:  oc.ubicacion_destino_id ?? null,
         lineas: (oc.lineas ?? []).map(l => ({
           producto_id:       l.producto_id,
           producto_nombre:   l.producto_nombre,
@@ -2751,8 +2756,16 @@ export default function ModuloCompras() {
     const totalOC = (oc.lineas ?? []).reduce((s, l) => s + (l.subtotal ?? 0), 0)
 
     const guardarOC = async () => {
-      if (!oc.proveedor_nombre || !oc.deposito_destino || (oc.lineas ?? []).length === 0) {
-        alert("Complete proveedor, depósito destino y al menos una línea.")
+      if (!oc.proveedor_nombre) {
+        alert("Debe seleccionar un proveedor.")
+        return
+      }
+      if (!oc.deposito_destino) {
+        alert("Debe seleccionar un Depósito Destino. Las recepciones generadas desde esta OC necesitan saber a qué depósito ingresar el stock.")
+        return
+      }
+      if ((oc.lineas ?? []).length === 0) {
+        alert("Debe agregar al menos una línea de producto.")
         return
       }
       const lineaSinProducto = (oc.lineas ?? []).findIndex(l => !l.producto_nombre || !l.producto_id || String(l.producto_id).length > 10)
@@ -3978,6 +3991,8 @@ export default function ModuloCompras() {
           sucursal_id:             rec.sucursal_id ?? null,
           deposito_destino:        rec.deposito_destino ?? "",
           deposito_destino_id:     rec.deposito_destino_id ?? null,
+          ubicacion_destino:       rec.ubicacion_destino ?? "",
+          ubicacion_destino_id:    rec.ubicacion_destino_id ?? null,
           fecha_esperada:          rec.fecha_esperada ?? null,
           recepcion_anterior_id:   idRecConfirmada,
           items: lineasPendientes.map(l => ({
