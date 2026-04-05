@@ -13,7 +13,7 @@ interface ProductoDropdownProps {
   productosConSerie: any[]
   productoSearchText: string
   anchorRef: React.RefObject<HTMLInputElement>
-  onSelect: (p: any, precioUnitario: number, moneda: "ARS" | "USD", precioUSD: number, precioARS: number) => void
+  onSelect: (p: any, precioUnitario: number, moneda: "ARS" | "USD", precioUSD: number, precioARS: number, iva: number) => void
 }
 
 export default function ProductoDropdown({
@@ -76,23 +76,24 @@ export default function ProductoDropdown({
 
   const calcularPrecios = (p: any) => {
     const lineaLP = versionActiva?.lineas?.find((l: any) => l.producto_id === p.id)
+    const iva: number = lineaLP?.iva ?? 21
     if (lineaLP) {
       const cotiz = lineaLP.cotizacion_dolar || COTIZACION_DOLAR_MOCK
       if (lineaLP.forzar_precio_pesos && lineaLP.precio_forzado_ars) {
         const precioARS = lineaLP.precio_forzado_ars
-        return { precioUnitario: precioARS, moneda: "ARS" as const, precioUSD: parseFloat((precioARS / cotiz).toFixed(2)), precioARS }
+        return { precioUnitario: precioARS, moneda: "ARS" as const, precioUSD: parseFloat((precioARS / cotiz).toFixed(2)), precioARS, iva }
       } else if (lineaLP.precio_venta_moneda === "USD") {
         const precioUSD = lineaLP.precio_venta
         const precioARS = parseFloat((precioUSD * cotiz).toFixed(2))
-        return { precioUnitario: precioARS, moneda: "USD" as const, precioUSD, precioARS }
+        return { precioUnitario: precioARS, moneda: "USD" as const, precioUSD, precioARS, iva }
       } else {
         const precioARS = lineaLP.precio_venta
-        return { precioUnitario: precioARS, moneda: "ARS" as const, precioUSD: parseFloat((precioARS / cotiz).toFixed(2)), precioARS }
+        return { precioUnitario: precioARS, moneda: "ARS" as const, precioUSD: parseFloat((precioARS / cotiz).toFixed(2)), precioARS, iva }
       }
     }
-    // Fallback: usar costo_manual del producto si existe (precio base)
+    // Fallback: sin lista de precios, IVA 21% por defecto
     const precioARS = p.precio_venta ?? p.costo_manual ?? 0
-    return { precioUnitario: precioARS, moneda: (p.moneda_costo === "USD" ? "USD" : "ARS") as "ARS" | "USD", precioUSD: parseFloat((precioARS / COTIZACION_DOLAR_MOCK).toFixed(2)), precioARS }
+    return { precioUnitario: precioARS, moneda: (p.moneda_costo === "USD" ? "USD" : "ARS") as "ARS" | "USD", precioUSD: parseFloat((precioARS / COTIZACION_DOLAR_MOCK).toFixed(2)), precioARS, iva: 21 }
   }
 
   if (!pos) return null
@@ -125,10 +126,10 @@ export default function ProductoDropdown({
       {productosFiltrados.map((p: any) => (
         <div
           key={p.id}
-          onMouseDown={(e) => {
+            onMouseDown={(e) => {
             e.preventDefault()
             const precios = calcularPrecios(p)
-            onSelect(p, precios.precioUnitario, precios.moneda, precios.precioUSD, precios.precioARS)
+            onSelect(p, precios.precioUnitario, precios.moneda, precios.precioUSD, precios.precioARS, precios.iva)
           }}
           className="px-2 py-1.5 hover:bg-blue-600 hover:text-white cursor-pointer text-sm"
         >
