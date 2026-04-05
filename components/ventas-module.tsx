@@ -165,6 +165,7 @@ interface LineaNV {
   precio_unitario_ars: number
   descuento: number
   subtotal: number
+  iva: number
   fecha_entrega: string
   requiere_serie?: boolean
   series_seleccionadas?: { id: number; serie: string; detalles: string }[]
@@ -1578,13 +1579,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               cantidad: l.cantidad,
               precio_unitario: l.precio_unitario,
               descuento: l.descuento ?? 0,
-              subtotal: l.subtotal,
+              subtotal: Number(l.subtotal ?? 0),
+              iva: Number(l.iva ?? 0),
               requiere_serie: false,
               series_seleccionadas: [],
             })),
-            subtotal: Number(nv.total ?? 0),
+            subtotal: Number(nv.subtotal ?? (nv.notas_venta_lineas ?? []).reduce((s: number, l: any) => s + Number(l.subtotal ?? 0), 0)),
             descuento_global: 0,
-            impuestos: 0,
+            impuestos: Number(nv.impuestos ?? (nv.notas_venta_lineas ?? []).reduce((s: number, l: any) => s + Number(l.subtotal ?? 0) * ((Number(l.iva ?? 0)) / 100), 0)),
             cotizacion_tipo: nv.tipo_cotizacion ?? "blue",
             total: Number(nv.total ?? 0),
             sucursal: nv.sucursal ?? "Puerto Norte",
@@ -4215,7 +4217,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                     productosConSerie={nvListaPreciosId ? productosNV : productosMaestro}
                                     productoSearchText={productoSearchText}
                                     anchorRef={{ current: productoInputRefs.current[index] } as React.RefObject<HTMLInputElement>}
-                                    onSelect={(p, precioUnitario, moneda, precioUSD, precioARS) => {
+                                    onSelect={(p, precioUnitario, moneda, precioUSD, precioARS, iva) => {
                                       const updated = [...nvLineas]
                                       updated[index].producto_id = p.id
                                       updated[index].producto_nombre = p.nombre
@@ -4226,6 +4228,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                       updated[index].precio_unitario_moneda = moneda
                                       updated[index].precio_unitario_usd = precioUSD
                                       updated[index].precio_unitario_ars = precioARS
+                                      updated[index].iva = iva ?? 21
                                       updated[index].subtotal = updated[index].cantidad * precioUnitario * (1 - updated[index].descuento / 100)
                                       setNvLineas(updated)
                                       setProductoSearchIndex(null)
@@ -11552,8 +11555,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   
   const renderNotaVentaModal = () => {
     const selectedCliente = clientes.find(c => c.id === nvClienteId)
-    const subtotal = nvLineas.reduce((sum, l) => sum + l.subtotal, 0)
-    const total = subtotal * 1.21
+    const subtotal = nvLineas.reduce((sum, l) => sum + Number(l.subtotal ?? 0), 0)
+    const impuestos = nvLineas.reduce((sum, l) => sum + Number(l.subtotal ?? 0) * ((l.iva ?? 0) / 100), 0)
+    const total = subtotal + impuestos
 
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -11606,8 +11610,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               lineas: nvLineas,
               subtotal: subtotal,
               descuento_global: 0,
-              impuestos: 0,
-              total: subtotal,
+              impuestos: impuestos,
+              total: total,
               sucursal: "Puerto Norte",
               punto_venta: "10000"
             }
@@ -11622,8 +11626,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   cliente_id: cliente.id,
                   vendedor_id: vendedorId,
                   moneda,
-          estado: tipoVenta === "inmediata" ? "facturada" : "abierta",
-                  total: isNaN(subtotal) ? 0 : subtotal,
+                  estado: tipoVenta === "inmediata" ? "facturada" : "abierta",
+                  subtotal: isNaN(subtotal) ? 0 : subtotal,
+                  impuestos: isNaN(impuestos) ? 0 : impuestos,
+                  total: isNaN(total) ? 0 : total,
                   lineas: nvLineas.map(l => ({
                     producto_id: l.producto_id,
                     producto_nombre: l.producto_nombre,
@@ -11632,6 +11638,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     precio_unitario: l.precio_unitario ?? 0,
                     descuento: l.descuento ?? 0,
                     subtotal: l.subtotal ?? l.cantidad * (l.precio_unitario ?? 0),
+                    iva: l.iva ?? 0,
                   })),
                 }),
               })
@@ -11964,10 +11971,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <span className="text-gray-600">Subtotal:</span>
                   <span className="font-medium">{formatCurrency(subtotal)}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">IVA (21%):</span>
-                  <span className="font-medium">{formatCurrency(subtotal * 0.21)}</span>
-                </div>
+                {impuestos > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Impuestos:</span>
+                    <span className="font-medium">{formatCurrency(impuestos)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-base font-bold border-t pt-2">
                   <span>Total:</span>
                   <span className="text-emerald-700">{formatCurrency(total)}</span>

@@ -74,6 +74,8 @@ export async function POST(req: Request) {
     sucursal_id,
     moneda,
     estado,
+    subtotal,
+    impuestos,
     total,
     notas,
     lineas = [],
@@ -97,6 +99,8 @@ export async function POST(req: Request) {
       sucursal_id: sucursal_id ?? null,
       moneda: moneda ?? "ARS",
       estado: estadoNormalizado,
+      subtotal: Number(subtotal ?? 0),
+      impuestos: Number(impuestos ?? 0),
       total: Number(total ?? 0),
       notas: notas ?? null,
     })
@@ -121,6 +125,7 @@ export async function POST(req: Request) {
         precio_unitario: precio,
         descuento: desc,
         subtotal: isNaN(sub) ? 0 : sub,
+        iva: Number(l.iva ?? 0),
       }
     })
 
