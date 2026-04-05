@@ -1885,7 +1885,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       label: "Logística",
       icon: Truck,
       items: [
-        { id: "ordenes_entrega", label: "��rdenes de Entrega", icon: Truck },
+        { id: "ordenes_entrega", label: "Órdenes de Entrega", icon: Truck },
         { id: "remitos", label: "Remitos", icon: Package },
       ]
     },
