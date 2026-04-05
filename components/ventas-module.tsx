@@ -3580,8 +3580,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       return
     }
 
-    const subtotalValido = lineasValidas.reduce((sum, l) => sum + l.subtotal, 0)
-    const totalValido = subtotalValido * 1.21
+    const subtotalValido = lineasValidas.reduce((sum, l) => sum + Number(l.subtotal ?? 0), 0)
+    const impuestosValido = lineasValidas.reduce((sum, l) => sum + Number(l.subtotal ?? 0) * ((l.iva ?? 0) / 100), 0)
+    const totalValido = subtotalValido + impuestosValido
 
     // Si estamos editando, usamos los datos existentes
     const existingNV = editingNVId ? notasVenta.find(nv => nv.id === editingNVId) : null
@@ -3622,8 +3623,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         subtotal: l.subtotal,
         series: l.series_seleccionadas || []
       })),
-      total_neto: subtotalValido,
-      total_iva: subtotalValido * 0.21,
+      subtotal: subtotalValido,
+      impuestos: impuestosValido,
+      descuento_global: 0,
+      cotizacion: 1450,
       total: totalValido,
       seguimiento: existingNV ? [
         ...existingNV.seguimiento || [],
@@ -3654,6 +3657,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           vendedor_id: vendedorId,
           moneda,
           estado: tipoVenta === "inmediata" ? "facturada" : "abierta",
+          subtotal: subtotalValido,
+          impuestos: impuestosValido,
           total: totalValido,
           lineas: lineasValidas.map(l => ({
             producto_id: l.producto_id,
@@ -3662,7 +3667,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             cantidad: l.cantidad,
             precio_unitario: l.precio_unitario ?? 0,
             descuento: l.descuento ?? 0,
-            subtotal: l.subtotal,
+            subtotal: Number(l.subtotal ?? 0),
+            iva: l.iva ?? 0,
           })),
         }),
       })
@@ -3802,7 +3808,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           subtotal: l.subtotal
         })),
         subtotal: subtotalValido,
-        iva: subtotalValido * 0.21,
+        iva: impuestosValido,
         total: totalValido,
         saldo_pendiente: totalValido,
         cae: null,
