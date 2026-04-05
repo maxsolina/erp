@@ -2247,8 +2247,10 @@ export default function ModuloCompras() {
       documento_origen_id:     oc.id,
       documento_origen_ref:    oc.numero,
       sucursal:                oc.sucursal ?? "",
+      sucursal_id:             (oc as any).sucursal_id ?? null,
       deposito_destino:        oc.deposito_destino ?? "",
-      deposito_destino_id:     oc.deposito_destino_id ?? null,
+      deposito_destino_id:     (oc as any).deposito_destino_id ?? null,
+      ubicacion:               (oc as any).ubicacion ?? "",
       fecha_esperada:          oc.fecha_entrega_esperada ?? null,
       items: (oc.lineas ?? []).map(l => ({
         producto_id:            l.producto_id,
@@ -2282,7 +2284,8 @@ export default function ModuloCompras() {
         documento_origen_ref:  oc.numero,
         sucursal:              oc.sucursal ?? "",
         deposito_destino:      oc.deposito_destino ?? "",
-        deposito_destino_id:   oc.deposito_destino_id ?? null,
+        deposito_destino_id:   (oc as any).deposito_destino_id ?? null,
+        ubicacion:             (oc as any).ubicacion ?? "",
         lineas: (oc.lineas ?? []).map(l => ({
           producto_id:       l.producto_id,
           producto_nombre:   l.producto_nombre,
@@ -2777,6 +2780,11 @@ export default function ModuloCompras() {
         proveedor_nombre: oc.proveedor_nombre || "",
         estado: "borrador",
         moneda: oc.moneda || "ARS",
+        sucursal: oc.sucursal ?? "",
+        sucursal_id: (oc as any).sucursal_id ?? null,
+        deposito_destino: oc.deposito_destino ?? "",
+        deposito_destino_id: (oc as any).deposito_destino_id ?? null,
+        ubicacion: (oc as any).ubicacion_destino ?? "",
         items: oc.lineas,
         subtotal: totalOC,
         total: totalOC,
@@ -4429,56 +4437,15 @@ export default function ModuloCompras() {
           <div className="grid grid-cols-3 gap-x-8 gap-y-4 text-sm">
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Sucursal</p>
-              {editable ? (
-                <select
-                  value={rec.sucursal || ''}
-                  onChange={e => setSelectedRecepcion(prev => prev ? { ...prev, sucursal: e.target.value } : prev)}
-                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-emerald-500"
-                >
-                  <option value="">- Seleccionar sucursal -</option>
-                  {sucursales.map(s => <option key={s.id} value={s.nombre}>{s.nombre}</option>)}
-                </select>
-              ) : (
-                <p className="font-medium">{rec.sucursal || '-'}</p>
-              )}
+              <p className="font-medium">{rec.sucursal || '-'}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">
-                Depósito Destino <span className="text-red-500">*</span>
-              </p>
-              {editable ? (
-                <select
-                  value={rec.deposito_destino_id || ''}
-                  onChange={e => {
-                    const dep = depositosOC.find(d => d.id === Number(e.target.value))
-                    setSelectedRecepcion(prev => prev ? {
-                      ...prev,
-                      deposito_destino_id: dep?.id ?? null,
-                      deposito_destino: dep?.nombre ?? ''
-                    } : prev)
-                  }}
-                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-emerald-500"
-                >
-                  <option value="">- Seleccionar depósito -</option>
-                  {depositosOC.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
-                </select>
-              ) : (
-                <p className="font-medium">{rec.deposito_destino || '-'}</p>
-              )}
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Depósito Destino</p>
+              <p className="font-medium">{rec.deposito_destino || '-'}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Ubicación</p>
-              {editable ? (
-                <input
-                  type="text"
-                  value={rec.ubicacion || ''}
-                  onChange={e => setSelectedRecepcion(prev => prev ? { ...prev, ubicacion: e.target.value } : prev)}
-                  placeholder="Ej: Estante A-3"
-                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-emerald-500"
-                />
-              ) : (
-                <p className="font-medium">{rec.ubicacion || '-'}</p>
-              )}
+              <p className="font-medium">{(rec as any).ubicacion || '-'}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Documento Origen</p>
