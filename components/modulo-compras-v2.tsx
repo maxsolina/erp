@@ -1491,13 +1491,14 @@ export default function ModuloCompras() {
       try {
         if (modoEdicion && selectedProveedor) {
           const updated = await guardarProveedor(payload, selectedProveedor.id)
-          setProveedores(prev => prev.map(p => p.id === selectedProveedor.id ? { ...p, ...updated } : p))
-          setSelectedProveedor(prev => prev ? { ...prev, ...updated } : null)
+          const updatedConNombre = { ...updated, nombre: updated.nombre ?? updated.razon_social ?? "" }
+          setProveedores(prev => prev.map(p => p.id === selectedProveedor.id ? { ...p, ...updatedConNombre } : p))
+          setSelectedProveedor(prev => prev ? { ...prev, ...updatedConNombre } : null)
           setEditandoProveedor(false)
         } else {
           const codigoAuto = `PROV-${String(proveedores.length + 1).padStart(3, "0")}`
           const created = await guardarProveedor({ ...payload, codigo: codigoAuto, saldo: 0 })
-          setProveedores(prev => [...prev, created])
+          setProveedores(prev => [...prev, { ...created, nombre: created.nombre ?? created.razon_social ?? "" }])
           setCreandoProveedor(false)
           setNuevoProveedor(proveedorFormVacio)
           setProveedorTabActivo("contactos")
@@ -2234,16 +2235,7 @@ export default function ModuloCompras() {
     const ahora = new Date().toISOString()
     const esInmediato = oc.metodo_compra === 'inmediato'
 
-    // Obtener el próximo número de recepción desde la DB para evitar duplicados
-    let siguienteNumero = "00001"
-    try {
-      const r = await fetch("/api/compras/recepciones?siguiente_numero=1")
-      const d = await r.json()
-      if (d.siguiente_numero) siguienteNumero = d.siguiente_numero
-    } catch { /* usa fallback */ }
-
     const recPayload = {
-      numero:                  `REC-${siguienteNumero}`,
       fecha:                   ahora,
       orden_compra_id:         oc.id,
       orden_compra_numero:     oc.numero,
@@ -2256,7 +2248,8 @@ export default function ModuloCompras() {
       documento_origen_ref:    oc.numero,
       sucursal:                oc.sucursal ?? "",
       deposito_destino:        oc.deposito_destino ?? "",
-      deposito_destino_id:     oc.deposito_destino_id ?? null,
+      deposito_destino_id:     (oc as any).deposito_destino_id ?? null,
+      ubicacion:               (oc as any).ubicacion ?? "",
       fecha_esperada:          oc.fecha_entrega_esperada ?? null,
       items: (oc.lineas ?? []).map(l => ({
         producto_id:            l.producto_id,
@@ -2290,6 +2283,8 @@ export default function ModuloCompras() {
         documento_origen_ref:  oc.numero,
         sucursal:              oc.sucursal ?? "",
         deposito_destino:      oc.deposito_destino ?? "",
+        deposito_destino_id:   (oc as any).deposito_destino_id ?? null,
+        ubicacion:             (oc as any).ubicacion ?? "",
         lineas: (oc.lineas ?? []).map(l => ({
           producto_id:       l.producto_id,
           producto_nombre:   l.producto_nombre,
@@ -2402,6 +2397,24 @@ export default function ModuloCompras() {
                 Crear Factura
               </button>
             )}
+            {!editable && (oc.estado === 'confirmada' || oc.estado === 'recibida_parcial') && (() => {
+              const recVinculada = recepciones.find(r => Number(r.documento_origen_id) === Number(oc.id) && r.estado !== 'cancelada')
+              if (!recVinculada) return null
+              return (
+                <button
+                  onClick={() => {
+                    setSelectedRecepcion(recVinculada)
+                    setRecepcionCantidades(Object.fromEntries((recVinculada.lineas ?? []).map(l => [l.producto_id, l.cantidad_recibida])))
+                    setSelectedOC(null)
+                    setActiveView("recepciones")
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 border border-emerald-300 text-emerald-700 bg-emerald-50 rounded-lg text-xs font-medium hover:bg-emerald-100"
+                >
+                  <Truck className="w-3.5 h-3.5" />
+                  Ir a Recepción · {recVinculada.numero}
+                </button>
+              )
+            })()}
             {!editable && (
               <button
                 onClick={() => setOcModalCancelacionOpen(true)}
@@ -2741,8 +2754,21 @@ export default function ModuloCompras() {
     const totalOC = (oc.lineas ?? []).reduce((s, l) => s + (l.subtotal ?? 0), 0)
 
     const guardarOC = async () => {
-      if (!oc.proveedor_nombre || !oc.deposito_destino || (oc.lineas ?? []).length === 0) {
-        alert("Complete proveedor, depósito destino y al menos una línea.")
+      if (!oc.proveedor_nombre) {
+        alert("Debe seleccionar un proveedor.")
+        return
+      }
+      if (!oc.deposito_destino) {
+        alert("Debe seleccionar un Depósito Destino. Las recepciones generadas desde esta OC necesitan saber a qué depósito ingresar el stock.")
+        return
+      }
+      if ((oc.lineas ?? []).length === 0) {
+        alert("Debe agregar al menos una línea de producto.")
+        return
+      }
+      const lineaSinProducto = (oc.lineas ?? []).findIndex(l => !l.producto_nombre || !l.producto_id || String(l.producto_id).length > 10)
+      if (lineaSinProducto !== -1) {
+        alert(`La línea ${lineaSinProducto + 1} no tiene un producto seleccionado. Buscá y seleccioná un producto del listado.`)
         return
       }
       const nextNum = Math.max(...ordenesCompra.map(o => o.id ?? 0), 0) + 1
@@ -2753,6 +2779,11 @@ export default function ModuloCompras() {
         proveedor_nombre: oc.proveedor_nombre || "",
         estado: "borrador",
         moneda: oc.moneda || "ARS",
+        sucursal: oc.sucursal ?? "",
+        sucursal_id: (oc as any).sucursal_id ?? null,
+        deposito_destino: oc.deposito_destino ?? "",
+        deposito_destino_id: (oc as any).deposito_destino_id ?? null,
+        ubicacion: (oc as any).ubicacion_destino ?? "",
         items: oc.lineas,
         subtotal: totalOC,
         total: totalOC,
@@ -3806,8 +3837,20 @@ export default function ModuloCompras() {
     if (!selectedRecepcion) return
     const rec = selectedRecepcion
 
+    // Validar depósito destino obligatorio
+    if (!rec.deposito_destino_id && !rec.deposito_destino) {
+      alert("Debe seleccionar un Depósito Destino antes de confirmar la recepción. Sin depósito no se puede ingresar el stock.")
+      return
+    }
+
+    // Helper: obtener cantidad efectiva (para productos con serie, es el nro de series cargadas)
+    const getCantEfectiva = (l: RecepcionLinea) =>
+      l.tiene_serie
+        ? (seriesConfirmadas[l.producto_id] || []).filter(u => u.nro_serie?.trim() !== '').length
+        : (recepcionCantidades[l.producto_id] ?? 0)
+
     // Validación: cantidades > 0
-    const lineasConCantidad = (rec.lineas ?? []).filter(l => (recepcionCantidades[l.producto_id] ?? 0) > 0)
+    const lineasConCantidad = (rec.lineas ?? []).filter(l => getCantEfectiva(l) > 0)
     if (lineasConCantidad.length === 0) {
       alert("Debe ingresar al menos una cantidad recibida mayor a 0.")
       return
@@ -3816,13 +3859,14 @@ export default function ModuloCompras() {
     // Validación: series registradas para productos con serie
     for (const linea of rec.lineas) {
       if (!linea.tiene_serie) continue
-      const cantRequerida = recepcionCantidades[linea.producto_id] ?? 0
-      if (cantRequerida === 0) continue
+      const cantEfectiva = getCantEfectiva(linea)
+      if (cantEfectiva === 0) continue
       const seriesDelProducto = seriesConfirmadas[linea.producto_id] || []
-      if (seriesDelProducto.length < cantRequerida) {
+      const seriesValidas = seriesDelProducto.filter(u => u.nro_serie?.trim() !== '')
+      if (seriesValidas.length < cantEfectiva) {
         alert(`Debe registrar los N° de serie para: ${linea.producto_nombre}`)
         setModalSerieProducto(linea)
-        setModalSerieUnidades(seriesDelProducto.length > 0 ? seriesDelProducto : Array.from({ length: cantRequerida }, () => ({ nro_serie: '', outlet: false })))
+        setModalSerieUnidades(seriesDelProducto.length > 0 ? seriesDelProducto : Array.from({ length: linea.cantidad_pedida }, () => ({ nro_serie: '', outlet: false })))
         setModalSerieOpen(true)
         return
       }
@@ -3830,7 +3874,7 @@ export default function ModuloCompras() {
 
     const ahora = new Date().toISOString()
     const lineasActualizadas: RecepcionLinea[] = (rec.lineas ?? []).map(l => {
-      const cantRec = recepcionCantidades[l.producto_id] ?? 0
+      const cantRec = getCantEfectiva(l)
       const estadoLinea: RecepcionLinea['estado_linea'] = cantRec === 0
         ? 'pendiente'
         : cantRec < l.cantidad_pedida
@@ -3847,56 +3891,28 @@ export default function ModuloCompras() {
     // Determinar si hay recepción parcial
     const hayParcial = lineasActualizadas.some(l => l.estado_linea === 'recibido_parcial')
 
-    // Generar recepción complementaria si hay parcial
-    let recCompId: number | undefined = undefined
-    if (hayParcial) {
-      const lineasPendientes: RecepcionLinea[] = lineasActualizadas
-        .filter(l => l.cantidad_pedida - l.cantidad_recibida > 0)
-        .map(l => ({
-          ...l,
-          cantidad_pedida: l.cantidad_pedida - l.cantidad_recibida,
-          cantidad_recibida: 0,
-          estado_linea: 'pendiente' as const,
-          unidades_serie: []
-        }))
+    // Calcular líneas pendientes para recepción complementaria
+    const lineasPendientes: RecepcionLinea[] = hayParcial
+      ? lineasActualizadas
+          .filter(l => l.cantidad_pedida - l.cantidad_recibida > 0)
+          .map(l => ({
+            ...l,
+            cantidad_pedida: l.cantidad_pedida - l.cantidad_recibida,
+            cantidad_recibida: 0,
+            estado_linea: 'pendiente' as const,
+            unidades_serie: []
+          }))
+      : []
 
-      if (lineasPendientes.length > 0) {
-        let sigNumComp = "00001"
-        try {
-          const rComp = await fetch("/api/compras/recepciones?siguiente_numero=1")
-          const dComp = await rComp.json()
-          if (dComp.siguiente_numero) sigNumComp = dComp.siguiente_numero
-        } catch { /* fallback */ }
-        const nuevoId = recepciones.length + 1
-        recCompId = nuevoId
-        const recComp: Recepcion = {
-          ...rec,
-          id: nuevoId,
-          numero: `REC-${sigNumComp}`,
-          fecha: ahora,
-          estado: 'esperando_recepcion',
-          fecha_recepcion_real: undefined,
-          remito_numero: undefined,
-          remito_fecha: undefined,
-          recepcion_anterior_id: rec.id,
-          recepcion_complementaria_id: undefined,
-          lineas: lineasPendientes,
-          cancelacion: undefined
-        }
-        setRecepciones(prev => [...prev, recComp])
-      }
-    }
-
-    // Actualizar la recepción actual
+    // Actualizar la recepción actual en UI de forma síncrona (sin recepcion_complementaria_id todavía)
     const recActualizada: Recepcion = {
       ...rec,
       estado: 'recibida',
       fecha_recepcion_real: ahora,
       lineas: lineasActualizadas,
-      recepcion_complementaria_id: recCompId
+      recepcion_complementaria_id: undefined
     }
 
-    // Actualizar UI de forma síncrona
     setRecepciones(prev => prev.map(r => r.id === rec.id ? recActualizada : r))
     setSelectedRecepcion(recActualizada)
     if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
@@ -3914,37 +3930,124 @@ export default function ModuloCompras() {
       }))
     }
 
-    // Persistir recepción a Supabase y luego procesar stock con el ID real
+    // Persistir recepción a Supabase
     const todasRecibidasFinal = lineasActualizadas.every(l => l.estado_linea === 'recibido')
-    guardarRecepcion({
-      estado: "confirmada",
-      fecha_recepcion_real: ahora,
-      items: lineasActualizadas.map(l => ({
-        producto_id:            l.producto_id,
-        producto_nombre:        l.producto_nombre,
-        producto_sku:           l.producto_sku ?? "",
-        cantidad_pedida:        l.cantidad_pedida,
-        cantidad_recibida:      l.cantidad_recibida,
-        precio_unitario:        l.precio_unitario,
-        udm:                    l.udm ?? "un",
-        estado_linea:           l.estado_linea,
-        tiene_serie:            l.tiene_serie ?? false,
-        requiere_color:         l.requiere_color ?? false,
-        requiere_bateria:       l.requiere_bateria ?? false,
-        requiere_outlet:        l.requiere_outlet ?? false,
-        requiere_observaciones: l.requiere_observaciones ?? false,
-      })),
-      total: lineasActualizadas.reduce((s, l) => s + l.cantidad_recibida * (l.precio_unitario ?? 0), 0),
-    }, rec.id).then((recGuardada: any) => {
-      // Actualizar OC vinculada
-      if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
-        const ocVinculada = ordenesCompra.find(o => o.id === rec.documento_origen_id)
-        if (ocVinculada) {
-          guardarOrdenCompra({ estado: todasRecibidasFinal && !hayParcial ? "completa" : "parcial" }, ocVinculada.id)
-            .catch((err: any) => console.error("[v0] Error al actualizar OC:", err.message))
-        }
+
+    let recGuardada: any
+    try {
+      recGuardada = await guardarRecepcion({
+        estado: "confirmada",
+        fecha_recepcion_real: ahora,
+        sucursal: rec.sucursal ?? "",
+        deposito_destino: rec.deposito_destino ?? "",
+        deposito_destino_id: rec.deposito_destino_id ?? null,
+        ubicacion: rec.ubicacion ?? "",
+        items: lineasActualizadas.map(l => ({
+          producto_id:            l.producto_id,
+          producto_nombre:        l.producto_nombre,
+          producto_sku:           l.producto_sku ?? "",
+          cantidad_pedida:        l.cantidad_pedida,
+          cantidad_recibida:      l.cantidad_recibida,
+          precio_unitario:        l.precio_unitario,
+          udm:                    l.udm ?? "un",
+          estado_linea:           l.estado_linea,
+          tiene_serie:            l.tiene_serie ?? false,
+          requiere_color:         l.requiere_color ?? false,
+          requiere_bateria:       l.requiere_bateria ?? false,
+          requiere_outlet:        l.requiere_outlet ?? false,
+          requiere_observaciones: l.requiere_observaciones ?? false,
+        })),
+        total: lineasActualizadas.reduce((s, l) => s + l.cantidad_recibida * (l.precio_unitario ?? 0), 0),
+      }, rec.id)
+    } catch (err: any) {
+      console.error("[v0] Error al persistir recepción:", err.message)
+      return
+    }
+
+    // Actualizar OC vinculada
+    if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
+      const ocVinculada = ordenesCompra.find(o => o.id === rec.documento_origen_id)
+      if (ocVinculada) {
+        guardarOrdenCompra({ estado: todasRecibidasFinal && !hayParcial ? "completa" : "parcial" }, ocVinculada.id)
+          .catch((err: any) => console.error("[v0] Error al actualizar OC:", err.message))
       }
-    }).catch((err: any) => console.error("[v0] Error al persistir recepción:", err.message))
+    }
+
+    // Crear recepción complementaria si hay líneas pendientes
+    if (hayParcial && lineasPendientes.length > 0) {
+      try {
+        const idRecConfirmada = recGuardada?.id ?? rec.id
+        // Obtener proveedor desde la OC vinculada si la recepción no lo tiene directamente
+        const ocVinc = ordenesCompra.find(o => o.id === rec.documento_origen_id)
+        const proveedorId = rec.proveedor_id ?? ocVinc?.proveedor_id
+        const proveedorNombre = rec.proveedor_nombre ?? ocVinc?.proveedor_nombre ?? ""
+        if (!proveedorId) {
+          console.error("[v0] No se encontró proveedor_id para la recepción complementaria")
+        }
+        const recCompGuardada = await guardarRecepcion({
+          fecha:                   ahora,
+          estado:                  "esperando_recepcion",
+          orden_compra_id:         rec.orden_compra_id ?? ocVinc?.id,
+          orden_compra_numero:     rec.orden_compra_numero ?? ocVinc?.numero,
+          proveedor_id:            proveedorId,
+          proveedor_nombre:        proveedorNombre,
+          documento_origen_tipo:   rec.documento_origen_tipo,
+          documento_origen_id:     rec.documento_origen_id,
+          documento_origen_ref:    rec.documento_origen_ref,
+          sucursal:                rec.sucursal ?? "",
+          deposito_destino:        rec.deposito_destino ?? "",
+          deposito_destino_id:     rec.deposito_destino_id ?? null,
+          fecha_esperada:          rec.fecha_esperada ?? null,
+          recepcion_anterior_id:   idRecConfirmada,
+          items: lineasPendientes.map(l => ({
+            producto_id:            l.producto_id,
+            producto_nombre:        l.producto_nombre,
+            producto_sku:           l.producto_sku ?? "",
+            cantidad_pedida:        l.cantidad_pedida,
+            cantidad_recibida:      0,
+            precio_unitario:        l.precio_unitario,
+            udm:                    l.udm ?? "un",
+            estado_linea:           "pendiente",
+            tiene_serie:            l.tiene_serie ?? false,
+            requiere_color:         l.requiere_color ?? false,
+            requiere_bateria:       l.requiere_bateria ?? false,
+            requiere_outlet:        l.requiere_outlet ?? false,
+            requiere_observaciones: l.requiere_observaciones ?? false,
+          })),
+          total: 0,
+        })
+
+        // Vincular la recepción original con la complementaria
+        await guardarRecepcion({ recepcion_complementaria_id: recCompGuardada.id }, idRecConfirmada)
+
+        // Actualizar UI
+        const recCompLocal: Recepcion = {
+          ...rec,
+          id: recCompGuardada.id,
+          numero: recCompGuardada.numero ?? "REC-?????",
+          fecha: ahora,
+          estado: 'esperando_recepcion',
+          fecha_recepcion_real: undefined,
+          remito_numero: undefined,
+          remito_fecha: undefined,
+          recepcion_anterior_id: idRecConfirmada,
+          recepcion_complementaria_id: undefined,
+          lineas: lineasPendientes,
+          cancelacion: undefined
+        }
+        setRecepciones(prev => {
+          const sinDuplicados = prev.filter(r => r.id !== recCompGuardada.id)
+          return sinDuplicados.map(r =>
+            r.id === rec.id ? { ...r, recepcion_complementaria_id: recCompGuardada.id } : r
+          ).concat(recCompLocal)
+        })
+        setSelectedRecepcion(prev =>
+          prev?.id === rec.id ? { ...prev, recepcion_complementaria_id: recCompGuardada.id } : prev
+        )
+      } catch (err: any) {
+        console.error("[v0] Error al crear recepción complementaria:", err.message)
+      }
+    }
 
     // Entrada de stock en Supabase via .then() sin await
     fetchDepositos().then(depositos => {
@@ -4331,15 +4434,15 @@ export default function ModuloCompras() {
           <div className="grid grid-cols-3 gap-x-8 gap-y-4 text-sm">
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Sucursal</p>
-              <p className="font-medium">{rec.sucursal}</p>
+              <p className="font-medium">{rec.sucursal || '-'}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Depósito Destino</p>
-              <p className="font-medium">{rec.deposito_destino}</p>
+              <p className="font-medium">{rec.deposito_destino || '-'}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Ubicación</p>
-              <p className="font-medium">{rec.ubicacion_destino || '-'}</p>
+              <p className="font-medium">{(rec as any).ubicacion || '-'}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Documento Origen</p>
@@ -4476,17 +4579,23 @@ export default function ModuloCompras() {
                     <td className="py-3 px-4 text-center">{linea.cantidad_pedida}</td>
                     <td className="py-3 px-4 text-center">
                       {editable ? (
-                        <input
-                          type="number"
-                          min={0}
-                          max={linea.cantidad_pedida}
-                          value={cantRec}
-                          onChange={e => setRecepcionCantidades(prev => ({
-                            ...prev,
-                            [linea.producto_id]: Math.min(linea.cantidad_pedida, Math.max(0, Number(e.target.value)))
-                          }))}
-                          className="w-16 text-center px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-emerald-500"
-                        />
+                        linea.tiene_serie ? (
+                          <span className="inline-block w-16 text-center px-2 py-1 border border-gray-200 rounded text-sm bg-gray-50 text-gray-700 font-medium">
+                            {(seriesConfirmadas[linea.producto_id] || []).filter(u => u.nro_serie?.trim() !== '').length}
+                          </span>
+                        ) : (
+                          <input
+                            type="number"
+                            min={0}
+                            max={linea.cantidad_pedida}
+                            value={cantRec}
+                            onChange={e => setRecepcionCantidades(prev => ({
+                              ...prev,
+                              [linea.producto_id]: Math.min(linea.cantidad_pedida, Math.max(0, Number(e.target.value)))
+                            }))}
+                            className="w-16 text-center px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-emerald-500"
+                          />
+                        )
                       ) : (
                         <span className="font-medium">{linea.cantidad_recibida}</span>
                       )}
@@ -5757,9 +5866,33 @@ export default function ModuloCompras() {
                 >
                   Guardar
                 </button>
-                {/* Confirmar: valida duplicados, guarda y cierra */}
+                {/* Confirmar: valida duplicados, valida incompletas y cierra */}
                 <button
                   onClick={() => {
+                    // Validar unidades parcialmente completadas:
+                    // Una unidad "parcialmente" llenada es aquella donde empezaron a escribir
+                    // el IMEI pero le faltan campos obligatorios, o viceversa.
+                    const unidadParcialmenteCompleta = (u: UnidadSerie) => {
+                      const tieneAlgo =
+                        u.nro_serie.trim() !== '' ||
+                        (linea.requiere_color && (u.color ?? '').trim() !== '') ||
+                        (linea.requiere_bateria && u.bateria_pct !== undefined && u.bateria_pct !== null)
+                      return tieneAlgo && !unidadCompleta(u)
+                    }
+
+                    for (let i = 0; i < cantTotal; i++) {
+                      const u = modalSerieUnidades[i] ?? { nro_serie: '', outlet: false }
+                      if (unidadParcialmenteCompleta(u)) {
+                        const faltantes: string[] = []
+                        if (linea.tiene_serie && u.nro_serie.trim() === '') faltantes.push('N° Serie / IMEI')
+                        if (linea.requiere_color && (u.color ?? '').trim() === '') faltantes.push('Color')
+                        if (linea.requiere_bateria && (u.bateria_pct === undefined || u.bateria_pct === null)) faltantes.push('% Batería')
+                        alert(`Unidad ${i + 1}: faltan completar los campos obligatorios: ${faltantes.join(', ')}`)
+                        irA(i)
+                        return
+                      }
+                    }
+
                     if (linea.tiene_serie) {
                       const series = modalSerieUnidades.slice(0, cantTotal).map(u => u.nro_serie.trim()).filter(Boolean)
                       const duplicados = series.filter((s, i) => series.indexOf(s) !== i)
