@@ -3873,56 +3873,28 @@ export default function ModuloCompras() {
     // Determinar si hay recepción parcial
     const hayParcial = lineasActualizadas.some(l => l.estado_linea === 'recibido_parcial')
 
-    // Generar recepción complementaria si hay parcial
-    let recCompId: number | undefined = undefined
-    if (hayParcial) {
-      const lineasPendientes: RecepcionLinea[] = lineasActualizadas
-        .filter(l => l.cantidad_pedida - l.cantidad_recibida > 0)
-        .map(l => ({
-          ...l,
-          cantidad_pedida: l.cantidad_pedida - l.cantidad_recibida,
-          cantidad_recibida: 0,
-          estado_linea: 'pendiente' as const,
-          unidades_serie: []
-        }))
+    // Calcular líneas pendientes para recepción complementaria
+    const lineasPendientes: RecepcionLinea[] = hayParcial
+      ? lineasActualizadas
+          .filter(l => l.cantidad_pedida - l.cantidad_recibida > 0)
+          .map(l => ({
+            ...l,
+            cantidad_pedida: l.cantidad_pedida - l.cantidad_recibida,
+            cantidad_recibida: 0,
+            estado_linea: 'pendiente' as const,
+            unidades_serie: []
+          }))
+      : []
 
-      if (lineasPendientes.length > 0) {
-        let sigNumComp = "00001"
-        try {
-          const rComp = await fetch("/api/compras/recepciones?siguiente_numero=1")
-          const dComp = await rComp.json()
-          if (dComp.siguiente_numero) sigNumComp = dComp.siguiente_numero
-        } catch { /* fallback */ }
-        const nuevoId = recepciones.length + 1
-        recCompId = nuevoId
-        const recComp: Recepcion = {
-          ...rec,
-          id: nuevoId,
-          numero: `REC-${sigNumComp}`,
-          fecha: ahora,
-          estado: 'esperando_recepcion',
-          fecha_recepcion_real: undefined,
-          remito_numero: undefined,
-          remito_fecha: undefined,
-          recepcion_anterior_id: rec.id,
-          recepcion_complementaria_id: undefined,
-          lineas: lineasPendientes,
-          cancelacion: undefined
-        }
-        setRecepciones(prev => [...prev, recComp])
-      }
-    }
-
-    // Actualizar la recepción actual
+    // Actualizar la recepción actual en UI de forma síncrona (sin recepcion_complementaria_id todavía)
     const recActualizada: Recepcion = {
       ...rec,
       estado: 'recibida',
       fecha_recepcion_real: ahora,
       lineas: lineasActualizadas,
-      recepcion_complementaria_id: recCompId
+      recepcion_complementaria_id: undefined
     }
 
-    // Actualizar UI de forma síncrona
     setRecepciones(prev => prev.map(r => r.id === rec.id ? recActualizada : r))
     setSelectedRecepcion(recActualizada)
     if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
@@ -3940,7 +3912,7 @@ export default function ModuloCompras() {
       }))
     }
 
-    // Persistir recepción a Supabase y luego procesar stock con el ID real
+    // Persistir recepción a Supabase
     const todasRecibidasFinal = lineasActualizadas.every(l => l.estado_linea === 'recibido')
     guardarRecepcion({
       estado: "confirmada",
@@ -3961,13 +3933,81 @@ export default function ModuloCompras() {
         requiere_observaciones: l.requiere_observaciones ?? false,
       })),
       total: lineasActualizadas.reduce((s, l) => s + l.cantidad_recibida * (l.precio_unitario ?? 0), 0),
-    }, rec.id).then((recGuardada: any) => {
+    }, rec.id).then(async (recGuardada: any) => {
       // Actualizar OC vinculada
       if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
         const ocVinculada = ordenesCompra.find(o => o.id === rec.documento_origen_id)
         if (ocVinculada) {
           guardarOrdenCompra({ estado: todasRecibidasFinal && !hayParcial ? "completa" : "parcial" }, ocVinculada.id)
             .catch((err: any) => console.error("[v0] Error al actualizar OC:", err.message))
+        }
+      }
+
+      // Crear recepción complementaria en Supabase si hay líneas pendientes
+      if (hayParcial && lineasPendientes.length > 0) {
+        try {
+          const rNum = await fetch("/api/compras/recepciones?siguiente_numero=1")
+          const dNum = await rNum.json()
+          const sigNum = dNum.siguiente_numero ?? "00001"
+          const recCompGuardada = await guardarRecepcion({
+            numero: `REC-${sigNum}`,
+            fecha: ahora,
+            estado: "esperando_recepcion",
+            documento_origen_tipo: rec.documento_origen_tipo,
+            documento_origen_id: rec.documento_origen_id,
+            sucursal_id: rec.sucursal_id,
+            deposito_destino_id: rec.deposito_destino_id,
+            recepcion_anterior_id: recGuardada.id ?? rec.id,
+            items: lineasPendientes.map(l => ({
+              producto_id:            l.producto_id,
+              producto_nombre:        l.producto_nombre,
+              producto_sku:           l.producto_sku ?? "",
+              cantidad_pedida:        l.cantidad_pedida,
+              cantidad_recibida:      0,
+              precio_unitario:        l.precio_unitario,
+              udm:                    l.udm ?? "un",
+              estado_linea:           'pendiente',
+              tiene_serie:            l.tiene_serie ?? false,
+              requiere_color:         l.requiere_color ?? false,
+              requiere_bateria:       l.requiere_bateria ?? false,
+              requiere_outlet:        l.requiere_outlet ?? false,
+              requiere_observaciones: l.requiere_observaciones ?? false,
+            })),
+            total: 0,
+          })
+
+          // Vincular la recepción original con la complementaria
+          await guardarRecepcion({ recepcion_complementaria_id: recCompGuardada.id }, recGuardada.id ?? rec.id)
+
+          // Actualizar UI con IDs reales
+          const recCompLocal: Recepcion = {
+            ...rec,
+            id: recCompGuardada.id,
+            numero: recCompGuardada.numero ?? `REC-${sigNum}`,
+            fecha: ahora,
+            estado: 'esperando_recepcion',
+            fecha_recepcion_real: undefined,
+            remito_numero: undefined,
+            remito_fecha: undefined,
+            recepcion_anterior_id: recGuardada.id ?? rec.id,
+            recepcion_complementaria_id: undefined,
+            lineas: lineasPendientes,
+            cancelacion: undefined
+          }
+          setRecepciones(prev => {
+            const sinFicticias = prev.filter(r => r.id !== recCompLocal.id)
+            return sinFicticias.map(r =>
+              r.id === rec.id
+                ? { ...r, recepcion_complementaria_id: recCompGuardada.id }
+                : r
+            ).concat(recCompLocal)
+          })
+          setSelectedRecepcion(prev => prev?.id === rec.id
+            ? { ...prev, recepcion_complementaria_id: recCompGuardada.id }
+            : prev
+          )
+        } catch (err: any) {
+          console.error("[v0] Error al crear recepción complementaria:", err.message)
         }
       }
     }).catch((err: any) => console.error("[v0] Error al persistir recepción:", err.message))
