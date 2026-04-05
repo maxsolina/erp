@@ -7176,14 +7176,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               })
               // Actualizar total de factura sumando recargos (si aún no fueron aplicados)
               const totalFinalConRecargos = selectedFactura.subtotal + totalRecargos
+              const nuevoSaldo = Math.max(0, totalFinalConRecargos - totalConRecargos)
+              const nuevoEstado: Factura["estado"] = nuevoSaldo <= 0 ? "conciliada" : "abierta"
               setFacturas(prev => prev.map(f =>
                 f.id === selectedFactura.id
                   ? {
                       ...f,
                       impuestos: totalRecargos,
                       total: totalFinalConRecargos,
-                      saldo: Math.max(0, totalFinalConRecargos - totalConRecargos),
-                      estado: Math.max(0, totalFinalConRecargos - totalConRecargos) <= 0 ? "pagada" as const : f.estado,
+                      saldo: nuevoSaldo,
+                      estado: nuevoEstado,
                       medios_pago_detalle: medioPagoDetalle,
                     }
                   : f
@@ -7192,8 +7194,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 ...prev,
                 impuestos: totalRecargos,
                 total: totalFinalConRecargos,
-                saldo: Math.max(0, totalFinalConRecargos - totalConRecargos),
-                estado: Math.max(0, totalFinalConRecargos - totalConRecargos) <= 0 ? "pagada" as const : prev.estado,
+                saldo: nuevoSaldo,
+                estado: nuevoEstado,
                 medios_pago_detalle: medioPagoDetalle,
               } : prev)
               // Actualizar saldo del cliente con el total real pagado (base + recargos)
