@@ -2755,6 +2755,11 @@ export default function ModuloCompras() {
         alert("Complete proveedor, depósito destino y al menos una línea.")
         return
       }
+      const lineaSinProducto = (oc.lineas ?? []).findIndex(l => !l.producto_nombre || !l.producto_id || String(l.producto_id).length > 10)
+      if (lineaSinProducto !== -1) {
+        alert(`La línea ${lineaSinProducto + 1} no tiene un producto seleccionado. Buscá y seleccioná un producto del listado.`)
+        return
+      }
       const nextNum = Math.max(...ordenesCompra.map(o => o.id ?? 0), 0) + 1
       const payload = {
         numero: `OC-${String(nextNum).padStart(5, '0')}`,
