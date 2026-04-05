@@ -3944,20 +3944,29 @@ export default function ModuloCompras() {
       }
 
       // Crear recepción complementaria en Supabase si hay líneas pendientes
+      console.log("[v0] hayParcial:", hayParcial, "lineasPendientes:", lineasPendientes.length, "recGuardada.id:", recGuardada?.id)
       if (hayParcial && lineasPendientes.length > 0) {
         try {
           const rNum = await fetch("/api/compras/recepciones?siguiente_numero=1")
           const dNum = await rNum.json()
           const sigNum = dNum.siguiente_numero ?? "00001"
           const recCompGuardada = await guardarRecepcion({
-            numero: `REC-${sigNum}`,
-            fecha: ahora,
-            estado: "esperando_recepcion",
-            documento_origen_tipo: rec.documento_origen_tipo,
-            documento_origen_id: rec.documento_origen_id,
-            sucursal_id: rec.sucursal_id,
-            deposito_destino_id: rec.deposito_destino_id,
-            recepcion_anterior_id: recGuardada.id ?? rec.id,
+            numero:                  `REC-${sigNum}`,
+            fecha:                   ahora,
+            estado:                  "esperando_recepcion",
+            orden_compra_id:         rec.orden_compra_id,
+            orden_compra_numero:     rec.orden_compra_numero,
+            proveedor_id:            rec.proveedor_id,
+            proveedor_nombre:        rec.proveedor_nombre,
+            documento_origen_tipo:   rec.documento_origen_tipo,
+            documento_origen_id:     rec.documento_origen_id,
+            documento_origen_ref:    rec.documento_origen_ref,
+            sucursal:                rec.sucursal ?? "",
+            sucursal_id:             rec.sucursal_id ?? null,
+            deposito_destino:        rec.deposito_destino ?? "",
+            deposito_destino_id:     rec.deposito_destino_id ?? null,
+            fecha_esperada:          rec.fecha_esperada ?? null,
+            recepcion_anterior_id:   recGuardada.id ?? rec.id,
             items: lineasPendientes.map(l => ({
               producto_id:            l.producto_id,
               producto_nombre:        l.producto_nombre,
@@ -3966,7 +3975,7 @@ export default function ModuloCompras() {
               cantidad_recibida:      0,
               precio_unitario:        l.precio_unitario,
               udm:                    l.udm ?? "un",
-              estado_linea:           'pendiente',
+              estado_linea:           "pendiente",
               tiene_serie:            l.tiene_serie ?? false,
               requiere_color:         l.requiere_color ?? false,
               requiere_bateria:       l.requiere_bateria ?? false,
@@ -4007,7 +4016,7 @@ export default function ModuloCompras() {
             : prev
           )
         } catch (err: any) {
-          console.error("[v0] Error al crear recepción complementaria:", err.message)
+          console.error("[v0] Error al crear recepción complementaria:", err.message, err)
         }
       }
     }).catch((err: any) => console.error("[v0] Error al persistir recepción:", err.message))
