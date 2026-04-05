@@ -2235,16 +2235,7 @@ export default function ModuloCompras() {
     const ahora = new Date().toISOString()
     const esInmediato = oc.metodo_compra === 'inmediato'
 
-    // Obtener el próximo número de recepción desde la DB para evitar duplicados
-    let siguienteNumero = "00001"
-    try {
-      const r = await fetch("/api/compras/recepciones?siguiente_numero=1")
-      const d = await r.json()
-      if (d.siguiente_numero) siguienteNumero = d.siguiente_numero
-    } catch { /* usa fallback */ }
-
     const recPayload = {
-      numero:                  `REC-${siguienteNumero}`,
       fecha:                   ahora,
       orden_compra_id:         oc.id,
       orden_compra_numero:     oc.numero,
@@ -3944,18 +3935,12 @@ export default function ModuloCompras() {
       }
 
       // Crear recepción complementaria en Supabase si hay líneas pendientes
-      console.log("[v0] recGuardada completo:", JSON.stringify(recGuardada))
-      console.log("[v0] hayParcial:", hayParcial, "lineasPendientes:", lineasPendientes.length, "recGuardada.id:", recGuardada?.id)
+
       if (hayParcial && lineasPendientes.length > 0) {
         try {
           const idRecConfirmada = recGuardada?.id ?? recGuardada?.data?.id ?? rec.id
           console.log("[v0] Creando complementaria. idRecConfirmada:", idRecConfirmada)
-          const rNum = await fetch("/api/compras/recepciones?siguiente_numero=1")
-          const dNum = await rNum.json()
-          const sigNum = dNum.siguiente_numero ?? "00001"
-          console.log("[v0] Siguiente numero complementaria:", sigNum)
           const recCompGuardada = await guardarRecepcion({
-            numero:                  `REC-${sigNum}`,
             fecha:                   ahora,
             estado:                  "esperando_recepcion",
             orden_compra_id:         rec.orden_compra_id,
@@ -3989,8 +3974,6 @@ export default function ModuloCompras() {
             total: 0,
           })
 
-          console.log("[v0] recCompGuardada:", JSON.stringify(recCompGuardada))
-
           // Vincular la recepción original con la complementaria
           await guardarRecepcion({ recepcion_complementaria_id: recCompGuardada.id }, idRecConfirmada)
 
@@ -3998,7 +3981,7 @@ export default function ModuloCompras() {
           const recCompLocal: Recepcion = {
             ...rec,
             id: recCompGuardada.id,
-            numero: recCompGuardada.numero ?? `REC-${sigNum}`,
+            numero: recCompGuardada.numero ?? "REC-?????",
             fecha: ahora,
             estado: 'esperando_recepcion',
             fecha_recepcion_real: undefined,
@@ -4009,7 +3992,6 @@ export default function ModuloCompras() {
             lineas: lineasPendientes,
             cancelacion: undefined
           }
-          console.log("[v0] recCompLocal lineas:", JSON.stringify(recCompLocal.lineas))
           setRecepciones(prev => {
             const sinFicticias = prev.filter(r => r.id !== recCompLocal.id)
             return sinFicticias.map(r =>
