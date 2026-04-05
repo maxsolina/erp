@@ -1491,13 +1491,14 @@ export default function ModuloCompras() {
       try {
         if (modoEdicion && selectedProveedor) {
           const updated = await guardarProveedor(payload, selectedProveedor.id)
-          setProveedores(prev => prev.map(p => p.id === selectedProveedor.id ? { ...p, ...updated } : p))
-          setSelectedProveedor(prev => prev ? { ...prev, ...updated } : null)
+          const updatedConNombre = { ...updated, nombre: updated.nombre ?? updated.razon_social ?? "" }
+          setProveedores(prev => prev.map(p => p.id === selectedProveedor.id ? { ...p, ...updatedConNombre } : p))
+          setSelectedProveedor(prev => prev ? { ...prev, ...updatedConNombre } : null)
           setEditandoProveedor(false)
         } else {
           const codigoAuto = `PROV-${String(proveedores.length + 1).padStart(3, "0")}`
           const created = await guardarProveedor({ ...payload, codigo: codigoAuto, saldo: 0 })
-          setProveedores(prev => [...prev, created])
+          setProveedores(prev => [...prev, { ...created, nombre: created.nombre ?? created.razon_social ?? "" }])
           setCreandoProveedor(false)
           setNuevoProveedor(proveedorFormVacio)
           setProveedorTabActivo("contactos")
