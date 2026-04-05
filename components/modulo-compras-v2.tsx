@@ -3944,12 +3944,16 @@ export default function ModuloCompras() {
       }
 
       // Crear recepción complementaria en Supabase si hay líneas pendientes
+      console.log("[v0] recGuardada completo:", JSON.stringify(recGuardada))
       console.log("[v0] hayParcial:", hayParcial, "lineasPendientes:", lineasPendientes.length, "recGuardada.id:", recGuardada?.id)
       if (hayParcial && lineasPendientes.length > 0) {
         try {
+          const idRecConfirmada = recGuardada?.id ?? recGuardada?.data?.id ?? rec.id
+          console.log("[v0] Creando complementaria. idRecConfirmada:", idRecConfirmada)
           const rNum = await fetch("/api/compras/recepciones?siguiente_numero=1")
           const dNum = await rNum.json()
           const sigNum = dNum.siguiente_numero ?? "00001"
+          console.log("[v0] Siguiente numero complementaria:", sigNum)
           const recCompGuardada = await guardarRecepcion({
             numero:                  `REC-${sigNum}`,
             fecha:                   ahora,
@@ -3966,7 +3970,7 @@ export default function ModuloCompras() {
             deposito_destino:        rec.deposito_destino ?? "",
             deposito_destino_id:     rec.deposito_destino_id ?? null,
             fecha_esperada:          rec.fecha_esperada ?? null,
-            recepcion_anterior_id:   recGuardada.id ?? rec.id,
+            recepcion_anterior_id:   idRecConfirmada,
             items: lineasPendientes.map(l => ({
               producto_id:            l.producto_id,
               producto_nombre:        l.producto_nombre,
@@ -3985,8 +3989,10 @@ export default function ModuloCompras() {
             total: 0,
           })
 
+          console.log("[v0] recCompGuardada:", JSON.stringify(recCompGuardada))
+
           // Vincular la recepción original con la complementaria
-          await guardarRecepcion({ recepcion_complementaria_id: recCompGuardada.id }, recGuardada.id ?? rec.id)
+          await guardarRecepcion({ recepcion_complementaria_id: recCompGuardada.id }, idRecConfirmada)
 
           // Actualizar UI con IDs reales
           const recCompLocal: Recepcion = {
@@ -3998,11 +4004,12 @@ export default function ModuloCompras() {
             fecha_recepcion_real: undefined,
             remito_numero: undefined,
             remito_fecha: undefined,
-            recepcion_anterior_id: recGuardada.id ?? rec.id,
+            recepcion_anterior_id: idRecConfirmada,
             recepcion_complementaria_id: undefined,
             lineas: lineasPendientes,
             cancelacion: undefined
           }
+          console.log("[v0] recCompLocal lineas:", JSON.stringify(recCompLocal.lineas))
           setRecepciones(prev => {
             const sinFicticias = prev.filter(r => r.id !== recCompLocal.id)
             return sinFicticias.map(r =>
