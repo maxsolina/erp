@@ -7,7 +7,7 @@ import { crearCliente as apiCrearCliente, actualizarCliente as apiActualizarClie
 import type { ClienteDB } from "@/hooks/use-clientes"
 import { useERP } from "@/contexts/erp-context"
 import { fetchDepositos } from "@/lib/stock-actions"
-import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History } from "lucide-react"
+import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, ArrowRightLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History, Banknote } from "lucide-react"
  import BotonVolver from "./ui/boton-volver"
 import ProductoDropdown from "./producto-dropdown"
 import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
@@ -298,6 +298,18 @@ interface Factura {
     total: number
   }[]
   seguimiento?: SeguimientoEntry[]
+  medios_pago_detalle?: {
+    medio: string
+    tarjeta_nombre?: string
+    cuotas?: number
+    grupo_nombre?: string
+    monto_base: number
+    recargo_pct?: number
+    importe_recargo?: number
+    cargos?: { nombre: string; pct: number; importe: number }[]
+    total_recargo: number
+    total_acreditar: number
+  }[]
 }
 
 interface Recibo {
@@ -7015,10 +7027,55 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               {(selectedFactura.descuento ?? 0) > 0 && (
                 <div className="flex justify-between"><span className="text-gray-500">Descuento:</span><span>-{formatCurrency(selectedFactura.descuento ?? 0, selectedFactura.moneda)}</span></div>
               )}
-              {(selectedFactura.impuestos ?? 0) > 0 && (
-                <div className="flex justify-between"><span className="text-gray-500">Recargos / Impuestos:</span><span>{formatCurrency(selectedFactura.impuestos ?? 0, selectedFactura.moneda)}</span></div>
+
+              {/* Desglose detallado por medio de pago */}
+              {selectedFactura.medios_pago_detalle && selectedFactura.medios_pago_detalle.length > 0 && (
+                <div className="mt-3 space-y-3">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Medios de Pago</p>
+                  {selectedFactura.medios_pago_detalle.map((mp, i) => (
+                    <div key={i} className="bg-gray-50 rounded-lg p-3 text-xs space-y-1">
+                      {/* Header */}
+                      <div className="flex items-center gap-1.5 font-semibold text-gray-700 mb-1">
+                        {mp.medio === "tarjeta" ? <CreditCard className="w-3.5 h-3.5" /> : mp.medio === "efectivo" ? <Banknote className="w-3.5 h-3.5" /> : <ArrowRightLeft className="w-3.5 h-3.5" />}
+                        {mp.medio === "tarjeta"
+                          ? `${mp.tarjeta_nombre} ${mp.cuotas && mp.cuotas > 1 ? `— ${mp.cuotas} cuotas` : "— 1 cuota"}${mp.grupo_nombre ? ` · ${mp.grupo_nombre}` : ""}`
+                          : mp.medio === "efectivo" ? "Efectivo" : "Transferencia"}
+                      </div>
+                      <div className="flex justify-between text-gray-500">
+                        <span>Monto abonado:</span>
+                        <span>{formatCurrency(mp.monto_base, selectedFactura.moneda)}</span>
+                      </div>
+                      {(mp.recargo_pct ?? 0) > 0 && (
+                        <div className="flex justify-between text-gray-500">
+                          <span>Recargo ({mp.recargo_pct}%):</span>
+                          <span>{formatCurrency(mp.importe_recargo ?? 0, selectedFactura.moneda)}</span>
+                        </div>
+                      )}
+                      {mp.cargos?.map((c, j) => (
+                        <div key={j} className="flex justify-between text-gray-500">
+                          <span>{c.nombre} ({c.pct}%):</span>
+                          <span>{formatCurrency(c.importe, selectedFactura.moneda)}</span>
+                        </div>
+                      ))}
+                      {mp.total_recargo > 0 && (
+                        <>
+                          <div className="border-t border-gray-200 my-1" />
+                          <div className="flex justify-between text-amber-700 font-semibold">
+                            <span>Total recargo:</span>
+                            <span>{formatCurrency(mp.total_recargo, selectedFactura.moneda)}</span>
+                          </div>
+                          <div className="flex justify-between font-bold text-gray-800">
+                            <span>Total acreditado:</span>
+                            <span>{formatCurrency(mp.total_acreditar, selectedFactura.moneda)}</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
-              <div className="flex justify-between font-bold text-lg border-t pt-2"><span>Total:</span><span>{formatCurrency(selectedFactura.total, selectedFactura.moneda)}</span></div>
+
+              <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2"><span>Total:</span><span>{formatCurrency(selectedFactura.total, selectedFactura.moneda)}</span></div>
               <div className="flex justify-between text-red-600 font-medium"><span>Saldo:</span><span>{formatCurrency(selectedFactura.saldo ?? 0, selectedFactura.moneda)}</span></div>
             </div>
           </div>
@@ -7076,6 +7133,47 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   } as MovimientoCuentaCorriente
                 })
               setMovimientosCC(prev => [...prev, ...nuevosMovimientos])
+              // Construir desglose detallado por medio de pago
+              const medioPagoDetalle = lineasPago.filter(l => l.monto > 0).map(l => {
+                const esTarjeta = l.medio === "tarjeta"
+                const tarjetaInfo = tarjetasIniciales.find(t => t.id === l.tarjeta_id)
+                if (!esTarjeta) {
+                  return {
+                    medio: l.medio,
+                    monto_base: l.monto,
+                    total_recargo: 0,
+                    total_acreditar: l.monto,
+                  }
+                }
+                const hoy = new Date()
+                const diasKeys = ["dom","lun","mar","mie","jue","vie","sab"] as const
+                const diaKey = diasKeys[hoy.getDay()]
+                const rec = recargosIniciales.find(r =>
+                  r.tarjeta_id === l.tarjeta_id && r.activo &&
+                  (l.cuotas||1) >= r.desde_cuota && (l.cuotas||1) <= r.hasta_cuota && r.dias[diaKey]
+                )
+                const grupo = rec ? gruposIniciales.find(g => g.id === rec.grupo_id) : null
+                const importeRecargo = rec ? l.monto * (rec.recargo_pct / 100) : 0
+                const cargos = grupo ? grupo.cargos.map(c => ({
+                  nombre: c.nombre,
+                  pct: c.arancel,
+                  importe: l.monto * (c.arancel / 100)
+                })) : []
+                const totalCargos = cargos.reduce((s, c) => s + c.importe, 0)
+                const totalRecargo = importeRecargo + totalCargos
+                return {
+                  medio: "tarjeta",
+                  tarjeta_nombre: tarjetaInfo?.nombre,
+                  cuotas: l.cuotas,
+                  grupo_nombre: grupo?.nombre,
+                  monto_base: l.monto,
+                  recargo_pct: rec?.recargo_pct,
+                  importe_recargo: importeRecargo,
+                  cargos,
+                  total_recargo: totalRecargo,
+                  total_acreditar: l.monto + totalRecargo,
+                }
+              })
               // Actualizar total de factura sumando recargos (si aún no fueron aplicados)
               const totalFinalConRecargos = selectedFactura.subtotal + totalRecargos
               setFacturas(prev => prev.map(f =>
@@ -7085,7 +7183,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       impuestos: totalRecargos,
                       total: totalFinalConRecargos,
                       saldo: Math.max(0, totalFinalConRecargos - totalConRecargos),
-                      estado: Math.max(0, totalFinalConRecargos - totalConRecargos) <= 0 ? "pagada" as const : f.estado
+                      estado: Math.max(0, totalFinalConRecargos - totalConRecargos) <= 0 ? "pagada" as const : f.estado,
+                      medios_pago_detalle: medioPagoDetalle,
                     }
                   : f
               ))
@@ -7094,7 +7193,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 impuestos: totalRecargos,
                 total: totalFinalConRecargos,
                 saldo: Math.max(0, totalFinalConRecargos - totalConRecargos),
-                estado: Math.max(0, totalFinalConRecargos - totalConRecargos) <= 0 ? "pagada" as const : prev.estado
+                estado: Math.max(0, totalFinalConRecargos - totalConRecargos) <= 0 ? "pagada" as const : prev.estado,
+                medios_pago_detalle: medioPagoDetalle,
               } : prev)
               // Actualizar saldo del cliente con el total real pagado (base + recargos)
               setClientes(prev => prev.map(c =>
