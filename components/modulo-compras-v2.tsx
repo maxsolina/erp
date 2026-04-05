@@ -3821,6 +3821,12 @@ export default function ModuloCompras() {
     if (!selectedRecepcion) return
     const rec = selectedRecepcion
 
+    // Validar depósito destino obligatorio
+    if (!rec.deposito_destino_id && !rec.deposito_destino) {
+      alert("Debe seleccionar un Depósito Destino antes de confirmar la recepción. Sin depósito no se puede ingresar el stock.")
+      return
+    }
+
     // Helper: obtener cantidad efectiva (para productos con serie, es el nro de series cargadas)
     const getCantEfectiva = (l: RecepcionLinea) =>
       l.tiene_serie
@@ -3951,13 +3957,20 @@ export default function ModuloCompras() {
     if (hayParcial && lineasPendientes.length > 0) {
       try {
         const idRecConfirmada = recGuardada?.id ?? rec.id
+        // Obtener proveedor desde la OC vinculada si la recepción no lo tiene directamente
+        const ocVinc = ordenesCompra.find(o => o.id === rec.documento_origen_id)
+        const proveedorId = rec.proveedor_id ?? ocVinc?.proveedor_id
+        const proveedorNombre = rec.proveedor_nombre ?? ocVinc?.proveedor_nombre ?? ""
+        if (!proveedorId) {
+          console.error("[v0] No se encontró proveedor_id para la recepción complementaria")
+        }
         const recCompGuardada = await guardarRecepcion({
           fecha:                   ahora,
           estado:                  "esperando_recepcion",
-          orden_compra_id:         rec.orden_compra_id,
-          orden_compra_numero:     rec.orden_compra_numero,
-          proveedor_id:            rec.proveedor_id,
-          proveedor_nombre:        rec.proveedor_nombre,
+          orden_compra_id:         rec.orden_compra_id ?? ocVinc?.id,
+          orden_compra_numero:     rec.orden_compra_numero ?? ocVinc?.numero,
+          proveedor_id:            proveedorId,
+          proveedor_nombre:        proveedorNombre,
           documento_origen_tipo:   rec.documento_origen_tipo,
           documento_origen_id:     rec.documento_origen_id,
           documento_origen_ref:    rec.documento_origen_ref,
