@@ -1400,6 +1400,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [showSerieModal, setShowSerieModal] = useState(false)
   const [serieModalLineaIndex, setSerieModalLineaIndex] = useState<number | null>(null)
   const [seriesSeleccionadasTemp, setSeriesSeleccionadasTemp] = useState<number[]>([])
+  const [serieModalBusqueda, setSerieModalBusqueda] = useState<string>('')
   const [seriesReales, setSeriesReales] = useState<SerieDisponible[]>([])
   const [seriesRealesCargando, setSeriesRealesCargando] = useState(false)
 
@@ -12280,20 +12281,30 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </p>
               </div>
               <button 
-                onClick={() => { setShowSerieModal(false); setSerieModalLineaIndex(null); setSeriesSeleccionadasTemp([]) }}
+                onClick={() => { setShowSerieModal(false); setSerieModalLineaIndex(null); setSeriesSeleccionadasTemp([]); setSerieModalBusqueda('') }}
                 className="p-1 hover:bg-gray-100 rounded-lg"
               >
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
             <div className="flex-1 overflow-auto p-6">
-              <div className="mb-4 flex items-center justify-between">
+              <div className="mb-3 flex items-center justify-between">
                 <span className="text-sm text-gray-600">
                   Ubicación: <span className="font-medium">{ubicacionesVenta.find(u => u.id === nvUbicacionId)?.codigo}</span>
                 </span>
                 <span className={`text-sm font-medium ${seriesSeleccionadasTemp.length === nvLineas[serieModalLineaIndex]?.cantidad ? 'text-emerald-600' : 'text-amber-600'}`}>
                   {seriesSeleccionadasTemp.length} de {nvLineas[serieModalLineaIndex]?.cantidad} seleccionados
                 </span>
+              </div>
+              <div className="mb-4 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar por N° de serie / IMEI..."
+                  value={serieModalBusqueda ?? ''}
+                  onChange={e => setSerieModalBusqueda(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
               </div>
               <div className="space-y-2">
                 {seriesRealesCargando ? (
@@ -12308,7 +12319,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <p className="text-sm mt-1">Cambie la ubicación de stock o verifique el inventario</p>
                   </div>
                 ) : (
-                  seriesReales.map(serie => {
+                  seriesReales.filter(serie =>
+                    !serieModalBusqueda || serie.serie?.toLowerCase().includes(serieModalBusqueda.toLowerCase())
+                  ).map(serie => {
                     const isSelected = seriesSeleccionadasTemp.includes(serie.id)
                     const cantidadRequerida = nvLineas[serieModalLineaIndex!]?.cantidad || 0
                     const puedeSeleccionar = seriesSeleccionadasTemp.length < cantidadRequerida
@@ -12360,7 +12373,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </span>
               <div className="flex gap-3">
                 <button
-                  onClick={() => { setShowSerieModal(false); setSerieModalLineaIndex(null); setSeriesSeleccionadasTemp([]) }}
+                  onClick={() => { setShowSerieModal(false); setSerieModalLineaIndex(null); setSeriesSeleccionadasTemp([]); setSerieModalBusqueda('') }}
                   className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   Cancelar
