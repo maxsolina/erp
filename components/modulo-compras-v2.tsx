@@ -3905,110 +3905,112 @@ export default function ModuloCompras() {
 
     // Persistir recepción a Supabase
     const todasRecibidasFinal = lineasActualizadas.every(l => l.estado_linea === 'recibido')
-    guardarRecepcion({
-      estado: "confirmada",
-      fecha_recepcion_real: ahora,
-      items: lineasActualizadas.map(l => ({
-        producto_id:            l.producto_id,
-        producto_nombre:        l.producto_nombre,
-        producto_sku:           l.producto_sku ?? "",
-        cantidad_pedida:        l.cantidad_pedida,
-        cantidad_recibida:      l.cantidad_recibida,
-        precio_unitario:        l.precio_unitario,
-        udm:                    l.udm ?? "un",
-        estado_linea:           l.estado_linea,
-        tiene_serie:            l.tiene_serie ?? false,
-        requiere_color:         l.requiere_color ?? false,
-        requiere_bateria:       l.requiere_bateria ?? false,
-        requiere_outlet:        l.requiere_outlet ?? false,
-        requiere_observaciones: l.requiere_observaciones ?? false,
-      })),
-      total: lineasActualizadas.reduce((s, l) => s + l.cantidad_recibida * (l.precio_unitario ?? 0), 0),
-    }, rec.id).then(async (recGuardada: any) => {
-      // Actualizar OC vinculada
-      if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
-        const ocVinculada = ordenesCompra.find(o => o.id === rec.documento_origen_id)
-        if (ocVinculada) {
-          guardarOrdenCompra({ estado: todasRecibidasFinal && !hayParcial ? "completa" : "parcial" }, ocVinculada.id)
-            .catch((err: any) => console.error("[v0] Error al actualizar OC:", err.message))
-        }
+
+    let recGuardada: any
+    try {
+      recGuardada = await guardarRecepcion({
+        estado: "confirmada",
+        fecha_recepcion_real: ahora,
+        items: lineasActualizadas.map(l => ({
+          producto_id:            l.producto_id,
+          producto_nombre:        l.producto_nombre,
+          producto_sku:           l.producto_sku ?? "",
+          cantidad_pedida:        l.cantidad_pedida,
+          cantidad_recibida:      l.cantidad_recibida,
+          precio_unitario:        l.precio_unitario,
+          udm:                    l.udm ?? "un",
+          estado_linea:           l.estado_linea,
+          tiene_serie:            l.tiene_serie ?? false,
+          requiere_color:         l.requiere_color ?? false,
+          requiere_bateria:       l.requiere_bateria ?? false,
+          requiere_outlet:        l.requiere_outlet ?? false,
+          requiere_observaciones: l.requiere_observaciones ?? false,
+        })),
+        total: lineasActualizadas.reduce((s, l) => s + l.cantidad_recibida * (l.precio_unitario ?? 0), 0),
+      }, rec.id)
+    } catch (err: any) {
+      console.error("[v0] Error al persistir recepción:", err.message)
+      return
+    }
+
+    // Actualizar OC vinculada
+    if (rec.documento_origen_tipo === 'oc' && rec.documento_origen_id) {
+      const ocVinculada = ordenesCompra.find(o => o.id === rec.documento_origen_id)
+      if (ocVinculada) {
+        guardarOrdenCompra({ estado: todasRecibidasFinal && !hayParcial ? "completa" : "parcial" }, ocVinculada.id)
+          .catch((err: any) => console.error("[v0] Error al actualizar OC:", err.message))
       }
+    }
 
-      // Crear recepción complementaria en Supabase si hay líneas pendientes
+    // Crear recepción complementaria si hay líneas pendientes
+    if (hayParcial && lineasPendientes.length > 0) {
+      try {
+        const idRecConfirmada = recGuardada?.id ?? rec.id
+        const recCompGuardada = await guardarRecepcion({
+          fecha:                   ahora,
+          estado:                  "esperando_recepcion",
+          orden_compra_id:         rec.orden_compra_id,
+          orden_compra_numero:     rec.orden_compra_numero,
+          proveedor_id:            rec.proveedor_id,
+          proveedor_nombre:        rec.proveedor_nombre,
+          documento_origen_tipo:   rec.documento_origen_tipo,
+          documento_origen_id:     rec.documento_origen_id,
+          documento_origen_ref:    rec.documento_origen_ref,
+          sucursal:                rec.sucursal ?? "",
+          sucursal_id:             rec.sucursal_id ?? null,
+          deposito_destino:        rec.deposito_destino ?? "",
+          deposito_destino_id:     rec.deposito_destino_id ?? null,
+          fecha_esperada:          rec.fecha_esperada ?? null,
+          recepcion_anterior_id:   idRecConfirmada,
+          items: lineasPendientes.map(l => ({
+            producto_id:            l.producto_id,
+            producto_nombre:        l.producto_nombre,
+            producto_sku:           l.producto_sku ?? "",
+            cantidad_pedida:        l.cantidad_pedida,
+            cantidad_recibida:      0,
+            precio_unitario:        l.precio_unitario,
+            udm:                    l.udm ?? "un",
+            estado_linea:           "pendiente",
+            tiene_serie:            l.tiene_serie ?? false,
+            requiere_color:         l.requiere_color ?? false,
+            requiere_bateria:       l.requiere_bateria ?? false,
+            requiere_outlet:        l.requiere_outlet ?? false,
+            requiere_observaciones: l.requiere_observaciones ?? false,
+          })),
+          total: 0,
+        })
 
-      if (hayParcial && lineasPendientes.length > 0) {
-        try {
-          const idRecConfirmada = recGuardada?.id ?? recGuardada?.data?.id ?? rec.id
-          console.log("[v0] Creando complementaria. idRecConfirmada:", idRecConfirmada)
-          const recCompGuardada = await guardarRecepcion({
-            fecha:                   ahora,
-            estado:                  "esperando_recepcion",
-            orden_compra_id:         rec.orden_compra_id,
-            orden_compra_numero:     rec.orden_compra_numero,
-            proveedor_id:            rec.proveedor_id,
-            proveedor_nombre:        rec.proveedor_nombre,
-            documento_origen_tipo:   rec.documento_origen_tipo,
-            documento_origen_id:     rec.documento_origen_id,
-            documento_origen_ref:    rec.documento_origen_ref,
-            sucursal:                rec.sucursal ?? "",
-            sucursal_id:             rec.sucursal_id ?? null,
-            deposito_destino:        rec.deposito_destino ?? "",
-            deposito_destino_id:     rec.deposito_destino_id ?? null,
-            fecha_esperada:          rec.fecha_esperada ?? null,
-            recepcion_anterior_id:   idRecConfirmada,
-            items: lineasPendientes.map(l => ({
-              producto_id:            l.producto_id,
-              producto_nombre:        l.producto_nombre,
-              producto_sku:           l.producto_sku ?? "",
-              cantidad_pedida:        l.cantidad_pedida,
-              cantidad_recibida:      0,
-              precio_unitario:        l.precio_unitario,
-              udm:                    l.udm ?? "un",
-              estado_linea:           "pendiente",
-              tiene_serie:            l.tiene_serie ?? false,
-              requiere_color:         l.requiere_color ?? false,
-              requiere_bateria:       l.requiere_bateria ?? false,
-              requiere_outlet:        l.requiere_outlet ?? false,
-              requiere_observaciones: l.requiere_observaciones ?? false,
-            })),
-            total: 0,
-          })
+        // Vincular la recepción original con la complementaria
+        await guardarRecepcion({ recepcion_complementaria_id: recCompGuardada.id }, idRecConfirmada)
 
-          // Vincular la recepción original con la complementaria
-          await guardarRecepcion({ recepcion_complementaria_id: recCompGuardada.id }, idRecConfirmada)
-
-          // Actualizar UI con IDs reales
-          const recCompLocal: Recepcion = {
-            ...rec,
-            id: recCompGuardada.id,
-            numero: recCompGuardada.numero ?? "REC-?????",
-            fecha: ahora,
-            estado: 'esperando_recepcion',
-            fecha_recepcion_real: undefined,
-            remito_numero: undefined,
-            remito_fecha: undefined,
-            recepcion_anterior_id: idRecConfirmada,
-            recepcion_complementaria_id: undefined,
-            lineas: lineasPendientes,
-            cancelacion: undefined
-          }
-          setRecepciones(prev => {
-            const sinFicticias = prev.filter(r => r.id !== recCompLocal.id)
-            return sinFicticias.map(r =>
-              r.id === rec.id
-                ? { ...r, recepcion_complementaria_id: recCompGuardada.id }
-                : r
-            ).concat(recCompLocal)
-          })
-          setSelectedRecepcion(prev => prev?.id === rec.id
-            ? { ...prev, recepcion_complementaria_id: recCompGuardada.id }
-            : prev
-          )
-        } catch (err: any) {
-          console.error("[v0] Error al crear recepción complementaria:", err.message, err)
+        // Actualizar UI
+        const recCompLocal: Recepcion = {
+          ...rec,
+          id: recCompGuardada.id,
+          numero: recCompGuardada.numero ?? "REC-?????",
+          fecha: ahora,
+          estado: 'esperando_recepcion',
+          fecha_recepcion_real: undefined,
+          remito_numero: undefined,
+          remito_fecha: undefined,
+          recepcion_anterior_id: idRecConfirmada,
+          recepcion_complementaria_id: undefined,
+          lineas: lineasPendientes,
+          cancelacion: undefined
         }
+        setRecepciones(prev => {
+          const sinDuplicados = prev.filter(r => r.id !== recCompGuardada.id)
+          return sinDuplicados.map(r =>
+            r.id === rec.id ? { ...r, recepcion_complementaria_id: recCompGuardada.id } : r
+          ).concat(recCompLocal)
+        })
+        setSelectedRecepcion(prev =>
+          prev?.id === rec.id ? { ...prev, recepcion_complementaria_id: recCompGuardada.id } : prev
+        )
+      } catch (err: any) {
+        console.error("[v0] Error al crear recepción complementaria:", err.message)
       }
-    }).catch((err: any) => console.error("[v0] Error al persistir recepción:", err.message))
+    }
 
     // Entrada de stock en Supabase via .then() sin await
     fetchDepositos().then(depositos => {
