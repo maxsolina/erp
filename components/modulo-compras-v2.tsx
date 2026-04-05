@@ -3825,8 +3825,14 @@ export default function ModuloCompras() {
     if (!selectedRecepcion) return
     const rec = selectedRecepcion
 
+    // Helper: obtener cantidad efectiva (para productos con serie, es el nro de series cargadas)
+    const getCantEfectiva = (l: RecepcionLinea) =>
+      l.tiene_serie
+        ? (seriesConfirmadas[l.producto_id] || []).filter(u => u.nro_serie?.trim() !== '').length
+        : (recepcionCantidades[l.producto_id] ?? 0)
+
     // Validación: cantidades > 0
-    const lineasConCantidad = (rec.lineas ?? []).filter(l => (recepcionCantidades[l.producto_id] ?? 0) > 0)
+    const lineasConCantidad = (rec.lineas ?? []).filter(l => getCantEfectiva(l) > 0)
     if (lineasConCantidad.length === 0) {
       alert("Debe ingresar al menos una cantidad recibida mayor a 0.")
       return
@@ -3835,13 +3841,14 @@ export default function ModuloCompras() {
     // Validación: series registradas para productos con serie
     for (const linea of rec.lineas) {
       if (!linea.tiene_serie) continue
-      const cantRequerida = recepcionCantidades[linea.producto_id] ?? 0
-      if (cantRequerida === 0) continue
+      const cantEfectiva = getCantEfectiva(linea)
+      if (cantEfectiva === 0) continue
       const seriesDelProducto = seriesConfirmadas[linea.producto_id] || []
-      if (seriesDelProducto.length < cantRequerida) {
+      const seriesValidas = seriesDelProducto.filter(u => u.nro_serie?.trim() !== '')
+      if (seriesValidas.length < cantEfectiva) {
         alert(`Debe registrar los N° de serie para: ${linea.producto_nombre}`)
         setModalSerieProducto(linea)
-        setModalSerieUnidades(seriesDelProducto.length > 0 ? seriesDelProducto : Array.from({ length: cantRequerida }, () => ({ nro_serie: '', outlet: false })))
+        setModalSerieUnidades(seriesDelProducto.length > 0 ? seriesDelProducto : Array.from({ length: linea.cantidad_pedida }, () => ({ nro_serie: '', outlet: false })))
         setModalSerieOpen(true)
         return
       }
@@ -3849,7 +3856,7 @@ export default function ModuloCompras() {
 
     const ahora = new Date().toISOString()
     const lineasActualizadas: RecepcionLinea[] = (rec.lineas ?? []).map(l => {
-      const cantRec = recepcionCantidades[l.producto_id] ?? 0
+      const cantRec = getCantEfectiva(l)
       const estadoLinea: RecepcionLinea['estado_linea'] = cantRec === 0
         ? 'pendiente'
         : cantRec < l.cantidad_pedida
@@ -4495,17 +4502,23 @@ export default function ModuloCompras() {
                     <td className="py-3 px-4 text-center">{linea.cantidad_pedida}</td>
                     <td className="py-3 px-4 text-center">
                       {editable ? (
-                        <input
-                          type="number"
-                          min={0}
-                          max={linea.cantidad_pedida}
-                          value={cantRec}
-                          onChange={e => setRecepcionCantidades(prev => ({
-                            ...prev,
-                            [linea.producto_id]: Math.min(linea.cantidad_pedida, Math.max(0, Number(e.target.value)))
-                          }))}
-                          className="w-16 text-center px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-emerald-500"
-                        />
+                        linea.tiene_serie ? (
+                          <span className="inline-block w-16 text-center px-2 py-1 border border-gray-200 rounded text-sm bg-gray-50 text-gray-700 font-medium">
+                            {(seriesConfirmadas[linea.producto_id] || []).filter(u => u.nro_serie?.trim() !== '').length}
+                          </span>
+                        ) : (
+                          <input
+                            type="number"
+                            min={0}
+                            max={linea.cantidad_pedida}
+                            value={cantRec}
+                            onChange={e => setRecepcionCantidades(prev => ({
+                              ...prev,
+                              [linea.producto_id]: Math.min(linea.cantidad_pedida, Math.max(0, Number(e.target.value)))
+                            }))}
+                            className="w-16 text-center px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-emerald-500"
+                          />
+                        )
                       ) : (
                         <span className="font-medium">{linea.cantidad_recibida}</span>
                       )}
