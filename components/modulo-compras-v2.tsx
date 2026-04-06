@@ -4287,9 +4287,13 @@ export default function ModuloCompras() {
                     <span className="ml-2 text-xs text-gray-400">{origenLabel[rec.documento_origen_tipo]}</span>
                   </td>
                   <td className="py-3 px-4 text-sm text-gray-600">
-                    <span>{rec.sucursal}</span>
-                    <span className="text-gray-400 mx-1">/</span>
-                    <span>{rec.deposito_destino}</span>
+                    <span>{rec.deposito_destino || '-'}</span>
+                    {rec.ubicacion_destino && (
+                      <>
+                        <span className="text-gray-400 mx-1">/</span>
+                        <span>{rec.ubicacion_destino}</span>
+                      </>
+                    )}
                   </td>
                   <td className="py-3 px-4">
                     <span className="text-sm text-blue-600 font-medium">{rec.documento_origen_ref}</span>
