@@ -3590,6 +3590,31 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             })),
           }
           setRemitos(prev => [...prev, newRemito])
+
+          // ── Descontar stock inmediatamente al confirmar el remito ──
+          try {
+            await fetch(`/api/remitos/${remData.id}/confirmar`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                remito_numero: remData.numero,
+                nv_numero: nvNumeroFinal,
+                oe_numero: oeNumero,
+                deposito_id: nvDepositoId || null,
+                deposito_nombre: deposito,
+                ubicacion_id: nvUbicacionId || null,
+                ubicacion_nombre: ubicacionesVenta.find(u => u.id === nvUbicacionId)?.nombre ?? null,
+                usuario: "sistema",
+                lineas: lineasValidas.map(l => ({
+                  producto_id: l.producto_id,
+                  producto_nombre: l.producto_nombre,
+                  cantidad: l.cantidad,
+                  requiere_serie: l.requiere_serie ?? false,
+                  series_seleccionadas: l.series_seleccionadas ?? [],
+                })),
+              }),
+            })
+          } catch (_) {}
         }
       } catch (_) {}
     }
