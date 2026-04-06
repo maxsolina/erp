@@ -5330,7 +5330,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       ))
 
       setTomasEquipo(prev => [...prev, nuevaToma])
+      // Abrir la ficha de la toma recién creada en lugar de volver al listado
       resetForm()
+      setSelectedToma(nuevaToma)
     }
 
     return (
