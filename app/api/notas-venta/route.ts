@@ -81,8 +81,29 @@ export async function POST(req: Request) {
     lineas = [],
   } = body
 
-  if (!numero) {
-    return NextResponse.json({ error: "numero es requerido" }, { status: 400 })
+  // Generar número en el servidor de forma atómica
+  let numeroFinal = numero
+  if (!numeroFinal) {
+    const { data: last } = await supabase
+      .from("notas_venta")
+      .select("numero")
+      .order("id", { ascending: false })
+      .limit(1)
+      .single()
+    const lastNum = last?.numero
+      ? parseInt(last.numero.replace(/\D/g, "").slice(-8), 10)
+      : 10737
+    numeroFinal = `NV X 10000-${String(lastNum + 1).padStart(8, "0")}`
+  }
+
+  // Verificar que no exista ya ese número
+  const { data: existing } = await supabase
+    .from("notas_venta")
+    .select("id")
+    .eq("numero", numeroFinal)
+    .maybeSingle()
+  if (existing) {
+    return NextResponse.json({ error: `Ya existe una NV con el número ${numeroFinal}` }, { status: 409 })
   }
 
   // Mapear estado al enum válido de Supabase
@@ -93,7 +114,7 @@ export async function POST(req: Request) {
   const { data: nv, error: nvErr } = await supabase
     .from("notas_venta")
     .insert({
-      numero,
+      numero: numeroFinal,
       cliente_id: cliente_id ?? null,
       vendedor_id: vendedor_id ?? null,
       sucursal_id: sucursal_id ?? null,
@@ -141,5 +162,5 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, id: nv.id, numero: nv.numero })
+  return NextResponse.json({ ok: true, id: nv.id, numero: nv.numero ?? numeroFinal })
 }

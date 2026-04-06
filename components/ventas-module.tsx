@@ -11453,13 +11453,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             const vendedorNombre = vendedores.find(v => v.id === vendedorId)?.nombre || "Max Solina"
             const terminoPagoId = parseInt(formData.get("termino_pago_id") as string) || 1
             const terminoPagoNombre = mockTerminosPago.find(tp => tp.id === terminoPagoId)?.nombre || "Contado Efectivo"
-            const nvNumero = editingItem?.numero || `NV X 10000-000${10737 + notasVenta.length}`
-            const nvId = editingItem?.id || notasVenta.length + 1
             const fechaHoy = new Date().toISOString()
+            // El número y el id real los devuelve el servidor — placeholders temporales
+            const nvNumeroTemp = editingItem?.numero || ""
+            const nvIdTemp = editingItem?.id || 0
 
             const newNV: NotaVenta = {
-              id: nvId,
-              numero: nvNumero,
+              id: nvIdTemp,
+              numero: nvNumeroTemp,
               cliente_id: cliente.id,
               cliente_nombre: cliente.nombre,
               cliente_codigo: cliente.codigo,
@@ -11485,12 +11486,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             }
 
             // ── Persistir NV en Supabase ──────────────────────────────
+            let nvNumero = nvNumeroTemp
+            let nvId = nvIdTemp
             try {
-              await fetch("/api/notas-venta", {
+              const nvRes = await fetch("/api/notas-venta", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  numero: nvNumero,
+                  numero: editingItem?.numero || null, // null = el servidor genera el número
                   cliente_id: cliente.id,
                   vendedor_id: vendedorId,
                   moneda,
@@ -11510,6 +11513,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   })),
                 }),
               })
+              if (nvRes.ok) {
+                const nvData = await nvRes.json()
+                nvNumero = nvData.numero || nvNumeroTemp
+                nvId = nvData.id || nvIdTemp
+                newNV.numero = nvNumero
+                newNV.id = nvId
+              }
             } catch (_) {
               // Error de red — la NV sigue en el state local
             }
@@ -11522,10 +11532,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
             // Si es venta inmediata, generar automáticamente OE, Remito, Factura y Recibo
             if (tipoVenta === "inmediata" && !editingItem) {
-              const oeNumero = `OE X 10000-000${1050 + ordenesEntrega.length}`
+              // OE y remito — el servidor genera los números
               const oeId = ordenesEntrega.length + 1
               
-              // 1. Crear Orden de Entrega (confirmada)
+              // 1. Crear Orden de Entrega (confirmada) — número generado por el servidor
+              let oeNumero = ""
               const newOE: OrdenEntrega = {
                 id: oeId,
                 numero: oeNumero,
@@ -11548,9 +11559,23 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   estado: "confirmado" as const
                 }))
               }
+              // Persistir OE y obtener número del servidor
+              try {
+                const oeRes = await fetch("/api/ordenes-entrega", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ ...newOE, numero: null }),
+                })
+                if (oeRes.ok) {
+                  const oeData = await oeRes.json()
+                  oeNumero = oeData.numero || oeNumero
+                  newOE.numero = oeNumero
+                  newOE.id = oeData.id || oeId
+                }
+              } catch (_) {}
               setOrdenesEntrega(prev => [...prev, newOE])
 
-              const remitoNumero = `R X 10000-000${5035 + remitos.length}`
+              let remitoNumero = ""
               const remitoId = remitos.length + 1
               
               // 2. Crear Remito (aprobado - descuenta stock)
@@ -11592,11 +11617,38 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   })),
                 })),
               }
+              // Persistir remito y obtener número del servidor
+              try {
+                const remRes = await fetch("/api/remitos-venta", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    ...newRemito,
+                    numero: null,
+                    orden_entrega_numero: oeNumero,
+                    nota_venta_id: nvId,
+                    nota_venta_numero: nvNumero,
+                    lineas: nvLineas.map(l => ({
+                      producto_id: l.producto_id,
+                      producto_nombre: l.producto_nombre,
+                      cantidad: l.cantidad,
+                      requiere_serie: l.requiere_serie ?? false,
+                      series_seleccionadas: l.series_seleccionadas ?? [],
+                    })),
+                  }),
+                })
+                if (remRes.ok) {
+                  const remData = await remRes.json()
+                  remitoNumero = remData.numero || remitoNumero
+                  newRemito.numero = remitoNumero
+                  newRemito.id = remData.id || remitoId
+                }
+              } catch (_) {}
               setRemitos(prev => [...prev, newRemito])
 
               // Actualizar OE con número de remito
-              setOrdenesEntrega(prev => prev.map(oe => 
-                oe.id === oeId ? { ...oe, remito_numero: remitoNumero } : oe
+              setOrdenesEntrega(prev => prev.map(oe =>
+                oe.id === newOE.id ? { ...oe, remito_numero: remitoNumero } : oe
               ))
 
               const facturaNumero = `FC X 10000-000${20050 + facturas.length}`
@@ -11622,9 +11674,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 termino_pago: terminoPagoNombre,
                 subtotal: subtotal,
                 descuento: 0,
-                impuestos: 0,
-                total: subtotal,
-                saldo: subtotal,
+                impuestos: impuestos,
+                total: total,
+                saldo: total,
                 sucursal: "Puerto Norte",
                 lineas: nvLineas.map(l => ({
                   producto_nombre: l.producto_nombre,
