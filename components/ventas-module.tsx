@@ -236,15 +236,7 @@ interface Remito {
   numero: string
   orden_entrega_id: number
   orden_entrega_numero: string
-  cliente_id: number
-  cliente_nombre: string
-  estado: "en_ejecucion" | "aprobado" | "entregado" | "borrador" | "confirmado"
-  fecha: string
-  fecha_entrega: string
-  domicilio_envio: string
-  transporte: string
-  chofer: string
-  factura_numero: string | null
+  nota_venta_id?: number
   nota_venta_numero: string
   sucursal: string
   deposito: string
@@ -1638,6 +1630,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             numero: r.numero,
             orden_entrega_id: r.orden_entrega_id ?? 0,
             orden_entrega_numero: r.orden_entrega_numero ?? "",
+            nota_venta_id: r.nota_venta_id ?? undefined,
             nota_venta_numero: r.nota_venta_numero ?? "",
             cliente_id: r.cliente_id ?? 0,
             cliente_nombre: r.cliente_nombre ?? "",
@@ -3683,142 +3676,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       setNotasVenta(prev => [...prev, newNV])
     }
 
-    if (tipoVenta === "inmediata") {
-      // Crear OE
-      const oeNumero = `OE X 10000-000${100 + ordenesEntrega.length}`
-      const oeId = ordenesEntrega.length + 1
-      const newOE: OrdenEntrega = {
-        id: oeId,
-        numero: oeNumero,
-        nota_venta_id: nvId,
-        nota_venta_numero: nvNumero,
-        cliente_id: cliente.id,
-        cliente_nombre: cliente.nombre,
-        fecha: fechaHoy,
-        fecha_entrega_programada: fechaHoy,
-        estado: "confirmada",
-        tipo: "venta",
-        deposito_origen: deposito,
-        ubicacion_origen: "Stock",
-        total_productos: lineasValidas.reduce((sum, l) => sum + l.cantidad, 0),
-        productos_entregados: lineasValidas.reduce((sum, l) => sum + l.cantidad, 0),
-        productos: lineasValidas.map(l => ({
-          producto_id: l.producto_id,
-          producto_nombre: l.producto_nombre,
-          cantidad: l.cantidad,
-          entregado: l.cantidad,
-          ubicacion: "Stock",
-          series: l.series_seleccionadas || []
-        })),
-        seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "OE creada desde venta inmediata" }]
-      }
-      setOrdenesEntrega(prev => [...prev, newOE])
-      // Persistir OE en Supabase
-      fetch("/api/ordenes-entrega", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newOE),
-      }).catch(() => {})
-
-      // Crear Remito
-      const remitoNumero = `REM X 10000-000${100 + remitos.length}`
-      const remitoId = remitos.length + 1
-      const newRemito: Remito = {
-        id: remitoId,
-        numero: remitoNumero,
-        orden_entrega_id: oeId,
-        orden_entrega_numero: oeNumero,
-        nota_venta_numero: nvNumero,
-        cliente_id: cliente.id,
-        cliente_nombre: cliente.nombre,
-        fecha: fechaHoy,
-        estado: "confirmado",
-        tipo: "salida",
-        deposito: deposito,
-        ubicacion: "Stock",
-        total_bultos: 1,
-        observaciones: "",
-        productos: lineasValidas.map(l => ({
-          producto_id: l.producto_id,
-          producto_nombre: l.producto_nombre,
-          cantidad: l.cantidad,
-          series: l.series_seleccionadas || []
-        })),
-        seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "Remito creado desde venta inmediata" }]
-      }
-      setRemitos(prev => [...prev, newRemito])
-      // Persistir Remito en Supabase
-      fetch("/api/remitos-venta", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...newRemito,
-          lineas: lineasValidas.map(l => ({
-            producto_id: l.producto_id,
-            producto_nombre: l.producto_nombre,
-            cantidad: l.cantidad,
-            requiere_serie: l.requiere_serie ?? false,
-            series_seleccionadas: l.series_seleccionadas ?? [],
-          })),
-        }),
-      }).catch(() => {})
-
-      // Descontar stock: usar endpoint confirmar con nv_numero y lineas directas
-      fetch(`/api/remitos/0/confirmar`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          remito_numero: remitoNumero,
-          nv_numero: nvNumero,
-          oe_numero: oeNumero,
-          deposito_nombre: deposito,
-          usuario: vendedorNombre,
-          lineas: lineasValidas.map(l => ({
-            producto_id: l.producto_id,
-            producto_nombre: l.producto_nombre,
-            cantidad: l.cantidad,
-            requiere_serie: l.requiere_serie ?? false,
-            series_seleccionadas: l.series_seleccionadas ?? [],
-          })),
-        }),
-      }).catch(() => {})
-
-      // Crear Factura en borrador
-      const facturaNumero = `FC X 10000-000${13460 + facturas.length}`
-      const facturaId = facturas.length + 1
-      const newFactura: Factura = {
-        id: facturaId,
-        numero: facturaNumero,
-        tipo: cliente.posicion_fiscal === "consumidor_final" ? "B" : "A",
-        nota_venta_id: nvId,
-        nota_venta_numero: nvNumero,
-        cliente_id: cliente.id,
-        cliente_nombre: cliente.nombre,
-        cliente_cuit: cliente.numero_documento,
-        fecha: fechaHoy,
-        fecha_vencimiento: fechaHoy,
-        estado: "borrador",
-        moneda: moneda,
-        lineas: lineasValidas.map(l => ({
-          producto_nombre: l.producto_nombre,
-          descripcion: l.producto_nombre,
-          cantidad: l.cantidad,
-          precio_unitario: l.precio_unitario,
-          descuento: l.descuento,
-          subtotal: l.subtotal
-        })),
-        subtotal: subtotalValido,
-        iva: impuestosValido,
-        total: totalValido,
-        saldo_pendiente: totalValido,
-        cae: null,
-        cae_vencimiento: null,
-        sucursal: "Puerto Norte",
-        seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "Factura creada en borrador desde confirmación de NV" }]
-      }
-      setFacturas(prev => [...prev, newFactura])
-    }
-
     // Limpiar y abrir la NV creada
     setCreandoNV(false)
     setNvPrevisualizando(false)
@@ -4505,7 +4362,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
     // Buscar documentos relacionados
     const oesVinculadas = ordenesEntrega.filter(oe => oe.nota_venta_id === selectedNV.id)
-    const remitosVinculados = remitos.filter(r => r.nota_venta_numero === selectedNV.numero)
+    const remitosVinculados = remitos.filter(r => 
+      r.nota_venta_id === selectedNV.id || r.nota_venta_numero === selectedNV.numero
+    )
     const facturasVinculadas = facturas.filter(f => f.nota_venta_id === selectedNV.id)
     const recibosVinculados = recibos.filter(r => r.nota_venta_numero === selectedNV.numero)
 
@@ -11706,6 +11565,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 transporte: "Retira en sucursal",
                 chofer: "",
                 factura_numero: null,
+                nota_venta_id: nvId,
                 nota_venta_numero: nvNumero,
                 sucursal: "Puerto Norte",
                 deposito: deposito,
