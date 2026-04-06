@@ -4140,20 +4140,16 @@ export default function ModuloCompras() {
     if (selectedRecepcion) return renderFichaRecepcion()
 
     const estadoColor: Record<string, string> = {
-        recibida:             'bg-green-100 text-green-700',
-        recibida_parcial:     'bg-blue-100 text-blue-700',
-      esperando_recepcion:  'bg-amber-100 text-amber-700',
-      recibida_parcial:     'bg-blue-100 text-blue-700',
-
-
-      cancelada:            'bg-red-100 text-red-700',
+      recibida:            'bg-green-100 text-green-700',
+      recibida_parcial:    'bg-green-50 text-green-600',
+      esperando_recepcion: 'bg-amber-100 text-amber-700',
+      cancelada:           'bg-red-100 text-red-700',
     }
     const estadoLabel: Record<string, string> = {
-        recibida:             'Recibida',
-        recibida_parcial:     'Recibida parcial',
-        esperando_recepcion:  'Esperando Recepción',
-
-      cancelada:            'Cancelada',
+      recibida:            'Recibida',
+      recibida_parcial:    'Recibida parcial',
+      esperando_recepcion: 'Esperando Recepción',
+      cancelada:           'Cancelada',
     }
     const origenLabel: Record<string, string> = {
       oc:           'Orden de Compra',
@@ -4254,6 +4250,7 @@ export default function ModuloCompras() {
                 <th className="text-left py-3 px-4">N° Recepción</th>
                 <th className="text-left py-3 px-4">Fecha</th>
                 <th className="text-left py-3 px-4">Proveedor</th>
+                <th className="text-left py-3 px-4">Origen</th>
                 <th className="text-left py-3 px-4">Depósito / Ubicación</th>
                 <th className="text-left py-3 px-4">Doc. Origen</th>
                 <th className="text-center py-3 px-4">Productos</th>
@@ -4264,7 +4261,7 @@ export default function ModuloCompras() {
             <tbody className="divide-y divide-gray-100">
               {recepcionesFiltradas.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-sm text-gray-400">
+                  <td colSpan={9} className="py-12 text-center text-sm text-gray-400">
                     No se encontraron recepciones
                   </td>
                 </tr>
@@ -4282,16 +4279,21 @@ export default function ModuloCompras() {
                 >
                   <td className="py-3 px-4 font-medium text-emerald-700">{rec.numero}</td>
                   <td className="py-3 px-4 text-sm text-gray-600">{new Date(rec.fecha).toLocaleDateString('es-AR')}</td>
-                  <td className="py-3 px-4 text-sm">
-                    <span className="font-medium">{rec.proveedor_nombre || '-'}</span>
-                    <span className="ml-2 text-xs text-gray-400">{origenLabel[rec.documento_origen_tipo]}</span>
+                  {/* Proveedor: vacío para tomas de equipo ya que el "proveedor" es el cliente */}
+                  <td className="py-3 px-4 text-sm font-medium">
+                    {rec.documento_origen_tipo === 'toma_equipo' ? '-' : (rec.proveedor_nombre || '-')}
                   </td>
+                  {/* Origen */}
+                  <td className="py-3 px-4 text-sm text-gray-500">
+                    {origenLabel[rec.documento_origen_tipo] || rec.documento_origen_tipo}
+                  </td>
+                  {/* Depósito / Ubicación — columna DB: deposito_destino + ubicacion */}
                   <td className="py-3 px-4 text-sm text-gray-600">
-                    <span>{rec.deposito_destino || '-'}</span>
-                    {rec.ubicacion_destino && (
+                    <span>{(rec as any).deposito_destino || '-'}</span>
+                    {(rec as any).ubicacion && (
                       <>
                         <span className="text-gray-400 mx-1">/</span>
-                        <span>{rec.ubicacion_destino}</span>
+                        <span>{(rec as any).ubicacion}</span>
                       </>
                     )}
                   </td>
