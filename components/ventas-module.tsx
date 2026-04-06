@@ -4229,6 +4229,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   setNvDepositoId(editDep?.id ?? 0)
                   const editUbic = ubicacionesVenta.find(u => u.deposito_id === editDep?.id && u.nombre === "Stock")
                   setNvUbicacionId(editUbic?.id ?? 0)
+                  setTipoVentaForm(selectedNV.tipo_venta || "inmediata")
                   setEditingNVId(selectedNV.id)
                   setCreandoNV(true)
                   setSelectedNV(null)
@@ -11240,6 +11241,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   // Modal de Nota de Venta
   const [nvLineas, setNvLineas] = useState<LineaNV[]>([])
   const [nvClienteId, setNvClienteId] = useState<number | null>(null)
+  const [tipoVentaForm, setTipoVentaForm] = useState<"inmediata" | "pedido">("inmediata")
   
   const renderNotaVentaModal = () => {
     const selectedCliente = clientes.find(c => c.id === nvClienteId)
@@ -11266,7 +11268,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               alert("Debe seleccionar un cliente y agregar al menos un producto")
               return
             }
-            const tipoVenta = formData.get("tipo_venta") as "inmediata" | "pedido"
+            const tipoVenta = tipoVentaForm
             const moneda = formData.get("moneda") as "ARS" | "USD"
             const depositoFromForm = formData.get("deposito") as string
             const depositoFromState = depositosVenta.find(d => d.id === nvDepositoId)?.nombre
@@ -11566,11 +11568,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tipo Venta</label>
-                <select name="tipo_venta" defaultValue={editingItem?.tipo_venta || "inmediata"}
+                <select
+                  name="tipo_venta"
+                  value={tipoVentaForm}
+                  onChange={e => setTipoVentaForm(e.target.value as "inmediata" | "pedido")}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                   <option value="inmediata">Inmediata</option>
                   <option value="pedido">Pedido</option>
                 </select>
+                {/* input hidden para que formData.get() siempre lo encuentre */}
+                <input type="hidden" name="tipo_venta_ctrl" value={tipoVentaForm} />
               </div>
             </div>
             <div className="grid grid-cols-4 gap-4">
@@ -11730,7 +11737,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </div>
 
             <div className="flex justify-end gap-3 pt-4 border-t">
-              <button type="button" onClick={() => { setShowModal(false); setNvLineas([]); setNvClienteId(null) }}
+              <button type="button" onClick={() => { setShowModal(false); setNvLineas([]); setNvClienteId(null); setTipoVentaForm("inmediata") }}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
                 Cancelar
               </button>
