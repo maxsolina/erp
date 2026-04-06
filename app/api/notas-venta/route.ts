@@ -89,7 +89,7 @@ export async function POST(req: Request) {
       .select("numero")
       .order("id", { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
     const lastNum = last?.numero
       ? parseInt(last.numero.replace(/\D/g, "").slice(-8), 10)
       : 10737

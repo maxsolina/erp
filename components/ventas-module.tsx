@@ -11328,7 +11328,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             }
 
             // Si es venta inmediata, generar automáticamente OE, Remito, Factura y Recibo
-            if (tipoVenta === "inmediata" && !editingItem) {
+            // Solo si la NV fue persistida exitosamente (nvId > 0)
+            if (tipoVenta === "inmediata" && !editingItem && nvId > 0) {
               // OE y remito — el servidor genera los números
               const oeId = ordenesEntrega.length + 1
               
