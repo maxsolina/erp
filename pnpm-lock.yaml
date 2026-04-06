@@ -158,9 +158,6 @@ importers:
       sonner:
         specifier: ^1.7.1
         version: 1.7.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      supabase-agent-skills:
-        specifier: github:supabase/agent-skills
-        version: https://codeload.github.com/supabase/agent-skills/tar.gz/661203203890e2ea0c97846b710040ef4f697a8e
       swr:
         specifier: ^2.2.5
         version: 2.4.1(react@19.2.4)
@@ -1801,10 +1798,6 @@ packages:
       babel-plugin-macros:
         optional: true
 
-  supabase-agent-skills@https://codeload.github.com/supabase/agent-skills/tar.gz/661203203890e2ea0c97846b710040ef4f697a8e:
-    resolution: {tarball: https://codeload.github.com/supabase/agent-skills/tar.gz/661203203890e2ea0c97846b710040ef4f697a8e}
-    version: 1.0.0
-
   swr@2.4.1:
     resolution: {integrity: sha512-2CC6CiKQtEwaEeNiqWTAw9PGykW8SR5zZX8MZk6TeAvEAnVS7Visz8WzphqgtQ8v2xz/4Q5K+j+SeMaKXeeQIA==}
     peerDependencies:
@@ -3372,8 +3365,6 @@ snapshots:
     dependencies:
       client-only: 0.0.1
       react: 19.2.4
-
-  supabase-agent-skills@https://codeload.github.com/supabase/agent-skills/tar.gz/661203203890e2ea0c97846b710040ef4f697a8e: {}
 
   swr@2.4.1(react@19.2.4):
     dependencies:

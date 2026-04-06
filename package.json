@@ -59,7 +59,6 @@
     "react-resizable-panels": "^2.1.7",
     "recharts": "2.15.0",
     "sonner": "^1.7.1",
-    "supabase-agent-skills": "github:supabase/agent-skills",
     "swr": "^2.2.5",
     "tailwind-merge": "^3.3.1",
     "vaul": "^1.1.2",
