@@ -2369,7 +2369,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             moduleName="clientes"
             filterOptions={[
               { field: "categoria", label: "Categoría", values: [
-                { value: "publico", label: "P��blico" },
+                { value: "publico", label: "P����blico" },
                 { value: "mercadolibre", label: "MercadoLibre" },
                 { value: "mayorista", label: "Mayorista" },
               ]},
@@ -4361,9 +4361,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     if (!selectedNV) return null
 
     // Buscar documentos relacionados
-    const oesVinculadas = ordenesEntrega.filter(oe => oe.nota_venta_id === selectedNV.id)
-    const remitosVinculados = remitos.filter(r => 
-      r.nota_venta_id === selectedNV.id || r.nota_venta_numero === selectedNV.numero
+    const nvId = Number(selectedNV.id)
+    const nvNumero = selectedNV.numero
+    const oesVinculadas = ordenesEntrega.filter(oe => Number(oe.nota_venta_id) === nvId)
+    const remitosVinculados = remitos.filter(r =>
+      (r.nota_venta_id != null && Number(r.nota_venta_id) === nvId) ||
+      (r.nota_venta_id == null && r.nota_venta_numero === nvNumero)
     )
     const facturasVinculadas = facturas.filter(f => f.nota_venta_id === selectedNV.id)
     const recibosVinculados = recibos.filter(r => r.nota_venta_numero === selectedNV.numero)
@@ -6984,7 +6987,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     fecha: fechaHoy,
                     tipo: "credito" as const,
                     concepto: esTarjeta
-                      ? `Pago con tarjeta — ${tarjetaInfo?.nombre} ${l.cuotas && l.cuotas > 1 ? `${l.cuotas} cuotas` : "1 cuota"}`
+                      ? `Pago con tarjeta �� ${tarjetaInfo?.nombre} ${l.cuotas && l.cuotas > 1 ? `${l.cuotas} cuotas` : "1 cuota"}`
                       : l.medio === "transferencia" ? "Pago por transferencia" : "Pago en efectivo",
                     documento_tipo: "recibo" as const,
                     documento_numero: selectedFactura.numero,
