@@ -740,8 +740,8 @@ export default function ModuloCompras() {
       if (prev.deposito_destino) return prev // ya tiene uno seleccionado, no pisar
       return { ...prev, deposito_destino: match.nombre, deposito_destino_id: match.id }
     })
-    // Cargar ubicaciones del depósito default
-    handleDepositoOCChange(match.id, match.nombre)
+    // Cargar ubicaciones del depósito default (sin llamar handleDepositoOCChange para evitar problema de hoisting)
+    fetchUbicaciones(match.id).then(data => setUbicacionesOC(data ?? [])).catch(console.error)
   }, [depositosOC, sucursalActiva])
 
   // Cargar ubicaciones cuando cambia el depósito seleccionado

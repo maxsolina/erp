@@ -605,6 +605,9 @@ export default function ModuloStock() {
   const [controlesInventario, setControlesInventario] = useState<ControlInventario[]>([])
   const [ajustes, setAjustes] = useState<AjusteInventario[]>([])
 
+  // Depósito actual seleccionado — sincronizado con la sucursal activa (declarado antes del useEffect que lo usa)
+  const [currentDepositoId, setCurrentDepositoId] = useState<number>(0)
+
   // Cargar depósitos, ubicaciones y stock unidades desde Supabase
   useEffect(() => {
     async function cargarDatos() {
@@ -739,8 +742,7 @@ export default function ModuloStock() {
     cargarDatos()
   }, [])
 
-  // Depósito actual seleccionado — sincronizado con la sucursal activa
-  const [currentDepositoId, setCurrentDepositoId] = useState<number>(0)
+  // Depósito actual seleccionado — declarado antes del useEffect de carga
   const currentDeposito = useMemo(() => depositos.find(d => d.id === currentDepositoId) || depositos[0], [currentDepositoId, depositos])
 
   // Re-sincronizar cuando el usuario cambia de sucursal desde el header
