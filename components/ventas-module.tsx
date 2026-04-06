@@ -11312,12 +11312,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             // ── Persistir NV en Supabase ──────────────────────────────
             let nvNumero = nvNumeroTemp
             let nvId = nvIdTemp
+            let nvPersistida = false
             try {
               const nvRes = await fetch("/api/notas-venta", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  numero: editingItem?.numero || null, // null = el servidor genera el número
+                  numero: editingItem?.numero || null,
                   cliente_id: cliente.id,
                   vendedor_id: vendedorId,
                   moneda,
@@ -11344,6 +11345,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 nvId = nvData.id || nvIdTemp
                 newNV.numero = nvNumero
                 newNV.id = nvId
+                nvPersistida = true
               }
             } catch (_) {
               // Error de red — la NV sigue en el state local
@@ -11355,9 +11357,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               setNotasVenta(prev => [...prev, newNV])
             }
 
-            // Si es venta inmediata, generar automáticamente OE, Remito, Factura y Recibo
-            // Solo si la NV fue persistida exitosamente (nvId > 0)
-            if (tipoVenta === "inmediata" && !editingItem && nvId > 0) {
+            // Si es venta inmediata y la NV se persistió OK, generar OE y Remito
+            if (tipoVenta === "inmediata" && !editingItem && nvPersistida) {
               // OE y remito — el servidor genera los números
               const oeId = ordenesEntrega.length + 1
               
