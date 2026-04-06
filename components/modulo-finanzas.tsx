@@ -506,7 +506,7 @@ function SeccionRecargos({ tarjetas, grupos, recargos, setRecargos }: {
   tarjetas: Tarjeta[]; grupos: GrupoTarjeta[]
   recargos: RecargoTarjeta[]; setRecargos: React.Dispatch<React.SetStateAction<RecargoTarjeta[]>>
 }) {
-  const { sucursales } = useERP()
+  const { sucursales, sucursalActiva } = useERP()
   const [editando, setEditando] = useState<RecargoTarjeta | null>(null)
   const [creando, setCreando] = useState(false)
   const [form, setForm] = useState<Partial<RecargoTarjeta>>({})
@@ -517,7 +517,7 @@ function SeccionRecargos({ tarjetas, grupos, recargos, setRecargos }: {
   const diasDefault = { lun: true, mar: true, mie: true, jue: true, vie: true, sab: true, dom: true }
 
   const abrirCrear = () => {
-    setForm({ sucursal: "Puerto Norte", desde_cuota: 1, hasta_cuota: 1, fecha_desde: "2025-01-01", fecha_hasta: "2025-12-31", recargo_pct: 0, activo: true, dias: { ...diasDefault } })
+    setForm({ sucursal: sucursalActiva?.nombre ?? sucursales[0]?.nombre ?? "", desde_cuota: 1, hasta_cuota: 1, fecha_desde: "2025-01-01", fecha_hasta: "2025-12-31", recargo_pct: 0, activo: true, dias: { ...diasDefault } })
     setCreando(true)
     setEditando(null)
   }

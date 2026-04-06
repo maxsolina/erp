@@ -558,6 +558,7 @@ export default function ModuloCompras() {
     ordenesPago,
     setOrdenesPago,
     sucursales,
+    sucursalActiva,
     recargarProductos,
   } = useERP()
 
@@ -729,6 +730,19 @@ export default function ModuloCompras() {
   useEffect(() => {
     fetchDepositos().then(data => setDepositosOC(data ?? [])).catch(console.error)
   }, [])
+
+  // Cuando carguen los depósitos, setear el de la sucursal activa como default en nuevaOC
+  useEffect(() => {
+    if (!depositosOC.length) return
+    const match = depositosOC.find(d => d.nombre === sucursalActiva?.nombre) ?? depositosOC[0]
+    if (!match) return
+    setNuevaOC(prev => {
+      if (prev.deposito_destino) return prev // ya tiene uno seleccionado, no pisar
+      return { ...prev, deposito_destino: match.nombre, deposito_destino_id: match.id }
+    })
+    // Cargar ubicaciones del depósito default
+    handleDepositoOCChange(match.id, match.nombre)
+  }, [depositosOC, sucursalActiva])
 
   // Cargar ubicaciones cuando cambia el depósito seleccionado
   const handleDepositoOCChange = async (depositoId: number, depositoNombre: string) => {
@@ -4472,7 +4486,7 @@ export default function ModuloCompras() {
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Remito N°</p>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Remito N��</p>
               {editable ? (
                 <input
                   type="text"

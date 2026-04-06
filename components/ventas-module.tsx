@@ -838,11 +838,22 @@ interface ModuloVentasProps {
 
 
 export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: ModuloVentasProps = {}) {
-  const { sucursales } = useERP()
+  const { sucursales, sucursalActiva } = useERP()
   const [depositos, setDepositos] = useState<{ id: number; nombre: string; codigo: string }[]>([])
   useEffect(() => {
     fetchDepositos().then(d => setDepositos(Array.isArray(d) ? d : [])).catch(console.error)
   }, [])
+
+  // Sincronizar depósito default con la sucursal activa cuando carguen los depósitos
+  useEffect(() => {
+    if (!depositosVenta.length) return
+    const match = depositosVenta.find(d => d.nombre === sucursalActiva?.nombre)
+    const defaultDeposito = match ?? depositosVenta[0]
+    if (!defaultDeposito) return
+    setNvDepositoId(defaultDeposito.id)
+    const ubicacionStock = ubicacionesVenta.find(u => u.deposito_id === defaultDeposito.id && u.nombre === "Stock")
+    if (ubicacionStock) setNvUbicacionId(ubicacionStock.id)
+  }, [depositosVenta, sucursalActiva])
 
   // Navigation state
   const [activeSection, setActiveSection] = useState<string>("clientes")
@@ -1193,9 +1204,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   // Maestro de productos reales (todos los productos de la DB, para selectores de lista de precios)
   const [productosMaestro, setProductosMaestro] = useState<ProductoVenta[]>([])
 
-  // Estados para ubicación de stock en NV
-  const [nvDepositoId, setNvDepositoId] = useState<number>(1) // Casa Central por defecto
-  const [nvUbicacionId, setNvUbicacionId] = useState<number>(1) // Stock por defecto
+  // Estados para ubicación de stock en NV — se inicializan al depósito de la sucursal activa
+  const [nvDepositoId, setNvDepositoId] = useState<number>(0)
+  const [nvUbicacionId, setNvUbicacionId] = useState<number>(0)
   const [nvPrevisualizando, setNvPrevisualizando] = useState(false) // Para mostrar vista previa antes de confirmar
   
   // Estados para modal de selección de series/IMEI
@@ -3479,8 +3490,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setNvPrevisualizando(false)
     setNvLineas([])
     setNvClienteId(null)
-    setNvDepositoId(1)
-    setNvUbicacionId(1)
+    const defaultDep = depositosVenta.find(d => d.nombre === sucursalActiva?.nombre) ?? depositosVenta[0]
+    setNvDepositoId(defaultDep?.id ?? 0)
+    const defaultUbic = ubicacionesVenta.find(u => u.deposito_id === defaultDep?.id && u.nombre === "Stock")
+    setNvUbicacionId(defaultUbic?.id ?? 0)
     setEditingNVId(null)
     setSelectedNV(newNV)
   }
@@ -4141,7 +4154,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   Continuar
                 </button>
                 <button
-                  onClick={() => { setCreandoNV(false); setNvLineas([]); setNvClienteId(null); setNvDepositoId(1); setNvUbicacionId(1); setEditingNVId(null); setNvPrevisualizando(false) }}
+                  onClick={() => {
+  setCreandoNV(false); setNvLineas([]); setNvClienteId(null)
+  const cancelDep = depositosVenta.find(d => d.nombre === sucursalActiva?.nombre) ?? depositosVenta[0]
+  setNvDepositoId(cancelDep?.id ?? 0)
+  const cancelUbic = ubicacionesVenta.find(u => u.deposito_id === cancelDep?.id && u.nombre === "Stock")
+  setNvUbicacionId(cancelUbic?.id ?? 0)
+  setEditingNVId(null); setNvPrevisualizando(false)
+}}
                   className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-200 transition-colors"
                 >
                   Cancelar
@@ -4205,8 +4225,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     series_disponibles: [],
                     series_seleccionadas: l.series || []
                   })))
-                  setNvDepositoId(1)
-                  setNvUbicacionId(1)
+                  const editDep = depositosVenta.find(d => d.nombre === (selectedNV.deposito || sucursalActiva?.nombre)) ?? depositosVenta.find(d => d.nombre === sucursalActiva?.nombre) ?? depositosVenta[0]
+                  setNvDepositoId(editDep?.id ?? 0)
+                  const editUbic = ubicacionesVenta.find(u => u.deposito_id === editDep?.id && u.nombre === "Stock")
+                  setNvUbicacionId(editUbic?.id ?? 0)
                   setEditingNVId(selectedNV.id)
                   setCreandoNV(true)
                   setSelectedNV(null)
