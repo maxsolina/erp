@@ -45,7 +45,18 @@ export async function GET(req: Request) {
     ;(clientes ?? []).forEach((c: any) => { clientesMap[c.id] = c })
   }
 
-  // 4. Combinar líneas
+  // 4. Enriquecer con nombre de sucursal/depósito
+  const sucursalIds = [...new Set(nvs.map((n: any) => n.sucursal_id).filter(Boolean))]
+  let sucursalesMap: Record<number, any> = {}
+  if (sucursalIds.length > 0) {
+    const { data: sucursales } = await supabase
+      .from("sucursales")
+      .select("id, nombre")
+      .in("id", sucursalIds)
+    ;(sucursales ?? []).forEach((s: any) => { sucursalesMap[s.id] = s })
+  }
+
+  // 5. Combinar líneas
   const lineasPorNV: Record<number, any[]> = {}
   ;(lineas ?? []).forEach((l: any) => {
     if (!lineasPorNV[l.nota_venta_id]) lineasPorNV[l.nota_venta_id] = []
@@ -56,6 +67,7 @@ export async function GET(req: Request) {
     ...nv,
     cliente_nombre: clientesMap[nv.cliente_id]?.nombre ?? nv.cliente_nombre ?? "",
     cliente_codigo: clientesMap[nv.cliente_id]?.codigo ?? "",
+    deposito: sucursalesMap[nv.sucursal_id]?.nombre ?? nv.deposito ?? "",
     notas_venta_lineas: lineasPorNV[nv.id] ?? [],
   }))
 

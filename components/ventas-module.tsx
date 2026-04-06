@@ -11299,7 +11299,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   moneda,
                   estado: tipoVenta === "inmediata" ? "facturada" : "abierta",
                   sucursal_id: nvDepositoId || null,
-                  deposito_nombre: deposito,
                   subtotal: isNaN(subtotal) ? 0 : subtotal,
                   impuestos: isNaN(impuestos) ? 0 : impuestos,
                   total: isNaN(total) ? 0 : total,
