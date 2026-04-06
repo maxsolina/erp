@@ -4253,8 +4253,8 @@ export default function ModuloCompras() {
               <tr className="text-xs text-gray-500 uppercase tracking-wider">
                 <th className="text-left py-3 px-4">N° Recepción</th>
                 <th className="text-left py-3 px-4">Fecha</th>
-                <th className="text-left py-3 px-4">Proveedor / Origen</th>
-                <th className="text-left py-3 px-4">Sucursal / Depósito</th>
+                <th className="text-left py-3 px-4">Proveedor</th>
+                <th className="text-left py-3 px-4">Depósito / Ubicación</th>
                 <th className="text-left py-3 px-4">Doc. Origen</th>
                 <th className="text-center py-3 px-4">Productos</th>
                 <th className="text-center py-3 px-4">Estado</th>
