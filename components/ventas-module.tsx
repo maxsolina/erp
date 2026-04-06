@@ -1284,6 +1284,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     nota_credito_numero?: string
     evaluacion: {componente: string; estado: string; descuento: number}[]
   }[]>([])
+
+  // Cargar tomas de equipo desde Supabase al montar
+  useEffect(() => {
+    fetch("/api/tomas-equipo")
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) setTomasEquipo(data)
+      })
+      .catch(console.error)
+  }, [])
   const [selectedToma, setSelectedToma] = useState<typeof tomasEquipo[0] | null>(null)
   const [ncDetallePopup, setNcDetallePopup] = useState<AjusteCliente | null>(null)
   const [selectedAjuste, setSelectedAjuste] = useState<AjusteCliente | null>(null)
@@ -5191,18 +5201,58 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       setTomaEquipoCreando(false)
     }
 
-    const handleConfirmar = () => {
+    const handleConfirmar = async () => {
       if (!clienteSeleccionado || !modeloSeleccionado) return
 
       const ahora = new Date().toISOString()
-      const nuevoId = tomasEquipo.length + 1
       const precioFinal = tomaEquipoPrecioFinal || precioSugerido
-      const recepcionNumero = `REC-TE-${String(nuevoId).padStart(5, '0')}`
-      const notaCreditoNumero = `NC-A-${String(45 + nuevoId).padStart(5, '0')}`
+
+      // ── Persistir en Supabase (genera número, NC y recepción en el servidor) ──
+      let tomaId: number | null = null
+      let numero = ""
+      let recepcionNumero = ""
+      let notaCreditoNumero = ""
+      try {
+        const res = await fetch("/api/tomas-equipo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cliente_id: clienteSeleccionado.id,
+            cliente_nombre: clienteSeleccionado.nombre,
+            modelo_equipo: modeloSeleccionado.nombre,
+            precio_base: tomaEquipoPrecioBase,
+            descuentos: totalDescuentos,
+            precio_final: precioFinal,
+            sucursal_id: sucursalActiva?.id ?? null,
+            evaluacion: tomaEquipoComponentes.map(c => ({
+              componente: c.nombre,
+              estado: c.estado,
+              descuento: c.descuento,
+            })),
+          }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          tomaId = data.id
+          numero = data.numero
+          recepcionNumero = data.recepcion_numero
+          notaCreditoNumero = data.nota_credito_numero
+        }
+      } catch (err) {
+        console.error("[tomas-equipo] error al persistir:", err)
+      }
+
+      // Fallback local si la API falla
+      if (!numero) {
+        const seq = tomasEquipo.length + 1
+        numero = `TE-${String(seq).padStart(5, "0")}`
+        recepcionNumero = `REC-TE-${String(seq).padStart(5, "0")}`
+        notaCreditoNumero = `NC-A-${String(seq).padStart(5, "0")}`
+      }
 
       const nuevaToma = {
-        id: nuevoId,
-        numero: `TE-${String(nuevoId).padStart(5, '0')}`,
+        id: tomaId ?? Date.now(),
+        numero,
         fecha: ahora,
         cliente_id: clienteSeleccionado.id,
         cliente_nombre: clienteSeleccionado.nombre,
@@ -5217,13 +5267,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         evaluacion: tomaEquipoComponentes.map(c => ({
           componente: c.nombre,
           estado: c.estado,
-          descuento: c.descuento
-        }))
+          descuento: c.descuento,
+        })),
       }
 
-      // 1. Crear Nota de Crédito como Ajuste de Cliente (crédito en cuenta corriente)
+      // Nota de crédito en el state local de ajustes
       const nuevaNC: AjusteCliente = {
-        id: ajustes.length + nuevoId,
+        id: Date.now(),
         numero: notaCreditoNumero,
         cliente_id: clienteSeleccionado.id,
         cliente_nombre: clienteSeleccionado.nombre,
@@ -5232,24 +5282,23 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         concepto: `Nota de Crédito — Toma de equipo: ${modeloSeleccionado.nombre}`,
         moneda: "ARS",
         nota_venta_numero: null,
-        sucursal: "Puerto Norte",
-              categoria: "Equipos en parte de pago",
+        sucursal: sucursalActiva?.nombre ?? "",
+        categoria: "Equipos en parte de pago",
         lineas: [{
           descripcion: `Toma de equipo usado: ${modeloSeleccionado.nombre}`,
           fecha_vencimiento: ahora,
-          importe: precioFinal
+          importe: precioFinal,
         }],
-        total: precioFinal
+        total: precioFinal,
       }
       setAjustes(prev => [...prev, nuevaNC])
 
-      // 2. Registrar movimiento de crédito en cuenta corriente del cliente
+      // Movimiento de cuenta corriente del cliente
       const saldoActual = movimientosCC
         .filter(m => m.cliente_id === clienteSeleccionado.id)
         .reduce((s, m) => m.tipo === "debito" ? s + m.importe : s - m.importe, 0)
-
       const nuevoMovimiento: MovimientoCuentaCorriente = {
-        id: movimientosCC.length + nuevoId,
+        id: Date.now() + 1,
         cliente_id: clienteSeleccionado.id,
         fecha: ahora,
         tipo: "credito",
@@ -5259,43 +5308,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         documento_id: nuevaNC.id,
         moneda: "ARS",
         importe: precioFinal,
-        saldo_posterior: Math.max(0, saldoActual - precioFinal)
+        saldo_posterior: Math.max(0, saldoActual - precioFinal),
       }
       setMovimientosCC(prev => [...prev, nuevoMovimiento])
 
-      // 3. Actualizar saldo del cliente
+      // Actualizar saldo del cliente
       setClientes(prev => prev.map(c =>
         c.id === clienteSeleccionado.id
           ? { ...c, saldo_cuenta_corriente: Math.max(0, (c.saldo_cuenta_corriente || 0) - precioFinal) }
           : c
       ))
-
-      // 4. Crear Recepción de Compra en estado borrador (en localStorage para que Compras la levante)
-      const nuevaRecepcion = {
-        id: Date.now(),
-        numero: recepcionNumero,
-        fecha: ahora,
-        proveedor_id: 0,
-        proveedor_nombre: `${clienteSeleccionado.nombre} (toma de equipo)`,
-        orden_compra_id: 0,
-        orden_compra_numero: nuevaToma.numero,
-        estado: "borrador",
-        tipo: "total",
-        observaciones: `Equipo tomado en parte de pago. NC generada: ${notaCreditoNumero}. Valor acordado: $${precioFinal.toLocaleString('es-AR')}. Evaluación: ${tomaEquipoComponentes.map(c => `${c.nombre}=${c.estado}`).join(', ')}`,
-        lineas: [{
-          producto_id: 0,
-          producto_nombre: modeloSeleccionado.nombre,
-          cantidad_ordenada: 1,
-          cantidad_recibida: 0,
-          cantidad_esta_recepcion: 1,
-          precio_unitario: precioFinal
-        }]
-      }
-
-      // Guardar en localStorage para que ModuloCompras la levante
-      const recepcionesPendientes = JSON.parse(localStorage.getItem('recepciones_pendientes_toma') || '[]')
-      recepcionesPendientes.push(nuevaRecepcion)
-      localStorage.setItem('recepciones_pendientes_toma', JSON.stringify(recepcionesPendientes))
 
       setTomasEquipo(prev => [...prev, nuevaToma])
       resetForm()
