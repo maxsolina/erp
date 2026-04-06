@@ -3955,7 +3955,7 @@ export default function ModuloCompras() {
     let recGuardada: any
     try {
       recGuardada = await guardarRecepcion({
-        estado: "confirmada",
+        estado: todasRecibidasFinal ? "recibida" : "recibida_parcial",
         fecha_recepcion_real: ahora,
         sucursal: rec.sucursal ?? "",
         deposito_destino: rec.deposito_destino ?? "",
