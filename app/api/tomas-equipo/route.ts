@@ -87,7 +87,7 @@ export async function POST(req: Request) {
       toma_equipo_numero: numero,
       cliente_id,
       cliente_nombre,
-      estado: "recibido",
+      estado: "pendiente",  // se confirma cuando el equipo llega físicamente con su nro de serie
       observaciones: `Equipo: ${modelo_equipo}. Valor acordado: $${precio_final.toLocaleString("es-AR")}`,
       sucursal_id: sucursal_id ?? null,
     })
