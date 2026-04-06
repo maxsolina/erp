@@ -15,7 +15,13 @@ export async function GET() {
     .select("*")
     .order("created_at", { ascending: false })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data ?? [])
+  // Garantizar que productos y seguimiento siempre sean arrays
+  const mapped = (data ?? []).map((oe: any) => ({
+    ...oe,
+    productos: Array.isArray(oe.productos) ? oe.productos : [],
+    seguimiento: Array.isArray(oe.seguimiento) ? oe.seguimiento : [],
+  }))
+  return NextResponse.json(mapped)
 }
 
 export async function POST(req: Request) {

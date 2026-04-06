@@ -3495,6 +3495,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       // 1. Orden de Entrega
       let oeNumero = ""
       try {
+        const productosOE = lineasValidas.map(l => ({
+          producto_id: l.producto_id,
+          producto_nombre: l.producto_nombre,
+          cantidad: l.cantidad,
+          reserva: l.cantidad,
+          estado: "confirmado" as const,
+        }))
         const oeRes = await fetch("/api/ordenes-entrega", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -3508,11 +3515,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             deposito: deposito,
             sucursal_id: nvDepositoId || null,
             fecha: fechaHoy,
-            lineas: lineasValidas.map(l => ({
-              producto_id: l.producto_id,
-              producto_nombre: l.producto_nombre,
-              cantidad: l.cantidad,
-            })),
+            total_productos: lineasValidas.length,
+            productos: productosOE,
           }),
         })
         if (oeRes.ok) {
@@ -3527,14 +3531,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             cliente_nombre: cliente.nombre,
             estado: "confirmada",
             deposito: deposito,
-            fecha: fechaHoy,
-            lineas: lineasValidas.map(l => ({
-              id: l.id,
-              producto_id: l.producto_id,
-              producto_nombre: l.producto_nombre,
-              cantidad: l.cantidad,
-              cantidad_entregada: 0,
-            })),
+            fecha_creacion: fechaHoy,
+            fecha_entrega: fechaHoy,
+            domicilio_envio: "",
+            sucursal: deposito,
+            remito_numero: null,
+            productos: productosOE,
+            seguimiento: [],
           }
           setOrdenesEntrega(prev => [...prev, newOE])
         }
