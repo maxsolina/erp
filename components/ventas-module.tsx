@@ -11339,17 +11339,21 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   })),
                 }),
               })
+              console.log("[v0] nvRes.status:", nvRes.status, "nvRes.ok:", nvRes.ok)
               if (nvRes.ok) {
                 const nvData = await nvRes.json()
+                console.log("[v0] nvData:", JSON.stringify(nvData))
                 nvNumero = nvData.numero || nvNumeroTemp
                 nvId = nvData.id || nvIdTemp
                 newNV.numero = nvNumero
                 newNV.id = nvId
                 nvPersistida = true
               }
-            } catch (_) {
-              // Error de red — la NV sigue en el state local
+            } catch (err) {
+              console.log("[v0] fetch NV error:", err)
             }
+
+            console.log("[v0] POST-TRY tipoVenta:", tipoVenta, "editingItem:", !!editingItem, "nvPersistida:", nvPersistida)
 
             if (editingItem) {
               setNotasVenta(prev => prev.map(nv => nv.id === editingItem.id ? newNV : nv))
