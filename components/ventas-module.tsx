@@ -1305,6 +1305,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       .catch(console.error)
   }, [])
   const [selectedToma, setSelectedToma] = useState<typeof tomasEquipo[0] | null>(null)
+  const [showConfirmarRecepcionModal, setShowConfirmarRecepcionModal] = useState(false)
+  const [imeiInput, setImeiInput] = useState("")
+  const [observacionesRecepcion, setObservacionesRecepcion] = useState("")
+  const [confirmandoRecepcion, setConfirmandoRecepcion] = useState(false)
   const [ncDetallePopup, setNcDetallePopup] = useState<AjusteCliente | null>(null)
   const [selectedAjuste, setSelectedAjuste] = useState<AjusteCliente | null>(null)
   
@@ -5167,10 +5171,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <p className="text-xs text-amber-600 mb-3">El equipo aun no fue recibido fisicamente. Confirma la recepcion una vez que el equipo ingrese al deposito.</p>
                     <button
                       onClick={() => {
-                        setTomasEquipo(prev => prev.map(t =>
-                          t.id === selectedToma.id ? { ...t, estado_recepcion: 'recibido' as const } : t
-                        ))
-                        setSelectedToma(prev => prev ? { ...prev, estado_recepcion: 'recibido' as const } : prev)
+                        setImeiInput("")
+                        setObservacionesRecepcion("")
+                        setShowConfirmarRecepcionModal(true)
                       }}
                       className="w-full py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700"
                     >
@@ -12348,6 +12351,107 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       {showModal && modalType === "recibo" && renderReciboModal()}
       {showModal && modalType === "ajuste" && renderAjusteModal()}
       
+      {/* Modal confirmación de recepción de toma de equipo */}
+      {showConfirmarRecepcionModal && selectedToma && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Confirmar Recepción de Equipo</h3>
+                <p className="text-sm text-gray-500">{selectedToma.recepcion_numero} · {selectedToma.modelo_equipo}</p>
+              </div>
+              <button onClick={() => setShowConfirmarRecepcionModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              {/* Info de la toma */}
+              <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Cliente</span>
+                  <span className="font-medium">{selectedToma.cliente_nombre}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Equipo</span>
+                  <span className="font-medium">{selectedToma.modelo_equipo}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Valor acordado</span>
+                  <span className="font-medium text-emerald-600">{formatCurrency(selectedToma.precio_final)}</span>
+                </div>
+              </div>
+
+              {/* IMEI */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  IMEI / Número de Serie <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={imeiInput}
+                  onChange={e => setImeiInput(e.target.value)}
+                  placeholder="Ej: 356938035643809"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Observaciones */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
+                <textarea
+                  value={observacionesRecepcion}
+                  onChange={e => setObservacionesRecepcion(e.target.value)}
+                  rows={2}
+                  placeholder="Estado físico del equipo, accesorios incluidos, etc."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
+              <button
+                onClick={() => setShowConfirmarRecepcionModal(false)}
+                className="flex-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                disabled={!imeiInput.trim() || confirmandoRecepcion}
+                onClick={async () => {
+                  if (!imeiInput.trim() || !selectedToma) return
+                  setConfirmandoRecepcion(true)
+                  try {
+                    const res = await fetch(`/api/recepciones-toma/${selectedToma.id}/confirmar`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        imei: imeiInput.trim(),
+                        observaciones: observacionesRecepcion.trim(),
+                      }),
+                    })
+                    if (res.ok) {
+                      setTomasEquipo(prev => prev.map(t =>
+                        t.id === selectedToma.id ? { ...t, estado_recepcion: "recibido" as const } : t
+                      ))
+                      setSelectedToma(prev => prev ? { ...prev, estado_recepcion: "recibido" as const } : prev)
+                      setShowConfirmarRecepcionModal(false)
+                    }
+                  } catch (err) {
+                    console.error("[recepcion-toma] error al confirmar:", err)
+                  } finally {
+                    setConfirmandoRecepcion(false)
+                  }
+                }}
+                className="flex-1 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {confirmandoRecepcion ? "Confirmando..." : "Confirmar recepción"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de selección de Series/IMEI */}
       {showSerieModal && serieModalLineaIndex !== null && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
