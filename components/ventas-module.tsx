@@ -1284,7 +1284,31 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     nota_credito_numero?: string
     evaluacion: {componente: string; estado: string; descuento: number}[]
   }[]>([])
+
+  // Cargar tomas de equipo desde Supabase al montar
+  useEffect(() => {
+    fetch("/api/tomas-equipo")
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) setTomasEquipo(data)
+      })
+      .catch(console.error)
+  }, [])
+
+  // Cargar ajustes (NC/ND) desde Supabase al montar
+  useEffect(() => {
+    fetch("/api/ajustes-clientes")
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) setAjustes(data)
+      })
+      .catch(console.error)
+  }, [])
   const [selectedToma, setSelectedToma] = useState<typeof tomasEquipo[0] | null>(null)
+  const [showConfirmarRecepcionModal, setShowConfirmarRecepcionModal] = useState(false)
+  const [imeiInput, setImeiInput] = useState("")
+  const [observacionesRecepcion, setObservacionesRecepcion] = useState("")
+  const [confirmandoRecepcion, setConfirmandoRecepcion] = useState(false)
   const [ncDetallePopup, setNcDetallePopup] = useState<AjusteCliente | null>(null)
   const [selectedAjuste, setSelectedAjuste] = useState<AjusteCliente | null>(null)
   
@@ -3495,6 +3519,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       // 1. Orden de Entrega
       let oeNumero = ""
       try {
+        const productosOE = lineasValidas.map(l => ({
+          producto_id: l.producto_id,
+          producto_nombre: l.producto_nombre,
+          cantidad: l.cantidad,
+          reserva: l.cantidad,
+          estado: "confirmado" as const,
+        }))
         const oeRes = await fetch("/api/ordenes-entrega", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -3508,11 +3539,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             deposito: deposito,
             sucursal_id: nvDepositoId || null,
             fecha: fechaHoy,
-            lineas: lineasValidas.map(l => ({
-              producto_id: l.producto_id,
-              producto_nombre: l.producto_nombre,
-              cantidad: l.cantidad,
-            })),
+            total_productos: lineasValidas.length,
+            productos: productosOE,
           }),
         })
         if (oeRes.ok) {
@@ -3527,14 +3555,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             cliente_nombre: cliente.nombre,
             estado: "confirmada",
             deposito: deposito,
-            fecha: fechaHoy,
-            lineas: lineasValidas.map(l => ({
-              id: l.id,
-              producto_id: l.producto_id,
-              producto_nombre: l.producto_nombre,
-              cantidad: l.cantidad,
-              cantidad_entregada: 0,
-            })),
+            fecha_creacion: fechaHoy,
+            fecha_entrega: fechaHoy,
+            domicilio_envio: "",
+            sucursal: deposito,
+            remito_numero: null,
+            productos: productosOE,
+            seguimiento: [],
           }
           setOrdenesEntrega(prev => [...prev, newOE])
         }
@@ -3587,6 +3614,31 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             })),
           }
           setRemitos(prev => [...prev, newRemito])
+
+          // ── Descontar stock inmediatamente al confirmar el remito ──
+          try {
+            await fetch(`/api/remitos/${remData.id}/confirmar`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                remito_numero: remData.numero,
+                nv_numero: nvNumeroFinal,
+                oe_numero: oeNumero,
+                deposito_id: nvDepositoId || null,
+                deposito_nombre: deposito,
+                ubicacion_id: nvUbicacionId || null,
+                ubicacion_nombre: ubicacionesVenta.find(u => u.id === nvUbicacionId)?.nombre ?? null,
+                usuario: "sistema",
+                lineas: lineasValidas.map(l => ({
+                  producto_id: l.producto_id,
+                  producto_nombre: l.producto_nombre,
+                  cantidad: l.cantidad,
+                  requiere_serie: l.requiere_serie ?? false,
+                  series_seleccionadas: l.series_seleccionadas ?? [],
+                })),
+              }),
+            })
+          } catch (_) {}
         }
       } catch (_) {}
     }
@@ -5101,7 +5153,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </h3>
             {selectedToma.recepcion_numero ? (
               <div className="space-y-3 text-sm">
-                <div className="flex justify-between"><span className="text-gray-500">Número</span><span className="font-medium text-blue-700">{selectedToma.recepcion_numero}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">N��mero</span><span className="font-medium text-blue-700">{selectedToma.recepcion_numero}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Equipo</span><span className="font-medium">{selectedToma.modelo_equipo}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Valor acordado</span><span className="font-medium">{formatCurrency(selectedToma.precio_final)}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Estado</span>
@@ -5119,10 +5171,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <p className="text-xs text-amber-600 mb-3">El equipo aun no fue recibido fisicamente. Confirma la recepcion una vez que el equipo ingrese al deposito.</p>
                     <button
                       onClick={() => {
-                        setTomasEquipo(prev => prev.map(t =>
-                          t.id === selectedToma.id ? { ...t, estado_recepcion: 'recibido' as const } : t
-                        ))
-                        setSelectedToma(prev => prev ? { ...prev, estado_recepcion: 'recibido' as const } : prev)
+                        setImeiInput("")
+                        setObservacionesRecepcion("")
+                        setShowConfirmarRecepcionModal(true)
                       }}
                       className="w-full py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700"
                     >
@@ -5163,18 +5214,58 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       setTomaEquipoCreando(false)
     }
 
-    const handleConfirmar = () => {
+    const handleConfirmar = async () => {
       if (!clienteSeleccionado || !modeloSeleccionado) return
 
       const ahora = new Date().toISOString()
-      const nuevoId = tomasEquipo.length + 1
       const precioFinal = tomaEquipoPrecioFinal || precioSugerido
-      const recepcionNumero = `REC-TE-${String(nuevoId).padStart(5, '0')}`
-      const notaCreditoNumero = `NC-A-${String(45 + nuevoId).padStart(5, '0')}`
+
+      // ── Persistir en Supabase (genera número, NC y recepción en el servidor) ──
+      let tomaId: number | null = null
+      let numero = ""
+      let recepcionNumero = ""
+      let notaCreditoNumero = ""
+      try {
+        const res = await fetch("/api/tomas-equipo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cliente_id: clienteSeleccionado.id,
+            cliente_nombre: clienteSeleccionado.nombre,
+            modelo_equipo: modeloSeleccionado.nombre,
+            precio_base: tomaEquipoPrecioBase,
+            descuentos: totalDescuentos,
+            precio_final: precioFinal,
+            sucursal_id: sucursalActiva?.id ?? null,
+            evaluacion: tomaEquipoComponentes.map(c => ({
+              componente: c.nombre,
+              estado: c.estado,
+              descuento: c.descuento,
+            })),
+          }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          tomaId = data.id
+          numero = data.numero
+          recepcionNumero = data.recepcion_numero
+          notaCreditoNumero = data.nota_credito_numero
+        }
+      } catch (err) {
+        console.error("[tomas-equipo] error al persistir:", err)
+      }
+
+      // Fallback local si la API falla
+      if (!numero) {
+        const seq = tomasEquipo.length + 1
+        numero = `TE-${String(seq).padStart(5, "0")}`
+        recepcionNumero = `REC-TE-${String(seq).padStart(5, "0")}`
+        notaCreditoNumero = `NC-A-${String(seq).padStart(5, "0")}`
+      }
 
       const nuevaToma = {
-        id: nuevoId,
-        numero: `TE-${String(nuevoId).padStart(5, '0')}`,
+        id: tomaId ?? Date.now(),
+        numero,
         fecha: ahora,
         cliente_id: clienteSeleccionado.id,
         cliente_nombre: clienteSeleccionado.nombre,
@@ -5189,13 +5280,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         evaluacion: tomaEquipoComponentes.map(c => ({
           componente: c.nombre,
           estado: c.estado,
-          descuento: c.descuento
-        }))
+          descuento: c.descuento,
+        })),
       }
 
-      // 1. Crear Nota de Crédito como Ajuste de Cliente (crédito en cuenta corriente)
+      // Nota de crédito en el state local de ajustes
       const nuevaNC: AjusteCliente = {
-        id: ajustes.length + nuevoId,
+        id: Date.now(),
         numero: notaCreditoNumero,
         cliente_id: clienteSeleccionado.id,
         cliente_nombre: clienteSeleccionado.nombre,
@@ -5204,24 +5295,23 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         concepto: `Nota de Crédito — Toma de equipo: ${modeloSeleccionado.nombre}`,
         moneda: "ARS",
         nota_venta_numero: null,
-        sucursal: "Puerto Norte",
-              categoria: "Equipos en parte de pago",
+        sucursal: sucursalActiva?.nombre ?? "",
+        categoria: "Equipos en parte de pago",
         lineas: [{
           descripcion: `Toma de equipo usado: ${modeloSeleccionado.nombre}`,
           fecha_vencimiento: ahora,
-          importe: precioFinal
+          importe: precioFinal,
         }],
-        total: precioFinal
+        total: precioFinal,
       }
       setAjustes(prev => [...prev, nuevaNC])
 
-      // 2. Registrar movimiento de crédito en cuenta corriente del cliente
+      // Movimiento de cuenta corriente del cliente
       const saldoActual = movimientosCC
         .filter(m => m.cliente_id === clienteSeleccionado.id)
         .reduce((s, m) => m.tipo === "debito" ? s + m.importe : s - m.importe, 0)
-
       const nuevoMovimiento: MovimientoCuentaCorriente = {
-        id: movimientosCC.length + nuevoId,
+        id: Date.now() + 1,
         cliente_id: clienteSeleccionado.id,
         fecha: ahora,
         tipo: "credito",
@@ -5231,46 +5321,21 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         documento_id: nuevaNC.id,
         moneda: "ARS",
         importe: precioFinal,
-        saldo_posterior: Math.max(0, saldoActual - precioFinal)
+        saldo_posterior: Math.max(0, saldoActual - precioFinal),
       }
       setMovimientosCC(prev => [...prev, nuevoMovimiento])
 
-      // 3. Actualizar saldo del cliente
+      // Actualizar saldo del cliente
       setClientes(prev => prev.map(c =>
         c.id === clienteSeleccionado.id
           ? { ...c, saldo_cuenta_corriente: Math.max(0, (c.saldo_cuenta_corriente || 0) - precioFinal) }
           : c
       ))
 
-      // 4. Crear Recepción de Compra en estado borrador (en localStorage para que Compras la levante)
-      const nuevaRecepcion = {
-        id: Date.now(),
-        numero: recepcionNumero,
-        fecha: ahora,
-        proveedor_id: 0,
-        proveedor_nombre: `${clienteSeleccionado.nombre} (toma de equipo)`,
-        orden_compra_id: 0,
-        orden_compra_numero: nuevaToma.numero,
-        estado: "borrador",
-        tipo: "total",
-        observaciones: `Equipo tomado en parte de pago. NC generada: ${notaCreditoNumero}. Valor acordado: $${precioFinal.toLocaleString('es-AR')}. Evaluación: ${tomaEquipoComponentes.map(c => `${c.nombre}=${c.estado}`).join(', ')}`,
-        lineas: [{
-          producto_id: 0,
-          producto_nombre: modeloSeleccionado.nombre,
-          cantidad_ordenada: 1,
-          cantidad_recibida: 0,
-          cantidad_esta_recepcion: 1,
-          precio_unitario: precioFinal
-        }]
-      }
-
-      // Guardar en localStorage para que ModuloCompras la levante
-      const recepcionesPendientes = JSON.parse(localStorage.getItem('recepciones_pendientes_toma') || '[]')
-      recepcionesPendientes.push(nuevaRecepcion)
-      localStorage.setItem('recepciones_pendientes_toma', JSON.stringify(recepcionesPendientes))
-
       setTomasEquipo(prev => [...prev, nuevaToma])
+      // Abrir la ficha de la toma recién creada en lugar de volver al listado
       resetForm()
+      setSelectedToma(nuevaToma)
     }
 
     return (
@@ -12093,7 +12158,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <X className="w-5 h-5" />
             </button>
           </div>
-          <form onSubmit={(e) => {
+          <form onSubmit={async (e) => {
             e.preventDefault()
             const formData = new FormData(e.currentTarget)
             const cliente = clientes.find(c => c.id === ajusteClienteId)
@@ -12101,20 +12166,42 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               alert("Debe seleccionar un cliente y agregar al menos una línea")
               return
             }
-            const newAjuste: AjusteCliente = {
-              id: ajustes.length + 1,
-              numero: `AJ X 10000-000001${24 + ajustes.length}`,
+            const tipo = (formData.get("tipo") as string) || "nota_credito"
+            const payload = {
               cliente_id: cliente.id,
               cliente_nombre: cliente.nombre,
-              estado: "borrador",
-              fecha: new Date().toISOString().split('T')[0],
+              tipo,
+              estado: "publicado",
+              fecha: new Date().toISOString(),
               concepto: formData.get("concepto") as string,
-              moneda: formData.get("moneda") as "ARS" | "USD",
+              moneda: formData.get("moneda") as string,
               nota_venta_numero: null,
-              sucursal: "Puerto Norte",
+              sucursal: sucursalActiva?.nombre ?? "",
               categoria: (formData.get("categoria") as string) || null,
               lineas: ajusteLineas,
-              total: totalAjuste
+              total: totalAjuste,
+            }
+            let idFinal = Date.now()
+            let numeroFinal = `${tipo === "nota_debito" ? "ND" : "NC"}-A-LOCAL`
+            try {
+              const res = await fetch("/api/ajustes-clientes", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              })
+              if (res.ok) {
+                const data = await res.json()
+                idFinal = data.id
+                numeroFinal = data.numero
+              }
+            } catch (err) {
+              console.error("[ajustes] error al persistir:", err)
+            }
+            const newAjuste: AjusteCliente = {
+              id: idFinal,
+              numero: numeroFinal,
+              ...payload,
+              moneda: payload.moneda as "ARS" | "USD",
             }
             setAjustes(prev => [...prev, newAjuste])
             setShowModal(false)
@@ -12264,6 +12351,107 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       {showModal && modalType === "recibo" && renderReciboModal()}
       {showModal && modalType === "ajuste" && renderAjusteModal()}
       
+      {/* Modal confirmación de recepción de toma de equipo */}
+      {showConfirmarRecepcionModal && selectedToma && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Confirmar Recepción de Equipo</h3>
+                <p className="text-sm text-gray-500">{selectedToma.recepcion_numero} · {selectedToma.modelo_equipo}</p>
+              </div>
+              <button onClick={() => setShowConfirmarRecepcionModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              {/* Info de la toma */}
+              <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Cliente</span>
+                  <span className="font-medium">{selectedToma.cliente_nombre}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Equipo</span>
+                  <span className="font-medium">{selectedToma.modelo_equipo}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Valor acordado</span>
+                  <span className="font-medium text-emerald-600">{formatCurrency(selectedToma.precio_final)}</span>
+                </div>
+              </div>
+
+              {/* IMEI */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  IMEI / Número de Serie <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={imeiInput}
+                  onChange={e => setImeiInput(e.target.value)}
+                  placeholder="Ej: 356938035643809"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Observaciones */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
+                <textarea
+                  value={observacionesRecepcion}
+                  onChange={e => setObservacionesRecepcion(e.target.value)}
+                  rows={2}
+                  placeholder="Estado físico del equipo, accesorios incluidos, etc."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
+              <button
+                onClick={() => setShowConfirmarRecepcionModal(false)}
+                className="flex-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                disabled={!imeiInput.trim() || confirmandoRecepcion}
+                onClick={async () => {
+                  if (!imeiInput.trim() || !selectedToma) return
+                  setConfirmandoRecepcion(true)
+                  try {
+                    const res = await fetch(`/api/recepciones-toma/${selectedToma.id}/confirmar`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        imei: imeiInput.trim(),
+                        observaciones: observacionesRecepcion.trim(),
+                      }),
+                    })
+                    if (res.ok) {
+                      setTomasEquipo(prev => prev.map(t =>
+                        t.id === selectedToma.id ? { ...t, estado_recepcion: "recibido" as const } : t
+                      ))
+                      setSelectedToma(prev => prev ? { ...prev, estado_recepcion: "recibido" as const } : prev)
+                      setShowConfirmarRecepcionModal(false)
+                    }
+                  } catch (err) {
+                    console.error("[recepcion-toma] error al confirmar:", err)
+                  } finally {
+                    setConfirmandoRecepcion(false)
+                  }
+                }}
+                className="flex-1 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {confirmandoRecepcion ? "Confirmando..." : "Confirmar recepción"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de selección de Series/IMEI */}
       {showSerieModal && serieModalLineaIndex !== null && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

@@ -225,6 +225,12 @@ export async function POST(
     }
   }
 
+  // ── 4. Actualizar estado del remito a "entregado" ──────────────────────────
+  await supabase
+    .from("remitos")
+    .update({ estado: "entregado", updated_at: new Date().toISOString() })
+    .eq("id", remitoId)
+
   if (errores.length > 0) {
     return NextResponse.json({ ok: false, errores, movimientos_registrados: movimientos.length }, { status: 207 })
   }

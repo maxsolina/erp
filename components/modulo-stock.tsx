@@ -2401,6 +2401,8 @@ export default function ModuloStock() {
   const renderLotesStock = () => {
     // Aplicar filtros
     let lotesFiltrados = lotesSeries.filter(lote => {
+      // IMEI en Stock = solo unidades disponibles (en existencia)
+      if (lote.estado !== "disponible") return false
       // Filtro de búsqueda
       if (lotesSearchTerm) {
         const search = lotesSearchTerm.toLowerCase()

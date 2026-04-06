@@ -315,7 +315,7 @@ interface Recepcion {
   remito_numero?: string
   remito_fecha?: string
   observaciones?: string
-  estado: "esperando_recepcion" | "recibida" | "cancelada"
+  estado: "esperando_recepcion" | "recibida" | "recibida_parcial" | "cancelada"
   recepcion_anterior_id?: number
   recepcion_complementaria_id?: number
   lineas: RecepcionLinea[]
@@ -816,7 +816,7 @@ export default function ModuloCompras() {
   const [selectedRecepcion, setSelectedRecepcion] = useState<Recepcion | null>(null)
   const [creandoRecepcion, setCreandoRecepcion] = useState(false)
   // UI state recepciones
-  const [recepcionFiltroEstado, setRecepcionFiltroEstado] = useState<"todos" | "esperando_recepcion" | "recibida" | "cancelada">("todos")
+  const [recepcionFiltroEstado, setRecepcionFiltroEstado] = useState<"todos" | "esperando_recepcion" | "recibida" | "recibida_parcial" | "cancelada">("todos")
   const [recepcionBusqueda, setRecepcionBusqueda] = useState("")
   // Cantidades editadas en la ficha (producto_id → cantidad recibida)
   const [recepcionCantidades, setRecepcionCantidades] = useState<Record<number, number>>({})
@@ -831,17 +831,22 @@ export default function ModuloCompras() {
   // Unidades serie acumuladas durante confirmación (producto_id → lista)
   const [seriesConfirmadas, setSeriesConfirmadas] = useState<Record<number, UnidadSerie[]>>({})
 
-  // Cargar recepciones pendientes generadas desde Toma de Equipo (ventas)
+  // Cargar recepciones generadas desde Toma de Equipo (ventas) — desde Supabase
   useEffect(() => {
-    const pendientes = JSON.parse(localStorage.getItem('recepciones_pendientes_toma') || '[]') as Recepcion[]
-    if (pendientes.length === 0) return
-    setRecepciones(prev => {
-      const idsExistentes = new Set(prev.map(r => r.id))
-      const nuevas = pendientes.filter((r: Recepcion) => !idsExistentes.has(r.id))
-      return nuevas.length > 0 ? [...prev, ...nuevas] : prev
-    })
-    // Limpiar el storage una vez leído
-    localStorage.removeItem('recepciones_pendientes_toma')
+    fetch("/api/recepciones-toma")
+      .then(r => r.json())
+      .then((tomasRecs: Recepcion[]) => {
+        if (!Array.isArray(tomasRecs)) return
+        setRecepciones(prev => {
+          // Evitar duplicados: las recepciones de toma tienen id único de la tabla recepciones_toma
+          // pero pueden colisionar con ids de recepciones de OC (que vienen de otra tabla).
+          // Las identificamos con un prefijo negativo para que no choquen.
+          const idsExistentes = new Set(prev.map(r => `${r.documento_origen_tipo}-${r.id}`))
+          const nuevas = tomasRecs.filter(r => !idsExistentes.has(`toma_equipo-${r.id}`))
+          return nuevas.length > 0 ? [...prev, ...nuevas] : prev
+        })
+      })
+      .catch(console.error)
   }, [])
 
   // Facturas de Compra
@@ -3950,7 +3955,7 @@ export default function ModuloCompras() {
     let recGuardada: any
     try {
       recGuardada = await guardarRecepcion({
-        estado: "confirmada",
+        estado: todasRecibidasFinal ? "recibida" : "recibida_parcial",
         fecha_recepcion_real: ahora,
         sucursal: rec.sucursal ?? "",
         deposito_destino: rec.deposito_destino ?? "",
@@ -4135,14 +4140,16 @@ export default function ModuloCompras() {
     if (selectedRecepcion) return renderFichaRecepcion()
 
     const estadoColor: Record<string, string> = {
-      recibida:             'bg-green-100 text-green-700',
-      esperando_recepcion:  'bg-amber-100 text-amber-700',
-      cancelada:            'bg-red-100 text-red-700',
+      recibida:            'bg-green-100 text-green-700',
+      recibida_parcial:    'bg-green-50 text-green-600',
+      esperando_recepcion: 'bg-amber-100 text-amber-700',
+      cancelada:           'bg-red-100 text-red-700',
     }
     const estadoLabel: Record<string, string> = {
-      recibida:             'Recibida',
-      esperando_recepcion:  'Esperando Recepción',
-      cancelada:            'Cancelada',
+      recibida:            'Recibida',
+      recibida_parcial:    'Recibida parcial',
+      esperando_recepcion: 'Esperando Recepción',
+      cancelada:           'Cancelada',
     }
     const origenLabel: Record<string, string> = {
       oc:           'Orden de Compra',
@@ -4202,8 +4209,9 @@ export default function ModuloCompras() {
             moduleName="recepciones"
             filterOptions={[
               { field: "estado", label: "Estado", values: [
-                { value: "esperando_recepcion", label: "Esperando recepción" },
-                { value: "recibida", label: "Recibida" },
+        { value: "esperando_recepcion", label: "Esperando recepción" },
+        { value: "recibida_parcial", label: "Recibida parcial" },
+        { value: "recibida", label: "Recibida" },
                 { value: "cancelada", label: "Cancelada" },
               ]},
               { field: "origen", label: "Origen", values: [
@@ -4241,8 +4249,9 @@ export default function ModuloCompras() {
               <tr className="text-xs text-gray-500 uppercase tracking-wider">
                 <th className="text-left py-3 px-4">N° Recepción</th>
                 <th className="text-left py-3 px-4">Fecha</th>
-                <th className="text-left py-3 px-4">Proveedor / Origen</th>
-                <th className="text-left py-3 px-4">Sucursal / Depósito</th>
+                <th className="text-left py-3 px-4">Proveedor</th>
+                <th className="text-left py-3 px-4">Origen</th>
+                <th className="text-left py-3 px-4">Depósito / Ubicación</th>
                 <th className="text-left py-3 px-4">Doc. Origen</th>
                 <th className="text-center py-3 px-4">Productos</th>
                 <th className="text-center py-3 px-4">Estado</th>
@@ -4252,7 +4261,7 @@ export default function ModuloCompras() {
             <tbody className="divide-y divide-gray-100">
               {recepcionesFiltradas.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-sm text-gray-400">
+                  <td colSpan={9} className="py-12 text-center text-sm text-gray-400">
                     No se encontraron recepciones
                   </td>
                 </tr>
@@ -4270,14 +4279,23 @@ export default function ModuloCompras() {
                 >
                   <td className="py-3 px-4 font-medium text-emerald-700">{rec.numero}</td>
                   <td className="py-3 px-4 text-sm text-gray-600">{new Date(rec.fecha).toLocaleDateString('es-AR')}</td>
-                  <td className="py-3 px-4 text-sm">
-                    <span className="font-medium">{rec.proveedor_nombre || '-'}</span>
-                    <span className="ml-2 text-xs text-gray-400">{origenLabel[rec.documento_origen_tipo]}</span>
+                  {/* Proveedor: vacío para tomas de equipo ya que el "proveedor" es el cliente */}
+                  <td className="py-3 px-4 text-sm font-medium">
+                    {rec.documento_origen_tipo === 'toma_equipo' ? '-' : (rec.proveedor_nombre || '-')}
                   </td>
+                  {/* Origen */}
+                  <td className="py-3 px-4 text-sm text-gray-500">
+                    {origenLabel[rec.documento_origen_tipo] || rec.documento_origen_tipo}
+                  </td>
+                  {/* Depósito / Ubicación — columna DB: deposito_destino + ubicacion */}
                   <td className="py-3 px-4 text-sm text-gray-600">
-                    <span>{rec.sucursal}</span>
-                    <span className="text-gray-400 mx-1">/</span>
-                    <span>{rec.deposito_destino}</span>
+                    <span>{(rec as any).deposito_destino || '-'}</span>
+                    {(rec as any).ubicacion && (
+                      <>
+                        <span className="text-gray-400 mx-1">/</span>
+                        <span>{(rec as any).ubicacion}</span>
+                      </>
+                    )}
                   </td>
                   <td className="py-3 px-4">
                     <span className="text-sm text-blue-600 font-medium">{rec.documento_origen_ref}</span>
@@ -4320,6 +4338,7 @@ export default function ModuloCompras() {
     const estadoLabel: Record<string, string> = {
       borrador:             'Borrador',
       esperando_recepcion:  'Esperando recepción',
+      recibida_parcial:     'Recibida parcial',
       parcial:              'Parcial',
       confirmada:           'Confirmada',
       recibida:             'Recibida',
