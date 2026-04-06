@@ -1261,6 +1261,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [facturaProductoSearchText, setFacturaProductoSearchText] = useState("")
   
   // Estados para Toma de Equipo en Parte de Pago
+  const [modelosEquipoDB, setModelosEquipoDB] = useState<{id: number; nombre: string; precioBase: number}[]>([])
   const [tomaEquipoPaso, setTomaEquipoPaso] = useState(1)
   const [tomaEquipoClienteId, setTomaEquipoClienteId] = useState<number | null>(null)
   const [tomaEquipoModeloId, setTomaEquipoModeloId] = useState<number | null>(null)
@@ -1284,6 +1285,30 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     nota_credito_numero?: string
     evaluacion: {componente: string; estado: string; descuento: number}[]
   }[]>([])
+
+  // Cargar modelos de equipo desde la lista "Toma de Equipos" (versiones)
+  useEffect(() => {
+    fetch("/api/listas-precios")
+      .then(r => r.json())
+      .then((listas: any[]) => {
+        const lista = listas.find((l: any) => l.nombre === "Toma de Equipos")
+        if (!lista) return
+        return fetch(`/api/listas-precios/versiones?lista_id=${lista.id}`)
+          .then(r => r.json())
+          .then((versiones: any[]) => {
+            if (!Array.isArray(versiones) || versiones.length === 0) return
+            // Priorizar versión activa, sino la primera disponible
+            const version = versiones.find((v: any) => v.activa) ?? versiones[0]
+            const lineas = version.lineas ?? []
+            setModelosEquipoDB(lineas.map((l: any) => ({
+              id: l.producto_id,
+              nombre: l.producto_nombre,
+              precioBase: l.precio_forzado_ars ?? l.precio_venta ?? 0,
+            })))
+          })
+      })
+      .catch(console.error)
+  }, [])
 
   // Cargar tomas de equipo desde Supabase al montar
   useEffect(() => {
@@ -4985,15 +5010,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     )
   }
 
-  // Toma de Equipo en Parte de Pago
-  const modelosEquipo = [
-    { id: 1, nombre: "iPhone 13 Pro 128GB", precioBase: 350000 },
-    { id: 2, nombre: "iPhone 13 128GB", precioBase: 280000 },
-    { id: 3, nombre: "iPhone 12 64GB", precioBase: 200000 },
-    { id: 4, nombre: "Samsung Galaxy S22 128GB", precioBase: 320000 },
-    { id: 5, nombre: "Samsung Galaxy A54 128GB", precioBase: 180000 },
-    { id: 6, nombre: "Motorola Edge 40 256GB", precioBase: 220000 },
-  ]
+  // Toma de Equipo en Parte de Pago — cargado desde la lista "Toma de Equipos" en la DB
+  const modelosEquipo = modelosEquipoDB
 
   const componentesEvaluacion = [
     { id: 1, nombre: "Pantalla", tipo: "dropdown", estados: [
@@ -9809,7 +9827,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       precio_forzado_ars: precioForzado,
       precio_venta: Math.round(precioVenta * 100) / 100,
       precio_venta_moneda: nuevaLineaVersion.precio_venta_moneda || "ARS",
-      iva: nuevaLineaVersion.iva || 21
+      iva: nuevaLineaVersion.iva ?? 21
     }
     
     const versionActualizada = {
@@ -10918,7 +10936,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         })()}
                       </td>
                       <td className="py-1.5 px-2">
-                        <select value={nuevaLineaVersion.iva || 21} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, iva: Number(e.target.value) as 0 | 10.5 | 21 })}
+                        <select value={nuevaLineaVersion.iva ?? 21} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, iva: Number(e.target.value) as 0 | 10.5 | 21 })}
                           className="w-14 px-1 py-1 border border-gray-300 rounded text-xs">
                           <option value={21}>21%</option>
                           <option value={10.5}>10.5%</option>
