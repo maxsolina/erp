@@ -2369,7 +2369,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             moduleName="clientes"
             filterOptions={[
               { field: "categoria", label: "Categoría", values: [
-                { value: "publico", label: "Público" },
+                { value: "publico", label: "P��blico" },
                 { value: "mercadolibre", label: "MercadoLibre" },
                 { value: "mayorista", label: "Mayorista" },
               ]},
@@ -2641,7 +2641,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     ))}
                   </select>
                   {formClienteCategoriaId && (
-                    <p className="text-xs text-emerald-600 mt-0.5">Completado por la categoría seleccionada</p>
+                    <p className="text-xs text-emerald-600 mt-0.5">Completado por la categor��a seleccionada</p>
                   )}
                 </div>
               </div>
@@ -3819,7 +3819,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <td className="py-2">
                       <div className="font-medium">{linea.producto_nombre}</div>
                       {linea.series_seleccionadas && linea.series_seleccionadas.length > 0 && (
-                        <div className="text-xs text-gray-500">IMEI: {linea.series_seleccionadas.join(", ")}</div>
+                        <div className="text-xs text-gray-500">IMEI: {linea.series_seleccionadas.map(s => typeof s === "string" ? s : s.serie).join(", ")}</div>
                       )}
                     </td>
                     <td className="py-2 text-center">{linea.cantidad}</td>
