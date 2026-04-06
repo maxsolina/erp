@@ -831,17 +831,22 @@ export default function ModuloCompras() {
   // Unidades serie acumuladas durante confirmación (producto_id → lista)
   const [seriesConfirmadas, setSeriesConfirmadas] = useState<Record<number, UnidadSerie[]>>({})
 
-  // Cargar recepciones pendientes generadas desde Toma de Equipo (ventas)
+  // Cargar recepciones generadas desde Toma de Equipo (ventas) — desde Supabase
   useEffect(() => {
-    const pendientes = JSON.parse(localStorage.getItem('recepciones_pendientes_toma') || '[]') as Recepcion[]
-    if (pendientes.length === 0) return
-    setRecepciones(prev => {
-      const idsExistentes = new Set(prev.map(r => r.id))
-      const nuevas = pendientes.filter((r: Recepcion) => !idsExistentes.has(r.id))
-      return nuevas.length > 0 ? [...prev, ...nuevas] : prev
-    })
-    // Limpiar el storage una vez leído
-    localStorage.removeItem('recepciones_pendientes_toma')
+    fetch("/api/recepciones-toma")
+      .then(r => r.json())
+      .then((tomasRecs: Recepcion[]) => {
+        if (!Array.isArray(tomasRecs)) return
+        setRecepciones(prev => {
+          // Evitar duplicados: las recepciones de toma tienen id único de la tabla recepciones_toma
+          // pero pueden colisionar con ids de recepciones de OC (que vienen de otra tabla).
+          // Las identificamos con un prefijo negativo para que no choquen.
+          const idsExistentes = new Set(prev.map(r => `${r.documento_origen_tipo}-${r.id}`))
+          const nuevas = tomasRecs.filter(r => !idsExistentes.has(`toma_equipo-${r.id}`))
+          return nuevas.length > 0 ? [...prev, ...nuevas] : prev
+        })
+      })
+      .catch(console.error)
   }, [])
 
   // Facturas de Compra
