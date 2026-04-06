@@ -315,7 +315,7 @@ interface Recepcion {
   remito_numero?: string
   remito_fecha?: string
   observaciones?: string
-  estado: "esperando_recepcion" | "recibida" | "cancelada"
+  estado: "esperando_recepcion" | "recibida" | "recibida_parcial" | "cancelada"
   recepcion_anterior_id?: number
   recepcion_complementaria_id?: number
   lineas: RecepcionLinea[]
@@ -816,7 +816,7 @@ export default function ModuloCompras() {
   const [selectedRecepcion, setSelectedRecepcion] = useState<Recepcion | null>(null)
   const [creandoRecepcion, setCreandoRecepcion] = useState(false)
   // UI state recepciones
-  const [recepcionFiltroEstado, setRecepcionFiltroEstado] = useState<"todos" | "esperando_recepcion" | "recibida" | "cancelada">("todos")
+  const [recepcionFiltroEstado, setRecepcionFiltroEstado] = useState<"todos" | "esperando_recepcion" | "recibida" | "recibida_parcial" | "cancelada">("todos")
   const [recepcionBusqueda, setRecepcionBusqueda] = useState("")
   // Cantidades editadas en la ficha (producto_id → cantidad recibida)
   const [recepcionCantidades, setRecepcionCantidades] = useState<Record<number, number>>({})
@@ -4140,13 +4140,19 @@ export default function ModuloCompras() {
     if (selectedRecepcion) return renderFichaRecepcion()
 
     const estadoColor: Record<string, string> = {
-      recibida:             'bg-green-100 text-green-700',
+        recibida:             'bg-green-100 text-green-700',
+        recibida_parcial:     'bg-blue-100 text-blue-700',
       esperando_recepcion:  'bg-amber-100 text-amber-700',
+      recibida_parcial:     'bg-blue-100 text-blue-700',
+
+
       cancelada:            'bg-red-100 text-red-700',
     }
     const estadoLabel: Record<string, string> = {
-      recibida:             'Recibida',
-      esperando_recepcion:  'Esperando Recepción',
+        recibida:             'Recibida',
+        recibida_parcial:     'Recibida parcial',
+        esperando_recepcion:  'Esperando Recepción',
+
       cancelada:            'Cancelada',
     }
     const origenLabel: Record<string, string> = {
@@ -4207,8 +4213,9 @@ export default function ModuloCompras() {
             moduleName="recepciones"
             filterOptions={[
               { field: "estado", label: "Estado", values: [
-                { value: "esperando_recepcion", label: "Esperando recepción" },
-                { value: "recibida", label: "Recibida" },
+        { value: "esperando_recepcion", label: "Esperando recepción" },
+        { value: "recibida_parcial", label: "Recibida parcial" },
+        { value: "recibida", label: "Recibida" },
                 { value: "cancelada", label: "Cancelada" },
               ]},
               { field: "origen", label: "Origen", values: [
@@ -4325,6 +4332,7 @@ export default function ModuloCompras() {
     const estadoLabel: Record<string, string> = {
       borrador:             'Borrador',
       esperando_recepcion:  'Esperando recepción',
+      recibida_parcial:     'Recibida parcial',
       parcial:              'Parcial',
       confirmada:           'Confirmada',
       recibida:             'Recibida',
