@@ -3449,16 +3449,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     }
     
     // ── Persistir NV en Supabase ──────────────────────────────────────────
+    let nvNumeroFinal = nvNumero
+    let nvIdFinal = nvId
+    let nvPersistida = false
     try {
-      const res = await fetch("/api/notas-venta", {
+      const nvRes = await fetch("/api/notas-venta", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          numero: nvNumero,
+          numero: existingNV ? nvNumero : null, // null = servidor genera el número
           cliente_id: cliente.id,
           vendedor_id: vendedorId,
           moneda,
           estado: tipoVenta === "inmediata" ? "facturada" : "abierta",
+          sucursal_id: nvDepositoId || null,
           subtotal: subtotalValido,
           impuestos: impuestosValido,
           total: totalValido,
@@ -3474,8 +3478,117 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           })),
         }),
       })
+      if (nvRes.ok) {
+        const nvData = await nvRes.json()
+        nvNumeroFinal = nvData.numero || nvNumero
+        nvIdFinal = nvData.id || nvId
+        newNV.numero = nvNumeroFinal
+        newNV.id = nvIdFinal
+        nvPersistida = true
+      }
     } catch (_) {
       // Error de red — la NV sigue en el state local
+    }
+
+    // ── Si es venta inmediata y NV persistida, crear OE y Remito ──────────
+    if (tipoVenta === "inmediata" && !editingNVId && nvPersistida) {
+      // 1. Orden de Entrega
+      let oeNumero = ""
+      try {
+        const oeRes = await fetch("/api/ordenes-entrega", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            numero: null,
+            nota_venta_id: nvIdFinal,
+            nota_venta_numero: nvNumeroFinal,
+            cliente_id: cliente.id,
+            cliente_nombre: cliente.nombre,
+            estado: "confirmada",
+            deposito: deposito,
+            sucursal_id: nvDepositoId || null,
+            fecha: fechaHoy,
+            lineas: lineasValidas.map(l => ({
+              producto_id: l.producto_id,
+              producto_nombre: l.producto_nombre,
+              cantidad: l.cantidad,
+            })),
+          }),
+        })
+        if (oeRes.ok) {
+          const oeData = await oeRes.json()
+          oeNumero = oeData.numero || ""
+          const newOE: OrdenEntrega = {
+            id: oeData.id,
+            numero: oeNumero,
+            nota_venta_id: nvIdFinal,
+            nota_venta_numero: nvNumeroFinal,
+            cliente_id: cliente.id,
+            cliente_nombre: cliente.nombre,
+            estado: "confirmada",
+            deposito: deposito,
+            fecha: fechaHoy,
+            lineas: lineasValidas.map(l => ({
+              id: l.id,
+              producto_id: l.producto_id,
+              producto_nombre: l.producto_nombre,
+              cantidad: l.cantidad,
+              cantidad_entregada: 0,
+            })),
+          }
+          setOrdenesEntrega(prev => [...prev, newOE])
+        }
+      } catch (_) {}
+
+      // 2. Remito
+      try {
+        const remRes = await fetch("/api/remitos-venta", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            numero: null,
+            nota_venta_id: nvIdFinal,
+            nota_venta_numero: nvNumeroFinal,
+            orden_entrega_numero: oeNumero,
+            cliente_id: cliente.id,
+            cliente_nombre: cliente.nombre,
+            estado: "emitido",
+            deposito: deposito,
+            sucursal_id: nvDepositoId || null,
+            fecha: fechaHoy,
+            lineas: lineasValidas.map(l => ({
+              producto_id: l.producto_id,
+              producto_nombre: l.producto_nombre,
+              cantidad: l.cantidad,
+              requiere_serie: l.requiere_serie ?? false,
+              series_seleccionadas: l.series_seleccionadas ?? [],
+            })),
+          }),
+        })
+        if (remRes.ok) {
+          const remData = await remRes.json()
+          const newRemito: Remito = {
+            id: remData.id,
+            numero: remData.numero || "",
+            nota_venta_id: nvIdFinal,
+            nota_venta_numero: nvNumeroFinal,
+            orden_entrega_numero: oeNumero,
+            cliente_id: cliente.id,
+            cliente_nombre: cliente.nombre,
+            estado: "emitido",
+            deposito: deposito,
+            fecha: fechaHoy,
+            lineas: lineasValidas.map(l => ({
+              id: l.id,
+              producto_id: l.producto_id,
+              producto_nombre: l.producto_nombre,
+              cantidad: l.cantidad,
+              series: l.series_seleccionadas ?? [],
+            })),
+          }
+          setRemitos(prev => [...prev, newRemito])
+        }
+      } catch (_) {}
     }
 
     // Si estamos editando, actualizar; si no, agregar nueva
