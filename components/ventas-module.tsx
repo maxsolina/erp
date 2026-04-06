@@ -236,15 +236,7 @@ interface Remito {
   numero: string
   orden_entrega_id: number
   orden_entrega_numero: string
-  cliente_id: number
-  cliente_nombre: string
-  estado: "en_ejecucion" | "aprobado" | "entregado" | "borrador" | "confirmado"
-  fecha: string
-  fecha_entrega: string
-  domicilio_envio: string
-  transporte: string
-  chofer: string
-  factura_numero: string | null
+  nota_venta_id?: number
   nota_venta_numero: string
   sucursal: string
   deposito: string
@@ -469,224 +461,21 @@ const seriesDisponibles: SerieDisponible[] = [
   { id: 16, producto_id: 7, serie: "FVFXN123456C", lote: "LOTE2024B", estado: "disponible", ubicacion_id: 8, ubicacion_nombre: "PN/Stock", detalles: "Con estuche Lightning", fecha_ingreso: "2024-01-20" },
 ]
 
-const mockClientesVenta: ClienteVenta[] = [
-  { 
-    id: 1, codigo: "C015517", nombre: "Alejandra Gallo", nombre_fantasia: "", 
-    tipo_documento: "DNI", numero_documento: "32456789", posicion_fiscal: "consumidor_final",
-    direccion: "Av. Rivadavia 1234", ciudad: "Rosario", provincia: "Santa Fe", codigo_postal: "2000",
-    zona: "Centro", telefono: "0341-4561234", celular: "341-5551234", email: "agallo@email.com",
-    categoria: "publico", vendedor_id: 1, cobrador_id: 1, lista_precios_id: 1, descuento_default: 0,
-    moneda_cuenta_corriente: "ARS", termino_pago_id: 1, activo: true, es_confidencial: false,
-    sucursal_origen: "Puerto Norte", fecha_alta: "2023-01-15", saldo_cuenta_corriente: 0, total_facturado: 125000
-  },
-  { 
-    id: 2, codigo: "C015518", nombre: "TechStore SRL", nombre_fantasia: "TechStore", 
-    tipo_documento: "CUIT", numero_documento: "30-71234567-8", posicion_fiscal: "responsable_inscripto",
-    direccion: "San Martín 567", ciudad: "Rosario", provincia: "Santa Fe", codigo_postal: "2000",
-    zona: "Microcentro", telefono: "0341-4567890", celular: "341-5557890", email: "ventas@techstore.com",
-    categoria: "mayorista", vendedor_id: 2, cobrador_id: 1, lista_precios_id: 2, descuento_default: 10,
-    moneda_cuenta_corriente: "USD", termino_pago_id: 2, activo: true, es_confidencial: false,
-    sucursal_origen: "Puerto Norte", fecha_alta: "2022-06-20", saldo_cuenta_corriente: 1500, total_facturado: 2850000
-  },
-  { 
-    id: 3, codigo: "C015519", nombre: "Juan Carlos Méndez", nombre_fantasia: "", 
-    tipo_documento: "DNI", numero_documento: "28765432", posicion_fiscal: "monotributista",
-    direccion: "Córdoba 890", ciudad: "Rosario", provincia: "Santa Fe", codigo_postal: "2000",
-    zona: "Centro", telefono: "", celular: "341-5559999", email: "jcmendez@gmail.com",
-    categoria: "mercadolibre", vendedor_id: 1, cobrador_id: null, lista_precios_id: 1, descuento_default: 5,
-    moneda_cuenta_corriente: "ARS", termino_pago_id: 1, activo: true, es_confidencial: false,
-    sucursal_origen: "Puerto Norte", fecha_alta: "2024-01-10", saldo_cuenta_corriente: 45000, total_facturado: 320000
-  },
-]
+const mockClientesVenta: ClienteVenta[] = []
 
-const mockNotasVenta: NotaVenta[] = [
-  {
-    id: 1, numero: "NV X 10000-00010735", cliente_id: 1, cliente_nombre: "Alejandra Gallo", cliente_codigo: "C015517",
-    vendedor_id: 1, vendedor_nombre: "Max Solina", fecha: "2024-01-20T10:30:00", estado: "a_facturar",
-    moneda: "ARS", tipo_cotizacion: "blue", cotizacion: 1150, lista_precios_id: 1, termino_pago_id: 1,
-    termino_pago_nombre: "Contado Efectivo", deposito: "Puerto Norte", tipo_venta: "inmediata",
-    lineas: [
-      { id: 1, producto_id: 1, producto_nombre: "iPhone 15 Pro Max 256GB", producto_sku: "IPH15PM256", cantidad: 1, precio_unitario: 1850000, descuento: 0, subtotal: 1850000, fecha_entrega: "2024-01-20" }
-    ],
-    subtotal: 1850000, descuento_global: 0, impuestos: 388500, total: 2238500, sucursal: "Puerto Norte", punto_venta: "10000"
-  },
-  {
-    id: 2, numero: "NV X 10000-00010736", cliente_id: 2, cliente_nombre: "TechStore SRL", cliente_codigo: "C015518",
-    vendedor_id: 2, vendedor_nombre: "Laura García", fecha: "2024-01-20T14:15:00", estado: "borrador",
-    moneda: "USD", tipo_cotizacion: "blue", cotizacion: 1150, lista_precios_id: 3, termino_pago_id: 2,
-    termino_pago_nombre: "Cuenta Corriente 30 días", deposito: "Puerto Norte", tipo_venta: "pedido",
-    lineas: [
-      { id: 1, producto_id: 2, producto_nombre: "Samsung Galaxy S24 Ultra", producto_sku: "SGS24U", cantidad: 5, precio_unitario: 1200, descuento: 10, subtotal: 5400, fecha_entrega: "2024-01-25" },
-      { id: 2, producto_id: 3, producto_nombre: "Funda Silicona Galaxy S24", producto_sku: "FUNDGS24", cantidad: 10, precio_unitario: 15, descuento: 0, subtotal: 150, fecha_entrega: "2024-01-25" }
-    ],
-    subtotal: 5550, descuento_global: 5, impuestos: 1108.73, total: 6381.23, sucursal: "Puerto Norte", punto_venta: "10000"
-  },
-  {
-    id: 3, numero: "NV X 10000-00010734", cliente_id: 3, cliente_nombre: "Juan Carlos Méndez", cliente_codigo: "C015519",
-    vendedor_id: 1, vendedor_nombre: "Max Solina", fecha: "2024-01-19T16:45:00", estado: "finalizada",
-    moneda: "ARS", tipo_cotizacion: "blue", cotizacion: 1145, lista_precios_id: 1, termino_pago_id: 1,
-    termino_pago_nombre: "Contado Efectivo", deposito: "Puerto Norte", tipo_venta: "inmediata",
-    lineas: [
-      { id: 1, producto_id: 4, producto_nombre: "AirPods Pro 2", producto_sku: "APP2", cantidad: 1, precio_unitario: 450000, descuento: 5, subtotal: 427500, fecha_entrega: "2024-01-19" }
-    ],
-    subtotal: 427500, descuento_global: 0, impuestos: 89775, total: 517275, sucursal: "Puerto Norte", punto_venta: "10000"
-  },
-]
+const mockNotasVenta: NotaVenta[] = []
 
 const mockOrdenesEntrega: OrdenEntrega[] = []
 
 const mockRemitos: Remito[] = []
 
-const mockFacturas: Factura[] = [
-  {
-    id: 1, numero: "FC C 10000-00012375", tipo: "C", nota_venta_id: 3, nota_venta_numero: "NV X 10000-00010734",
-    cliente_id: 3, cliente_nombre: "Juan Carlos Méndez", cliente_documento: "DNI 28765432",
-    estado: "conciliada", fecha: "2024-01-19T17:15:00", vendedor_nombre: "Max Solina",
-    domicilio_facturacion: "Córdoba 890, Rosario", moneda: "ARS", tipo_cotizacion: "blue", cotizacion: 1145,
-    termino_pago: "Contado Efectivo", condicion_pago: "Contado", fecha_vencimiento: "2024-01-19",
-    subtotal: 427500, descuento: 0, impuestos: 89775, total: 517275, saldo: 0,
-    sucursal: "Puerto Norte",
-    lineas: [
-      { producto_nombre: "AirPods Pro 2", descripcion: "", cantidad: 1, precio_unitario: 450000, descuento: 5, subtotal: 427500 }
-    ],
-    vencimientos: [
-      { descripcion: "Contado", fecha: "2024-01-19", total: 517275 }
-    ]
-  },
-  {
-    id: 2, numero: "FC C 20000-00023950", tipo: "C", nota_venta_id: 1, nota_venta_numero: "NV X 20000-00023950",
-    cliente_id: 1, cliente_nombre: "Alejandra Gallo", cliente_documento: "DNI 32456789",
-    estado: "conciliada", fecha: "2024-03-08T10:00:00", vendedor_nombre: "Max Solina",
-    domicilio_facturacion: "Av. Libertador 1234, CABA", moneda: "ARS", tipo_cotizacion: "blue", cotizacion: 1145,
-    termino_pago: "Contado", condicion_pago: "Contado", fecha_vencimiento: "2024-03-08",
-    subtotal: 14462.81, descuento: 0, impuestos: 3037.19, total: 17500, saldo: 0,
-    sucursal: "Puerto Norte",
-    lineas: [
-      { producto_nombre: "iPhone 15 Pro Max", descripcion: "", cantidad: 1, precio_unitario: 14462.81, descuento: 0, subtotal: 14462.81 }
-    ],
-    vencimientos: [
-      { descripcion: "Contado", fecha: "2024-03-08", total: 17500 }
-    ]
-  },
-  {
-    id: 3, numero: "FC C 20000-00029837", tipo: "C", nota_venta_id: 1, nota_venta_numero: "NV X 20000-00029111",
-    cliente_id: 1, cliente_nombre: "Alejandra Gallo", cliente_documento: "DNI 32456789",
-    estado: "abierta", fecha: "2024-09-12T14:30:00", vendedor_nombre: "Max Solina",
-    domicilio_facturacion: "Av. Libertador 1234, CABA", moneda: "USD", tipo_cotizacion: "blue", cotizacion: 1145,
-    termino_pago: "Contado", condicion_pago: "Contado", fecha_vencimiento: "2024-09-12",
-    subtotal: 0.83, descuento: 0, impuestos: 0.17, total: 1, saldo: 1,
-    sucursal: "Puerto Norte",
-    lineas: [
-      { producto_nombre: "Servicio Tech", descripcion: "", cantidad: 1, precio_unitario: 0.83, descuento: 0, subtotal: 0.83 }
-    ],
-    vencimientos: [
-      { descripcion: "Contado", fecha: "2024-09-12", total: 1 }
-    ]
-  },
-  {
-    id: 4, numero: "FC C 20000-00029808", tipo: "C", nota_venta_id: 1, nota_venta_numero: "NV X 20000-00029111",
-    cliente_id: 1, cliente_nombre: "Alejandra Gallo", cliente_documento: "DNI 32456789",
-    estado: "abierta", fecha: "2024-09-12T14:35:00", vendedor_nombre: "Max Solina",
-    domicilio_facturacion: "Av. Libertador 1234, CABA", moneda: "USD", tipo_cotizacion: "blue", cotizacion: 1145,
-    termino_pago: "Contado", condicion_pago: "Contado", fecha_vencimiento: "2024-09-12",
-    subtotal: 0.83, descuento: 0, impuestos: 0.17, total: 1, saldo: 1,
-    sucursal: "Puerto Norte",
-    lineas: [
-      { producto_nombre: "Servicio Tech", descripcion: "", cantidad: 1, precio_unitario: 0.83, descuento: 0, subtotal: 0.83 }
-    ],
-    vencimientos: [
-      { descripcion: "Contado", fecha: "2024-09-12", total: 1 }
-    ]
-  },
-  {
-    id: 5, numero: "FC C 20000-00038235", tipo: "C", nota_venta_id: 1, nota_venta_numero: "NV X 20000-00038791",
-    cliente_id: 1, cliente_nombre: "Alejandra Gallo", cliente_documento: "DNI 32456789",
-    estado: "abierta", fecha: "2025-06-02T11:00:00", vendedor_nombre: "Max Solina",
-    domicilio_facturacion: "Av. Libertador 1234, CABA", moneda: "ARS", tipo_cotizacion: "blue", cotizacion: 1145,
-    termino_pago: "Contado", condicion_pago: "Contado", fecha_vencimiento: "2025-06-02",
-    subtotal: 30247.93, descuento: 0, impuestos: 6352.07, total: 36600, saldo: 36600,
-    sucursal: "Puerto Norte",
-    lineas: [
-      { producto_nombre: "MacBook Air M3", descripcion: "", cantidad: 1, precio_unitario: 30247.93, descuento: 0, subtotal: 30247.93 }
-    ],
-    vencimientos: [
-      { descripcion: "Contado", fecha: "2025-06-02", total: 36600 }
-    ]
-  },
-]
+const mockFacturas: Factura[] = []
 
-const mockRecibos: Recibo[] = [
-  {
-    id: 1, numero: "RC X Norte-00011734", cliente_id: 3, cliente_nombre: "Juan Carlos Méndez",
-    estado: "publicado", fecha: "2024-01-19T17:20:00", importe: 517275, importe_no_conciliado: 0,
-    moneda: "ARS", sucursal: "Puerto Norte", caja: "Caja Principal", cobrador_nombre: "Max Solina",
-    nota_venta_numero: "NV X 10000-00010734", concepto: "Cobro de venta",
-    pagos: [
-      { forma_pago: "Efectivo", importe: 517275, moneda: "ARS" }
-    ]
-  },
-  {
-    id: 2, numero: "RC X Norte-00023456", cliente_id: 1, cliente_nombre: "Alejandra Gallo",
-    estado: "publicado", fecha: "2024-03-15T10:00:00", importe: 10000, importe_no_conciliado: 10000,
-    moneda: "ARS", sucursal: "Puerto Norte", caja: "Caja Principal", cobrador_nombre: "Max Solina",
-    nota_venta_numero: null, concepto: "Seña de pedido",
-    pagos: [
-      { forma_pago: "Transferencia", importe: 10000, moneda: "ARS" }
-    ]
-  },
-  {
-    id: 3, numero: "RC X Norte-00029555", cliente_id: 1, cliente_nombre: "Alejandra Gallo",
-    estado: "publicado", fecha: "2024-09-20T15:30:00", importe: 25000, importe_no_conciliado: 25000,
-    moneda: "ARS", sucursal: "Puerto Norte", caja: "Caja Principal", cobrador_nombre: "Max Solina",
-    nota_venta_numero: null, concepto: "Pago a cuenta",
-    pagos: [
-      { forma_pago: "Efectivo", importe: 25000, moneda: "ARS" }
-    ]
-  },
-]
+const mockRecibos: Recibo[] = []
 
-const mockAjustes: AjusteCliente[] = [
-  {
-    id: 1, numero: "AJ X 10000-00000123", cliente_id: 2, cliente_nombre: "TechStore SRL",
-    estado: "publicado", fecha: "2024-01-15", concepto: "Bonificación especial",
-    moneda: "USD", nota_venta_numero: null, sucursal: "Puerto Norte",
-    lineas: [
-      { descripcion: "Bonificación por volumen de compras Q4 2023", fecha_vencimiento: "2024-01-15", importe: -500 }
-    ],
-    total: -500
-  },
-]
+const mockAjustes: AjusteCliente[] = []
 
-const mockMovimientosCC: MovimientoCuentaCorriente[] = [
-  // Cliente 3 - Juan Carlos Méndez: Factura pagada
-  {
-    id: 1, cliente_id: 3, fecha: "2024-01-19T17:15:00", tipo: "debito",
-    concepto: "Factura de venta", documento_tipo: "factura", documento_numero: "FC C 10000-00012375",
-    documento_id: 1, moneda: "ARS", importe: 517275, saldo_posterior: 517275
-  },
-  {
-    id: 2, cliente_id: 3, fecha: "2024-01-19T17:20:00", tipo: "credito",
-    concepto: "Pago recibido", documento_tipo: "recibo", documento_numero: "RC X Norte-00011734",
-    documento_id: 1, moneda: "ARS", importe: 517275, saldo_posterior: 0
-  },
-  // Cliente 2 - TechStore: Saldo pendiente USD
-  {
-    id: 3, cliente_id: 2, fecha: "2024-01-10T10:00:00", tipo: "debito",
-    concepto: "Factura de venta", documento_tipo: "factura", documento_numero: "FC A 10000-00012370",
-    documento_id: 2, moneda: "USD", importe: 2000, saldo_posterior: 2000
-  },
-  {
-    id: 4, cliente_id: 2, fecha: "2024-01-15T09:00:00", tipo: "credito",
-    concepto: "Ajuste - Bonificación especial", documento_tipo: "ajuste", documento_numero: "AJ X 10000-00000123",
-    documento_id: 1, moneda: "USD", importe: 500, saldo_posterior: 1500
-  },
-  // Cliente 3 - Deuda actual de 45000
-  {
-    id: 5, cliente_id: 3, fecha: "2024-01-25T11:00:00", tipo: "debito",
-    concepto: "Factura de venta", documento_tipo: "factura", documento_numero: "FC C 10000-00012380",
-    documento_id: 3, moneda: "ARS", importe: 45000, saldo_posterior: 45000
-  },
-]
+const mockMovimientosCC: MovimientoCuentaCorriente[] = []
 
 // ─── Bloque Medios de Pago (dentro de ficha de Factura) ────────────────������─────
 
@@ -1049,11 +838,22 @@ interface ModuloVentasProps {
 
 
 export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: ModuloVentasProps = {}) {
-  const { sucursales } = useERP()
+  const { sucursales, sucursalActiva } = useERP()
   const [depositos, setDepositos] = useState<{ id: number; nombre: string; codigo: string }[]>([])
   useEffect(() => {
     fetchDepositos().then(d => setDepositos(Array.isArray(d) ? d : [])).catch(console.error)
   }, [])
+
+  // Sincronizar depósito default con la sucursal activa cuando carguen los depósitos
+  useEffect(() => {
+    if (!depositosVenta.length) return
+    const match = depositosVenta.find(d => d.nombre === sucursalActiva?.nombre)
+    const defaultDeposito = match ?? depositosVenta[0]
+    if (!defaultDeposito) return
+    setNvDepositoId(defaultDeposito.id)
+    const ubicacionStock = ubicacionesVenta.find(u => u.deposito_id === defaultDeposito.id && u.nombre === "Stock")
+    if (ubicacionStock) setNvUbicacionId(ubicacionStock.id)
+  }, [depositosVenta, sucursalActiva])
 
   // Navigation state
   const [activeSection, setActiveSection] = useState<string>("clientes")
@@ -1404,9 +1204,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   // Maestro de productos reales (todos los productos de la DB, para selectores de lista de precios)
   const [productosMaestro, setProductosMaestro] = useState<ProductoVenta[]>([])
 
-  // Estados para ubicación de stock en NV
-  const [nvDepositoId, setNvDepositoId] = useState<number>(1) // Casa Central por defecto
-  const [nvUbicacionId, setNvUbicacionId] = useState<number>(1) // Stock por defecto
+  // Estados para ubicación de stock en NV — se inicializan al depósito de la sucursal activa
+  const [nvDepositoId, setNvDepositoId] = useState<number>(0)
+  const [nvUbicacionId, setNvUbicacionId] = useState<number>(0)
   const [nvPrevisualizando, setNvPrevisualizando] = useState(false) // Para mostrar vista previa antes de confirmar
   
   // Estados para modal de selección de series/IMEI
@@ -1638,6 +1438,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             numero: r.numero,
             orden_entrega_id: r.orden_entrega_id ?? 0,
             orden_entrega_numero: r.orden_entrega_numero ?? "",
+            nota_venta_id: r.nota_venta_id ?? undefined,
             nota_venta_numero: r.nota_venta_numero ?? "",
             cliente_id: r.cliente_id ?? 0,
             cliente_nombre: r.cliente_nombre ?? "",
@@ -2376,7 +2177,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             moduleName="clientes"
             filterOptions={[
               { field: "categoria", label: "Categoría", values: [
-                { value: "publico", label: "Público" },
+                { value: "publico", label: "P������blico" },
                 { value: "mercadolibre", label: "MercadoLibre" },
                 { value: "mayorista", label: "Mayorista" },
               ]},
@@ -2648,7 +2449,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     ))}
                   </select>
                   {formClienteCategoriaId && (
-                    <p className="text-xs text-emerald-600 mt-0.5">Completado por la categoría seleccionada</p>
+                    <p className="text-xs text-emerald-600 mt-0.5">Completado por la categor��a seleccionada</p>
                   )}
                 </div>
               </div>
@@ -3580,8 +3381,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       return
     }
 
-    const subtotalValido = lineasValidas.reduce((sum, l) => sum + l.subtotal, 0)
-    const totalValido = subtotalValido * 1.21
+    const subtotalValido = lineasValidas.reduce((sum, l) => sum + Number(l.subtotal ?? 0), 0)
+    const impuestosValido = lineasValidas.reduce((sum, l) => sum + Number(l.subtotal ?? 0) * ((l.iva ?? 0) / 100), 0)
+    const totalValido = subtotalValido + impuestosValido
 
     // Si estamos editando, usamos los datos existentes
     const existingNV = editingNVId ? notasVenta.find(nv => nv.id === editingNVId) : null
@@ -3592,7 +3394,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const vendedorNombre = vendedores[0]?.nombre || "Max Solina"
     const terminoPagoId = cliente.termino_pago_id || 1
     const terminoPagoNombre = mockTerminosPago.find(tp => tp.id === terminoPagoId)?.nombre || "Contado Efectivo"
-    const deposito = "Puerto Norte"
+    const depositoSeleccionado = depositosVenta.find(d => d.id === nvDepositoId)
+    const deposito = depositoSeleccionado?.nombre || "Sin depósito"
     const moneda: "ARS" | "USD" = "ARS"
 
     const newNV: NotaVenta = {
@@ -3611,7 +3414,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       termino_pago_id: terminoPagoId,
       termino_pago_nombre: terminoPagoNombre,
       deposito: deposito,
-      sucursal: "Puerto Norte",
+      sucursal: depositoSeleccionado?.nombre || "Puerto Norte",
       lineas: lineasValidas.map(l => ({
         producto_id: l.producto_id,
         producto_nombre: l.producto_nombre,
@@ -3622,8 +3425,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         subtotal: l.subtotal,
         series: l.series_seleccionadas || []
       })),
-      total_neto: subtotalValido,
-      total_iva: subtotalValido * 0.21,
+      subtotal: subtotalValido,
+      impuestos: impuestosValido,
+      descuento_global: 0,
+      cotizacion: 1450,
       total: totalValido,
       seguimiento: existingNV ? [
         ...existingNV.seguimiento || [],
@@ -3644,16 +3449,22 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     }
     
     // ── Persistir NV en Supabase ──────────────────────────────────────────
+    let nvNumeroFinal = nvNumero
+    let nvIdFinal = nvId
+    let nvPersistida = false
     try {
-      const res = await fetch("/api/notas-venta", {
+      const nvRes = await fetch("/api/notas-venta", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          numero: nvNumero,
+          numero: existingNV ? nvNumero : null, // null = servidor genera el número
           cliente_id: cliente.id,
           vendedor_id: vendedorId,
           moneda,
           estado: tipoVenta === "inmediata" ? "facturada" : "abierta",
+          sucursal_id: nvDepositoId || null,
+          subtotal: subtotalValido,
+          impuestos: impuestosValido,
           total: totalValido,
           lineas: lineasValidas.map(l => ({
             producto_id: l.producto_id,
@@ -3662,12 +3473,122 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             cantidad: l.cantidad,
             precio_unitario: l.precio_unitario ?? 0,
             descuento: l.descuento ?? 0,
-            subtotal: l.subtotal,
+            subtotal: Number(l.subtotal ?? 0),
+            iva: l.iva ?? 0,
           })),
         }),
       })
+      if (nvRes.ok) {
+        const nvData = await nvRes.json()
+        nvNumeroFinal = nvData.numero || nvNumero
+        nvIdFinal = nvData.id || nvId
+        newNV.numero = nvNumeroFinal
+        newNV.id = nvIdFinal
+        nvPersistida = true
+      }
     } catch (_) {
       // Error de red — la NV sigue en el state local
+    }
+
+    // ── Si es venta inmediata y NV persistida, crear OE y Remito ──────────
+    if (tipoVenta === "inmediata" && !editingNVId && nvPersistida) {
+      // 1. Orden de Entrega
+      let oeNumero = ""
+      try {
+        const oeRes = await fetch("/api/ordenes-entrega", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            numero: null,
+            nota_venta_id: nvIdFinal,
+            nota_venta_numero: nvNumeroFinal,
+            cliente_id: cliente.id,
+            cliente_nombre: cliente.nombre,
+            estado: "confirmada",
+            deposito: deposito,
+            sucursal_id: nvDepositoId || null,
+            fecha: fechaHoy,
+            lineas: lineasValidas.map(l => ({
+              producto_id: l.producto_id,
+              producto_nombre: l.producto_nombre,
+              cantidad: l.cantidad,
+            })),
+          }),
+        })
+        if (oeRes.ok) {
+          const oeData = await oeRes.json()
+          oeNumero = oeData.numero || ""
+          const newOE: OrdenEntrega = {
+            id: oeData.id,
+            numero: oeNumero,
+            nota_venta_id: nvIdFinal,
+            nota_venta_numero: nvNumeroFinal,
+            cliente_id: cliente.id,
+            cliente_nombre: cliente.nombre,
+            estado: "confirmada",
+            deposito: deposito,
+            fecha: fechaHoy,
+            lineas: lineasValidas.map(l => ({
+              id: l.id,
+              producto_id: l.producto_id,
+              producto_nombre: l.producto_nombre,
+              cantidad: l.cantidad,
+              cantidad_entregada: 0,
+            })),
+          }
+          setOrdenesEntrega(prev => [...prev, newOE])
+        }
+      } catch (_) {}
+
+      // 2. Remito
+      try {
+        const remRes = await fetch("/api/remitos-venta", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            numero: null,
+            nota_venta_id: nvIdFinal,
+            nota_venta_numero: nvNumeroFinal,
+            orden_entrega_numero: oeNumero,
+            cliente_id: cliente.id,
+            cliente_nombre: cliente.nombre,
+            estado: "emitido",
+            deposito: deposito,
+            sucursal_id: nvDepositoId || null,
+            fecha: fechaHoy,
+            lineas: lineasValidas.map(l => ({
+              producto_id: l.producto_id,
+              producto_nombre: l.producto_nombre,
+              cantidad: l.cantidad,
+              requiere_serie: l.requiere_serie ?? false,
+              series_seleccionadas: l.series_seleccionadas ?? [],
+            })),
+          }),
+        })
+        if (remRes.ok) {
+          const remData = await remRes.json()
+          const newRemito: Remito = {
+            id: remData.id,
+            numero: remData.numero || "",
+            nota_venta_id: nvIdFinal,
+            nota_venta_numero: nvNumeroFinal,
+            orden_entrega_numero: oeNumero,
+            cliente_id: cliente.id,
+            cliente_nombre: cliente.nombre,
+            estado: "emitido",
+            deposito: deposito,
+            fecha: fechaHoy,
+            lineas: lineasValidas.map(l => ({
+              id: l.id,
+              producto_id: l.producto_id,
+              producto_nombre: l.producto_nombre,
+              cantidad: l.cantidad,
+              series: l.series_seleccionadas ?? [],
+            })),
+          }
+          setRemitos(prev => [...prev, newRemito])
+        }
+      } catch (_) {}
     }
 
     // Si estamos editando, actualizar; si no, agregar nueva
@@ -3677,149 +3598,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       setNotasVenta(prev => [...prev, newNV])
     }
 
-    if (tipoVenta === "inmediata") {
-      // Crear OE
-      const oeNumero = `OE X 10000-000${100 + ordenesEntrega.length}`
-      const oeId = ordenesEntrega.length + 1
-      const newOE: OrdenEntrega = {
-        id: oeId,
-        numero: oeNumero,
-        nota_venta_id: nvId,
-        nota_venta_numero: nvNumero,
-        cliente_id: cliente.id,
-        cliente_nombre: cliente.nombre,
-        fecha: fechaHoy,
-        fecha_entrega_programada: fechaHoy,
-        estado: "confirmada",
-        tipo: "venta",
-        deposito_origen: deposito,
-        ubicacion_origen: "Stock",
-        total_productos: lineasValidas.reduce((sum, l) => sum + l.cantidad, 0),
-        productos_entregados: lineasValidas.reduce((sum, l) => sum + l.cantidad, 0),
-        productos: lineasValidas.map(l => ({
-          producto_id: l.producto_id,
-          producto_nombre: l.producto_nombre,
-          cantidad: l.cantidad,
-          entregado: l.cantidad,
-          ubicacion: "Stock",
-          series: l.series_seleccionadas || []
-        })),
-        seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "OE creada desde venta inmediata" }]
-      }
-      setOrdenesEntrega(prev => [...prev, newOE])
-      // Persistir OE en Supabase
-      fetch("/api/ordenes-entrega", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newOE),
-      }).catch(() => {})
-
-      // Crear Remito
-      const remitoNumero = `REM X 10000-000${100 + remitos.length}`
-      const remitoId = remitos.length + 1
-      const newRemito: Remito = {
-        id: remitoId,
-        numero: remitoNumero,
-        orden_entrega_id: oeId,
-        orden_entrega_numero: oeNumero,
-        nota_venta_numero: nvNumero,
-        cliente_id: cliente.id,
-        cliente_nombre: cliente.nombre,
-        fecha: fechaHoy,
-        estado: "confirmado",
-        tipo: "salida",
-        deposito: deposito,
-        ubicacion: "Stock",
-        total_bultos: 1,
-        observaciones: "",
-        productos: lineasValidas.map(l => ({
-          producto_id: l.producto_id,
-          producto_nombre: l.producto_nombre,
-          cantidad: l.cantidad,
-          series: l.series_seleccionadas || []
-        })),
-        seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "Remito creado desde venta inmediata" }]
-      }
-      setRemitos(prev => [...prev, newRemito])
-      // Persistir Remito en Supabase
-      fetch("/api/remitos-venta", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...newRemito,
-          lineas: lineasValidas.map(l => ({
-            producto_id: l.producto_id,
-            producto_nombre: l.producto_nombre,
-            cantidad: l.cantidad,
-            requiere_serie: l.requiere_serie ?? false,
-            series_seleccionadas: l.series_seleccionadas ?? [],
-          })),
-        }),
-      }).catch(() => {})
-
-      // Descontar stock: usar endpoint confirmar con nv_numero y lineas directas
-      fetch(`/api/remitos/0/confirmar`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          remito_numero: remitoNumero,
-          nv_numero: nvNumero,
-          oe_numero: oeNumero,
-          deposito_nombre: deposito,
-          usuario: vendedorNombre,
-          lineas: lineasValidas.map(l => ({
-            producto_id: l.producto_id,
-            producto_nombre: l.producto_nombre,
-            cantidad: l.cantidad,
-            requiere_serie: l.requiere_serie ?? false,
-            series_seleccionadas: l.series_seleccionadas ?? [],
-          })),
-        }),
-      }).catch(() => {})
-
-      // Crear Factura en borrador
-      const facturaNumero = `FC X 10000-000${13460 + facturas.length}`
-      const facturaId = facturas.length + 1
-      const newFactura: Factura = {
-        id: facturaId,
-        numero: facturaNumero,
-        tipo: cliente.posicion_fiscal === "consumidor_final" ? "B" : "A",
-        nota_venta_id: nvId,
-        nota_venta_numero: nvNumero,
-        cliente_id: cliente.id,
-        cliente_nombre: cliente.nombre,
-        cliente_cuit: cliente.numero_documento,
-        fecha: fechaHoy,
-        fecha_vencimiento: fechaHoy,
-        estado: "borrador",
-        moneda: moneda,
-        lineas: lineasValidas.map(l => ({
-          producto_nombre: l.producto_nombre,
-          descripcion: l.producto_nombre,
-          cantidad: l.cantidad,
-          precio_unitario: l.precio_unitario,
-          descuento: l.descuento,
-          subtotal: l.subtotal
-        })),
-        subtotal: subtotalValido,
-        iva: subtotalValido * 0.21,
-        total: totalValido,
-        saldo_pendiente: totalValido,
-        cae: null,
-        cae_vencimiento: null,
-        sucursal: "Puerto Norte",
-        seguimiento: [{ id: 1, fecha: fechaHoy, usuario: vendedorNombre, tipo: "creacion" as const, descripcion: "Factura creada en borrador desde confirmación de NV" }]
-      }
-      setFacturas(prev => [...prev, newFactura])
-    }
-
     // Limpiar y abrir la NV creada
     setCreandoNV(false)
     setNvPrevisualizando(false)
     setNvLineas([])
     setNvClienteId(null)
-    setNvDepositoId(1)
-    setNvUbicacionId(1)
+    const defaultDep = depositosVenta.find(d => d.nombre === sucursalActiva?.nombre) ?? depositosVenta[0]
+    setNvDepositoId(defaultDep?.id ?? 0)
+    const defaultUbic = ubicacionesVenta.find(u => u.deposito_id === defaultDep?.id && u.nombre === "Stock")
+    setNvUbicacionId(defaultUbic?.id ?? 0)
     setEditingNVId(null)
     setSelectedNV(newNV)
   }
@@ -3956,7 +3743,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <td className="py-2">
                       <div className="font-medium">{linea.producto_nombre}</div>
                       {linea.series_seleccionadas && linea.series_seleccionadas.length > 0 && (
-                        <div className="text-xs text-gray-500">IMEI: {linea.series_seleccionadas.join(", ")}</div>
+                        <div className="text-xs text-gray-500">IMEI: {linea.series_seleccionadas.map(s => typeof s === "string" ? s : s.serie).join(", ")}</div>
                       )}
                     </td>
                     <td className="py-2 text-center">{linea.cantidad}</td>
@@ -4480,7 +4267,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   Continuar
                 </button>
                 <button
-                  onClick={() => { setCreandoNV(false); setNvLineas([]); setNvClienteId(null); setNvDepositoId(1); setNvUbicacionId(1); setEditingNVId(null); setNvPrevisualizando(false) }}
+                  onClick={() => {
+  setCreandoNV(false); setNvLineas([]); setNvClienteId(null)
+  const cancelDep = depositosVenta.find(d => d.nombre === sucursalActiva?.nombre) ?? depositosVenta[0]
+  setNvDepositoId(cancelDep?.id ?? 0)
+  const cancelUbic = ubicacionesVenta.find(u => u.deposito_id === cancelDep?.id && u.nombre === "Stock")
+  setNvUbicacionId(cancelUbic?.id ?? 0)
+  setEditingNVId(null); setNvPrevisualizando(false)
+}}
                   className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-200 transition-colors"
                 >
                   Cancelar
@@ -4498,8 +4292,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     if (!selectedNV) return null
 
     // Buscar documentos relacionados
-    const oesVinculadas = ordenesEntrega.filter(oe => oe.nota_venta_id === selectedNV.id)
-    const remitosVinculados = remitos.filter(r => r.nota_venta_numero === selectedNV.numero)
+    const nvId = Number(selectedNV.id)
+    const nvNumero = selectedNV.numero
+    const oesVinculadas = ordenesEntrega.filter(oe => Number(oe.nota_venta_id) === nvId)
+    const remitosVinculados = remitos.filter(r =>
+      (r.nota_venta_id != null && Number(r.nota_venta_id) === nvId) ||
+      (r.nota_venta_id == null && r.nota_venta_numero === nvNumero)
+    )
     const facturasVinculadas = facturas.filter(f => f.nota_venta_id === selectedNV.id)
     const recibosVinculados = recibos.filter(r => r.nota_venta_numero === selectedNV.numero)
 
@@ -4539,8 +4338,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     series_disponibles: [],
                     series_seleccionadas: l.series || []
                   })))
-                  setNvDepositoId(1)
-                  setNvUbicacionId(1)
+                  const editDep = depositosVenta.find(d => d.nombre === (selectedNV.deposito || sucursalActiva?.nombre)) ?? depositosVenta.find(d => d.nombre === sucursalActiva?.nombre) ?? depositosVenta[0]
+                  setNvDepositoId(editDep?.id ?? 0)
+                  const editUbic = ubicacionesVenta.find(u => u.deposito_id === editDep?.id && u.nombre === "Stock")
+                  setNvUbicacionId(editUbic?.id ?? 0)
+                  setTipoVentaForm(selectedNV.tipo_venta || "inmediata")
                   setEditingNVId(selectedNV.id)
                   setCreandoNV(true)
                   setSelectedNV(null)
@@ -7119,7 +6921,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     fecha: fechaHoy,
                     tipo: "credito" as const,
                     concepto: esTarjeta
-                      ? `Pago con tarjeta — ${tarjetaInfo?.nombre} ${l.cuotas && l.cuotas > 1 ? `${l.cuotas} cuotas` : "1 cuota"}`
+                      ? `Pago con tarjeta �� ${tarjetaInfo?.nombre} ${l.cuotas && l.cuotas > 1 ? `${l.cuotas} cuotas` : "1 cuota"}`
                       : l.medio === "transferencia" ? "Pago por transferencia" : "Pago en efectivo",
                     documento_tipo: "recibo" as const,
                     documento_numero: selectedFactura.numero,
@@ -11552,6 +11354,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   // Modal de Nota de Venta
   const [nvLineas, setNvLineas] = useState<LineaNV[]>([])
   const [nvClienteId, setNvClienteId] = useState<number | null>(null)
+  const [tipoVentaForm, setTipoVentaForm] = useState<"inmediata" | "pedido">("inmediata")
   
   const renderNotaVentaModal = () => {
     const selectedCliente = clientes.find(c => c.id === nvClienteId)
@@ -11578,20 +11381,23 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               alert("Debe seleccionar un cliente y agregar al menos un producto")
               return
             }
-            const tipoVenta = formData.get("tipo_venta") as "inmediata" | "pedido"
+            const tipoVenta = tipoVentaForm
             const moneda = formData.get("moneda") as "ARS" | "USD"
-            const deposito = formData.get("deposito") as string || "Puerto Norte"
+            const depositoFromForm = formData.get("deposito") as string
+            const depositoFromState = depositosVenta.find(d => d.id === nvDepositoId)?.nombre
+            const deposito = depositoFromForm || depositoFromState || "Sin depósito"
             const vendedorId = parseInt(formData.get("vendedor_id") as string) || 1
             const vendedorNombre = vendedores.find(v => v.id === vendedorId)?.nombre || "Max Solina"
             const terminoPagoId = parseInt(formData.get("termino_pago_id") as string) || 1
             const terminoPagoNombre = mockTerminosPago.find(tp => tp.id === terminoPagoId)?.nombre || "Contado Efectivo"
-            const nvNumero = editingItem?.numero || `NV X 10000-000${10737 + notasVenta.length}`
-            const nvId = editingItem?.id || notasVenta.length + 1
             const fechaHoy = new Date().toISOString()
+            // El número y el id real los devuelve el servidor — placeholders temporales
+            const nvNumeroTemp = editingItem?.numero || ""
+            const nvIdTemp = editingItem?.id || 0
 
             const newNV: NotaVenta = {
-              id: nvId,
-              numero: nvNumero,
+              id: nvIdTemp,
+              numero: nvNumeroTemp,
               cliente_id: cliente.id,
               cliente_nombre: cliente.nombre,
               cliente_codigo: cliente.codigo,
@@ -11617,16 +11423,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             }
 
             // ── Persistir NV en Supabase ──────────────────────────────
+            let nvNumero = nvNumeroTemp
+            let nvId = nvIdTemp
+            let nvPersistida = false
             try {
-              await fetch("/api/notas-venta", {
+              const nvRes = await fetch("/api/notas-venta", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  numero: nvNumero,
+                  numero: editingItem?.numero || null,
                   cliente_id: cliente.id,
                   vendedor_id: vendedorId,
                   moneda,
                   estado: tipoVenta === "inmediata" ? "facturada" : "abierta",
+                  sucursal_id: nvDepositoId || null,
                   subtotal: isNaN(subtotal) ? 0 : subtotal,
                   impuestos: isNaN(impuestos) ? 0 : impuestos,
                   total: isNaN(total) ? 0 : total,
@@ -11642,9 +11452,21 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   })),
                 }),
               })
-            } catch (_) {
-              // Error de red — la NV sigue en el state local
+              console.log("[v0] nvRes.status:", nvRes.status, "nvRes.ok:", nvRes.ok)
+              if (nvRes.ok) {
+                const nvData = await nvRes.json()
+                console.log("[v0] nvData:", JSON.stringify(nvData))
+                nvNumero = nvData.numero || nvNumeroTemp
+                nvId = nvData.id || nvIdTemp
+                newNV.numero = nvNumero
+                newNV.id = nvId
+                nvPersistida = true
+              }
+            } catch (err) {
+              console.log("[v0] fetch NV error:", err)
             }
+
+            console.log("[v0] POST-TRY tipoVenta:", tipoVenta, "editingItem:", !!editingItem, "nvPersistida:", nvPersistida)
 
             if (editingItem) {
               setNotasVenta(prev => prev.map(nv => nv.id === editingItem.id ? newNV : nv))
@@ -11652,12 +11474,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               setNotasVenta(prev => [...prev, newNV])
             }
 
-            // Si es venta inmediata, generar automáticamente OE, Remito, Factura y Recibo
-            if (tipoVenta === "inmediata" && !editingItem) {
-              const oeNumero = `OE X 10000-000${1050 + ordenesEntrega.length}`
+            // Si es venta inmediata y la NV se persistió OK, generar OE y Remito
+            if (tipoVenta === "inmediata" && !editingItem && nvPersistida) {
+              // OE y remito — el servidor genera los números
               const oeId = ordenesEntrega.length + 1
               
-              // 1. Crear Orden de Entrega (confirmada)
+              // 1. Crear Orden de Entrega (confirmada) — número generado por el servidor
+              let oeNumero = ""
               const newOE: OrdenEntrega = {
                 id: oeId,
                 numero: oeNumero,
@@ -11680,9 +11503,23 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   estado: "confirmado" as const
                 }))
               }
+              // Persistir OE y obtener número del servidor
+              try {
+                const oeRes = await fetch("/api/ordenes-entrega", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ ...newOE, numero: null }),
+                })
+                if (oeRes.ok) {
+                  const oeData = await oeRes.json()
+                  oeNumero = oeData.numero || oeNumero
+                  newOE.numero = oeNumero
+                  newOE.id = oeData.id || oeId
+                }
+              } catch (_) {}
               setOrdenesEntrega(prev => [...prev, newOE])
 
-              const remitoNumero = `R X 10000-000${5035 + remitos.length}`
+              let remitoNumero = ""
               const remitoId = remitos.length + 1
               
               // 2. Crear Remito (aprobado - descuenta stock)
@@ -11700,6 +11537,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 transporte: "Retira en sucursal",
                 chofer: "",
                 factura_numero: null,
+                nota_venta_id: nvId,
                 nota_venta_numero: nvNumero,
                 sucursal: "Puerto Norte",
                 deposito: deposito,
@@ -11723,11 +11561,38 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   })),
                 })),
               }
+              // Persistir remito y obtener número del servidor
+              try {
+                const remRes = await fetch("/api/remitos-venta", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    ...newRemito,
+                    numero: null,
+                    orden_entrega_numero: oeNumero,
+                    nota_venta_id: nvId,
+                    nota_venta_numero: nvNumero,
+                    lineas: nvLineas.map(l => ({
+                      producto_id: l.producto_id,
+                      producto_nombre: l.producto_nombre,
+                      cantidad: l.cantidad,
+                      requiere_serie: l.requiere_serie ?? false,
+                      series_seleccionadas: l.series_seleccionadas ?? [],
+                    })),
+                  }),
+                })
+                if (remRes.ok) {
+                  const remData = await remRes.json()
+                  remitoNumero = remData.numero || remitoNumero
+                  newRemito.numero = remitoNumero
+                  newRemito.id = remData.id || remitoId
+                }
+              } catch (_) {}
               setRemitos(prev => [...prev, newRemito])
 
               // Actualizar OE con número de remito
-              setOrdenesEntrega(prev => prev.map(oe => 
-                oe.id === oeId ? { ...oe, remito_numero: remitoNumero } : oe
+              setOrdenesEntrega(prev => prev.map(oe =>
+                oe.id === newOE.id ? { ...oe, remito_numero: remitoNumero } : oe
               ))
 
               const facturaNumero = `FC X 10000-000${20050 + facturas.length}`
@@ -11753,9 +11618,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 termino_pago: terminoPagoNombre,
                 subtotal: subtotal,
                 descuento: 0,
-                impuestos: 0,
-                total: subtotal,
-                saldo: subtotal,
+                impuestos: impuestos,
+                total: total,
+                saldo: total,
                 sucursal: "Puerto Norte",
                 lineas: nvLineas.map(l => ({
                   producto_nombre: l.producto_nombre,
@@ -11821,11 +11686,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tipo Venta</label>
-                <select name="tipo_venta" defaultValue={editingItem?.tipo_venta || "inmediata"}
+                <select
+                  name="tipo_venta"
+                  value={tipoVentaForm}
+                  onChange={e => setTipoVentaForm(e.target.value as "inmediata" | "pedido")}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                   <option value="inmediata">Inmediata</option>
                   <option value="pedido">Pedido</option>
                 </select>
+                {/* input hidden para que formData.get() siempre lo encuentre */}
+                <input type="hidden" name="tipo_venta_ctrl" value={tipoVentaForm} />
               </div>
             </div>
             <div className="grid grid-cols-4 gap-4">
@@ -11985,7 +11855,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </div>
 
             <div className="flex justify-end gap-3 pt-4 border-t">
-              <button type="button" onClick={() => { setShowModal(false); setNvLineas([]); setNvClienteId(null) }}
+              <button type="button" onClick={() => { setShowModal(false); setNvLineas([]); setNvClienteId(null); setTipoVentaForm("inmediata") }}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
                 Cancelar
               </button>

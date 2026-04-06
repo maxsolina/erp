@@ -21,10 +21,35 @@ export async function GET() {
 export async function POST(req: Request) {
   const supabase = getSupabase()
   const body = await req.json()
+
+  // Generar número en el servidor de forma atómica
+  let numero = body.numero
+  if (!numero) {
+    const { data: last } = await supabase
+      .from("ordenes_entrega")
+      .select("numero")
+      .order("id", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const lastNum = last?.numero
+      ? parseInt(last.numero.replace(/\D/g, "").slice(-8), 10)
+      : 1050
+    numero = `OE X 10000-${String(lastNum + 1).padStart(8, "0")}`
+  }
+  // Verificar que no exista ya ese número
+  const { data: existing } = await supabase
+    .from("ordenes_entrega")
+    .select("id")
+    .eq("numero", numero)
+    .maybeSingle()
+  if (existing) {
+    return NextResponse.json({ error: `Ya existe una OE con el número ${numero}` }, { status: 409 })
+  }
+
   const { data, error } = await supabase
     .from("ordenes_entrega")
     .insert({
-      numero: body.numero,
+      numero,
       nota_venta_id: body.nota_venta_id ?? null,
       nota_venta_numero: body.nota_venta_numero ?? null,
       cliente_id: body.cliente_id ?? null,
