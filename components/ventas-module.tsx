@@ -3383,7 +3383,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const vendedorNombre = vendedores[0]?.nombre || "Max Solina"
     const terminoPagoId = cliente.termino_pago_id || 1
     const terminoPagoNombre = mockTerminosPago.find(tp => tp.id === terminoPagoId)?.nombre || "Contado Efectivo"
-    const deposito = "Puerto Norte"
+    const depositoSeleccionado = depositosVenta.find(d => d.id === nvDepositoId)
+    const deposito = depositoSeleccionado?.nombre || "Sin depósito"
     const moneda: "ARS" | "USD" = "ARS"
 
     const newNV: NotaVenta = {
@@ -3402,7 +3403,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       termino_pago_id: terminoPagoId,
       termino_pago_nombre: terminoPagoNombre,
       deposito: deposito,
-      sucursal: "Puerto Norte",
+      sucursal: depositoSeleccionado?.nombre || "Puerto Norte",
       lineas: lineasValidas.map(l => ({
         producto_id: l.producto_id,
         producto_nombre: l.producto_nombre,
@@ -11245,7 +11246,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             }
             const tipoVenta = formData.get("tipo_venta") as "inmediata" | "pedido"
             const moneda = formData.get("moneda") as "ARS" | "USD"
-            const deposito = formData.get("deposito") as string || "Puerto Norte"
+            const depositoFromForm = formData.get("deposito") as string
+            const depositoFromState = depositosVenta.find(d => d.id === nvDepositoId)?.nombre
+            const deposito = depositoFromForm || depositoFromState || "Sin depósito"
             const vendedorId = parseInt(formData.get("vendedor_id") as string) || 1
             const vendedorNombre = vendedores.find(v => v.id === vendedorId)?.nombre || "Max Solina"
             const terminoPagoId = parseInt(formData.get("termino_pago_id") as string) || 1
@@ -11295,6 +11298,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   vendedor_id: vendedorId,
                   moneda,
                   estado: tipoVenta === "inmediata" ? "facturada" : "abierta",
+                  sucursal_id: nvDepositoId || null,
+                  deposito_nombre: deposito,
                   subtotal: isNaN(subtotal) ? 0 : subtotal,
                   impuestos: isNaN(impuestos) ? 0 : impuestos,
                   total: isNaN(total) ? 0 : total,
