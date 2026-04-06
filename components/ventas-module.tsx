@@ -461,224 +461,21 @@ const seriesDisponibles: SerieDisponible[] = [
   { id: 16, producto_id: 7, serie: "FVFXN123456C", lote: "LOTE2024B", estado: "disponible", ubicacion_id: 8, ubicacion_nombre: "PN/Stock", detalles: "Con estuche Lightning", fecha_ingreso: "2024-01-20" },
 ]
 
-const mockClientesVenta: ClienteVenta[] = [
-  { 
-    id: 1, codigo: "C015517", nombre: "Alejandra Gallo", nombre_fantasia: "", 
-    tipo_documento: "DNI", numero_documento: "32456789", posicion_fiscal: "consumidor_final",
-    direccion: "Av. Rivadavia 1234", ciudad: "Rosario", provincia: "Santa Fe", codigo_postal: "2000",
-    zona: "Centro", telefono: "0341-4561234", celular: "341-5551234", email: "agallo@email.com",
-    categoria: "publico", vendedor_id: 1, cobrador_id: 1, lista_precios_id: 1, descuento_default: 0,
-    moneda_cuenta_corriente: "ARS", termino_pago_id: 1, activo: true, es_confidencial: false,
-    sucursal_origen: "Puerto Norte", fecha_alta: "2023-01-15", saldo_cuenta_corriente: 0, total_facturado: 125000
-  },
-  { 
-    id: 2, codigo: "C015518", nombre: "TechStore SRL", nombre_fantasia: "TechStore", 
-    tipo_documento: "CUIT", numero_documento: "30-71234567-8", posicion_fiscal: "responsable_inscripto",
-    direccion: "San Martín 567", ciudad: "Rosario", provincia: "Santa Fe", codigo_postal: "2000",
-    zona: "Microcentro", telefono: "0341-4567890", celular: "341-5557890", email: "ventas@techstore.com",
-    categoria: "mayorista", vendedor_id: 2, cobrador_id: 1, lista_precios_id: 2, descuento_default: 10,
-    moneda_cuenta_corriente: "USD", termino_pago_id: 2, activo: true, es_confidencial: false,
-    sucursal_origen: "Puerto Norte", fecha_alta: "2022-06-20", saldo_cuenta_corriente: 1500, total_facturado: 2850000
-  },
-  { 
-    id: 3, codigo: "C015519", nombre: "Juan Carlos Méndez", nombre_fantasia: "", 
-    tipo_documento: "DNI", numero_documento: "28765432", posicion_fiscal: "monotributista",
-    direccion: "Córdoba 890", ciudad: "Rosario", provincia: "Santa Fe", codigo_postal: "2000",
-    zona: "Centro", telefono: "", celular: "341-5559999", email: "jcmendez@gmail.com",
-    categoria: "mercadolibre", vendedor_id: 1, cobrador_id: null, lista_precios_id: 1, descuento_default: 5,
-    moneda_cuenta_corriente: "ARS", termino_pago_id: 1, activo: true, es_confidencial: false,
-    sucursal_origen: "Puerto Norte", fecha_alta: "2024-01-10", saldo_cuenta_corriente: 45000, total_facturado: 320000
-  },
-]
+const mockClientesVenta: ClienteVenta[] = []
 
-const mockNotasVenta: NotaVenta[] = [
-  {
-    id: 1, numero: "NV X 10000-00010735", cliente_id: 1, cliente_nombre: "Alejandra Gallo", cliente_codigo: "C015517",
-    vendedor_id: 1, vendedor_nombre: "Max Solina", fecha: "2024-01-20T10:30:00", estado: "a_facturar",
-    moneda: "ARS", tipo_cotizacion: "blue", cotizacion: 1150, lista_precios_id: 1, termino_pago_id: 1,
-    termino_pago_nombre: "Contado Efectivo", deposito: "Puerto Norte", tipo_venta: "inmediata",
-    lineas: [
-      { id: 1, producto_id: 1, producto_nombre: "iPhone 15 Pro Max 256GB", producto_sku: "IPH15PM256", cantidad: 1, precio_unitario: 1850000, descuento: 0, subtotal: 1850000, fecha_entrega: "2024-01-20" }
-    ],
-    subtotal: 1850000, descuento_global: 0, impuestos: 388500, total: 2238500, sucursal: "Puerto Norte", punto_venta: "10000"
-  },
-  {
-    id: 2, numero: "NV X 10000-00010736", cliente_id: 2, cliente_nombre: "TechStore SRL", cliente_codigo: "C015518",
-    vendedor_id: 2, vendedor_nombre: "Laura García", fecha: "2024-01-20T14:15:00", estado: "borrador",
-    moneda: "USD", tipo_cotizacion: "blue", cotizacion: 1150, lista_precios_id: 3, termino_pago_id: 2,
-    termino_pago_nombre: "Cuenta Corriente 30 días", deposito: "Puerto Norte", tipo_venta: "pedido",
-    lineas: [
-      { id: 1, producto_id: 2, producto_nombre: "Samsung Galaxy S24 Ultra", producto_sku: "SGS24U", cantidad: 5, precio_unitario: 1200, descuento: 10, subtotal: 5400, fecha_entrega: "2024-01-25" },
-      { id: 2, producto_id: 3, producto_nombre: "Funda Silicona Galaxy S24", producto_sku: "FUNDGS24", cantidad: 10, precio_unitario: 15, descuento: 0, subtotal: 150, fecha_entrega: "2024-01-25" }
-    ],
-    subtotal: 5550, descuento_global: 5, impuestos: 1108.73, total: 6381.23, sucursal: "Puerto Norte", punto_venta: "10000"
-  },
-  {
-    id: 3, numero: "NV X 10000-00010734", cliente_id: 3, cliente_nombre: "Juan Carlos Méndez", cliente_codigo: "C015519",
-    vendedor_id: 1, vendedor_nombre: "Max Solina", fecha: "2024-01-19T16:45:00", estado: "finalizada",
-    moneda: "ARS", tipo_cotizacion: "blue", cotizacion: 1145, lista_precios_id: 1, termino_pago_id: 1,
-    termino_pago_nombre: "Contado Efectivo", deposito: "Puerto Norte", tipo_venta: "inmediata",
-    lineas: [
-      { id: 1, producto_id: 4, producto_nombre: "AirPods Pro 2", producto_sku: "APP2", cantidad: 1, precio_unitario: 450000, descuento: 5, subtotal: 427500, fecha_entrega: "2024-01-19" }
-    ],
-    subtotal: 427500, descuento_global: 0, impuestos: 89775, total: 517275, sucursal: "Puerto Norte", punto_venta: "10000"
-  },
-]
+const mockNotasVenta: NotaVenta[] = []
 
 const mockOrdenesEntrega: OrdenEntrega[] = []
 
 const mockRemitos: Remito[] = []
 
-const mockFacturas: Factura[] = [
-  {
-    id: 1, numero: "FC C 10000-00012375", tipo: "C", nota_venta_id: 3, nota_venta_numero: "NV X 10000-00010734",
-    cliente_id: 3, cliente_nombre: "Juan Carlos Méndez", cliente_documento: "DNI 28765432",
-    estado: "conciliada", fecha: "2024-01-19T17:15:00", vendedor_nombre: "Max Solina",
-    domicilio_facturacion: "Córdoba 890, Rosario", moneda: "ARS", tipo_cotizacion: "blue", cotizacion: 1145,
-    termino_pago: "Contado Efectivo", condicion_pago: "Contado", fecha_vencimiento: "2024-01-19",
-    subtotal: 427500, descuento: 0, impuestos: 89775, total: 517275, saldo: 0,
-    sucursal: "Puerto Norte",
-    lineas: [
-      { producto_nombre: "AirPods Pro 2", descripcion: "", cantidad: 1, precio_unitario: 450000, descuento: 5, subtotal: 427500 }
-    ],
-    vencimientos: [
-      { descripcion: "Contado", fecha: "2024-01-19", total: 517275 }
-    ]
-  },
-  {
-    id: 2, numero: "FC C 20000-00023950", tipo: "C", nota_venta_id: 1, nota_venta_numero: "NV X 20000-00023950",
-    cliente_id: 1, cliente_nombre: "Alejandra Gallo", cliente_documento: "DNI 32456789",
-    estado: "conciliada", fecha: "2024-03-08T10:00:00", vendedor_nombre: "Max Solina",
-    domicilio_facturacion: "Av. Libertador 1234, CABA", moneda: "ARS", tipo_cotizacion: "blue", cotizacion: 1145,
-    termino_pago: "Contado", condicion_pago: "Contado", fecha_vencimiento: "2024-03-08",
-    subtotal: 14462.81, descuento: 0, impuestos: 3037.19, total: 17500, saldo: 0,
-    sucursal: "Puerto Norte",
-    lineas: [
-      { producto_nombre: "iPhone 15 Pro Max", descripcion: "", cantidad: 1, precio_unitario: 14462.81, descuento: 0, subtotal: 14462.81 }
-    ],
-    vencimientos: [
-      { descripcion: "Contado", fecha: "2024-03-08", total: 17500 }
-    ]
-  },
-  {
-    id: 3, numero: "FC C 20000-00029837", tipo: "C", nota_venta_id: 1, nota_venta_numero: "NV X 20000-00029111",
-    cliente_id: 1, cliente_nombre: "Alejandra Gallo", cliente_documento: "DNI 32456789",
-    estado: "abierta", fecha: "2024-09-12T14:30:00", vendedor_nombre: "Max Solina",
-    domicilio_facturacion: "Av. Libertador 1234, CABA", moneda: "USD", tipo_cotizacion: "blue", cotizacion: 1145,
-    termino_pago: "Contado", condicion_pago: "Contado", fecha_vencimiento: "2024-09-12",
-    subtotal: 0.83, descuento: 0, impuestos: 0.17, total: 1, saldo: 1,
-    sucursal: "Puerto Norte",
-    lineas: [
-      { producto_nombre: "Servicio Tech", descripcion: "", cantidad: 1, precio_unitario: 0.83, descuento: 0, subtotal: 0.83 }
-    ],
-    vencimientos: [
-      { descripcion: "Contado", fecha: "2024-09-12", total: 1 }
-    ]
-  },
-  {
-    id: 4, numero: "FC C 20000-00029808", tipo: "C", nota_venta_id: 1, nota_venta_numero: "NV X 20000-00029111",
-    cliente_id: 1, cliente_nombre: "Alejandra Gallo", cliente_documento: "DNI 32456789",
-    estado: "abierta", fecha: "2024-09-12T14:35:00", vendedor_nombre: "Max Solina",
-    domicilio_facturacion: "Av. Libertador 1234, CABA", moneda: "USD", tipo_cotizacion: "blue", cotizacion: 1145,
-    termino_pago: "Contado", condicion_pago: "Contado", fecha_vencimiento: "2024-09-12",
-    subtotal: 0.83, descuento: 0, impuestos: 0.17, total: 1, saldo: 1,
-    sucursal: "Puerto Norte",
-    lineas: [
-      { producto_nombre: "Servicio Tech", descripcion: "", cantidad: 1, precio_unitario: 0.83, descuento: 0, subtotal: 0.83 }
-    ],
-    vencimientos: [
-      { descripcion: "Contado", fecha: "2024-09-12", total: 1 }
-    ]
-  },
-  {
-    id: 5, numero: "FC C 20000-00038235", tipo: "C", nota_venta_id: 1, nota_venta_numero: "NV X 20000-00038791",
-    cliente_id: 1, cliente_nombre: "Alejandra Gallo", cliente_documento: "DNI 32456789",
-    estado: "abierta", fecha: "2025-06-02T11:00:00", vendedor_nombre: "Max Solina",
-    domicilio_facturacion: "Av. Libertador 1234, CABA", moneda: "ARS", tipo_cotizacion: "blue", cotizacion: 1145,
-    termino_pago: "Contado", condicion_pago: "Contado", fecha_vencimiento: "2025-06-02",
-    subtotal: 30247.93, descuento: 0, impuestos: 6352.07, total: 36600, saldo: 36600,
-    sucursal: "Puerto Norte",
-    lineas: [
-      { producto_nombre: "MacBook Air M3", descripcion: "", cantidad: 1, precio_unitario: 30247.93, descuento: 0, subtotal: 30247.93 }
-    ],
-    vencimientos: [
-      { descripcion: "Contado", fecha: "2025-06-02", total: 36600 }
-    ]
-  },
-]
+const mockFacturas: Factura[] = []
 
-const mockRecibos: Recibo[] = [
-  {
-    id: 1, numero: "RC X Norte-00011734", cliente_id: 3, cliente_nombre: "Juan Carlos Méndez",
-    estado: "publicado", fecha: "2024-01-19T17:20:00", importe: 517275, importe_no_conciliado: 0,
-    moneda: "ARS", sucursal: "Puerto Norte", caja: "Caja Principal", cobrador_nombre: "Max Solina",
-    nota_venta_numero: "NV X 10000-00010734", concepto: "Cobro de venta",
-    pagos: [
-      { forma_pago: "Efectivo", importe: 517275, moneda: "ARS" }
-    ]
-  },
-  {
-    id: 2, numero: "RC X Norte-00023456", cliente_id: 1, cliente_nombre: "Alejandra Gallo",
-    estado: "publicado", fecha: "2024-03-15T10:00:00", importe: 10000, importe_no_conciliado: 10000,
-    moneda: "ARS", sucursal: "Puerto Norte", caja: "Caja Principal", cobrador_nombre: "Max Solina",
-    nota_venta_numero: null, concepto: "Seña de pedido",
-    pagos: [
-      { forma_pago: "Transferencia", importe: 10000, moneda: "ARS" }
-    ]
-  },
-  {
-    id: 3, numero: "RC X Norte-00029555", cliente_id: 1, cliente_nombre: "Alejandra Gallo",
-    estado: "publicado", fecha: "2024-09-20T15:30:00", importe: 25000, importe_no_conciliado: 25000,
-    moneda: "ARS", sucursal: "Puerto Norte", caja: "Caja Principal", cobrador_nombre: "Max Solina",
-    nota_venta_numero: null, concepto: "Pago a cuenta",
-    pagos: [
-      { forma_pago: "Efectivo", importe: 25000, moneda: "ARS" }
-    ]
-  },
-]
+const mockRecibos: Recibo[] = []
 
-const mockAjustes: AjusteCliente[] = [
-  {
-    id: 1, numero: "AJ X 10000-00000123", cliente_id: 2, cliente_nombre: "TechStore SRL",
-    estado: "publicado", fecha: "2024-01-15", concepto: "Bonificación especial",
-    moneda: "USD", nota_venta_numero: null, sucursal: "Puerto Norte",
-    lineas: [
-      { descripcion: "Bonificación por volumen de compras Q4 2023", fecha_vencimiento: "2024-01-15", importe: -500 }
-    ],
-    total: -500
-  },
-]
+const mockAjustes: AjusteCliente[] = []
 
-const mockMovimientosCC: MovimientoCuentaCorriente[] = [
-  // Cliente 3 - Juan Carlos Méndez: Factura pagada
-  {
-    id: 1, cliente_id: 3, fecha: "2024-01-19T17:15:00", tipo: "debito",
-    concepto: "Factura de venta", documento_tipo: "factura", documento_numero: "FC C 10000-00012375",
-    documento_id: 1, moneda: "ARS", importe: 517275, saldo_posterior: 517275
-  },
-  {
-    id: 2, cliente_id: 3, fecha: "2024-01-19T17:20:00", tipo: "credito",
-    concepto: "Pago recibido", documento_tipo: "recibo", documento_numero: "RC X Norte-00011734",
-    documento_id: 1, moneda: "ARS", importe: 517275, saldo_posterior: 0
-  },
-  // Cliente 2 - TechStore: Saldo pendiente USD
-  {
-    id: 3, cliente_id: 2, fecha: "2024-01-10T10:00:00", tipo: "debito",
-    concepto: "Factura de venta", documento_tipo: "factura", documento_numero: "FC A 10000-00012370",
-    documento_id: 2, moneda: "USD", importe: 2000, saldo_posterior: 2000
-  },
-  {
-    id: 4, cliente_id: 2, fecha: "2024-01-15T09:00:00", tipo: "credito",
-    concepto: "Ajuste - Bonificación especial", documento_tipo: "ajuste", documento_numero: "AJ X 10000-00000123",
-    documento_id: 1, moneda: "USD", importe: 500, saldo_posterior: 1500
-  },
-  // Cliente 3 - Deuda actual de 45000
-  {
-    id: 5, cliente_id: 3, fecha: "2024-01-25T11:00:00", tipo: "debito",
-    concepto: "Factura de venta", documento_tipo: "factura", documento_numero: "FC C 10000-00012380",
-    documento_id: 3, moneda: "ARS", importe: 45000, saldo_posterior: 45000
-  },
-]
+const mockMovimientosCC: MovimientoCuentaCorriente[] = []
 
 // ─── Bloque Medios de Pago (dentro de ficha de Factura) ────────────────������─────
 
@@ -2369,7 +2166,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             moduleName="clientes"
             filterOptions={[
               { field: "categoria", label: "Categoría", values: [
-                { value: "publico", label: "P����blico" },
+                { value: "publico", label: "P������blico" },
                 { value: "mercadolibre", label: "MercadoLibre" },
                 { value: "mayorista", label: "Mayorista" },
               ]},
