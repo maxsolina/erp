@@ -14,9 +14,19 @@ export async function GET() {
 export async function POST(req: Request) {
   const supabase = await createClient()
   const body = await req.json()
+
+  // Generar número correlativo según tipo
+  const prefix = body.tipo === "nota_debito" ? "ND-A" : "NC-A"
+  const { count } = await supabase
+    .from("ajustes_clientes")
+    .select("*", { count: "exact", head: true })
+    .eq("tipo", body.tipo ?? "nota_credito")
+  const seq = (count ?? 0) + 1
+  const numero = `${prefix}-${String(seq).padStart(5, "0")}`
+
   const { data, error } = await supabase
     .from("ajustes_clientes")
-    .insert(body)
+    .insert({ ...body, numero })
     .select()
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

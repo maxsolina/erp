@@ -1294,6 +1294,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       })
       .catch(console.error)
   }, [])
+
+  // Cargar ajustes (NC/ND) desde Supabase al montar
+  useEffect(() => {
+    fetch("/api/ajustes-clientes")
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) setAjustes(data)
+      })
+      .catch(console.error)
+  }, [])
   const [selectedToma, setSelectedToma] = useState<typeof tomasEquipo[0] | null>(null)
   const [ncDetallePopup, setNcDetallePopup] = useState<AjusteCliente | null>(null)
   const [selectedAjuste, setSelectedAjuste] = useState<AjusteCliente | null>(null)
@@ -5139,7 +5149,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </h3>
             {selectedToma.recepcion_numero ? (
               <div className="space-y-3 text-sm">
-                <div className="flex justify-between"><span className="text-gray-500">Número</span><span className="font-medium text-blue-700">{selectedToma.recepcion_numero}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">N��mero</span><span className="font-medium text-blue-700">{selectedToma.recepcion_numero}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Equipo</span><span className="font-medium">{selectedToma.modelo_equipo}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Valor acordado</span><span className="font-medium">{formatCurrency(selectedToma.precio_final)}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Estado</span>
@@ -12143,7 +12153,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <X className="w-5 h-5" />
             </button>
           </div>
-          <form onSubmit={(e) => {
+          <form onSubmit={async (e) => {
             e.preventDefault()
             const formData = new FormData(e.currentTarget)
             const cliente = clientes.find(c => c.id === ajusteClienteId)
@@ -12151,20 +12161,42 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               alert("Debe seleccionar un cliente y agregar al menos una línea")
               return
             }
-            const newAjuste: AjusteCliente = {
-              id: ajustes.length + 1,
-              numero: `AJ X 10000-000001${24 + ajustes.length}`,
+            const tipo = (formData.get("tipo") as string) || "nota_credito"
+            const payload = {
               cliente_id: cliente.id,
               cliente_nombre: cliente.nombre,
-              estado: "borrador",
-              fecha: new Date().toISOString().split('T')[0],
+              tipo,
+              estado: "publicado",
+              fecha: new Date().toISOString(),
               concepto: formData.get("concepto") as string,
-              moneda: formData.get("moneda") as "ARS" | "USD",
+              moneda: formData.get("moneda") as string,
               nota_venta_numero: null,
-              sucursal: "Puerto Norte",
+              sucursal: sucursalActiva?.nombre ?? "",
               categoria: (formData.get("categoria") as string) || null,
               lineas: ajusteLineas,
-              total: totalAjuste
+              total: totalAjuste,
+            }
+            let idFinal = Date.now()
+            let numeroFinal = `${tipo === "nota_debito" ? "ND" : "NC"}-A-LOCAL`
+            try {
+              const res = await fetch("/api/ajustes-clientes", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              })
+              if (res.ok) {
+                const data = await res.json()
+                idFinal = data.id
+                numeroFinal = data.numero
+              }
+            } catch (err) {
+              console.error("[ajustes] error al persistir:", err)
+            }
+            const newAjuste: AjusteCliente = {
+              id: idFinal,
+              numero: numeroFinal,
+              ...payload,
+              moneda: payload.moneda as "ARS" | "USD",
             }
             setAjustes(prev => [...prev, newAjuste])
             setShowModal(false)
