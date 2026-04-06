@@ -5,7 +5,7 @@ import { useERP } from "@/contexts/erp-context"
 import {
   Plus, Trash2, Edit, X, Check, Search, ChevronDown, AlertCircle,
   CreditCard, Building2, Percent, Calendar, ToggleLeft, ToggleRight,
-  Calculator, Info
+  Calculator, Info, Receipt
 } from "lucide-react"
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -832,12 +832,30 @@ function SeccionSimulador({ tarjetas, grupos, recargos }: { tarjetas: Tarjeta[];
   )
 }
 
+// ─── Sección Extractos de Caja ───────────────────────────────────────────────
+
+function SeccionExtractosCaja() {
+  return (
+    <div className="space-y-6">
+      <SectionHeader title="Extractos de Caja" />
+      <div className="bg-white rounded-lg border border-gray-200 p-8">
+        <div className="text-center">
+          <Receipt className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Extractos de Caja</h3>
+          <p className="text-gray-500">Esta funcionalidad está en desarrollo</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 const MENU_ITEMS = [
   { key: "tarjetas", label: "Tarjetas", icon: CreditCard },
   { key: "grupos", label: "Grupos de Tarjetas", icon: Building2 },
   { key: "recargos", label: "Recargos de Tarjetas", icon: Percent },
+  { key: "extractos-caja", label: "Extractos de Caja", icon: Receipt },
   { key: "simulador", label: "Simulador de Recargos", icon: Calculator },
 ] as const
 
@@ -878,6 +896,7 @@ export default function ModuloFinanzas() {
           {activeItem === "tarjetas" && <SeccionTarjetas tarjetas={tarjetas} setTarjetas={setTarjetas} />}
           {activeItem === "grupos" && <SeccionGrupos tarjetas={tarjetas} grupos={grupos} setGrupos={setGrupos} />}
           {activeItem === "recargos" && <SeccionRecargos tarjetas={tarjetas} grupos={grupos} recargos={recargos} setRecargos={setRecargos} />}
+          {activeItem === "extractos-caja" && <SeccionExtractosCaja />}
           {activeItem === "simulador" && <SeccionSimulador tarjetas={tarjetas} grupos={grupos} recargos={recargos} />}
         </main>
       </div>
