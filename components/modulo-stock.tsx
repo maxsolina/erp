@@ -2466,12 +2466,6 @@ export default function ModuloStock() {
     }
     
     const groupedData = groupDataMultiLevel(lotesFiltrados, lotesActiveGroupBy)
-
-    // Auto-expandir todos los grupos al calcular (para que los IMEIs sean visibles por defecto)
-    const allGroupKeys = Object.keys(groupedData)
-    if (allGroupKeys.length > 0 && lotesExpandedGroups.size === 0) {
-      setLotesExpandedGroups(new Set(allGroupKeys))
-    }
     
     const toggleGroup = (groupKey: string) => {
       setLotesExpandedGroups(prev => {
