@@ -6,7 +6,7 @@ import { useClientes } from "@/hooks/use-clientes"
 import { crearCliente as apiCrearCliente, actualizarCliente as apiActualizarCliente } from "@/hooks/use-clientes"
 import type { ClienteDB } from "@/hooks/use-clientes"
 import { useERP } from "@/contexts/erp-context"
-import { fetchDepositos } from "@/lib/stock-actions"
+import { fetchDepositos, fetchUbicaciones } from "@/lib/stock-actions"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, ArrowRightLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History, Banknote } from "lucide-react"
  import BotonVolver from "./ui/boton-volver"
 import ProductoDropdown from "./producto-dropdown"
@@ -340,7 +340,7 @@ interface AjusteCliente {
   numero: string
   cliente_id: number
   cliente_nombre: string
-  estado: "borrador" | "publicado"
+  estado: "borrador" | "publicado" | "cancelado"
   fecha: string
   concepto: string
   moneda: "ARS" | "USD"
@@ -353,6 +353,7 @@ interface AjusteCliente {
     importe: number
   }[]
   total: number
+  saldo_disponible?: number
 }
 
 interface NcCategoria {
@@ -839,21 +840,23 @@ interface ModuloVentasProps {
 
 export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: ModuloVentasProps = {}) {
   const { sucursales, sucursalActiva } = useERP()
-  const [depositos, setDepositos] = useState<{ id: number; nombre: string; codigo: string }[]>([])
+  const [depositos, setDepositos] = useState<{ id: number; nombre: string; codigo: string; sucursal_id?: number | null }[]>([])
+  const [ubicaciones, setUbicaciones] = useState<{ id: number; deposito_id: number; codigo: string; nombre: string }[]>([])
   useEffect(() => {
     fetchDepositos().then(d => setDepositos(Array.isArray(d) ? d : [])).catch(console.error)
+    fetchUbicaciones().then(u => setUbicaciones(Array.isArray(u) ? u : [])).catch(console.error)
   }, [])
 
   // Sincronizar depósito default con la sucursal activa cuando carguen los depósitos
   useEffect(() => {
-    if (!depositosVenta.length) return
-    const match = depositosVenta.find(d => d.nombre === sucursalActiva?.nombre)
-    const defaultDeposito = match ?? depositosVenta[0]
+    if (!depositos.length) return
+    const match = depositos.find(d => (d.sucursal_id && sucursalActiva?.id ? d.sucursal_id === sucursalActiva.id : d.nombre === sucursalActiva?.nombre))
+    const defaultDeposito = match ?? depositos[0]
     if (!defaultDeposito) return
     setNvDepositoId(defaultDeposito.id)
-    const ubicacionStock = ubicacionesVenta.find(u => u.deposito_id === defaultDeposito.id && u.nombre === "Stock")
+    const ubicacionStock = ubicaciones.find(u => u.deposito_id === defaultDeposito.id && u.nombre === "Stock")
     if (ubicacionStock) setNvUbicacionId(ubicacionStock.id)
-  }, [depositosVenta, sucursalActiva])
+  }, [depositos, ubicaciones, sucursalActiva])
 
   // Navigation state
   const [activeSection, setActiveSection] = useState<string>("clientes")
@@ -1332,9 +1335,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [selectedToma, setSelectedToma] = useState<typeof tomasEquipo[0] | null>(null)
   const [showConfirmarRecepcionModal, setShowConfirmarRecepcionModal] = useState(false)
   const [imeiInput, setImeiInput] = useState("")
+  const [colorRecepcion, setColorRecepcion] = useState("")
+  const [bateriaRecepcionPct, setBateriaRecepcionPct] = useState<number | undefined>(undefined)
+  const [outletRecepcion, setOutletRecepcion] = useState(false)
+  const [ubicacionRecepcionId, setUbicacionRecepcionId] = useState<number | null>(null)
+  const [errorRecepcion, setErrorRecepcion] = useState<string | null>(null)
   const [observacionesRecepcion, setObservacionesRecepcion] = useState("")
   const [confirmandoRecepcion, setConfirmandoRecepcion] = useState(false)
   const [ncDetallePopup, setNcDetallePopup] = useState<AjusteCliente | null>(null)
+  const [recDetallePopup, setRecDetallePopup] = useState<any | null>(null)
   const [selectedAjuste, setSelectedAjuste] = useState<AjusteCliente | null>(null)
   
   // Filters (legacy — kept for compatibility with filtered derived state)
@@ -1964,6 +1973,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       setSelectedNV(null)
                       setSelectedAjuste(null)
                       setClientePanel("ficha")
+                      setNcDetallePopup(null)
+                      setRecDetallePopup(null)
                       // Limpiar selección de versión al navegar a versiones desde sidebar
                       if (item.id === "versiones_lista") {
                         setSelectedVersion(null)
@@ -3443,7 +3454,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const vendedorNombre = vendedores[0]?.nombre || "Max Solina"
     const terminoPagoId = cliente.termino_pago_id || 1
     const terminoPagoNombre = mockTerminosPago.find(tp => tp.id === terminoPagoId)?.nombre || "Contado Efectivo"
-    const depositoSeleccionado = depositosVenta.find(d => d.id === nvDepositoId)
+    const depositoSeleccionado = depositos.find(d => d.id === nvDepositoId)
     const deposito = depositoSeleccionado?.nombre || "Sin depósito"
     const moneda: "ARS" | "USD" = "ARS"
 
@@ -3652,7 +3663,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 deposito_id: nvDepositoId || null,
                 deposito_nombre: deposito,
                 ubicacion_id: nvUbicacionId || null,
-                ubicacion_nombre: ubicacionesVenta.find(u => u.id === nvUbicacionId)?.nombre ?? null,
+                ubicacion_nombre: ubicaciones.find(u => u.id === nvUbicacionId)?.nombre ?? null,
                 usuario: "sistema",
                 lineas: lineasValidas.map(l => ({
                   producto_id: l.producto_id,
@@ -3680,9 +3691,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setNvPrevisualizando(false)
     setNvLineas([])
     setNvClienteId(null)
-    const defaultDep = depositosVenta.find(d => d.nombre === sucursalActiva?.nombre) ?? depositosVenta[0]
+    const defaultDep = depositos.find(d => (d.sucursal_id && sucursalActiva?.id ? d.sucursal_id === sucursalActiva.id : d.nombre === sucursalActiva?.nombre)) ?? depositos[0]
     setNvDepositoId(defaultDep?.id ?? 0)
-    const defaultUbic = ubicacionesVenta.find(u => u.deposito_id === defaultDep?.id && u.nombre === "Stock")
+    const defaultUbic = ubicaciones.find(u => u.deposito_id === defaultDep?.id && u.nombre === "Stock")
     setNvUbicacionId(defaultUbic?.id ?? 0)
     setEditingNVId(null)
     setSelectedNV(newNV)
@@ -3694,8 +3705,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const lineasValidas = nvLineas.filter(l => l.producto_id > 0 && l.producto_nombre.trim() !== "")
     const subtotal = lineasValidas.reduce((sum, l) => sum + l.subtotal, 0)
     const total = subtotal
-    const deposito = depositosVenta.find(d => d.id === nvDepositoId)
-    const ubicacion = ubicacionesVenta.find(u => u.id === nvUbicacionId)
+    const deposito = depositos.find(d => d.id === nvDepositoId)
+    const ubicacion = ubicaciones.find(u => u.id === nvUbicacionId)
 
     return (
       <div>
@@ -3981,14 +3992,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       const newDepositoId = parseInt(e.target.value)
                       setNvDepositoId(newDepositoId)
                       // Seleccionar automáticamente la ubicación "Stock" del depósito
-                      const ubicacionStock = ubicacionesVenta.find(u => u.deposito_id === newDepositoId && u.nombre === "Stock")
+                      const ubicacionStock = ubicaciones.find(u => u.deposito_id === newDepositoId && u.nombre === "Stock")
                       if (ubicacionStock) {
                         setNvUbicacionId(ubicacionStock.id)
                       }
                     }}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
-                    {depositosVenta.map(d => (
+                    {depositos.map(d => (
                       <option key={d.id} value={d.id}>{d.nombre}</option>
                     ))}
                   </select>
@@ -4000,8 +4011,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     onChange={(e) => setNvUbicacionId(parseInt(e.target.value))}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
-                    {ubicacionesVenta
-                      .filter(u => u.deposito_id === nvDepositoId && u.disponible_venta)
+                    {ubicaciones
+                      .filter(u => u.deposito_id === nvDepositoId)
                       .map(u => (
                         <option key={u.id} value={u.id}>{u.nombre}</option>
                       ))
@@ -4010,7 +4021,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </div>
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                El stock se descontará de: <span className="font-medium">{ubicacionesVenta.find(u => u.id === nvUbicacionId)?.codigo || "-"}</span>
+                El stock se descontará de: <span className="font-medium">{ubicaciones.find(u => u.id === nvUbicacionId)?.codigo || "-"}</span>
               </p>
             </div>
 
@@ -4346,9 +4357,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <button
                   onClick={() => {
   setCreandoNV(false); setNvLineas([]); setNvClienteId(null)
-  const cancelDep = depositosVenta.find(d => d.nombre === sucursalActiva?.nombre) ?? depositosVenta[0]
+  const cancelDep = depositos.find(d => (d.sucursal_id && sucursalActiva?.id ? d.sucursal_id === sucursalActiva.id : d.nombre === sucursalActiva?.nombre)) ?? depositos[0]
   setNvDepositoId(cancelDep?.id ?? 0)
-  const cancelUbic = ubicacionesVenta.find(u => u.deposito_id === cancelDep?.id && u.nombre === "Stock")
+  const cancelUbic = ubicaciones.find(u => u.deposito_id === cancelDep?.id && u.nombre === "Stock")
   setNvUbicacionId(cancelUbic?.id ?? 0)
   setEditingNVId(null); setNvPrevisualizando(false)
 }}
@@ -4415,9 +4426,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     series_disponibles: [],
                     series_seleccionadas: l.series || []
                   })))
-                  const editDep = depositosVenta.find(d => d.nombre === (selectedNV.deposito || sucursalActiva?.nombre)) ?? depositosVenta.find(d => d.nombre === sucursalActiva?.nombre) ?? depositosVenta[0]
+                  const editDep = depositos.find(d => d.nombre === (selectedNV.deposito || sucursalActiva?.nombre)) ?? depositos.find(d => d.nombre === sucursalActiva?.nombre) ?? depositos[0]
                   setNvDepositoId(editDep?.id ?? 0)
-                  const editUbic = ubicacionesVenta.find(u => u.deposito_id === editDep?.id && u.nombre === "Stock")
+                  const editUbic = ubicaciones.find(u => u.deposito_id === editDep?.id && u.nombre === "Stock")
                   setNvUbicacionId(editUbic?.id ?? 0)
                   setTipoVentaForm(selectedNV.tipo_venta || "inmediata")
                   setEditingNVId(selectedNV.id)
@@ -5142,9 +5153,19 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <div className="flex justify-between">
                   <span className="text-gray-500">Número</span>
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       const nc = ajustes.find(a => a.numero === selectedToma.nota_credito_numero)
-                      if (nc) setNcDetallePopup(nc)
+                      if (nc) {
+                        setNcDetallePopup(nc)
+                      } else {
+                        // Fetch directo si no está en el state
+                        const res = await fetch("/api/ajustes-clientes")
+                        if (res.ok) {
+                          const all = await res.json()
+                          const found = all.find((a: any) => a.numero === selectedToma.nota_credito_numero)
+                          if (found) setNcDetallePopup(found)
+                        }
+                      }
                     }}
                     className="font-medium text-emerald-700 hover:underline hover:text-emerald-900 cursor-pointer"
                   >
@@ -5171,7 +5192,17 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </h3>
             {selectedToma.recepcion_numero ? (
               <div className="space-y-3 text-sm">
-                <div className="flex justify-between"><span className="text-gray-500">N��mero</span><span className="font-medium text-blue-700">{selectedToma.recepcion_numero}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Número</span><button
+                  onClick={async () => {
+                    const res = await fetch("/api/recepciones-toma")
+                    if (res.ok) {
+                      const all = await res.json()
+                      const found = all.find((r: any) => r.numero === selectedToma.recepcion_numero)
+                      if (found) setRecDetallePopup(found)
+                    }
+                  }}
+                  className="font-medium text-blue-700 hover:underline hover:text-blue-900 cursor-pointer"
+                >{selectedToma.recepcion_numero}</button></div>
                 <div className="flex justify-between"><span className="text-gray-500">Equipo</span><span className="font-medium">{selectedToma.modelo_equipo}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Valor acordado</span><span className="font-medium">{formatCurrency(selectedToma.precio_final)}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Estado</span>
@@ -5190,7 +5221,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <button
                       onClick={() => {
                         setImeiInput("")
+                        setColorRecepcion("")
+                        setBateriaRecepcionPct(undefined)
+                        setOutletRecepcion(false)
                         setObservacionesRecepcion("")
+                        setErrorRecepcion(null)
+                        // Pre-seleccionar la primera ubicación del depósito de la sucursal activa
+                        const dep = depositos.find(d => (d.sucursal_id && sucursalActiva?.id ? d.sucursal_id === sucursalActiva.id : d.nombre === sucursalActiva?.nombre)) ?? depositos[0]
+                        const primeraUbic = ubicaciones.find(u => u.deposito_id === dep?.id)
+                        setUbicacionRecepcionId(primeraUbic?.id ?? null)
                         setShowConfirmarRecepcionModal(true)
                       }}
                       className="w-full py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700"
@@ -5251,6 +5290,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             cliente_id: clienteSeleccionado.id,
             cliente_nombre: clienteSeleccionado.nombre,
             modelo_equipo: modeloSeleccionado.nombre,
+            producto_id: tomaEquipoModeloId,
             precio_base: tomaEquipoPrecioBase,
             descuentos: totalDescuentos,
             precio_final: precioFinal,
@@ -7731,8 +7771,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   a => a.cliente_id === clienteSeleccionado.id &&
                        a.estado === "publicado" &&
                        a.numero.startsWith("NC-") &&
-                       a.total > 0
-                ).map(a => ({ id: a.id, numero: a.numero, fecha: a.fecha, disponible: a.total, esNC: true, ajuste: a }))
+                       (a.saldo_disponible ?? a.total) > 0
+                ).map(a => ({ id: a.id, numero: a.numero, fecha: a.fecha, disponible: a.saldo_disponible ?? a.total, esNC: true, ajuste: a }))
 
                 const totalItems = recibosSinConciliar.length + ncSinConciliar.length
                 if (totalItems === 0) return null
@@ -8083,8 +8123,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               a => a.cliente_id === clienteRecibo.id &&
                    a.estado === "publicado" &&
                    a.numero.startsWith("NC-") &&
-                   a.total > 0
-            ).map(a => ({ id: a.id, numero: a.numero, fecha: a.fecha, disponible: a.total, ajuste: a }))
+                   (a.saldo_disponible ?? a.total) > 0
+            ).map(a => ({ id: a.id, numero: a.numero, fecha: a.fecha, disponible: a.saldo_disponible ?? a.total, ajuste: a }))
 
             const totalItems = recibosSinConciliar.length + ncSinConciliar.length
             if (totalItems === 0) return null
@@ -8572,7 +8612,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             numero: a.numero,
             fecha: a.fecha,
             cliente_id: a.cliente_id,
-            importe_no_conciliado: a.total,
+            importe_no_conciliado: a.saldo_disponible ?? a.total,
             total: a.total,
             tipo: "nota_credito" as const,
             concepto: a.concepto,
@@ -8619,12 +8659,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       }
     }
 
-    const toggleCreditoSeleccion = (recibo: Recibo) => {
-      const existe = conciliacionSeleccionCreditos.find(c => c.id === recibo.id && c.tipo === "recibo")
+    const toggleCreditoSeleccion = (item: { id: number; importe_no_conciliado: number; tipo?: string }) => {
+      const tipoItem = (item.tipo === "nota_credito" ? "nc" : "recibo") as "recibo" | "nc"
+      const existe = conciliacionSeleccionCreditos.find(c => c.id === item.id && c.tipo === tipoItem)
       if (existe) {
-        setConciliacionSeleccionCreditos(prev => prev.filter(c => !(c.id === recibo.id && c.tipo === "recibo")))
+        setConciliacionSeleccionCreditos(prev => prev.filter(c => !(c.id === item.id && c.tipo === tipoItem)))
       } else {
-        setConciliacionSeleccionCreditos(prev => [...prev, { id: recibo.id, tipo: "recibo", montoAplicar: recibo.importe_no_conciliado }])
+        setConciliacionSeleccionCreditos(prev => [...prev, { id: item.id, tipo: tipoItem, montoAplicar: item.importe_no_conciliado }])
       }
     }
 
@@ -8711,8 +8752,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
       // Aplicar creditos a debitos
       for (const credito of creditosRestantes) {
-        const reciboInfo = recibos.find(r => r.id === credito.id)
-        if (!reciboInfo || credito.montoAplicar <= 0) continue
+        // Resolver la info del crédito (recibo o NC)
+        const reciboInfo = credito.tipo === "recibo" ? recibos.find(r => r.id === credito.id) : null
+        const ncInfo = credito.tipo === "nc" ? ajustes.find(a => a.id === credito.id) : null
+        const creditoNumero = reciboInfo?.numero ?? ncInfo?.numero ?? ""
+        const creditoTipoLabel = credito.tipo === "nc" ? "NC" : "Recibo"
+        if ((!reciboInfo && !ncInfo) || credito.montoAplicar <= 0) continue
 
         for (const debito of debitosRestantes) {
           if (debito.montoAplicar <= 0) continue
@@ -8726,8 +8771,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             aplicaciones.push({
               debito_tipo: "Factura",
               debito_numero: facturaInfo.numero,
-              credito_tipo: "Recibo",
-              credito_numero: reciboInfo.numero,
+              credito_tipo: creditoTipoLabel,
+              credito_numero: creditoNumero,
               monto: montoAAplicar
             })
 
@@ -8736,10 +8781,18 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               f.id === debito.id ? { ...f, saldo: f.saldo - montoAAplicar } : f
             ))
 
-            // Actualizar recibo
-            setRecibos(prev => prev.map(r => 
-              r.id === credito.id ? { ...r, importe_no_conciliado: r.importe_no_conciliado - montoAAplicar } : r
-            ))
+            // Actualizar recibo o NC
+            if (credito.tipo === "recibo") {
+              setRecibos(prev => prev.map(r => 
+                r.id === credito.id ? { ...r, importe_no_conciliado: r.importe_no_conciliado - montoAAplicar } : r
+              ))
+            } else {
+              setAjustes(prev => prev.map(a =>
+                a.id === credito.id
+                  ? { ...a, saldo_disponible: Math.max(0, (a.saldo_disponible ?? a.total) - montoAAplicar) }
+                  : a
+              ))
+            }
 
             debito.montoAplicar -= montoAAplicar
             credito.montoAplicar -= montoAAplicar
@@ -9065,13 +9118,24 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                             </tr>
                           )
                         })}
-                        {notasCreditoFiltradas.map(nc => (
+                        {notasCreditoFiltradas.map(nc => {
+                          const seleccionado = conciliacionSeleccionCreditos.find(c => c.id === nc.id && c.tipo === "nc")
+                          const esConciliado = nc.importe_no_conciliado <= 0
+                          return (
                           <tr
                             key={`nc-${nc.id}`}
-                            className="border-b hover:bg-emerald-50 cursor-default bg-emerald-50/30"
+                            className={`border-b hover:bg-emerald-50 cursor-pointer ${seleccionado ? 'bg-emerald-100' : 'bg-emerald-50/30'} ${esConciliado ? 'opacity-50' : ''}`}
+                            onClick={() => !esConciliado && toggleCreditoSeleccion(nc)}
                           >
-                            <td className="py-1.5 px-2 text-center">
-                              <span className="text-xs text-emerald-600 font-medium">NC</span>
+                            <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                              {!esConciliado && (
+                                <input
+                                  type="checkbox"
+                                  checked={!!seleccionado}
+                                  onChange={() => toggleCreditoSeleccion(nc)}
+                                  className="w-3.5 h-3.5 rounded border-gray-300 accent-emerald-600"
+                                />
+                              )}
                             </td>
                             <td className="py-1.5 px-2 text-right font-medium text-green-600">{formatCurrency(nc.importe_no_conciliado, nc.moneda)}</td>
                             <td className="py-1.5 px-2 text-center text-gray-500">{nc.moneda === "USD" ? "U$D" : "$"}</td>
@@ -9080,10 +9144,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                             <td className="py-1.5 px-2 text-gray-600">-</td>
                             <td className="py-1.5 px-2">
                               <span className="text-emerald-700 font-medium">{nc.numero}</span>
+                              <span className="ml-1 text-xs bg-emerald-100 text-emerald-600 rounded px-1">NC</span>
                             </td>
                             <td className="py-1.5 px-2 text-gray-600 text-xs truncate max-w-[120px]" title={nc.concepto}>{nc.concepto}</td>
                           </tr>
-                        ))}
+                          )
+                        })}
                       </>
                     ) : (
                       <tr>
@@ -9207,9 +9273,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             )}
           </div>
       )}
+    </div>
+  )
+}
 
-      {/* Popup detalle Nota de Credito */}
-      {ncDetallePopup && (
+  // Popup detalle Nota de Credito (global, usado desde toma_equipo y conciliacion)
+  const renderNcDetallePopup = () => ncDetallePopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setNcDetallePopup(null)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b bg-emerald-50">
@@ -9279,10 +9348,111 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </div>
           </div>
         </div>
-      )}
-    </div>
   )
-}
+
+  // Popup detalle Recepción de Toma (global, usado desde toma_equipo)
+  const renderRecDetallePopup = () => recDetallePopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setRecDetallePopup(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b bg-blue-50">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold bg-blue-100 text-blue-700 rounded px-2 py-0.5">RECEPCIÓN</span>
+                  <span className="font-mono font-bold text-blue-800 text-lg">{recDetallePopup.numero}</span>
+                </div>
+                <p className="text-sm text-gray-500 mt-0.5">{new Date(recDetallePopup.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                  recDetallePopup.estado === 'recibida' ? 'bg-green-100 text-green-700' :
+                  recDetallePopup.estado === 'cancelada' ? 'bg-red-100 text-red-700' :
+                  'bg-amber-100 text-amber-700'
+                }`}>
+                  {recDetallePopup.estado === 'recibida' ? 'Recibida' :
+                   recDetallePopup.estado === 'cancelada' ? 'Cancelada' : 'Esperando recepción'}
+                </span>
+                <button onClick={() => setRecDetallePopup(null)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            {/* Info */}
+            <div className="px-6 py-4 border-b grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <span className="text-gray-400 text-xs uppercase font-medium">Cliente</span>
+                <p className="font-semibold text-gray-900 mt-0.5">{recDetallePopup.proveedor_nombre?.replace(' (toma de equipo)', '') ?? '—'}</p>
+              </div>
+              <div>
+                <span className="text-gray-400 text-xs uppercase font-medium">Sucursal</span>
+                <p className="font-semibold text-gray-900 mt-0.5">{recDetallePopup.sucursal || '—'}</p>
+              </div>
+              <div>
+                <span className="text-gray-400 text-xs uppercase font-medium">Depósito destino</span>
+                <p className="font-semibold text-gray-900 mt-0.5">{recDetallePopup.deposito_destino || '—'}</p>
+              </div>
+              <div>
+                <span className="text-gray-400 text-xs uppercase font-medium">Ubicación</span>
+                <p className="font-semibold text-gray-900 mt-0.5">{recDetallePopup.ubicacion || recDetallePopup.ubicacion_destino || '—'}</p>
+              </div>
+            </div>
+            {/* Líneas */}
+            {recDetallePopup.lineas?.length > 0 && (
+              <div className="px-6 py-4 border-b">
+                <p className="text-xs uppercase font-semibold text-gray-400 mb-3">Equipo</p>
+                {recDetallePopup.lineas.map((l: any, i: number) => (
+                  <div key={i} className="text-sm space-y-1.5">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Producto</span>
+                      <span className="font-semibold text-gray-900">{l.producto_nombre}</span>
+                    </div>
+                    {l.unidades_serie?.[0] && (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">IMEI / Serie</span>
+                          <span className="font-mono font-medium text-gray-800">{l.unidades_serie[0].nro_serie}</span>
+                        </div>
+                        {l.unidades_serie[0].color && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Color</span>
+                            <span className="font-medium">{l.unidades_serie[0].color}</span>
+                          </div>
+                        )}
+                        {l.unidades_serie[0].bateria_pct !== undefined && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">% Batería</span>
+                            <span className="font-medium">{l.unidades_serie[0].bateria_pct}%</span>
+                          </div>
+                        )}
+                        {l.unidades_serie[0].outlet && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Outlet</span>
+                            <span className="text-amber-600 font-medium">Sí (daño estético)</span>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Valor acordado</span>
+                      <span className="font-bold text-blue-700">{formatCurrency(l.precio_unitario)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {recDetallePopup.observaciones && (
+              <div className="px-6 py-3 border-b">
+                <span className="text-gray-400 text-xs uppercase font-medium">Observaciones</span>
+                <p className="text-sm text-gray-700 mt-0.5">{recDetallePopup.observaciones}</p>
+              </div>
+            )}
+            <div className="px-6 py-3 text-right">
+              <p className="text-xs text-gray-400 uppercase font-medium">Origen</p>
+              <p className="text-sm font-semibold text-gray-700">{recDetallePopup.documento_origen_ref ?? '—'}</p>
+            </div>
+          </div>
+        </div>
+  )
 
   // Ajustes de Cliente
   const renderAjustes = () => (
@@ -11467,7 +11637,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             const tipoVenta = tipoVentaForm
             const moneda = formData.get("moneda") as "ARS" | "USD"
             const depositoFromForm = formData.get("deposito") as string
-            const depositoFromState = depositosVenta.find(d => d.id === nvDepositoId)?.nombre
+            const depositoFromState = depositos.find(d => d.id === nvDepositoId)?.nombre
             const deposito = depositoFromForm || depositoFromState || "Sin depósito"
             const vendedorId = parseInt(formData.get("vendedor_id") as string) || 1
             const vendedorNombre = vendedores.find(v => v.id === vendedorId)?.nombre || "Max Solina"
@@ -11626,7 +11796,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 deposito: deposito,
                 deposito_id: nvDepositoId,
                 ubicacion_id: nvUbicacionId,
-                ubicacion: ubicacionesVenta.find(u => u.id === nvUbicacionId)?.codigo ?? null,
+                ubicacion: ubicaciones.find(u => u.id === nvUbicacionId)?.codigo ?? null,
                 peso_kg: 0,
                 peso_neto_kg: 0,
                 bultos: 1,
@@ -12369,106 +12539,214 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       {showModal && modalType === "recibo" && renderReciboModal()}
       {showModal && modalType === "ajuste" && renderAjusteModal()}
       
+      {/* Popups de detalle NC y Recepción (globales) */}
+      {renderNcDetallePopup()}
+      {renderRecDetallePopup()}
+
       {/* Modal confirmación de recepción de toma de equipo */}
-      {showConfirmarRecepcionModal && selectedToma && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Confirmar Recepción de Equipo</h3>
-                <p className="text-sm text-gray-500">{selectedToma.recepcion_numero} · {selectedToma.modelo_equipo}</p>
-              </div>
-              <button onClick={() => setShowConfirmarRecepcionModal(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {showConfirmarRecepcionModal && selectedToma && (() => {
+        const autoDeposit = depositos.find(d => (d.sucursal_id && sucursalActiva?.id ? d.sucursal_id === sucursalActiva.id : d.nombre === sucursalActiva?.nombre)) ?? depositos[0]
+        const ubicacionesDep = ubicaciones.filter(u => u.deposito_id === autoDeposit?.id)
+        const canConfirm = imeiInput.trim() !== '' && colorRecepcion.trim() !== '' && bateriaRecepcionPct !== undefined && ubicacionRecepcionId !== null && !confirmandoRecepcion
 
-            <div className="px-6 py-5 space-y-4">
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 flex flex-col">
+
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b">
+                <div>
+                  <h2 className="text-base font-bold text-gray-900">{selectedToma.modelo_equipo}</h2>
+                  <p className="text-sm text-gray-500 mt-0.5">Registro de recepción · {selectedToma.recepcion_numero}</p>
+                </div>
+                <button onClick={() => setShowConfirmarRecepcionModal(false)} className="text-gray-400 hover:text-gray-600 ml-4">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
               {/* Info de la toma */}
-              <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Cliente</span>
-                  <span className="font-medium">{selectedToma.cliente_nombre}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Equipo</span>
-                  <span className="font-medium">{selectedToma.modelo_equipo}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Valor acordado</span>
-                  <span className="font-medium text-emerald-600">{formatCurrency(selectedToma.precio_final)}</span>
+              <div className="px-6 pt-4 pb-2">
+                <div className="bg-gray-50 rounded-lg p-3 flex items-center justify-between text-sm">
+                  <div className="flex gap-4">
+                    <span className="text-gray-500">Cliente: <span className="font-medium text-gray-800">{selectedToma.cliente_nombre}</span></span>
+                    <span className="text-gray-500">Valor: <span className="font-medium text-emerald-600">{formatCurrency(selectedToma.precio_final)}</span></span>
+                  </div>
+                  <span className="text-xs text-gray-400">{autoDeposit?.nombre}</span>
                 </div>
               </div>
 
-              {/* IMEI */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  IMEI / Número de Serie <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={imeiInput}
-                  onChange={e => setImeiInput(e.target.value)}
-                  placeholder="Ej: 356938035643809"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
+              {/* Formulario */}
+              <div className="px-6 py-4 space-y-4 overflow-y-auto max-h-[60vh]">
+
+                {/* N° Serie / IMEI */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">
+                    N° Serie / IMEI <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={imeiInput}
+                    onChange={e => setImeiInput(e.target.value)}
+                    placeholder="Ej: 356938035643809"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  />
+                </div>
+
+                {/* Color */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">
+                    Color <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={colorRecepcion}
+                    onChange={e => setColorRecepcion(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white"
+                  >
+                    <option value="">Seleccionar color...</option>
+                    {['Negro', 'Blanco', 'Azul', 'Rojo', 'Verde', 'Amarillo', 'Gris', 'Plata', 'Oro', 'Morado', 'Rosa', 'Naranja'].map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* % Batería */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">
+                    % Batería <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={bateriaRecepcionPct ?? ''}
+                      placeholder="0 – 100"
+                      onChange={e => setBateriaRecepcionPct(e.target.value === '' ? undefined : Number(e.target.value))}
+                      className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    />
+                    <span className="text-sm text-gray-400">%</span>
+                    {bateriaRecepcionPct !== undefined && (
+                      <div className="flex-1 bg-gray-200 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full transition-all ${
+                            bateriaRecepcionPct >= 80 ? 'bg-emerald-500' :
+                            bateriaRecepcionPct >= 50 ? 'bg-yellow-400' : 'bg-red-500'
+                          }`}
+                          style={{ width: `${Math.min(100, bateriaRecepcionPct)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Outlet */}
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="recepcion-outlet"
+                    checked={outletRecepcion}
+                    onChange={e => setOutletRecepcion(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-emerald-600"
+                  />
+                  <label htmlFor="recepcion-outlet" className="text-sm font-medium text-gray-700 cursor-pointer">
+                    Equipo Outlet (tiene daño estético)
+                  </label>
+                </div>
+
+                {/* Ubicación */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">
+                    Ubicación de Stock <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={ubicacionRecepcionId ?? ''}
+                    onChange={e => setUbicacionRecepcionId(e.target.value ? Number(e.target.value) : null)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white"
+                  >
+                    <option value="">Seleccionar ubicación...</option>
+                    {ubicacionesDep.map(u => (
+                      <option key={u.id} value={u.id}>{u.nombre}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-400">Depósito: {autoDeposit?.nombre}</p>
+                </div>
+
+                {/* Observaciones / Fallas */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">
+                    Observaciones / Fallas
+                  </label>
+                  <textarea
+                    value={observacionesRecepcion}
+                    onChange={e => setObservacionesRecepcion(e.target.value)}
+                    rows={2}
+                    placeholder="Describa fallas, daños o notas relevantes..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 resize-none"
+                  />
+                </div>
               </div>
 
-              {/* Observaciones */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
-                <textarea
-                  value={observacionesRecepcion}
-                  onChange={e => setObservacionesRecepcion(e.target.value)}
-                  rows={2}
-                  placeholder="Estado físico del equipo, accesorios incluidos, etc."
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
-              <button
-                onClick={() => setShowConfirmarRecepcionModal(false)}
-                className="flex-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
-              >
-                Cancelar
-              </button>
-              <button
-                disabled={!imeiInput.trim() || confirmandoRecepcion}
-                onClick={async () => {
-                  if (!imeiInput.trim() || !selectedToma) return
-                  setConfirmandoRecepcion(true)
-                  try {
-                    const res = await fetch(`/api/recepciones-toma/${selectedToma.id}/confirmar`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        imei: imeiInput.trim(),
-                        observaciones: observacionesRecepcion.trim(),
-                      }),
-                    })
-                    if (res.ok) {
-                      setTomasEquipo(prev => prev.map(t =>
-                        t.id === selectedToma.id ? { ...t, estado_recepcion: "recibido" as const } : t
-                      ))
-                      setSelectedToma(prev => prev ? { ...prev, estado_recepcion: "recibido" as const } : prev)
-                      setShowConfirmarRecepcionModal(false)
+              {/* Footer */}
+              <div className="flex flex-col gap-2 px-6 py-3 bg-gray-50 rounded-b-xl border-t">
+                {errorRecepcion && (
+                  <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    {errorRecepcion}
+                  </div>
+                )}
+                <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={() => setShowConfirmarRecepcionModal(false)}
+                  className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  disabled={!canConfirm}
+                  onClick={async () => {
+                    if (!canConfirm || !selectedToma) return
+                    setConfirmandoRecepcion(true)
+                    setErrorRecepcion(null)
+                    try {
+                      const res = await fetch(`/api/recepciones-toma/${selectedToma.id}/confirmar`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          imei: imeiInput.trim(),
+                          color: colorRecepcion.trim(),
+                          bateria_pct: bateriaRecepcionPct,
+                          outlet: outletRecepcion,
+                          ubicacion_id: ubicacionRecepcionId,
+                          observaciones: observacionesRecepcion.trim(),
+                        }),
+                      })
+                      if (res.ok) {
+                        setTomasEquipo(prev => prev.map(t =>
+                          t.id === selectedToma.id ? { ...t, estado_recepcion: "recibido" as const } : t
+                        ))
+                        setSelectedToma(prev => prev ? { ...prev, estado_recepcion: "recibido" as const } : prev)
+                        setShowConfirmarRecepcionModal(false)
+                      } else {
+                        const data = await res.json().catch(() => ({}))
+                        setErrorRecepcion(data?.error ?? `Error ${res.status}`)
+                      }
+                    } catch (err) {
+                      console.error("[recepcion-toma] error al confirmar:", err)
+                      setErrorRecepcion("Error de red. Intente nuevamente.")
+                    } finally {
+                      setConfirmandoRecepcion(false)
                     }
-                  } catch (err) {
-                    console.error("[recepcion-toma] error al confirmar:", err)
-                  } finally {
-                    setConfirmandoRecepcion(false)
-                  }
-                }}
-                className="flex-1 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {confirmandoRecepcion ? "Confirmando..." : "Confirmar recepción"}
-              </button>
+                  }}
+                  className="px-5 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {confirmandoRecepcion ? "Confirmando..." : "Confirmar recepción"}
+                </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Modal de selección de Series/IMEI */}
       {showSerieModal && serieModalLineaIndex !== null && (
@@ -12493,7 +12771,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <div className="flex-1 overflow-auto p-6">
               <div className="mb-3 flex items-center justify-between">
                 <span className="text-sm text-gray-600">
-                  Ubicación: <span className="font-medium">{ubicacionesVenta.find(u => u.id === nvUbicacionId)?.codigo}</span>
+                  Ubicación: <span className="font-medium">{ubicaciones.find(u => u.id === nvUbicacionId)?.codigo}</span>
                 </span>
                 <span className={`text-sm font-medium ${seriesSeleccionadasTemp.length === nvLineas[serieModalLineaIndex]?.cantidad ? 'text-emerald-600' : 'text-amber-600'}`}>
                   {seriesSeleccionadasTemp.length} de {nvLineas[serieModalLineaIndex]?.cantidad} seleccionados

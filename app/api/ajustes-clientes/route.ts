@@ -5,10 +5,18 @@ export async function GET() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("ajustes_clientes")
-    .select("*")
+    .select("*, sucursales(nombre)")
     .order("created_at", { ascending: false })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data ?? [])
+
+  const mapped = (data ?? []).map((a: any) => ({
+    ...a,
+    sucursal: a.sucursales?.nombre ?? a.sucursal ?? "",
+    // saldo_disponible: si la columna existe la usa; si no, cae a total
+    saldo_disponible: a.saldo_disponible ?? a.total,
+    sucursales: undefined,
+  }))
+  return NextResponse.json(mapped)
 }
 
 export async function POST(req: Request) {

@@ -21,6 +21,7 @@ export async function POST(req: Request) {
     cliente_id,
     cliente_nombre,
     modelo_equipo,
+    producto_id,
     precio_base,
     descuentos,
     precio_final,
@@ -60,6 +61,15 @@ export async function POST(req: Request) {
 
   if (tomaErr) return NextResponse.json({ error: tomaErr.message }, { status: 500 })
 
+  // Guardar producto_id si la columna ya existe (migración opcional)
+  if (producto_id) {
+    await supabase
+      .from("tomas_equipo")
+      .update({ producto_id })
+      .eq("id", toma.id)
+      .then(() => {}) // ignorar error si columna no existe todavía
+  }
+
   // 3. Insertar ajuste de cliente (nota de crédito)
   const { error: ajusteErr } = await supabase
     .from("ajustes_clientes")
@@ -67,12 +77,19 @@ export async function POST(req: Request) {
       numero: notaCreditoNumero,
       cliente_id,
       cliente_nombre,
-      tipo: "nota_credito",
-      motivo: `Toma de equipo: ${modelo_equipo}`,
-      monto: precio_final,
-      estado: "activo",
+      concepto: `Toma de equipo: ${modelo_equipo}`,
+      moneda: "ARS",
+      categoria: "Equipos en parte de pago",
+      lineas: [{
+        descripcion: `Toma de equipo usado: ${modelo_equipo}`,
+        importe: precio_final,
+        fecha_vencimiento: new Date().toISOString(),
+      }],
+      total: precio_final,
+      saldo_disponible: precio_final,
+      estado: "publicado",
       toma_equipo_id: toma.id,
-      toma_equipo_numero: numero,
+      nota_venta_numero: null,
       sucursal_id: sucursal_id ?? null,
     })
 

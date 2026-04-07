@@ -12,7 +12,7 @@ export async function GET() {
   const supabase = getSupabase()
   const { data, error } = await supabase
     .from("depositos")
-    .select("id, codigo, nombre, activo")
+    .select("id, codigo, nombre, activo, sucursal_id")
     .order("nombre")
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
