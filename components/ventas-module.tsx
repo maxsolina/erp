@@ -252,16 +252,50 @@ interface Remito {
   seguimiento?: SeguimientoEntry[]
 }
 
+interface SeniaEquipo {
+  id: number
+  numero: string
+  fecha: string
+  fecha_limite: string
+  estado: "en_curso" | "confirmada" | "cancelada"
+  vendedor_id: number | null
+  sucursal_id: number | null
+  cliente_id: number
+  cliente_nombre: string
+  stock_item_id: number | null
+  equipo_nombre: string
+  equipo_imei: string | null
+  equipo_color: string | null
+  equipo_bateria: number | null
+  precio_venta: number
+  descuento: number
+  precio_final: number
+  monto_senia: number
+  medio_pago_senia: string | null
+  estado_senia: "sin_senia" | "registrada"
+  recibo_senia_numero: string | null
+  nota_venta_numero: string | null
+  nota_venta_id: number | null
+  oe_numero: string | null
+  oe_id: number | null
+  remito_numero: string | null
+  remito_id: number | null
+  factura_numero: string | null
+  factura_id: number | null
+  medios_pago_cierre: { medio: string; monto: number }[]
+  toma_equipo_id: number | null
+  seguimiento?: SeguimientoEntry[]
+}
+
 interface Factura {
   id: number
   numero: string
-  tipo: "A" | "B" | "C"
   nota_venta_id: number
   nota_venta_numero: string
   cliente_id: number
   cliente_nombre: string
   cliente_documento: string
-  estado: "borrador" | "abierta" | "conciliada"
+  estado: "borrador" | "abierta" | "conciliada" | "esperando_confirmacion" | "ejecucion_senia"
   fecha: string
   vendedor_nombre: string
   domicilio_facturacion: string
@@ -855,6 +889,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     if (!defaultDeposito) return
     setNvDepositoId(defaultDeposito.id)
     const ubicacionStock = ubicaciones.find(u => u.deposito_id === defaultDeposito.id && u.nombre === "Stock")
+      ?? ubicaciones.find(u => u.deposito_id === defaultDeposito.id)
     if (ubicacionStock) setNvUbicacionId(ubicacionStock.id)
   }, [depositos, ubicaciones, sucursalActiva])
 
@@ -1230,9 +1265,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     try {
       const params = new URLSearchParams({
         producto_id: String(linea.producto_id),
-        ubicacion_id: String(nvUbicacionId),
         estado: "disponible",
       })
+      if (nvUbicacionId > 0) params.set("ubicacion_id", String(nvUbicacionId))
       const res = await fetch(`/api/stock/unidades?${params}`)
       const data = await res.json()
       const mapeadas: SerieDisponible[] = (Array.isArray(data) ? data : []).map((u: any) => ({
@@ -1288,6 +1323,71 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     nota_credito_numero?: string
     evaluacion: {componente: string; estado: string; descuento: number}[]
   }[]>([])
+
+  // ── Estados para Seña de Equipo ─────────────────────────────────────────────
+  const [seniasEquipo, setSeniasEquipo] = useState<SeniaEquipo[]>([])
+  const [selectedSenia, setSelectedSenia] = useState<SeniaEquipo | null>(null)
+  const [creandoSenia, setCreandoSenia] = useState(false)
+  // Formulario nueva seña
+  const [seniaClienteId, setSeniaClienteId] = useState<number | null>(null)
+  const [seniaStockItemId, setSeniaStockItemId] = useState<number | null>(null)
+  const [seniaEquipoNombre, setSeniaEquipoNombre] = useState("")
+  const [seniaEquipoImei, setSeniaEquipoImei] = useState("")
+  const [seniaEquipoColor, setSeniaEquipoColor] = useState("")
+  const [seniaEquipoBateria, setSeniaEquipoBateria] = useState<number | undefined>(undefined)
+  const [seniaPrecioVenta, setSeniaPrecioVenta] = useState(0)
+  const [seniaDescuento, setSeniaDescuento] = useState(0)
+  const [seniaFechaLimite, setSeniaFechaLimite] = useState("")
+  // Registrar seña (pago adelantado)
+  const [seniaMontoInput, setSeniaMontoInput] = useState(0)
+  const [seniaMedioPagoInput, setSeniaMedioPagoInput] = useState("efectivo")
+  const [seniaRegistrando, setSeniaRegistrando] = useState(false)
+  // Editar fecha límite en detalle
+  const [seniaEditandoFecha, setSeniaEditandoFecha] = useState(false)
+  const [seniaFechaLimiteEdit, setSeniaFechaLimiteEdit] = useState("")
+  // Cancelación
+  const [seniaCancelando, setSeniaCancelando] = useState(false)
+  const [seniaCancelMotivo, setSeniaCancelMotivo] = useState("")
+  // Cierre
+  const [seniaCerrando, setSeniaCerrando] = useState(false)
+  const [seniaMediosCierre, setSeniaMediosCierre] = useState<{ medio: string; monto: number }[]>([{ medio: "efectivo", monto: 0 }])
+  const [seniaConTomaIntegrada, setSeniaConTomaIntegrada] = useState(false)
+  // Búsqueda de producto estilo NV para seña
+  const seniaInputRef = useRef<HTMLInputElement | null>(null)
+  const [seniaEquipoSearchText, setSeniaEquipoSearchText] = useState("")
+  const [seniaEquipoSearchOpen, setSeniaEquipoSearchOpen] = useState(false)
+  const [seniaProductoId, setSeniaProductoId] = useState<number | null>(null)
+  const [seniaProductoRequiereSerie, setSeniaProductoRequiereSerie] = useState(false)
+  // Modal de selección IMEI/Serie para seña
+  const [showSeniaSerieModal, setShowSeniaSerieModal] = useState(false)
+  const [seniaSerieBusqueda, setSeniaSerieBusqueda] = useState("")
+  const [seniaSerieCargando, setSeniaSerieCargando] = useState(false)
+  const [seniaSeriesDisponibles, setSeniaSeriesDisponibles] = useState<SerieDisponible[]>([])
+
+  const [seniaFiltroEstado, setSeniaFiltroEstado] = useState("todos")
+  const [seniaFiltroVencidas, setSeniaFiltroVencidas] = useState(false)
+
+  // Modal de preview de documentos generados por la seña
+  const [showSeniaDocModal, setShowSeniaDocModal] = useState(false)
+  const [seniaDocModalTipo, setSeniaDocModalTipo] = useState<"nv" | "oe" | "remito" | null>(null)
+  const [seniaDocModalLoading, setSeniaDocModalLoading] = useState(false)
+
+  // Cerrar modal de doc-seña cuando el documento seleccionado se limpia (por el botón Volver interno)
+  useEffect(() => {
+    if (!showSeniaDocModal) return
+    if (seniaDocModalTipo === "nv" && !selectedNV) { setShowSeniaDocModal(false); setSeniaDocModalTipo(null) }
+    if (seniaDocModalTipo === "oe" && !selectedOE) { setShowSeniaDocModal(false); setSeniaDocModalTipo(null) }
+    if (seniaDocModalTipo === "remito" && !selectedRemito) { setShowSeniaDocModal(false); setSeniaDocModalTipo(null) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNV, selectedOE, selectedRemito, selectedFactura])
+
+  // Cargar señas de equipo desde Supabase al montar
+  useEffect(() => {
+    fetch("/api/senias-equipo")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setSeniasEquipo(data) })
+      .catch(console.error)
+  }, [])
 
   // Cargar modelos de equipo desde la lista "Toma de Equipos" (versiones)
   useEffect(() => {
@@ -1516,6 +1616,57 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       .catch(() => {})
   }, [])
 
+  // Cargar facturas desde Supabase al iniciar
+  useEffect(() => {
+    fetch("/api/facturas")
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setFacturas(data.map((f: any) => ({
+            id: f.id,
+            numero: f.numero ?? "",
+            nota_venta_id: f.nota_venta_id ?? 0,
+            nota_venta_numero: f.nota_venta_numero ?? "",
+            cliente_id: f.cliente_id ?? 0,
+            cliente_nombre: f.cliente_nombre ?? "",
+            cliente_documento: f.cliente_documento ?? "",
+            estado: f.estado ?? "abierta",
+            fecha: f.fecha ?? f.created_at,
+            vendedor_nombre: f.vendedor_nombre ?? "",
+            domicilio_facturacion: f.domicilio_facturacion ?? "",
+            moneda: f.moneda ?? "ARS",
+            tipo_cotizacion: f.tipo_cotizacion ?? "blue",
+            cotizacion: Number(f.cotizacion) || 1,
+            termino_pago: f.termino_pago ?? "Contado",
+            condicion_pago: f.condicion_pago ?? "",
+            fecha_vencimiento: f.fecha_vencimiento ?? "",
+            subtotal: Number(f.subtotal ?? 0),
+            descuento: Number(f.descuento ?? 0),
+            impuestos: Number(f.impuestos ?? 0),
+            total: Number(f.total ?? 0),
+            saldo: Number(f.saldo ?? 0),
+            sucursal: f.sucursal ?? "",
+            lineas: (f.facturas_lineas ?? []).map((l: any) => ({
+              producto_nombre: l.producto_nombre ?? "",
+              descripcion: l.descripcion ?? "",
+              cantidad: l.cantidad ?? 1,
+              precio_unitario: l.precio_unitario ?? 0,
+              descuento: l.descuento ?? 0,
+              subtotal: Number(l.subtotal ?? 0),
+            })),
+            vencimientos: (f.facturas_vencimientos ?? []).map((v: any) => ({
+              descripcion: v.descripcion ?? "",
+              fecha: v.fecha ?? "",
+              total: Number(v.total ?? 0),
+            })),
+            seguimiento: f.seguimiento ?? [],
+            medios_pago_detalle: f.medios_pago_detalle ?? [],
+          })))
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   // Cargar listas de precios al iniciar
   useEffect(() => {
     fetch("/api/listas-precios")
@@ -1629,10 +1780,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
   const getEstadoNVColor = (estado: string) => {
     const colors: Record<string, string> = {
+      abierta: "bg-blue-100 text-blue-700",
       borrador: "bg-gray-100 text-gray-700",
       a_facturar: "bg-blue-100 text-blue-700",
       verificacion_factura: "bg-yellow-100 text-yellow-700",
       verificacion_oe: "bg-orange-100 text-orange-700",
+      facturada: "bg-purple-100 text-purple-700",
       finalizada: "bg-green-100 text-green-700",
       cancelada: "bg-red-100 text-red-700"
     }
@@ -1641,10 +1794,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
   const getEstadoNVLabel = (estado: string) => {
     const labels: Record<string, string> = {
+      abierta: "Abierta",
       borrador: "Borrador",
       a_facturar: "A Facturar",
       verificacion_factura: "Verif. Factura",
       verificacion_oe: "Verif. OE",
+      facturada: "Facturada",
       finalizada: "Finalizada",
       cancelada: "Cancelada"
     }
@@ -1685,7 +1840,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const colors: Record<string, string> = {
       borrador: "bg-gray-100 text-gray-700",
       abierta: "bg-blue-100 text-blue-700",
-      conciliada: "bg-green-100 text-green-700"
+      conciliada: "bg-green-100 text-green-700",
+      esperando_confirmacion: "bg-amber-100 text-amber-700",
+      ejecucion_senia: "bg-amber-100 text-amber-700",
     }
     return colors[estado] || "bg-gray-100 text-gray-700"
   }
@@ -1751,6 +1908,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       items: [
         { id: "notas_venta", label: "Notas de Venta", icon: FileText },
         { id: "toma_equipo", label: "Toma de Equipo", icon: Repeat },
+        { id: "senia_equipo", label: "Seña de Equipo", icon: Banknote },
       ]
     },
     {
@@ -3993,6 +4151,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       setNvDepositoId(newDepositoId)
                       // Seleccionar automáticamente la ubicación "Stock" del depósito
                       const ubicacionStock = ubicaciones.find(u => u.deposito_id === newDepositoId && u.nombre === "Stock")
+                        ?? ubicaciones.find(u => u.deposito_id === newDepositoId)
                       if (ubicacionStock) {
                         setNvUbicacionId(ubicacionStock.id)
                       }
@@ -4676,6 +4835,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         Ver Nota de Venta
                       </button>
                     </>
+                  ) : selectedOE.nota_venta_numero ? (
+                    <p className="font-mono text-lg font-bold text-blue-700">{selectedOE.nota_venta_numero}</p>
                   ) : (
                     <p className="text-sm text-gray-500">-</p>
                   )}
@@ -5740,6 +5901,1130 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     )
   }
 
+  // ============================================================
+  // SEÑA DE EQUIPO — Listado, Ficha y Formulario de Creación
+  // ============================================================
+
+  const formatFechaLimite = (fecha: string) => {
+    if (!fecha) return "—"
+    const d = new Date(fecha + "T00:00:00")
+    return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })
+  }
+
+  const diasRestantes = (fechaLimite: string) => {
+    if (!fechaLimite) return null
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
+    const limite = new Date(fechaLimite + "T00:00:00")
+    return Math.ceil((limite.getTime() - hoy.getTime()) / 86400000)
+  }
+
+  const abrirSeniaDoc = async (tipo: "nv" | "oe" | "remito", id: number | null) => {
+    if (!id) return
+    setSeniaDocModalTipo(tipo)
+    setSeniaDocModalLoading(true)
+    setShowSeniaDocModal(true)
+    try {
+      if (tipo === "nv") {
+        const res = await fetch(`/api/notas-venta?id=${id}`)
+        const data = await res.json()
+        const raw = Array.isArray(data) ? data[0] : data
+        if (raw?.id) {
+          setSelectedNV({
+            id: raw.id, numero: raw.numero, cliente_id: raw.cliente_id,
+            cliente_nombre: raw.cliente_nombre ?? "", cliente_codigo: raw.cliente_codigo ?? "",
+            vendedor_id: raw.vendedor_id ?? 1, vendedor_nombre: raw.vendedor_nombre ?? "",
+            fecha: raw.fecha ?? raw.created_at, estado: raw.estado ?? "abierta",
+            moneda: raw.moneda ?? "ARS", tipo_cotizacion: raw.tipo_cotizacion ?? "blue",
+            cotizacion: Number(raw.cotizacion) || 1450, lista_precios_id: raw.lista_precios_id ?? 1,
+            termino_pago_id: raw.termino_pago_id ?? 1, termino_pago_nombre: raw.termino_pago_nombre ?? "Contado",
+            deposito: raw.deposito ?? "", tipo_venta: raw.tipo_venta ?? "inmediata",
+            lineas: (raw.notas_venta_lineas ?? []).map((l: any) => ({
+              id: l.id, producto_id: l.producto_id, producto_nombre: l.producto_nombre,
+              descripcion: l.descripcion ?? "", cantidad: l.cantidad, precio_unitario: l.precio_unitario,
+              descuento: l.descuento ?? 0, subtotal: Number(l.subtotal ?? 0), iva: Number(l.iva ?? 0),
+              requiere_serie: false, series_seleccionadas: [],
+            })),
+            subtotal: Number(raw.subtotal ?? 0), descuento_global: 0, impuestos: Number(raw.impuestos ?? 0),
+            cotizacion_tipo: raw.tipo_cotizacion ?? "blue", total: Number(raw.total ?? 0),
+            sucursal: raw.sucursal ?? "", punto_venta: raw.punto_venta ?? "10000",
+          })
+        }
+      } else if (tipo === "oe") {
+        const res = await fetch(`/api/ordenes-entrega?id=${id}`)
+        const data = await res.json()
+        const raw = Array.isArray(data) ? data[0] : data
+        if (raw?.id) {
+          setSelectedOE({
+            id: raw.id, numero: raw.numero, nota_venta_id: raw.nota_venta_id ?? 0,
+            nota_venta_numero: raw.nota_venta_numero ?? "", cliente_id: raw.cliente_id ?? 0,
+            cliente_nombre: raw.cliente_nombre ?? "",
+            fecha_creacion: raw.fecha ?? raw.created_at ?? "",
+            fecha_entrega: raw.fecha_entrega_programada ?? raw.fecha ?? "",
+            estado: (raw.estado ?? "confirmada") as OrdenEntrega["estado"],
+            deposito: raw.deposito_origen ?? "",
+            sucursal: "",
+            domicilio_envio: "",
+            remito_numero: null,
+            productos: (raw.productos ?? []).map((p: any) => ({
+              producto_id: p.producto_id ?? 0,
+              producto_nombre: p.nombre ?? p.producto_nombre ?? "",
+              cantidad: p.cantidad ?? 1,
+              reserva: p.reserva ?? 0,
+              estado: (p.estado === "confirmado" ? "confirmado" : "pendiente") as "pendiente" | "confirmado",
+            })),
+            seguimiento: raw.seguimiento ?? [],
+          })
+        }
+      } else if (tipo === "remito") {
+        const res = await fetch(`/api/remitos-venta?id=${id}`)
+        const data = await res.json()
+        const raw = Array.isArray(data) ? data[0] : data
+        if (raw?.id) {
+          setSelectedRemito({
+            id: raw.id, numero: raw.numero, orden_entrega_id: raw.orden_entrega_id ?? 0,
+            orden_entrega_numero: raw.orden_entrega_numero ?? "", nota_venta_id: raw.nota_venta_id,
+            nota_venta_numero: raw.nota_venta_numero ?? "", cliente_id: raw.cliente_id ?? 0,
+            cliente_nombre: raw.cliente_nombre ?? "", fecha: raw.fecha ?? raw.created_at,
+            estado: raw.estado ?? "en_ejecucion", tipo: raw.tipo ?? "salida",
+            deposito: raw.deposito ?? "", ubicacion: raw.ubicacion ?? "",
+            sucursal: raw.sucursal ?? "",
+            bultos: raw.total_bultos ?? raw.bultos ?? 1,
+            peso_kg: raw.peso_kg ?? 0, peso_neto_kg: raw.peso_neto_kg ?? 0,
+            valor_declarado: Number(raw.valor_declarado ?? 0),
+            control_factura: (raw.control_factura ?? "pendiente") as "facturado" | "pendiente",
+            observaciones: raw.observaciones ?? "",
+            productos: raw.productos ?? [], lineas: raw.lineas ?? [], seguimiento: raw.seguimiento ?? [],
+          })
+        }
+      }
+    } catch { /* silent */ }
+    finally { setSeniaDocModalLoading(false) }
+  }
+
+  const abrirModalSeriaSenia = async (productoId: number) => {
+    setShowSeniaSerieModal(true)
+    setSeniaSeriesDisponibles([])
+    setSeniaSerieBusqueda("")
+    try {
+      const params = new URLSearchParams({ producto_id: String(productoId), estado: "disponible" })
+      if (nvUbicacionId > 0) params.set("ubicacion_id", String(nvUbicacionId))
+      const res = await fetch(`/api/stock/unidades?${params}`)
+      const data = await res.json()
+      const mapeadas: SerieDisponible[] = (Array.isArray(data) ? data : []).map((u: any) => ({
+        id: u.id,
+        producto_id: u.producto_id,
+        serie: u.nro_serie || `ID:${u.id}`,
+        lote: u.origen_numero || null,
+        estado: u.estado,
+        ubicacion_id: u.ubicacion_id,
+        ubicacion_nombre: u.ubicaciones?.codigo || "",
+        detalles: [u.color, u.bateria_pct ? `Batería ${u.bateria_pct}%` : null, u.observaciones].filter(Boolean).join(" - "),
+        fecha_ingreso: u.created_at?.split("T")[0] || "",
+      }))
+      setSeniaSeriesDisponibles(mapeadas)
+    } catch {
+      setSeniaSeriesDisponibles([])
+    } finally {
+      setSeniaSerieCargando(false)
+    }
+  }
+
+  const resetFormSenia = () => {
+    setSeniaClienteId(null)
+    setSeniaStockItemId(null)
+    setSeniaEquipoNombre("")
+    setSeniaEquipoImei("")
+    setSeniaEquipoColor("")
+    setSeniaEquipoBateria(undefined)
+    setSeniaPrecioVenta(0)
+    setSeniaDescuento(0)
+    setSeniaFechaLimite("")
+    setSeniaMontoInput(0)
+    setSeniaMedioPagoInput("efectivo")
+    setSeniaConTomaIntegrada(false)
+    setSeniaMediosCierre([{ medio: "efectivo", monto: 0 }])
+    setCreandoSenia(false)
+    setSeniaEquipoSearchText("")
+    setSeniaEquipoSearchOpen(false)
+    setSeniaProductoId(null)
+    setSeniaProductoRequiereSerie(false)
+  }
+
+  const renderCrearSeniaEquipo = () => {
+    const clienteSeleccionado = clientes.find(c => c.id === seniaClienteId)
+    const precioFinalCalculado = seniaPrecioVenta - seniaDescuento
+
+    const handleCrear = async () => {
+      if (!seniaClienteId || !seniaFechaLimite || !seniaEquipoNombre) return
+      try {
+        const res = await fetch("/api/senias-equipo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cliente_id: seniaClienteId,
+            cliente_nombre: clienteSeleccionado?.nombre ?? "",
+            stock_item_id: seniaStockItemId,
+            equipo_nombre: seniaEquipoNombre,
+            equipo_imei: seniaEquipoImei || null,
+            equipo_color: seniaEquipoColor || null,
+            equipo_bateria: seniaEquipoBateria ?? null,
+            precio_venta: seniaPrecioVenta,
+            descuento: seniaDescuento,
+            precio_final: precioFinalCalculado,
+            fecha_limite: seniaFechaLimite,
+            sucursal_id: sucursalActiva?.id ?? null,
+          }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          const nueva: SeniaEquipo = {
+            id: data.id,
+            numero: data.numero,
+            fecha: new Date().toISOString(),
+            fecha_limite: seniaFechaLimite,
+            estado: "en_curso",
+            vendedor_id: null,
+            sucursal_id: sucursalActiva?.id ?? null,
+            cliente_id: seniaClienteId,
+            cliente_nombre: clienteSeleccionado?.nombre ?? "",
+            stock_item_id: seniaStockItemId,
+            equipo_nombre: seniaEquipoNombre,
+            equipo_imei: seniaEquipoImei || null,
+            equipo_color: seniaEquipoColor || null,
+            equipo_bateria: seniaEquipoBateria ?? null,
+            precio_venta: seniaPrecioVenta,
+            descuento: seniaDescuento,
+            precio_final: precioFinalCalculado,
+            monto_senia: 0,
+            medio_pago_senia: null,
+            estado_senia: "sin_senia",
+            recibo_senia_numero: null,
+            nota_venta_id: data.nota_venta_id ?? null,
+            nota_venta_numero: data.nota_venta_numero ?? "",
+            oe_id: data.oe_id ?? null,
+            oe_numero: data.oe_numero ?? "",
+            remito_id: null,
+            remito_numero: null,
+            factura_id: null,
+            factura_numero: null,
+            medios_pago_cierre: [],
+            toma_equipo_id: null,
+            seguimiento: [],
+          }
+          setSeniasEquipo(prev => [nueva, ...prev])
+          resetFormSenia()
+          setSelectedSenia(nueva)
+          // Refrescar OEs para que la OE vinculada aparezca inmediatamente
+          fetch("/api/ordenes-entrega").then(r => r.json()).then(data => {
+            if (Array.isArray(data) && data.length > 0) {
+              setOrdenesEntrega(data.map((oe: any) => ({
+                id: oe.id, numero: oe.numero, nota_venta_id: oe.nota_venta_id ?? 0,
+                nota_venta_numero: oe.nota_venta_numero ?? "", cliente_id: oe.cliente_id ?? 0,
+                cliente_nombre: oe.cliente_nombre ?? "", fecha: oe.fecha ?? oe.created_at,
+                fecha_entrega_programada: oe.fecha_entrega_programada ?? oe.fecha ?? "",
+                estado: oe.estado ?? "confirmada", tipo: oe.tipo ?? "venta",
+                deposito_origen: oe.deposito_origen ?? "", ubicacion_origen: oe.ubicacion_origen ?? "",
+                total_productos: oe.total_productos ?? 0, productos_entregados: oe.productos_entregados ?? 0,
+                productos: oe.productos ?? [], seguimiento: oe.seguimiento ?? [],
+              })))
+            }
+          }).catch(() => {})
+        }
+      } catch (e) {
+        console.error("[senias] crear error:", e)
+      }
+    }
+
+    return (
+      <div className="max-w-4xl mx-auto">
+        <div className="flex items-center gap-4 mb-6">
+          <BotonVolver onClick={resetFormSenia} variant="minimal" texto="" />
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold text-emerald-900">Nueva Seña de Equipo</h1>
+            <p className="text-sm text-gray-500">Complete los datos para reservar el equipo</p>
+          </div>
+        </div>
+
+        <div className="space-y-5">
+          {/* CABECERA */}
+          <div className="bg-white rounded-lg border p-5">
+            <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-emerald-600" /> Datos de la Operación
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Sucursal</label>
+                <input type="text" value={sucursalActiva?.nombre ?? ""} readOnly
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha límite <span className="text-red-500">*</span></label>
+                <input type="date" value={seniaFechaLimite} onChange={e => setSeniaFechaLimite(e.target.value)}
+                  min={new Date().toISOString().split("T")[0]}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500" />
+              </div>
+            </div>
+          </div>
+
+          {/* DATOS DEL CLIENTE Y EQUIPO */}
+          <div className="bg-white rounded-lg border p-5">
+            <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b flex items-center gap-2">
+              <Users className="w-4 h-4 text-emerald-600" /> Datos del Cliente y Equipo
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cliente <span className="text-red-500">*</span></label>
+                <select value={seniaClienteId ?? ""} onChange={e => setSeniaClienteId(Number(e.target.value) || null)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500">
+                  <option value="">Seleccionar cliente...</option>
+                  {clientes.map(c => (
+                    <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Selector de equipo — igual estilo NV */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Equipo <span className="text-red-500">*</span></label>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 relative">
+                    <input
+                      ref={seniaInputRef}
+                      type="text"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
+                      value={seniaEquipoSearchText}
+                      onChange={e => {
+                        setSeniaEquipoSearchText(e.target.value)
+                        setSeniaEquipoSearchOpen(true)
+                        setSeniaEquipoNombre(e.target.value)
+                        setSeniaStockItemId(null)
+                        setSeniaProductoId(null)
+                        setSeniaProductoRequiereSerie(false)
+                        setSeniaEquipoImei("")
+                        setSeniaEquipoColor("")
+                        setSeniaEquipoBateria(undefined)
+                      }}
+                      onFocus={() => setSeniaEquipoSearchOpen(true)}
+                      onBlur={() => setTimeout(() => setSeniaEquipoSearchOpen(false), 200)}
+                      placeholder="Buscar producto..."
+                      className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"
+                    />
+                    {seniaEquipoSearchOpen && (
+                      <ProductoDropdown
+                        nvClienteId={seniaClienteId}
+                        nvListaPreciosId={null}
+                        clientes={clientes}
+                        listasPrecios={listasPrecios}
+                        versionesLista={versionesLista}
+                        productosConSerie={productosMaestro}
+                        productoSearchText={seniaEquipoSearchText}
+                        anchorRef={seniaInputRef as React.RefObject<HTMLInputElement>}
+                        onSelect={(p, precioUnitario) => {
+                          setSeniaEquipoNombre(p.nombre)
+                          setSeniaEquipoSearchText(p.nombre)
+                          setSeniaEquipoSearchOpen(false)
+                          setSeniaPrecioVenta(precioUnitario)
+                          setSeniaProductoId(p.id)
+                          setSeniaProductoRequiereSerie(p.requiere_serie ?? false)
+                          setSeniaStockItemId(null)
+                          setSeniaEquipoImei("")
+                          setSeniaEquipoColor("")
+                          setSeniaEquipoBateria(undefined)
+                          if (p.requiere_serie) {
+                            setTimeout(() => abrirModalSeriaSenia(p.id), 100)
+                          }
+                        }}
+                      />
+                    )}
+                  </div>
+                  {seniaProductoRequiereSerie && seniaProductoId && (
+                    <button
+                      type="button"
+                      onClick={() => abrirModalSeriaSenia(seniaProductoId!)}
+                      className={`text-xs px-2 py-1 rounded whitespace-nowrap ${
+                        seniaStockItemId
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {seniaStockItemId ? "✓ IMEI" : "Sel. IMEI"}
+                    </button>
+                  )}
+                </div>
+                {seniaStockItemId && (
+                  <p className="text-xs text-emerald-600 mt-1">
+                    ✓ {seniaEquipoImei && `S/N: ${seniaEquipoImei}`}{seniaEquipoColor && ` | ${seniaEquipoColor}`}{seniaEquipoBateria != null && ` | 🔋${seniaEquipoBateria}%`}
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 pt-1 border-t">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Precio de venta</label>
+                  <input type="number" min={0} value={seniaPrecioVenta} onChange={e => setSeniaPrecioVenta(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Descuento ($)</label>
+                  <input type="number" min={0} value={seniaDescuento} onChange={e => setSeniaDescuento(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Precio final acordado</label>
+                  <input type="text" value={formatCurrency(precioFinalCalculado)} readOnly
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-emerald-50 text-emerald-800 font-semibold" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* DOCUMENTOS QUE SE GENERARÁN */}
+          <div className="bg-gray-50 rounded-lg border border-dashed border-gray-300 p-4">
+            <p className="text-sm font-medium text-gray-600 mb-2">Al confirmar se generará automáticamente:</p>
+            <div className="grid grid-cols-2 gap-2 text-sm text-gray-500">
+              <div className="flex items-center gap-2"><FileText className="w-4 h-4 text-blue-500" /> Nota de Venta — Abierta</div>
+              <div className="flex items-center gap-2"><Truck className="w-4 h-4 text-amber-500" /> Orden de Entrega — Confirmada</div>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">Remito y Factura se generan al confirmar el cierre de la seña.</p>
+          </div>
+
+          {/* BOTÓN CONFIRMAR */}
+          <div className="flex justify-end gap-3">
+            <button onClick={resetFormSenia} className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">
+              Cancelar
+            </button>
+            <button
+              onClick={handleCrear}
+              disabled={!seniaClienteId || !seniaFechaLimite || !seniaEquipoNombre}
+              className="px-6 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <CheckCircle className="w-4 h-4" /> Crear Seña
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderFichaSeniaEquipo = () => {
+    if (!selectedSenia) return null
+    const s = selectedSenia
+    const fechaObj = new Date(s.fecha)
+    const fechaHora = fechaObj.toLocaleDateString("es-AR") + " " + fechaObj.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })
+    const dias = diasRestantes(s.fecha_limite)
+    const vencida = dias !== null && dias < 0 && s.estado === "en_curso"
+    const saldoPendiente = Math.max(0, s.precio_final - s.monto_senia)
+    const totalCierre = seniaMediosCierre.reduce((a, m) => a + (m.monto || 0), 0)
+
+    const handleRegistrarSenia = async () => {
+      if (!seniaMontoInput && seniaMontoInput !== 0) return
+      setSeniaRegistrando(true)
+      try {
+        const res = await fetch(`/api/senias-equipo/${s.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accion: "registrar_senia",
+            monto_senia: seniaMontoInput,
+            medio_pago_senia: seniaMedioPagoInput,
+            sucursal_id: sucursalActiva?.id ?? null,
+            usuario: "Operador",
+          }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          const updated = { ...s, ...data.senia }
+          setSeniasEquipo(prev => prev.map(x => x.id === s.id ? updated : x))
+          setSelectedSenia(updated)
+        }
+      } catch (e) {
+        console.error("[senias] registrar error:", e)
+      } finally {
+        setSeniaRegistrando(false)
+      }
+    }
+
+    const handleActualizarFecha = async () => {
+      if (!seniaFechaLimiteEdit) return
+      try {
+        const res = await fetch(`/api/senias-equipo/${s.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accion: "actualizar_fecha_limite", fecha_limite: seniaFechaLimiteEdit, usuario: "Operador" }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          const updated = { ...s, ...data.senia }
+          setSeniasEquipo(prev => prev.map(x => x.id === s.id ? updated : x))
+          setSelectedSenia(updated)
+          setSeniaEditandoFecha(false)
+        }
+      } catch (e) {
+        console.error("[senias] fecha error:", e)
+      }
+    }
+
+    const handleCancelar = async () => {
+      try {
+        const res = await fetch(`/api/senias-equipo/${s.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accion: "cancelar", motivo: seniaCancelMotivo, usuario: "Operador" }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          const updated = { ...s, ...data.senia }
+          setSeniasEquipo(prev => prev.map(x => x.id === s.id ? updated : x))
+          setSelectedSenia(updated)
+          setSeniaCancelando(false)
+          setSeniaCancelMotivo("")
+        }
+      } catch (e) {
+        console.error("[senias] cancelar error:", e)
+      }
+    }
+
+    const handleConfirmarCierre = async () => {
+      setSeniaCerrando(true)
+      try {
+        const res = await fetch(`/api/senias-equipo/${s.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accion: "confirmar_cierre",
+            medios_pago_cierre: seniaMediosCierre,
+            usuario: "Operador",
+          }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          const updated = { ...s, ...data.senia }
+          setSeniasEquipo(prev => prev.map(x => x.id === s.id ? updated : x))
+          setSelectedSenia(updated)
+          setSeniaMediosCierre([{ medio: "efectivo", monto: 0 }])
+          setSeniaConTomaIntegrada(false)
+          // Refrescar remitos, facturas, OEs y NVs tras el cierre
+          fetch("/api/remitos-venta").then(r => r.json()).then(d => {
+            if (Array.isArray(d) && d.length > 0) setRemitos(d.map((r: any) => ({
+              id: r.id, numero: r.numero, orden_entrega_id: r.orden_entrega_id ?? 0,
+              orden_entrega_numero: r.orden_entrega_numero ?? "",
+              nota_venta_id: r.nota_venta_id ?? undefined, nota_venta_numero: r.nota_venta_numero ?? "",
+              cliente_id: r.cliente_id ?? 0, cliente_nombre: r.cliente_nombre ?? "",
+              fecha: r.fecha ?? r.created_at, estado: r.estado ?? "confirmado",
+              tipo: r.tipo ?? "salida", deposito: r.deposito ?? "", ubicacion: r.ubicacion ?? "",
+              sucursal: r.sucursal ?? "", bultos: r.total_bultos ?? r.bultos ?? 1,
+              peso_kg: r.peso_kg ?? 0, peso_neto_kg: r.peso_neto_kg ?? 0,
+              valor_declarado: Number(r.valor_declarado ?? 0),
+              control_factura: (r.control_factura ?? "pendiente") as "facturado" | "pendiente",
+              observaciones: r.observaciones ?? "", productos: r.productos ?? [],
+              lineas: r.lineas ?? [], seguimiento: r.seguimiento ?? [],
+            })))
+          }).catch(() => {})
+          fetch("/api/facturas").then(r => r.json()).then(d => {
+            if (Array.isArray(d) && d.length > 0) setFacturas(d.map((f: any) => ({
+              id: f.id, numero: f.numero ?? "",
+              nota_venta_id: f.nota_venta_id ?? 0, nota_venta_numero: f.nota_venta_numero ?? "",
+              cliente_id: f.cliente_id ?? 0, cliente_nombre: f.cliente_nombre ?? "",
+              cliente_documento: f.cliente_documento ?? "", estado: f.estado ?? "abierta",
+              fecha: f.fecha ?? f.created_at, vendedor_nombre: f.vendedor_nombre ?? "",
+              domicilio_facturacion: f.domicilio_facturacion ?? "", moneda: f.moneda ?? "ARS",
+              tipo_cotizacion: f.tipo_cotizacion ?? "blue", cotizacion: Number(f.cotizacion) || 1,
+              termino_pago: f.termino_pago ?? "Contado", condicion_pago: f.condicion_pago ?? "",
+              fecha_vencimiento: f.fecha_vencimiento ?? "",
+              subtotal: Number(f.subtotal ?? 0), descuento: Number(f.descuento ?? 0),
+              impuestos: Number(f.impuestos ?? 0), total: Number(f.total ?? 0),
+              saldo: Number(f.saldo ?? 0), sucursal: f.sucursal ?? "",
+              lineas: (f.facturas_lineas ?? []).map((l: any) => ({
+                producto_nombre: l.producto_nombre ?? "", descripcion: l.descripcion ?? "",
+                cantidad: l.cantidad ?? 1, precio_unitario: l.precio_unitario ?? 0,
+                descuento: l.descuento ?? 0, subtotal: Number(l.subtotal ?? 0),
+              })),
+              vencimientos: (f.facturas_vencimientos ?? []).map((v: any) => ({
+                descripcion: v.descripcion ?? "", fecha: v.fecha ?? "", total: Number(v.total ?? 0),
+              })),
+              seguimiento: f.seguimiento ?? [], medios_pago_detalle: f.medios_pago_detalle ?? [],
+            })))
+          }).catch(() => {})
+          fetch("/api/ordenes-entrega").then(r => r.json()).then(d => {
+            if (Array.isArray(d) && d.length > 0) setOrdenesEntrega(d.map((oe: any) => ({
+              id: oe.id, numero: oe.numero, nota_venta_id: oe.nota_venta_id ?? 0,
+              nota_venta_numero: oe.nota_venta_numero ?? "", cliente_id: oe.cliente_id ?? 0,
+              cliente_nombre: oe.cliente_nombre ?? "", fecha: oe.fecha ?? oe.created_at,
+              fecha_entrega_programada: oe.fecha_entrega_programada ?? oe.fecha ?? "",
+              estado: oe.estado ?? "confirmada", tipo: oe.tipo ?? "venta",
+              deposito_origen: oe.deposito_origen ?? "", ubicacion_origen: oe.ubicacion_origen ?? "",
+              total_productos: oe.total_productos ?? 0, productos_entregados: oe.productos_entregados ?? 0,
+              productos: oe.productos ?? [], seguimiento: oe.seguimiento ?? [],
+            })))
+          }).catch(() => {})
+          fetch("/api/notas-venta").then(r => r.json()).then(d => {
+            if (Array.isArray(d) && d.length > 0) {
+              setNotasVenta(d.map((nv: any) => ({
+                id: nv.id, numero: nv.numero, cliente_id: nv.cliente_id,
+                cliente_nombre: nv.cliente_nombre ?? "", cliente_codigo: nv.cliente_codigo ?? "",
+                vendedor_id: nv.vendedor_id ?? 1, vendedor_nombre: nv.vendedor_nombre ?? "",
+                fecha: nv.fecha ?? nv.created_at, estado: nv.estado ?? "abierta",
+                moneda: nv.moneda ?? "ARS", tipo_cotizacion: nv.tipo_cotizacion ?? "blue",
+                cotizacion: Number(nv.cotizacion) || 1450, lista_precios_id: nv.lista_precios_id ?? 1,
+                termino_pago_id: nv.termino_pago_id ?? 1, termino_pago_nombre: nv.termino_pago_nombre ?? "Contado",
+                deposito: nv.deposito ?? "", tipo_venta: nv.tipo_venta ?? "inmediata",
+                lineas: (nv.notas_venta_lineas ?? []).map((l: any) => ({
+                  id: l.id, producto_id: l.producto_id, producto_nombre: l.producto_nombre,
+                  descripcion: l.descripcion ?? "", cantidad: l.cantidad,
+                  precio_unitario: l.precio_unitario, descuento: l.descuento ?? 0,
+                  subtotal: Number(l.subtotal ?? 0), iva: Number(l.iva ?? 0),
+                  requiere_serie: false, series_seleccionadas: [],
+                })),
+                subtotal: Number(nv.subtotal ?? 0), descuento_global: 0,
+                impuestos: Number(nv.impuestos ?? 0),
+                cotizacion_tipo: nv.tipo_cotizacion ?? "blue", total: Number(nv.total ?? 0),
+                sucursal: nv.sucursal ?? "Puerto Norte", punto_venta: nv.punto_venta ?? "10000",
+              })))
+            }
+          }).catch(() => {})
+        }
+      } catch (e) {
+        console.error("[senias] cierre error:", e)
+      } finally {
+        setSeniaCerrando(false)
+      }
+    }
+
+    return (
+      <div>
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-6">
+          <button onClick={() => { setSelectedSenia(null); setSeniaEditandoFecha(false); setSeniaCancelando(false) }}
+            className="p-2 hover:bg-gray-100 rounded-lg">
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{s.numero}</h1>
+            <p className="text-sm text-gray-500">{fechaHora}</p>
+          </div>
+          <div className="ml-auto flex items-center gap-2 flex-wrap justify-end">
+            {/* Badge de vencimiento */}
+            {s.estado === "en_curso" && dias !== null && (
+              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                vencida ? "bg-red-100 text-red-700" :
+                dias <= 3 ? "bg-amber-100 text-amber-700" :
+                "bg-blue-100 text-blue-700"
+              }`}>
+                {vencida ? `Vencida hace ${Math.abs(dias)} día(s)` : dias === 0 ? "Vence hoy" : `${dias} día(s) restantes`}
+              </span>
+            )}
+            {/* Badge estado principal */}
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              s.estado === "confirmada" ? "bg-green-100 text-green-700" :
+              s.estado === "cancelada" ? "bg-red-100 text-red-700" :
+              "bg-blue-100 text-blue-700"
+            }`}>
+              {s.estado === "en_curso" ? "En curso" : s.estado === "confirmada" ? "Confirmada" : "Cancelada"}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-5 mb-5">
+          {/* Datos de la operación */}
+          <div className="bg-white rounded-lg border p-5">
+            <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Datos de la Operación</h3>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between"><span className="text-gray-500">Número</span><span className="font-medium">{s.numero}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Fecha</span><span className="font-medium">{fechaHora}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Cliente</span><span className="font-medium">{s.cliente_nombre}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Sucursal</span><span className="font-medium">{sucursalActiva?.nombre ?? "—"}</span></div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">Fecha límite</span>
+                <div className="flex items-center gap-2">
+                  {seniaEditandoFecha && s.estado === "en_curso" ? (
+                    <>
+                      <input type="date" value={seniaFechaLimiteEdit} onChange={e => setSeniaFechaLimiteEdit(e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1 text-xs" />
+                      <button onClick={handleActualizarFecha} className="text-xs bg-emerald-600 text-white px-2 py-1 rounded hover:bg-emerald-700">Guardar</button>
+                      <button onClick={() => setSeniaEditandoFecha(false)} className="text-xs text-gray-500 hover:underline">Cancelar</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className={`font-medium ${vencida ? "text-red-600" : ""}`}>{formatFechaLimite(s.fecha_limite)}</span>
+                      {s.estado === "en_curso" && (
+                        <button onClick={() => { setSeniaEditandoFecha(true); setSeniaFechaLimiteEdit(s.fecha_limite) }}
+                          className="text-xs text-emerald-600 hover:underline flex items-center gap-1">
+                          <Edit className="w-3 h-3" /> Modificar
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Datos del equipo */}
+          <div className="bg-white rounded-lg border p-5">
+            <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b flex items-center gap-2">
+              <Smartphone className="w-4 h-4 text-emerald-600" /> Equipo
+            </h3>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between"><span className="text-gray-500">Modelo</span><span className="font-medium">{s.equipo_nombre}</span></div>
+              {s.equipo_imei && <div className="flex justify-between"><span className="text-gray-500">IMEI / S/N</span><span className="font-mono text-xs">{s.equipo_imei}</span></div>}
+              {s.equipo_color && <div className="flex justify-between"><span className="text-gray-500">Color</span><span className="font-medium">{s.equipo_color}</span></div>}
+              {s.equipo_bateria != null && <div className="flex justify-between"><span className="text-gray-500">Batería</span><span className="font-medium flex items-center gap-1"><Battery className="w-3 h-3" />{s.equipo_bateria}%</span></div>}
+              <div className="border-t pt-3 space-y-1">
+                <div className="flex justify-between"><span className="text-gray-500">Precio de venta</span><span className="font-medium">{formatCurrency(s.precio_venta)}</span></div>
+                {s.descuento > 0 && <div className="flex justify-between"><span className="text-gray-500">Descuento</span><span className="text-red-600 font-medium">-{formatCurrency(s.descuento)}</span></div>}
+                <div className="flex justify-between font-semibold"><span>Precio final acordado</span><span className="text-emerald-600 text-base">{formatCurrency(s.precio_final)}</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bloque Seña Pagada */}
+        <div className="bg-white rounded-lg border p-5 mb-5">
+          <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b flex items-center gap-2">
+            <Banknote className="w-4 h-4 text-emerald-600" /> Seña (pago adelantado)
+          </h3>
+          {s.estado_senia === "registrada" ? (
+            <div className="flex items-center gap-4">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex-1 text-sm">
+                <p className="text-green-800 font-medium">Seña registrada: {formatCurrency(s.monto_senia)}</p>
+                <p className="text-green-600 text-xs mt-0.5">Medio: {s.medio_pago_senia} {s.recibo_senia_numero ? `· Recibo: ${s.recibo_senia_numero}` : ""}</p>
+              </div>
+            </div>
+          ) : s.estado === "en_curso" ? (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-500">Sin seña registrada. Podés registrar el pago adelantado ahora o más adelante.</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Monto de la seña ($)</label>
+                  <input type="number" min={0} value={seniaMontoInput} onChange={e => setSeniaMontoInput(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Medio de pago</label>
+                  <select value={seniaMedioPagoInput} onChange={e => setSeniaMedioPagoInput(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500">
+                    <option value="efectivo">Efectivo</option>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="tarjeta_debito">Tarjeta Débito</option>
+                    <option value="tarjeta_credito">Tarjeta Crédito</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <button onClick={handleRegistrarSenia} disabled={seniaRegistrando}
+                    className="w-full py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:bg-gray-300 flex items-center justify-center gap-2">
+                    <CreditCard className="w-4 h-4" />
+                    {seniaRegistrando ? "Registrando..." : "Registrar seña"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">Sin seña pagada.</p>
+          )}
+        </div>
+
+        {/* Documentos Generados */}
+        <div className="bg-white rounded-lg border p-5 mb-5">
+          <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b flex items-center gap-2">
+            <FileText className="w-4 h-4 text-gray-600" /> Documentos Generados
+          </h3>
+          <div className="space-y-1 text-sm">
+            {[
+              { label: "Nota de Venta",    tipo: "nv" as const,      id: s.nota_venta_id,  numero: s.nota_venta_numero, icon: FileText, color: "text-blue-600"   },
+              { label: "Orden de Entrega", tipo: "oe" as const,       id: s.oe_id,          numero: s.oe_numero,         icon: Truck,    color: "text-amber-600"  },
+              ...(s.remito_id ? [{ label: "Remito", tipo: "remito" as const, id: s.remito_id, numero: s.remito_numero, icon: Package, color: "text-orange-600" }] : []),
+              ...(s.factura_id ? [{ label: "Factura", tipo: null as any, id: null, numero: s.factura_numero, icon: Receipt, color: "text-purple-600" }] : []),
+              ...(s.recibo_senia_numero ? [{ label: "Recibo seña", tipo: null as any, id: null, numero: s.recibo_senia_numero, icon: CreditCard, color: "text-emerald-600" }] : []),
+            ].map((doc, i) => {
+              const Icon = doc.icon
+              const clickable = !!doc.id && !!doc.tipo
+              return (
+                <div key={i}
+                  onClick={() => clickable && abrirSeniaDoc(doc.tipo, doc.id)}
+                  className={`flex items-center justify-between py-2.5 px-3 rounded-lg border border-transparent transition-colors last:mb-0 ${
+                    clickable
+                      ? "hover:bg-gray-50 hover:border-gray-200 cursor-pointer group"
+                      : ""
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Icon className={`w-4 h-4 ${doc.color}`} />
+                    <span className="text-gray-700 font-medium">{doc.label}</span>
+                    {doc.numero
+                      ? <span className={`font-mono text-xs font-semibold ${doc.color} ${clickable ? "underline underline-offset-2 decoration-dotted" : ""}`}>{doc.numero}</span>
+                      : <span className="text-xs text-gray-400 italic">no generado</span>
+                    }
+                  </div>
+                  {clickable && doc.numero && (
+                    <span className="text-xs text-gray-400 group-hover:text-gray-600 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Eye className="w-3.5 h-3.5" /> Ver
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Modal de preview de documento */}
+        {showSeniaDocModal && (
+          <div
+            className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center overflow-y-auto py-6"
+            onClick={() => {
+              setShowSeniaDocModal(false)
+              setSeniaDocModalTipo(null)
+              if (seniaDocModalTipo === "nv") setSelectedNV(null)
+              if (seniaDocModalTipo === "oe") setSelectedOE(null)
+              if (seniaDocModalTipo === "remito") setSelectedRemito(null)
+            }}
+          >
+            <div
+              className="bg-gray-50 rounded-xl shadow-2xl w-[92vw] max-w-6xl relative flex flex-col"
+              style={{ minHeight: "300px" }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Barra superior del modal */}
+              <div className="sticky top-0 bg-white border-b rounded-t-xl px-4 py-3 flex items-center justify-between z-10 shadow-sm">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  {seniaDocModalTipo === "nv" && <><FileText className="w-4 h-4 text-blue-600" /> Nota de Venta</>}
+                  {seniaDocModalTipo === "oe" && <><Truck className="w-4 h-4 text-amber-600" /> Orden de Entrega</>}
+                  {seniaDocModalTipo === "remito" && <><Package className="w-4 h-4 text-orange-600" /> Remito</>}
+                  <span className="text-xs text-gray-400 ml-1">(vista previa — los cambios se reflejan en el módulo correspondiente)</span>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowSeniaDocModal(false)
+                    setSeniaDocModalTipo(null)
+                    if (seniaDocModalTipo === "nv") setSelectedNV(null)
+                    if (seniaDocModalTipo === "oe") setSelectedOE(null)
+                    if (seniaDocModalTipo === "remito") setSelectedRemito(null)
+                  }}
+                  className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              {/* Contenido del modal */}
+              <div className="p-5 flex-1">
+                {seniaDocModalLoading ? (
+                  <div className="flex items-center justify-center h-48">
+                    <div className="animate-spin w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full" />
+                  </div>
+                ) : (
+                  <>
+                    {seniaDocModalTipo === "nv" && renderFormularioNV()}
+                    {seniaDocModalTipo === "oe" && renderFichaOE()}
+                    {seniaDocModalTipo === "remito" && renderFichaRemito()}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+
+        {/* CIERRE DE OPERACIÓN — solo si está en curso */}
+        {s.estado === "en_curso" && (
+          <div className="bg-white rounded-lg border border-emerald-200 p-5 mb-5">
+            <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-600" /> Cierre de Operación
+            </h3>
+            <div className="space-y-4">
+              {/* Resumen financiero */}
+              <div className="bg-gray-50 rounded-lg p-4 text-sm space-y-1">
+                <div className="flex justify-between"><span className="text-gray-600">Precio final acordado</span><span className="font-medium">{formatCurrency(s.precio_final)}</span></div>
+                {s.estado_senia === "registrada" && s.monto_senia > 0 && (
+                  <div className="flex justify-between text-green-700"><span>Seña ya pagada</span><span>-{formatCurrency(s.monto_senia)}</span></div>
+                )}
+                <div className="flex justify-between font-bold border-t pt-2 text-emerald-700"><span>Saldo a pagar</span><span>{formatCurrency(saldoPendiente)}</span></div>
+              </div>
+
+              {/* Medios de pago del saldo */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-gray-700">Medios de pago del saldo:</p>
+                  <button onClick={() => setSeniaMediosCierre(prev => [...prev, { medio: "efectivo", monto: 0 }])}
+                    className="text-xs text-emerald-600 hover:underline flex items-center gap-1">
+                    <Plus className="w-3 h-3" /> Agregar medio
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {seniaMediosCierre.map((mp, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <select value={mp.medio} onChange={e => setSeniaMediosCierre(prev => prev.map((x, i) => i === idx ? { ...x, medio: e.target.value } : x))}
+                        className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm flex-1 focus:ring-2 focus:ring-emerald-500">
+                        <option value="efectivo">Efectivo</option>
+                        <option value="transferencia">Transferencia</option>
+                        <option value="tarjeta_debito">Tarjeta Débito</option>
+                        <option value="tarjeta_credito">Tarjeta Crédito</option>
+                        <option value="cuenta_corriente">Cuenta Corriente</option>
+                        <option value="toma_equipo">Toma de equipo en parte de pago</option>
+                      </select>
+                      <input type="number" min={0} value={mp.monto} onChange={e => setSeniaMediosCierre(prev => prev.map((x, i) => i === idx ? { ...x, monto: Number(e.target.value) } : x))}
+                        placeholder="$ 0"
+                        className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-36 focus:ring-2 focus:ring-emerald-500" />
+                      {seniaMediosCierre.length > 1 && (
+                        <button onClick={() => setSeniaMediosCierre(prev => prev.filter((_, i) => i !== idx))}
+                          className="text-red-400 hover:text-red-600 p-1"><X className="w-4 h-4" /></button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {seniaMediosCierre.some(m => m.medio === "toma_equipo") && (
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-xs text-blue-700 font-medium flex items-center gap-1">
+                      <Repeat className="w-3 h-3" /> El flujo de Toma de Equipo se procesará al confirmar el cierre.
+                    </p>
+                  </div>
+                )}
+                {/* Diferencia */}
+                {totalCierre > 0 && (
+                  <div className={`flex justify-between text-sm mt-2 font-medium ${Math.abs(totalCierre - saldoPendiente) < 1 ? "text-emerald-700" : "text-amber-700"}`}>
+                    <span>Total medios de pago:</span>
+                    <span>{formatCurrency(totalCierre)} {Math.abs(totalCierre - saldoPendiente) < 1 ? "✓" : `(diferencia: ${formatCurrency(totalCierre - saldoPendiente)})`}</span>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={handleConfirmarCierre}
+                disabled={seniaCerrando || seniaMediosCierre.length === 0}
+                className="w-full py-3 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <CheckCircle className="w-5 h-5" />
+                {seniaCerrando ? "Procesando..." : "Confirmar y entregar equipo"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Cancelar operación */}
+        {s.estado === "en_curso" && (
+          <div className="bg-white rounded-lg border p-5">
+            <h3 className="font-semibold text-gray-900 mb-3 pb-2 border-b flex items-center gap-2">
+              <XCircle className="w-4 h-4 text-red-500" /> Cancelar Seña
+            </h3>
+            {seniaCancelando ? (
+              <div className="space-y-3">
+                <textarea value={seniaCancelMotivo} onChange={e => setSeniaCancelMotivo(e.target.value)}
+                  placeholder="Motivo de la cancelación (opcional)"
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-400" />
+                {s.estado_senia === "registrada" && s.monto_senia > 0 && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                    La seña pagada de {formatCurrency(s.monto_senia)} quedará como crédito en la cuenta corriente del cliente.
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  <button onClick={handleCancelar} className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700">
+                    Confirmar cancelación
+                  </button>
+                  <button onClick={() => { setSeniaCancelando(false); setSeniaCancelMotivo("") }} className="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                    No cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-500">Cancelar libera el stock y anula la reserva del equipo.</p>
+                <button onClick={() => setSeniaCancelando(true)} className="text-sm text-red-600 border border-red-300 px-3 py-1.5 rounded-lg hover:bg-red-50">
+                  Cancelar seña
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Ir a factura — solo visible tras confirmar cierre */}
+        {s.estado === "confirmada" && s.factura_id && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-5 flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-emerald-800">Operación confirmada</p>
+              <p className="text-sm text-emerald-600">Equipo entregado — completá la facturación para finalizar.</p>
+            </div>
+            <button
+              onClick={() => {
+                const fac = facturas.find(f => f.id === s.factura_id)
+                if (fac) {
+                  setSelectedSenia(null)
+                  setSelectedFactura(fac)
+                  setActiveView("facturas")
+                }
+              }}
+              className="px-4 py-2.5 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 flex items-center gap-2 whitespace-nowrap"
+            >
+              <Receipt className="w-4 h-4" /> Ir a factura para finalizar operación
+            </button>
+          </div>
+        )}
+
+        {/* Seguimiento */}
+        {s.seguimiento && s.seguimiento.length > 0 && (
+          <div className="bg-white rounded-lg border p-5 mt-5">
+            <h3 className="font-semibold text-gray-900 mb-3 pb-2 border-b flex items-center gap-2">
+              <History className="w-4 h-4 text-gray-500" /> Seguimiento
+            </h3>
+            <div className="space-y-3">
+              {[...s.seguimiento].reverse().map((entry: SeguimientoEntry, i) => (
+                <div key={i} className="flex gap-3 text-sm">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-medium text-gray-800">{entry.accion}</p>
+                    {entry.detalle && <p className="text-gray-500 text-xs">{entry.detalle}</p>}
+                    <p className="text-gray-400 text-xs">{new Date(entry.fecha).toLocaleString("es-AR")} · {entry.usuario}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const renderListadoSeniasEquipo = () => {
+    const seniasFiltradas = seniasEquipo.filter(s => {
+      const matchEstado = seniaFiltroEstado === "todos" || s.estado === seniaFiltroEstado
+      const matchVencida = !seniaFiltroVencidas || (s.estado === "en_curso" && diasRestantes(s.fecha_limite) !== null && (diasRestantes(s.fecha_limite) as number) < 0)
+      const matchSearch = searchQuery === "" ||
+        s.numero.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.cliente_nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.equipo_nombre.toLowerCase().includes(searchQuery.toLowerCase())
+      return matchEstado && matchVencida && matchSearch
+    })
+
+    return (
+      <div>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h1 className="text-2xl font-bold text-emerald-900">Seña de Equipo</h1>
+            <p className="text-gray-500 mt-1 text-sm">Gestione las reservas de equipos con seña</p>
+          </div>
+          <button onClick={() => { setCreandoSenia(true) }}
+            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors text-sm font-medium">
+            <Plus className="w-4 h-4" /> Nueva Seña
+          </button>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-4 mb-5">
+          <div className="bg-white rounded-lg border p-4">
+            <p className="text-xs text-gray-500 uppercase font-medium mb-1">Total</p>
+            <p className="text-2xl font-bold text-gray-900">{seniasEquipo.length}</p>
+          </div>
+          <div className="bg-white rounded-lg border p-4">
+            <p className="text-xs text-gray-500 uppercase font-medium mb-1">En curso</p>
+            <p className="text-2xl font-bold text-blue-600">{seniasEquipo.filter(s => s.estado === "en_curso").length}</p>
+          </div>
+          <div className="bg-white rounded-lg border p-4">
+            <p className="text-xs text-gray-500 uppercase font-medium mb-1">Confirmadas</p>
+            <p className="text-2xl font-bold text-emerald-600">{seniasEquipo.filter(s => s.estado === "confirmada").length}</p>
+          </div>
+          <div className="bg-white rounded-lg border p-4">
+            <p className="text-xs text-gray-500 uppercase font-medium mb-1">Vencidas</p>
+            <p className="text-2xl font-bold text-red-500">
+              {seniasEquipo.filter(s => s.estado === "en_curso" && diasRestantes(s.fecha_limite) !== null && (diasRestantes(s.fecha_limite) as number) < 0).length}
+            </p>
+          </div>
+        </div>
+
+        {/* Filtros rápidos */}
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input type="text" placeholder="Buscar..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+              className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 w-56" />
+          </div>
+          {(["todos", "en_curso", "confirmada", "cancelada"] as const).map(est => (
+            <button key={est} onClick={() => setSeniaFiltroEstado(est)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${seniaFiltroEstado === est ? "bg-emerald-600 text-white border-emerald-600" : "border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
+              {est === "todos" ? "Todos" : est === "en_curso" ? "En curso" : est === "confirmada" ? "Confirmadas" : "Canceladas"}
+            </button>
+          ))}
+          <button onClick={() => setSeniaFiltroVencidas(v => !v)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1 ${seniaFiltroVencidas ? "bg-red-500 text-white border-red-500" : "border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
+            <AlertCircle className="w-3 h-3" /> Vencidas
+          </button>
+        </div>
+
+        {/* Tabla */}
+        <div className="bg-white rounded-lg border overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b">
+              <tr className="text-xs text-gray-500 uppercase tracking-wide">
+                <th className="text-left py-3 px-4">N° Seña</th>
+                <th className="text-left py-3 px-4">Fecha</th>
+                <th className="text-left py-3 px-4">Cliente</th>
+                <th className="text-left py-3 px-4">Equipo</th>
+                <th className="text-right py-3 px-4">Precio</th>
+                <th className="text-right py-3 px-4">Seña pagada</th>
+                <th className="text-center py-3 px-4">Fecha límite</th>
+                <th className="text-center py-3 px-4">Estado</th>
+                <th className="text-center py-3 px-4">Días rest.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {seniasFiltradas.length === 0 && (
+                <tr><td colSpan={9} className="py-12 text-center text-sm text-gray-400">No hay señas de equipo registradas</td></tr>
+              )}
+              {seniasFiltradas.map(s => {
+                const dias = diasRestantes(s.fecha_limite)
+                const vencida = dias !== null && dias < 0 && s.estado === "en_curso"
+                return (
+                  <tr key={s.id} onClick={() => setSelectedSenia(s)}
+                    className={`border-b hover:bg-gray-50 cursor-pointer ${vencida ? "bg-red-50" : ""}`}>
+                    <td className="py-3 px-4 font-medium text-emerald-700 font-mono text-sm">{s.numero}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{new Date(s.fecha).toLocaleDateString("es-AR")}</td>
+                    <td className="py-3 px-4 text-sm">{s.cliente_nombre}</td>
+                    <td className="py-3 px-4 text-sm max-w-[200px] truncate">{s.equipo_nombre}</td>
+                    <td className="py-3 px-4 text-sm text-right font-medium">{formatCurrency(s.precio_final)}</td>
+                    <td className="py-3 px-4 text-sm text-right">
+                      {s.estado_senia === "registrada"
+                        ? <span className="text-emerald-600 font-medium">{formatCurrency(s.monto_senia)}</span>
+                        : <span className="text-gray-400 text-xs">Sin seña</span>
+                      }
+                    </td>
+                    <td className="py-3 px-4 text-center text-sm">{formatFechaLimite(s.fecha_limite)}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        s.estado === "confirmada" ? "bg-green-100 text-green-700" :
+                        s.estado === "cancelada" ? "bg-red-100 text-red-700" :
+                        "bg-blue-100 text-blue-700"
+                      }`}>
+                        {s.estado === "en_curso" ? "En curso" : s.estado === "confirmada" ? "Confirmada" : "Cancelada"}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      {s.estado === "en_curso" && dias !== null ? (
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          vencida ? "bg-red-100 text-red-700" :
+                          dias <= 3 ? "bg-amber-100 text-amber-700" :
+                          "bg-gray-100 text-gray-600"
+                        }`}>
+                          {vencida ? `−${Math.abs(dias)}d` : dias === 0 ? "Hoy" : `${dias}d`}
+                        </span>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
+  const renderSeniaEquipo = () => {
+    if (selectedSenia) return renderFichaSeniaEquipo()
+    if (creandoSenia) return renderCrearSeniaEquipo()
+    return renderListadoSeniasEquipo()
+  }
+
   const renderTomaEquipo = () => {
     if (selectedToma) return renderFichaTomaEquipo()
   if (tomaEquipoCreando) return renderCrearTomaEquipo()
@@ -6171,14 +7456,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       return
     }
 
-    const facturaNumero = `FC X 10000-000${20050 + facturas.length}`
+    const facturaNumero = `FAC-${String(facturas.length + 1).padStart(5, "0")}`
     const facturaId = facturas.length + 1
     const fechaHoy = new Date().toISOString()
 
     const newFactura: Factura = {
       id: facturaId,
       numero: facturaNumero,
-      tipo: "B",
       nota_venta_id: 0,
       nota_venta_numero: "-",
       cliente_id: clienteSeleccionado.id,
@@ -6223,14 +7507,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       return
     }
 
-    const facturaNumero = `FC-${String(20050 + facturas.length).padStart(6, "0")}`
+    const facturaNumero = `FAC-${String(facturas.length + 1).padStart(5, "0")}`
     const facturaId = facturas.length + 1
     const fechaHoy = new Date().toISOString()
 
     const newFactura: Factura = {
       id: facturaId,
       numero: facturaNumero,
-      tipo: "B",
       nota_venta_id: 0,
       nota_venta_numero: "-",
       cliente_id: clienteSeleccionado.id,
@@ -6304,7 +7587,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
     const lineasValidas = facturaLineas.filter(l => l.producto_nombre.trim() !== "")
     const subtotal = lineasValidas.reduce((sum, l) => sum + l.subtotal, 0)
-    const numeroProvisorio = `FC-${String(20050 + facturas.length).padStart(6, "0")}`
+    const numeroProvisorio = `FAC-${String(facturas.length + 1).padStart(5, "0")}`
     return (
       <div>
         {/* Header con breadcrumb */}
@@ -7360,7 +8643,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <td className="py-3 px-4 text-sm text-blue-600">{factura.nota_venta_numero}</td>
                 <td className="py-3 px-4 text-center">
                   <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getEstadoFacturaColor(factura.estado)}`}>
-                    {factura.estado === "borrador" ? "Borrador" : factura.estado === "abierta" ? "Abierta" : "Conciliada"}
+                    {factura.estado === "borrador" ? "Borrador" : factura.estado === "abierta" ? "Abierta" : factura.estado === "ejecucion_senia" ? "Ejecución Seña" : factura.estado === "esperando_confirmacion" ? "Esperando confirmación" : "Conciliada"}
                   </span>
                 </td>
                 <td className="py-3 px-4 text-center text-sm font-medium">{factura.moneda}</td>
@@ -11423,6 +12706,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         return renderNotasVenta()
       case "toma_equipo":
         return renderTomaEquipo()
+      case "senia_equipo":
+        return renderSeniaEquipo()
       case "ordenes_entrega":
         return renderOrdenesEntrega()
       case "remitos":
@@ -11848,14 +13133,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 oe.id === newOE.id ? { ...oe, remito_numero: remitoNumero } : oe
               ))
 
-              const facturaNumero = `FC X 10000-000${20050 + facturas.length}`
+              const facturaNumero = `FAC-${String(facturas.length + 1).padStart(5, "0")}`
               const facturaId = facturas.length + 1
               
               // 3. Crear Factura en borrador
               const newFactura: Factura = {
                 id: facturaId,
                 numero: facturaNumero,
-                tipo: "B",
                 nota_venta_id: nvId,
                 nota_venta_numero: nvNumero,
                 cliente_id: cliente.id,
@@ -12747,6 +14031,81 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           </div>
         )
       })()}
+
+      {/* Modal IMEI/Serie para Seña de Equipo */}
+      {showSeniaSerieModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Seleccionar IMEI / Serie</h3>
+                <p className="text-sm text-gray-500 mt-0.5">{seniaEquipoNombre} — 1 unidad</p>
+              </div>
+              <button onClick={() => setShowSeniaSerieModal(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-6">
+              <div className="mb-4 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar por N° de serie / IMEI..."
+                  value={seniaSerieBusqueda}
+                  onChange={e => setSeniaSerieBusqueda(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+              <div className="space-y-2">
+                {seniaSerieCargando ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                    <p className="text-sm">Cargando series disponibles...</p>
+                  </div>
+                ) : seniaSeriesDisponibles.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                    <p>No hay series disponibles</p>
+                    <p className="text-sm mt-1">Verifique el inventario de stock</p>
+                  </div>
+                ) : (
+                  seniaSeriesDisponibles
+                    .filter(s => !seniaSerieBusqueda || s.serie?.toLowerCase().includes(seniaSerieBusqueda.toLowerCase()))
+                    .map(serie => (
+                      <div
+                        key={serie.id}
+                        onClick={() => {
+                          setSeniaStockItemId(serie.id)
+                          setSeniaEquipoImei(serie.serie ?? "")
+                          const detalles = (serie.detalles ?? "").split(" - ")
+                          setSeniaEquipoColor(detalles[0] ?? "")
+                          const batMatch = (serie.detalles ?? "").match(/Batería (\d+)%/)
+                          setSeniaEquipoBateria(batMatch ? Number(batMatch[1]) : undefined)
+                          setShowSeniaSerieModal(false)
+                        }}
+                        className="flex items-center gap-4 p-4 rounded-lg border border-gray-200 hover:bg-emerald-50 hover:border-emerald-300 cursor-pointer transition-all"
+                      >
+                        <div className="flex-1">
+                          <span className="font-mono font-semibold text-gray-900">{serie.serie}</span>
+                          {serie.detalles && <div className="text-sm text-gray-600 mt-1">{serie.detalles}</div>}
+                          <div className="text-xs text-gray-400 mt-1">Ingreso: {formatDate(serie.fecha_ingreso)}</div>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-xl">
+              <button
+                onClick={() => setShowSeniaSerieModal(false)}
+                className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de selección de Series/IMEI */}
       {showSerieModal && serieModalLineaIndex !== null && (

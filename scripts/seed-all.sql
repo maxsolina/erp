@@ -119,8 +119,8 @@ ON CONFLICT (id) DO NOTHING;
 
 -- 10. FACTURAS
 INSERT INTO facturas (id, numero, tipo, nota_venta_id, nota_venta_numero, cliente_id, cliente_nombre, vendedor_id, vendedor_nombre, sucursal_id, sucursal, fecha, estado, moneda, subtotal, descuento, impuestos, total, saldo, termino_pago, condicion_pago) VALUES
-  (1, 'FA-A-00001', 'A', 1, 'NV-0001', 1, 'Max Solina', 1, 'Maximiliano Solina', 1, 'Puerto Norte', '2026-03-10 10:30:00+00', 'cobrada', 'ARS', 1450000, 0, 0, 1450000, 0, 'Contado Efectivo', 'contado'),
-  (2, 'FA-B-00001', 'B', null, null, 1, 'Max Solina', 2, 'Carla Gómez', 1, 'Puerto Norte', '2026-03-18 11:00:00+00', 'pendiente', 'ARS', 1200000, 0, 0, 1200000, 1200000, 'Cuenta Corriente', 'cuenta_corriente')
+  (1, 'FAC-00001', '', 1, 'NV-0001', 1, 'Max Solina', 1, 'Maximiliano Solina', 1, 'Puerto Norte', '2026-03-10 10:30:00+00', 'cobrada', 'ARS', 1450000, 0, 0, 1450000, 0, 'Contado Efectivo', 'contado'),
+  (2, 'FAC-00002', '', null, null, 1, 'Max Solina', 2, 'Carla Gómez', 1, 'Puerto Norte', '2026-03-18 11:00:00+00', 'abierta', 'ARS', 1200000, 0, 0, 1200000, 1200000, 'Cuenta Corriente', 'cuenta_corriente')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO facturas_lineas (id, factura_id, producto_id, producto_nombre, cantidad, precio_unitario, descuento, subtotal) VALUES
@@ -144,9 +144,9 @@ ON CONFLICT (id) DO NOTHING;
 
 -- 12. MOVIMIENTOS CUENTA CORRIENTE
 INSERT INTO movimientos_cuenta_corriente (id, cliente_id, fecha, tipo, concepto, documento_tipo, documento_numero, documento_id, moneda, importe, saldo_posterior) VALUES
-  (1, 1, '2026-03-10 10:30:00+00', 'debito',  'Factura FA-A-00001', 'factura', 'FA-A-00001', 1, 'ARS', 1450000, 1450000),
+  (1, 1, '2026-03-10 10:30:00+00', 'debito',  'Factura FAC-00001', 'factura', 'FAC-00001', 1, 'ARS', 1450000, 1450000),
   (2, 1, '2026-03-10 10:35:00+00', 'credito', 'Recibo RC-00001',    'recibo',  'RC-00001',   1, 'ARS', 1450000, 0),
-  (3, 1, '2026-03-18 11:00:00+00', 'debito',  'Factura FA-B-00001', 'factura', 'FA-B-00001', 2, 'ARS', 1200000, 1200000)
+  (3, 1, '2026-03-18 11:00:00+00', 'debito',  'Factura FAC-00002', 'factura', 'FAC-00002', 2, 'ARS', 1200000, 1200000)
 ON CONFLICT (id) DO NOTHING;
 
 -- Actualizar sequences para que el próximo INSERT use el ID correcto

@@ -8,12 +8,13 @@ function getSupabase() {
   )
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const supabase = getSupabase()
-  const { data, error } = await supabase
-    .from("ordenes_entrega")
-    .select("*")
-    .order("created_at", { ascending: false })
+  const { searchParams } = new URL(req.url)
+  const id = searchParams.get("id")
+  let query = supabase.from("ordenes_entrega").select("*").order("created_at", { ascending: false })
+  if (id) query = query.eq("id", Number(id))
+  const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   // Garantizar que productos y seguimiento siempre sean arrays
   const mapped = (data ?? []).map((oe: any) => ({

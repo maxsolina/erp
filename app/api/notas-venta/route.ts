@@ -13,13 +13,15 @@ export async function GET(req: Request) {
   const supabase = getSupabase()
   const { searchParams } = new URL(req.url)
   const numero = searchParams.get("numero")
+  const id = searchParams.get("id")
 
   // 1. Cabeceras
   let nvQuery = supabase
     .from("notas_venta")
     .select("*")
     .order("created_at", { ascending: false })
-  if (numero) nvQuery = nvQuery.eq("numero", numero)
+  if (id) nvQuery = nvQuery.eq("id", Number(id))
+  else if (numero) nvQuery = nvQuery.eq("numero", numero)
 
   const { data: nvs, error: nvErr } = await nvQuery
   if (nvErr) return NextResponse.json({ error: nvErr.message }, { status: 500 })

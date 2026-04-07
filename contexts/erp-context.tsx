@@ -168,7 +168,6 @@ export interface Remito {
 export interface Factura {
   id: number
   numero: string
-  tipo: "A" | "B" | "C"
   fecha: string
   fecha_vencimiento: string
   cliente_id: number
@@ -594,7 +593,7 @@ export function ERPProvider({ children }: { children: ReactNode }) {
           entidad_id: fac.cliente_id,
           tipo: "factura",
           documento_numero: fac.numero,
-          concepto: `Factura ${fac.tipo}-${fac.numero}`,
+          concepto: `Factura ${fac.numero}`,
           debe: fac.total,
           haber: 0,
           saldo_parcial: 0,
