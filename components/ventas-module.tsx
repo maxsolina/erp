@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 // Modulo de Ventas - Cell Home ERP v5
 import React, { useState, useMemo, useRef, useEffect, useCallback } from "react"
@@ -339,34 +339,71 @@ interface Factura {
   }[]
 }
 
+interface ReciboPago {
+  id: string
+  recibo_id: string
+  valor_id: string
+  valor_nombre: string
+  tipo_valor: string
+  importe_comprobante: number
+  moneda_comprobante: string
+  importe: number
+  moneda: string
+  es_tarjeta: boolean
+  tarjeta_nombre: string | null
+  cantidad_cuotas: number
+  numero_cupon: string | null
+  recargo_porcentaje: number
+  recargo_importe: number
+  es_cheque: boolean
+  cheque_id: string | null
+  cupon_tarjeta_id: string | null
+}
+
+interface ReciboImputacion {
+  id: string
+  recibo_id: string
+  tipo_comprobante: 'factura' | 'nota_debito'
+  comprobante_id: string
+  comprobante_referencia: string
+  fecha_comprobante: string
+  fecha_vencimiento: string
+  saldo_moneda: number
+  moneda_comprobante: string
+  tipo_cotizacion: string
+  cotizacion_original: number
+  saldo_original: number
+  cotizacion_actual: number
+  saldo_actual: number
+  asignacion: number
+}
+
 interface Recibo {
-  id: number
+  id: string
   numero: string
-  cliente_id: number
-  cliente_nombre: string
-  estado: "borrador" | "publicado" | "cancelado"
-  fecha: string
+  sucursal: string
+  cliente_id: string | null
+  cliente_nombre: string | null
+  caja_id: string | null
+  caja_nombre: string | null
+  nota_venta_id: string | null
+  nota_venta_numero: string | null
+  cobrador_id: string | null
+  cobrador_nombre: string | null
+  concepto: string | null
   importe: number
   importe_no_conciliado: number
-  moneda: "ARS" | "USD"
-  sucursal: string
-  caja: string
-  cobrador_nombre: string
-  nota_venta_numero: string | null
-  factura_id?: number
-  concepto: string
-  pagos: {
-    forma_pago: string
-    importe: number
-    moneda: "ARS" | "USD"
-  }[]
-  cancelacion?: {
-    motivo: string
-    descripcion: string
-    fecha: string
-    usuario: string
-  }
-  seguimiento?: SeguimientoEntry[]
+  moneda: string
+  tipo_cotizacion: string | null
+  cotizacion: number | null
+  fecha: string
+  estado: 'borrador' | 'publicado' | 'cancelado'
+  fecha_publicacion: string | null
+  fecha_cancelacion: string | null
+  motivo_cancelacion: string | null
+  observaciones: string | null
+  pagos?: ReciboPago[]
+  imputaciones?: ReciboImputacion[]
 }
 
 interface AjusteCliente {
@@ -439,63 +476,6 @@ const mockTerminosPago: TerminoPago[] = [
   { id: 3, nombre: "Cuenta Corriente 60 días", dias: 60 },
 ]
 
-// Depósitos y ubicaciones para selector en NV
-const depositosVenta = [
-  { id: 1, codigo: "CC", nombre: "Casa Central" },
-  { id: 2, codigo: "PN", nombre: "Puerto Norte" },
-  { id: 3, codigo: "CS", nombre: "Casilda" },
-]
-
-const ubicacionesVenta = [
-  // Casa Central - disponibles para venta
-  { id: 1, deposito_id: 1, codigo: "CC/Stock", nombre: "Stock", disponible_venta: true },
-  { id: 2, deposito_id: 1, codigo: "CC/Usados", nombre: "Usados", disponible_venta: true },
-  { id: 3, deposito_id: 1, codigo: "CC/Deposito B", nombre: "Depósito B", disponible_venta: true },
-  // Puerto Norte
-  { id: 8, deposito_id: 2, codigo: "PN/Stock", nombre: "Stock", disponible_venta: true },
-  { id: 9, deposito_id: 2, codigo: "PN/Outlet", nombre: "Outlet", disponible_venta: true },
-  // Casilda
-  { id: 12, deposito_id: 3, codigo: "CS/Stock", nombre: "Stock", disponible_venta: true },
-]
-
-// Motivos de cancelación de recibo (configurable en módulo)
-const motivosCancelacionRecibo = [
-  { id: 1, codigo: "ERROR_MONTO", nombre: "Error en el monto" },
-  { id: 2, codigo: "ERROR_CLIENTE", nombre: "Error de cliente" },
-  { id: 3, codigo: "DUPLICADO", nombre: "Recibo duplicado" },
-  { id: 4, codigo: "DEVOLUCION", nombre: "Devolución de pago" },
-  { id: 5, codigo: "OTRO", nombre: "Otro motivo" },
-]
-
-// Array vacío — los productos reales se cargan desde Supabase via productosMaestro (estado del componente)
-const productosConSerie: ProductoVenta[] = []
-
-// Series/IMEI disponibles por producto y ubicación
-const seriesDisponibles: SerieDisponible[] = [
-  // iPhone 12 Usado - Casa Central/Usados
-  { id: 1, producto_id: 1, serie: "353912108456721", lote: null, estado: "disponible", ubicacion_id: 2, ubicacion_nombre: "CC/Usados", detalles: "64GB Negro - Batería 89%", fecha_ingreso: "2024-01-10" },
-  { id: 2, producto_id: 1, serie: "353912108456722", lote: null, estado: "disponible", ubicacion_id: 2, ubicacion_nombre: "CC/Usados", detalles: "128GB Blanco - Batería 92%", fecha_ingreso: "2024-01-12" },
-  { id: 3, producto_id: 1, serie: "353912108456723", lote: null, estado: "disponible", ubicacion_id: 2, ubicacion_nombre: "CC/Usados", detalles: "64GB Azul - Batería 85%", fecha_ingreso: "2024-01-15" },
-  { id: 4, producto_id: 1, serie: "353912108456724", lote: null, estado: "reservado", ubicacion_id: 2, ubicacion_nombre: "CC/Usados", detalles: "128GB Negro - Batería 95%", fecha_ingreso: "2024-01-08" },
-  // iPhone 12 Usado - Puerto Norte/Stock
-  { id: 5, producto_id: 1, serie: "353912108456725", lote: null, estado: "disponible", ubicacion_id: 8, ubicacion_nombre: "PN/Stock", detalles: "64GB Rojo - Batería 88%", fecha_ingreso: "2024-01-05" },
-  // iPhone 13 Usado
-  { id: 6, producto_id: 2, serie: "354789123456001", lote: null, estado: "disponible", ubicacion_id: 2, ubicacion_nombre: "CC/Usados", detalles: "128GB Midnight - Batería 94%", fecha_ingreso: "2024-01-18" },
-  { id: 7, producto_id: 2, serie: "354789123456002", lote: null, estado: "disponible", ubicacion_id: 2, ubicacion_nombre: "CC/Usados", detalles: "256GB Starlight - Batería 91%", fecha_ingreso: "2024-01-20" },
-  { id: 8, producto_id: 2, serie: "354789123456003", lote: null, estado: "disponible", ubicacion_id: 8, ubicacion_nombre: "PN/Stock", detalles: "128GB Blue - Batería 96%", fecha_ingreso: "2024-01-22" },
-  // iPhone 15 Pro Max
-  { id: 9, producto_id: 3, serie: "356123789012001", lote: "LOTE2024A", estado: "disponible", ubicacion_id: 1, ubicacion_nombre: "CC/Stock", detalles: "256GB Natural Titanium", fecha_ingreso: "2024-02-01" },
-  { id: 10, producto_id: 3, serie: "356123789012002", lote: "LOTE2024A", estado: "disponible", ubicacion_id: 1, ubicacion_nombre: "CC/Stock", detalles: "256GB Blue Titanium", fecha_ingreso: "2024-02-01" },
-  { id: 11, producto_id: 3, serie: "356123789012003", lote: "LOTE2024A", estado: "disponible", ubicacion_id: 8, ubicacion_nombre: "PN/Stock", detalles: "256GB Black Titanium", fecha_ingreso: "2024-02-01" },
-  // Samsung Galaxy S24 Ultra
-  { id: 12, producto_id: 4, serie: "R58T12345678", lote: null, estado: "disponible", ubicacion_id: 1, ubicacion_nombre: "CC/Stock", detalles: "256GB Titanium Gray", fecha_ingreso: "2024-02-05" },
-  { id: 13, producto_id: 4, serie: "R58T12345679", lote: null, estado: "disponible", ubicacion_id: 1, ubicacion_nombre: "CC/Stock", detalles: "512GB Titanium Violet", fecha_ingreso: "2024-02-05" },
-  // AirPods Pro 2
-  { id: 14, producto_id: 7, serie: "FVFXN123456A", lote: "LOTE2024B", estado: "disponible", ubicacion_id: 1, ubicacion_nombre: "CC/Stock", detalles: "Con estuche MagSafe", fecha_ingreso: "2024-01-25" },
-  { id: 15, producto_id: 7, serie: "FVFXN123456B", lote: "LOTE2024B", estado: "disponible", ubicacion_id: 1, ubicacion_nombre: "CC/Stock", detalles: "Con estuche MagSafe", fecha_ingreso: "2024-01-25" },
-  { id: 16, producto_id: 7, serie: "FVFXN123456C", lote: "LOTE2024B", estado: "disponible", ubicacion_id: 8, ubicacion_nombre: "PN/Stock", detalles: "Con estuche Lightning", fecha_ingreso: "2024-01-20" },
-]
-
 const mockClientesVenta: ClienteVenta[] = []
 
 const mockNotasVenta: NotaVenta[] = []
@@ -507,6 +487,7 @@ const mockRemitos: Remito[] = []
 const mockFacturas: Factura[] = []
 
 const mockRecibos: Recibo[] = []
+const mockRecibosLoaded = false
 
 const mockAjustes: AjusteCliente[] = []
 
@@ -1048,7 +1029,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [ordenesEntrega, setOrdenesEntrega] = useState<OrdenEntrega[]>([])
   const [remitos, setRemitos] = useState<Remito[]>([])
   const [facturas, setFacturas] = useState<Factura[]>([])
-  const [recibos, setRecibos] = useState<Recibo[]>(mockRecibos)
+  const [recibos, setRecibos] = useState<Recibo[]>([])
+  const [recibosLoaded, setRecibosLoaded] = useState(false)
   const [ajustes, setAjustes] = useState<AjusteCliente[]>(mockAjustes)
   const [movimientosCC, setMovimientosCC] = useState<MovimientoCuentaCorriente[]>(mockMovimientosCC)
   
@@ -1172,11 +1154,30 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [facturaClienteId, setFacturaClienteId] = useState<number | null>(null)
   const [facturaListaPreciosId, setFacturaListaPreciosId] = useState<number>(1)
   const [facturaLineas, setFacturaLineas] = useState<{producto_nombre: string; descripcion: string; cantidad: number; precio_unitario: number; descuento: number; subtotal: number; producto_id?: number}[]>([])
-  const [reciboClienteIdForm, setReciboClienteIdForm] = useState<number | null>(null)
-  const [reciboPagosForm, setReciboPagosForm] = useState<{forma_pago: string; importe: number; moneda: "ARS" | "USD"}[]>([])
-  const [reciboFacturaIdForm, setReciboFacturaIdForm] = useState<number | null>(null)
+  const [reciboClienteIdForm, setReciboClienteIdForm] = useState<string | null>(null)
+  const [reciboPagosForm, setReciboPagosForm] = useState<ReciboPago[]>([])
+  const [reciboImputacionesForm, setReciboImputacionesForm] = useState<ReciboImputacion[]>([])
+  const [reciboFacturaIdForm, setReciboFacturaIdForm] = useState<string | null>(null)
   const [reciboMontoForm, setReciboMontoForm] = useState<number>(0)
   const [reciboPrevisualizando, setReciboPrevisualizando] = useState(false)
+  const [reciboCajaId, setReciboCajaId] = useState<string>("")
+  const [reciboMoneda, setReciboMoneda] = useState<string>("ARS")
+  const [reciboTipoCotizacion, setReciboTipoCotizacion] = useState<string>("")
+  const [reciboCotizacion, setReciboCotizacion] = useState<number>(0)
+  const [reciboConcepto, setReciboConcepto] = useState<string>("")
+  const [reciboCobradorNombre, setReciboCobradorNombre] = useState<string>("")
+  const [reciboNvId, setReciboNvId] = useState<string>("")
+  const [reciboObservaciones, setReciboObservaciones] = useState<string>("")
+  const [reciboTab, setReciboTab] = useState<string>("pagos")
+  const [reciboCajasDisponibles, setReciboCajasDisponibles] = useState<{id: string; nombre: string; sucursal: string}[]>([])
+  const [reciboValoresCaja, setReciboValoresCaja] = useState<{id: string; nombre: string; tipo: string; moneda: string}[]>([])
+  const [reciboGuardando, setReciboGuardando] = useState(false)
+  const [showAddPagoModal, setShowAddPagoModal] = useState(false)
+  const [addPagoValorId, setAddPagoValorId] = useState<string>("")
+  const [addPagoImporte, setAddPagoImporte] = useState<number>(0)
+  const [addPagoTarjetaNombre, setAddPagoTarjetaNombre] = useState<string>("")
+  const [addPagoCuotas, setAddPagoCuotas] = useState<number>(1)
+  const [addPagoNumeroCupon, setAddPagoNumeroCupon] = useState<string>("")
   
   // Vendedores cargados desde Supabase
   const [vendedores, setVendedores] = useState<Vendedor[]>(mockVendedores)
@@ -8667,1197 +8668,665 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     )
   }
 
-  // Vista de previsualización de Recibo
-  const renderPrevisualizacionRecibo = () => {
-    const clienteSeleccionado = clientes.find(c => c.id === reciboClienteIdForm)
-    const facturaVinculada = reciboFacturaIdForm ? facturas.find(f => f.id === reciboFacturaIdForm) : null
-    const totalPagos = reciboPagosForm.reduce((sum, p) => sum + p.importe, 0)
+  // ─── RECIBOS — Supabase-connected ─────────────────────────────────────────
 
-    return (
-      <div>
-        {/* Header con breadcrumb - muestra documento origen si existe */}
-        <div className="text-sm text-gray-500 mb-2">
-          {facturaVinculada ? (
-            <>
-              <button 
-                onClick={() => { setReciboPrevisualizando(false); setCreandoRecibo(false); setSelectedFactura(facturaVinculada); setActiveView("facturas") }}
-                className="hover:text-emerald-700"
-              >
-                Facturas
-              </button>
-              <span> / </span>
-              <button 
-                onClick={() => { setReciboPrevisualizando(false); setCreandoRecibo(false); setSelectedFactura(facturaVinculada); setActiveView("facturas") }}
-                className="hover:text-emerald-700 text-emerald-600"
-              >
-                {facturaVinculada.numero}
-              </button>
-              <span> / </span>
-              <span className="text-gray-700">Nuevo Recibo</span>
-            </>
-          ) : (
-            <>Recibos / <span className="text-gray-700">Nuevo Recibo</span></>
-          )}
-        </div>
-        <div className="flex items-center gap-4 mb-6">
-<BotonVolver onClick={() => setReciboPrevisualizando(false)} variant="minimal" texto="" />
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold text-emerald-900">Nuevo Recibo</h1>
-            <p className="text-sm text-gray-500">{new Date().toLocaleDateString('es-AR')} | Puerto Norte</p>
-          </div>
-          <button className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1">
-            <Download className="w-4 h-4" /> Descargar PDF
-          </button>
-          <span className="px-4 py-2 rounded-full text-sm font-semibold bg-amber-100 text-amber-700">
-            Borrador
-          </span>
-        </div>
-
-        {/* Barra de acciones oscura */}
-        <div className="bg-gray-800 rounded-t-lg px-4 py-3 flex items-center mb-0">
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => {
-                // Guardar recibo como borrador
-                if (!clienteSeleccionado || reciboPagosForm.length === 0) {
-                  alert("Debe seleccionar un cliente y agregar al menos un pago")
-                  return
-                }
-
-                const reciboNumero = `RC X Norte-000${11735 + recibos.length}`
-                const reciboId = recibos.length + 1
-                const fechaHoy = new Date().toISOString()
-
-                const newRecibo: Recibo = {
-                  id: reciboId,
-                  numero: reciboNumero,
-                  cliente_id: clienteSeleccionado.id,
-                  cliente_nombre: clienteSeleccionado.nombre,
-                  estado: "borrador",
-                  fecha: fechaHoy,
-                  importe: totalPagos,
-                  importe_no_conciliado: totalPagos,
-                  moneda: "ARS",
-                  sucursal: "Puerto Norte",
-                  caja: "Caja Principal",
-                  cobrador_nombre: vendedores[0]?.nombre || "Max Solina",
-                  nota_venta_numero: facturaVinculada?.nota_venta_numero || null,
-                  concepto: facturaVinculada ? `Cobro Factura ${facturaVinculada.numero}` : "Cobro de venta",
-                  pagos: reciboPagosForm,
-                  factura_id: facturaVinculada?.id
-                }
-                setRecibos(prev => [...prev, newRecibo])
-
-                setCreandoRecibo(false)
-                setReciboPrevisualizando(false)
-                setReciboClienteIdForm(null)
-                // Mantener los pagos para que se muestren en la ficha del borrador
-                setReciboPagosForm(reciboPagosForm)
-                setReciboFacturaIdForm(null)
-                setReciboMontoForm(0)
-                setSelectedRecibo(newRecibo)
-              }}
-              className="px-3 py-1.5 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700 flex items-center gap-1"
-            >
-              <Save className="w-4 h-4" /> Guardar Cambios
-            </button>
-            <button 
-              onClick={() => {
-                // Crear recibo confirmado
-                if (!clienteSeleccionado || reciboPagosForm.length === 0) {
-                  alert("Debe seleccionar un cliente y agregar al menos un pago")
-                  return
-                }
-
-                const reciboNumero = `RC X Norte-000${11735 + recibos.length}`
-                const reciboId = recibos.length + 1
-                const fechaHoy = new Date().toISOString()
-
-                const newRecibo: Recibo = {
-                  id: reciboId,
-                  numero: reciboNumero,
-                  cliente_id: clienteSeleccionado.id,
-                  cliente_nombre: clienteSeleccionado.nombre,
-                  estado: "confirmado",
-                  fecha: fechaHoy,
-                  importe: totalPagos,
-                  importe_no_conciliado: totalPagos,
-                  moneda: "ARS",
-                  sucursal: "Puerto Norte",
-                  caja: "Caja Principal",
-                  cobrador_nombre: vendedores[0]?.nombre || "Max Solina",
-                  nota_venta_numero: facturaVinculada?.nota_venta_numero || null,
-                  concepto: facturaVinculada ? `Cobro Factura ${facturaVinculada.numero}` : "Cobro de venta",
-                  pagos: reciboPagosForm,
-                  factura_id: facturaVinculada?.id
-                }
-                setRecibos(prev => [...prev, newRecibo])
-
-                // Crear movimiento de credito
-                const saldoAnterior = clienteSeleccionado.saldo_cuenta_corriente
-                const nuevoMovimiento: MovimientoCuentaCorriente = {
-                  id: movimientosCC.length + 1,
-                  cliente_id: clienteSeleccionado.id,
-                  fecha: fechaHoy,
-                  tipo: "credito",
-                  concepto: facturaVinculada ? `Pago Factura ${facturaVinculada.numero}` : "Pago recibido",
-                  documento_tipo: "recibo",
-                  documento_numero: reciboNumero,
-                  documento_id: reciboId,
-                  moneda: "ARS",
-                  importe: totalPagos,
-                  saldo_posterior: saldoAnterior - totalPagos
-                }
-                setMovimientosCC(prev => [...prev, nuevoMovimiento])
-
-                // Actualizar saldo del cliente
-                setClientes(prev => prev.map(c =>
-                  c.id === clienteSeleccionado.id ? {
-                    ...c,
-                    saldo_cuenta_corriente: c.saldo_cuenta_corriente - totalPagos
-                  } : c
-                ))
-
-                // Actualizar factura si está vinculada
-                if (facturaVinculada) {
-                  setFacturas(prev => prev.map(f =>
-                    f.id === facturaVinculada.id ? {
-                      ...f,
-                      saldo: f.saldo - totalPagos,
-                      estado: f.saldo - totalPagos <= 0 ? "pagada" : f.estado
-                    } : f
-                  ))
-                }
-
-                setCreandoRecibo(false)
-                setReciboPrevisualizando(false)
-                setReciboClienteIdForm(null)
-                setReciboPagosForm([])
-                setReciboFacturaIdForm(null)
-                setReciboMontoForm(0)
-                setSelectedRecibo(newRecibo)
-              }}
-              className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 flex items-center gap-1"
-            >
-              <CheckCircle className="w-4 h-4" /> Confirmar Recibo
-            </button>
-          </div>
-        </div>
-
-        {/* Contenido */}
-        <div className="bg-white rounded-b-lg shadow-sm p-6">
-          <div className="grid grid-cols-2 gap-8 mb-6">
-            {/* Datos del Cliente */}
-            <div>
-              <h3 className="font-semibold text-gray-900 mb-4">Datos del Cliente</h3>
-              <div className="grid grid-cols-2 gap-y-3 text-sm">
-                <div>
-                  <span className="text-gray-500">Nombre:</span>
-                  <span className="ml-2 font-medium">{clienteSeleccionado?.nombre}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Documento:</span>
-                  <span className="ml-2 font-medium">{clienteSeleccionado?.tipo_documento}: {clienteSeleccionado?.numero_documento}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Teléfono:</span>
-                  <span className="ml-2 font-medium text-emerald-600">{clienteSeleccionado?.telefono || clienteSeleccionado?.celular || "-"}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Email:</span>
-                  <span className="ml-2 font-medium text-emerald-600">{clienteSeleccionado?.email || "-"}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Datos del Recibo */}
-            <div>
-              <h3 className="font-semibold text-gray-900 mb-4">Datos del Recibo</h3>
-              <div className="grid grid-cols-2 gap-y-3 text-sm">
-                <div>
-                  <span className="text-gray-500">Sucursal:</span>
-                  <span className="ml-2 font-medium">Puerto Norte</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Cobrador:</span>
-                  <span className="ml-2 font-medium">Max Solina</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Caja:</span>
-                  <span className="ml-2 font-medium">Caja Principal</span>
-                </div>
-                {facturaVinculada && (
-                  <div>
-                    <span className="text-gray-500">Factura:</span>
-                    <span className="ml-2 font-medium text-emerald-600">{facturaVinculada.numero}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Pagos */}
-          <div className="mb-6">
-            <h3 className="font-semibold text-gray-900 mb-4">Pagos ({reciboPagosForm.length})</h3>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-xs text-gray-500 uppercase">
-                  <th className="text-left py-2">Forma de Pago</th>
-                  <th className="text-center py-2 w-24">Moneda</th>
-                  <th className="text-right py-2 w-32">Importe</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reciboPagosForm.map((pago, index) => (
-                  <tr key={index} className="border-b">
-                    <td className="py-2 font-medium">{pago.forma_pago}</td>
-                    <td className="py-2 text-center">{pago.moneda}</td>
-                    <td className="py-2 text-right font-medium">{formatCurrency(pago.importe)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Totales */}
-          <div className="flex justify-end">
-            <div className="w-64 space-y-2 text-sm">
-              {facturaVinculada && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Saldo Factura:</span>
-                  <span>{formatCurrency(facturaVinculada.saldo)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-lg font-bold pt-2 border-t">
-                <span>Total Recibo:</span>
-                <span className="text-emerald-700">{formatCurrency(totalPagos)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
+  const cargarRecibos = async () => {
+    const { createClient } = await import("@/lib/supabase/client")
+    const supabase = createClient()
+    const { data } = await supabase.from("recibos").select("*").order("created_at", { ascending: false })
+    if (data) { setRecibos(data as any); setRecibosLoaded(true) }
   }
 
-  // Vista de Crear Recibo
-  const renderCrearRecibo = () => {
-    const clienteSeleccionado = clientes.find(c => c.id === reciboClienteIdForm)
-    const totalPagos = reciboPagosForm.reduce((sum, p) => sum + p.importe, 0)
-
-    // Si estamos en previsualización, mostrar vista previa
-    if (reciboPrevisualizando) {
-      return renderPrevisualizacionRecibo()
+  const cargarDetalleRecibo = async (id: string) => {
+    const { createClient } = await import("@/lib/supabase/client")
+    const supabase = createClient()
+    const [{ data: rec }, { data: pagos }, { data: imps }] = await Promise.all([
+      supabase.from("recibos").select("*").eq("id", id).single(),
+      supabase.from("recibo_pagos").select("*").eq("recibo_id", id),
+      supabase.from("recibo_imputaciones").select("*").eq("recibo_id", id),
+    ])
+    if (rec) {
+      const r = { ...rec, pagos: pagos || [], imputaciones: imps || [] } as any
+      setSelectedRecibo(r)
+      setReciboPagosForm(pagos || [])
+      setReciboImputacionesForm(imps || [])
+      setReciboClienteIdForm(rec.cliente_id)
+      setReciboCajaId(rec.caja_id || "")
+      setReciboMoneda(rec.moneda || "ARS")
+      setReciboTipoCotizacion(rec.tipo_cotizacion || "")
+      setReciboCotizacion(rec.cotizacion || 0)
+      setReciboConcepto(rec.concepto || "")
+      setReciboCobradorNombre(rec.cobrador_nombre || "")
+      setReciboNvId(rec.nota_venta_id || "")
+      setReciboObservaciones(rec.observaciones || "")
+      setReciboTab("pagos")
     }
-
-    const handleCrearRecibo = () => {
-      if (!clienteSeleccionado || reciboPagosForm.length === 0) {
-        alert("Debe seleccionar un cliente y agregar al menos un pago")
-        return
-      }
-
-      const reciboNumero = `RC X Norte-000${11735 + recibos.length}`
-      const reciboId = recibos.length + 1
-      const fechaHoy = new Date().toISOString()
-
-      const newRecibo: Recibo = {
-        id: reciboId,
-        numero: reciboNumero,
-        cliente_id: clienteSeleccionado.id,
-        cliente_nombre: clienteSeleccionado.nombre,
-        estado: "borrador",
-        fecha: fechaHoy,
-        importe: totalPagos,
-        importe_no_conciliado: totalPagos,
-        moneda: "ARS",
-        sucursal: "Puerto Norte",
-        caja: "Caja Principal",
-        cobrador_nombre: vendedores[0]?.nombre || "Max Solina",
-        nota_venta_numero: null,
-        concepto: "Cobro de venta",
-        pagos: reciboPagosForm
-      }
-      setRecibos(prev => [...prev, newRecibo])
-
-      // Crear movimiento de credito
-      const saldoAnterior = clienteSeleccionado.saldo_cuenta_corriente
-      const nuevoMovimiento: MovimientoCuentaCorriente = {
-        id: movimientosCC.length + 1,
-        cliente_id: clienteSeleccionado.id,
-        fecha: fechaHoy,
-        tipo: "credito",
-        concepto: "Pago recibido",
-        documento_tipo: "recibo",
-        documento_numero: reciboNumero,
-        documento_id: reciboId,
-        moneda: "ARS",
-        importe: totalPagos,
-        saldo_posterior: saldoAnterior - totalPagos
-      }
-      setMovimientosCC(prev => [...prev, nuevoMovimiento])
-
-      // Actualizar saldo del cliente
-      setClientes(prev => prev.map(c =>
-        c.id === clienteSeleccionado.id ? {
-          ...c,
-          saldo_cuenta_corriente: c.saldo_cuenta_corriente - totalPagos
-        } : c
-      ))
-
-      // Abrir el recibo creado en modo edición
-      setCreandoRecibo(false)
-      setReciboClienteIdForm(null)
-      // Mantener los pagos en el form ya que el recibo está en borrador
-      setReciboPagosForm(reciboPagosForm.map(p => ({ forma_pago: p.forma_pago, importe: p.importe, moneda: p.moneda })))
-      setSelectedRecibo(newRecibo)
-      setEditandoRecibo(true)
-    }
-
-    return (
-      <div>
-        <div className="flex items-center gap-4 mb-6">
-<BotonVolver onClick={() => { setCreandoRecibo(false); setReciboClienteIdForm(null); setReciboPagosForm([]) }} variant="minimal" texto="" />
-          <div>
-            <h1 className="text-2xl font-bold text-emerald-900">Nuevo Recibo</h1>
-            <p className="text-sm text-gray-500">Registre el pago del cliente</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-3 gap-6">
-          <div className="col-span-2 space-y-6">
-            <div className="bg-white rounded-lg shadow-sm p-4">
-              <h3 className="font-semibold text-gray-900 mb-4">Cliente</h3>
-              <select
-                value={reciboClienteIdForm || ""}
-                onChange={(e) => setReciboClienteIdForm(e.target.value ? parseInt(e.target.value) : null)}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              >
-                <option value="">Seleccionar cliente...</option>
-                {clientes.map(c => (
-                  <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
-                ))}
-              </select>
-              {clienteSeleccionado && (
-                <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div><span className="text-gray-500">Documento:</span> <span className="font-medium">{clienteSeleccionado.tipo_documento}: {clienteSeleccionado.numero_documento}</span></div>
-                    <div><span className="text-gray-500">Saldo Actual:</span> <span className={`font-bold ${clienteSeleccionado.saldo_cuenta_corriente > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(clienteSeleccionado.saldo_cuenta_corriente)}</span></div>
-                  </div>
-                </div>
-              )}
-
-              {/* Créditos sin conciliar del cliente (recibos + notas de crédito) */}
-              {clienteSeleccionado && (() => {
-                const recibosSinConciliar = recibos.filter(
-                  r => r.cliente_id === clienteSeleccionado.id && r.importe_no_conciliado > 0
-                )
-                const ncSinConciliar = ajustes.filter(
-                  a => a.cliente_id === clienteSeleccionado.id &&
-                       a.estado === "publicado" &&
-                       a.numero.startsWith("NC-") &&
-                       (a.saldo_disponible ?? a.total) > 0
-                ).map(a => ({ id: a.id, numero: a.numero, fecha: a.fecha, disponible: a.saldo_disponible ?? a.total, esNC: true, ajuste: a }))
-
-                const totalItems = recibosSinConciliar.length + ncSinConciliar.length
-                if (totalItems === 0) return null
-
-                const totalAFavor =
-                  recibosSinConciliar.reduce((s, r) => s + r.importe_no_conciliado, 0) +
-                  ncSinConciliar.reduce((s, nc) => s + nc.disponible, 0)
-
-                return (
-                  <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 overflow-hidden">
-                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-amber-200">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-amber-500" />
-                        <span className="text-sm font-semibold text-amber-800">Creditos disponibles</span>
-                        <span className="text-xs bg-amber-200 text-amber-800 rounded-full px-2 py-0.5 font-medium">{totalItems}</span>
-                      </div>
-                      <span className="text-sm font-bold text-amber-800">Total a favor: {formatCurrency(totalAFavor)}</span>
-                    </div>
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-xs text-amber-700 uppercase border-b border-amber-200">
-                          <th className="text-left py-2 px-4">Comprobante</th>
-                          <th className="text-left py-2 px-4">Fecha</th>
-                          <th className="text-left py-2 px-4">Categoría</th>
-                          <th className="text-right py-2 px-4">Disponible</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {recibosSinConciliar.map(r => (
-                          <tr key={`r-${r.id}`} className="border-b border-amber-100 last:border-0">
-                            <td className="py-2 px-4 font-medium text-amber-900">{r.numero}</td>
-                            <td className="py-2 px-4 text-amber-700">{new Date(r.fecha).toLocaleDateString('es-AR')}</td>
-                            <td className="py-2 px-4 text-amber-700">—</td>
-                            <td className="py-2 px-4 text-right font-bold text-green-700">{formatCurrency(r.importe_no_conciliado)}</td>
-                          </tr>
-                        ))}
-                        {ncSinConciliar.map(nc => (
-                          <tr key={`nc-${nc.id}`} onClick={() => setNcDetallePopup(nc.ajuste)} className="border-b border-amber-100 last:border-0 bg-emerald-50/40 cursor-pointer hover:bg-emerald-100/60">
-                            <td className="py-2 px-4 font-medium text-emerald-800">
-                              <span className="text-xs bg-emerald-100 text-emerald-700 rounded px-1 mr-1">NC</span>
-                              {nc.numero}
-                            </td>
-                            <td className="py-2 px-4 text-amber-700">{new Date(nc.fecha).toLocaleDateString('es-AR')}</td>
-                            <td className="py-2 px-4">
-                              {nc.ajuste?.categoria
-                                ? <span className="text-xs bg-emerald-100 text-emerald-700 font-medium px-2 py-0.5 rounded">{nc.ajuste.categoria.charAt(0).toUpperCase() + nc.ajuste.categoria.slice(1)}</span>
-                                : <span className="text-amber-600 text-xs">—</span>}
-                            </td>
-                            <td className="py-2 px-4 text-right font-bold text-green-700">{formatCurrency(nc.disponible)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )
-              })()}
-            </div>
-
-            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-              <div className="bg-gray-50 px-4 py-3 border-b">
-                <h3 className="font-semibold text-gray-900">Formas de Pago</h3>
-              </div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
-                    <th className="text-left py-2 px-3">Forma de Pago</th>
-                    <th className="text-left py-2 px-3 w-32">Moneda</th>
-                    <th className="text-right py-2 px-3 w-40">Importe</th>
-                    <th className="w-10"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reciboPagosForm.map((pago, index) => (
-                    <tr key={index} className="border-b">
-                      <td className="py-2 px-3">
-                        <select value={pago.forma_pago} onChange={(e) => {
-                          const updated = [...reciboPagosForm]
-                          updated[index].forma_pago = e.target.value
-                          setReciboPagosForm(updated)
-                        }} className="w-full border border-gray-300 rounded px-2 py-1 text-sm">
-                          <option value="Efectivo">Efectivo</option>
-                          <option value="Transferencia">Transferencia Bancaria</option>
-                          <option value="Tarjeta Debito">Tarjeta Debito</option>
-                          <option value="Tarjeta Credito">Tarjeta Credito</option>
-                          <option value="Cheque">Cheque</option>
-                          <option value="MercadoPago">MercadoPago</option>
-                        </select>
-                      </td>
-                      <td className="py-2 px-3">
-                        <select value={pago.moneda} onChange={(e) => {
-                          const updated = [...reciboPagosForm]
-                          updated[index].moneda = e.target.value as "ARS" | "USD"
-                          setReciboPagosForm(updated)
-                        }} className="w-full border border-gray-300 rounded px-2 py-1 text-sm">
-                          <option value="ARS">ARS</option>
-                          <option value="USD">USD</option>
-                        </select>
-                      </td>
-                      <td className="py-2 px-3">
-                        <input type="number" value={pago.importe} min="0" step="0.01"
-                          onChange={(e) => {
-                            const updated = [...reciboPagosForm]
-                            updated[index].importe = parseFloat(e.target.value) || 0
-                            setReciboPagosForm(updated)
-                          }}
-                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right" />
-                      </td>
-                      <td className="py-2 px-3">
-                        <button onClick={() => setReciboPagosForm(reciboPagosForm.filter((_, i) => i !== index))} className="text-red-500 hover:text-red-700">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {/* Botón agregar pago siempre al final */}
-                  <tr>
-                    <td colSpan={4} className="py-3 px-3">
-                      <button
-                        onClick={() => setReciboPagosForm([...reciboPagosForm, { forma_pago: "Efectivo", importe: 0, moneda: "ARS" }])}
-                        className="text-sm text-emerald-700 hover:text-emerald-800 font-medium flex items-center gap-1"
-                      >
-                        <Plus className="w-4 h-4" /> Agregar Pago
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-sm p-4">
-              <h3 className="font-semibold text-gray-900 mb-4">Total a Cobrar</h3>
-              <p className="text-3xl font-bold text-emerald-700">{formatCurrency(totalPagos)}</p>
-            </div>
-            <div className="bg-white rounded-lg shadow-sm p-4">
-              <div className="space-y-3">
-                <button onClick={handleCrearRecibo} disabled={!reciboClienteIdForm || reciboPagosForm.length === 0 || totalPagos <= 0}
-                  className="w-full bg-emerald-700 text-white px-4 py-3 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">
-                  Continuar
-                </button>
-                <button onClick={() => { setCreandoRecibo(false); setReciboClienteIdForm(null); setReciboPagosForm([]) }}
-                  className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-200">
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
   }
 
-  // Ficha de Recibo
-  const renderFichaRecibo = () => {
-    if (!selectedRecibo) return null
-    const clienteRecibo = clientes.find(c => c.id === selectedRecibo.cliente_id)
-    const nvVinculada = notasVenta.find(nv => nv.numero === selectedRecibo.nota_venta_numero)
-    const facturaVinculada = selectedRecibo.factura_id ? facturas.find(f => f.id === selectedRecibo.factura_id) : null
-    
-    // Construir cadena de documentos vinculados
-    const documentosVinculados: {tipo: string; numero: string; onClick: () => void}[] = []
-    if (nvVinculada) {
-      documentosVinculados.push({
-        tipo: "NV",
-        numero: nvVinculada.numero,
-        onClick: () => { setSelectedRecibo(null); setSelectedNV(nvVinculada); setActiveView("notas_venta") }
-      })
-      // Buscar OE vinculada
-      const oeVinculada = ordenesEntrega.find(oe => oe.nota_venta_id === nvVinculada.id)
-      if (oeVinculada) {
-        documentosVinculados.push({
-          tipo: "OE",
-          numero: oeVinculada.numero,
-          onClick: () => { setSelectedRecibo(null); setSelectedOE(oeVinculada); setActiveView("ordenes_entrega") }
-        })
-        // Buscar Remito vinculado
-        const remitoVinculado = remitos.find(r => r.orden_entrega_id === oeVinculada.id)
-        if (remitoVinculado) {
-          documentosVinculados.push({
-            tipo: "REM",
-            numero: remitoVinculado.numero,
-            onClick: () => { setSelectedRecibo(null); setSelectedRemito(remitoVinculado); setActiveView("remitos") }
-          })
+  const cargarCajasDisponibles = async () => {
+    const { createClient } = await import("@/lib/supabase/client")
+    const supabase = createClient()
+    const suc = sucursalActiva?.nombre || ""
+    const { data } = await supabase.from("cajas").select("id, nombre, sucursal, activo").eq("activo", true)
+    const filtradas = (data || []).filter((c: any) => c.sucursal === suc)
+    setReciboCajasDisponibles(filtradas)
+    if (filtradas.length > 0 && !reciboCajaId) setReciboCajaId(filtradas[0].id)
+  }
+
+  const cargarValoresCaja = async (cajaId: string) => {
+    if (!cajaId) { setReciboValoresCaja([]); return }
+    const { createClient } = await import("@/lib/supabase/client")
+    const supabase = createClient()
+    const { data } = await supabase.from("caja_valores").select("id, nombre, tipo, moneda").eq("caja_id", cajaId).eq("activo", true)
+    setReciboValoresCaja(data || [])
+  }
+
+  const cargarComprobantesCliente = async (clienteId: string) => {
+    const { createClient } = await import("@/lib/supabase/client")
+    const supabase = createClient()
+    const { data: facts } = await supabase.from("facturas").select("id, numero, fecha, fecha_vencimiento, total, saldo, moneda").eq("cliente_id", clienteId).gt("saldo", 0).order("fecha_vencimiento", { ascending: true })
+    const imps: ReciboImputacion[] = (facts || []).map((f: any) => ({
+      id: crypto.randomUUID(),
+      recibo_id: "",
+      tipo_comprobante: "factura" as const,
+      comprobante_id: f.id,
+      comprobante_referencia: f.numero,
+      fecha_comprobante: f.fecha,
+      fecha_vencimiento: f.fecha_vencimiento || f.fecha,
+      saldo_moneda: f.saldo,
+      moneda_comprobante: f.moneda || "ARS",
+      tipo_cotizacion: "",
+      cotizacion_original: 1,
+      saldo_original: f.saldo,
+      cotizacion_actual: 1,
+      saldo_actual: f.saldo,
+      asignacion: 0,
+    }))
+    setReciboImputacionesForm(imps)
+  }
+
+  const guardarRecibo = async () => {
+    const { createClient } = await import("@/lib/supabase/client")
+    const supabase = createClient()
+    setReciboGuardando(true)
+    try {
+      const totalPagos = reciboPagosForm.reduce((s, p) => s + (p.importe || 0), 0)
+      const totalAsig = reciboImputacionesForm.reduce((s, i) => s + (i.asignacion || 0), 0)
+      const suc = sucursalActiva?.nombre || ""
+
+      if (selectedRecibo) {
+        // Actualizar existente
+        await supabase.from("recibos").update({
+          cliente_id: reciboClienteIdForm,
+          cliente_nombre: clientes.find(c => String(c.id) === String(reciboClienteIdForm))?.nombre || "",
+          caja_id: reciboCajaId || null,
+          caja_nombre: reciboCajasDisponibles.find(c => c.id === reciboCajaId)?.nombre || null,
+          nota_venta_id: reciboNvId || null,
+          cobrador_nombre: reciboCobradorNombre || null,
+          concepto: reciboConcepto || null,
+          importe: totalPagos,
+          importe_no_conciliado: Math.max(0, totalPagos - totalAsig),
+          moneda: reciboMoneda,
+          tipo_cotizacion: reciboTipoCotizacion || null,
+          cotizacion: reciboCotizacion || null,
+          observaciones: reciboObservaciones || null,
+          updated_at: new Date().toISOString(),
+        }).eq("id", selectedRecibo.id)
+
+        // Recrear pagos
+        await supabase.from("recibo_pagos").delete().eq("recibo_id", selectedRecibo.id)
+        if (reciboPagosForm.length > 0) {
+          await supabase.from("recibo_pagos").insert(reciboPagosForm.map(p => ({ ...p, id: undefined, recibo_id: selectedRecibo.id })))
+        }
+        // Recrear imputaciones
+        await supabase.from("recibo_imputaciones").delete().eq("recibo_id", selectedRecibo.id)
+        const impsConAsig = reciboImputacionesForm.filter(i => i.asignacion > 0)
+        if (impsConAsig.length > 0) {
+          await supabase.from("recibo_imputaciones").insert(impsConAsig.map(i => ({ ...i, id: undefined, recibo_id: selectedRecibo.id })))
+        }
+
+        await cargarDetalleRecibo(selectedRecibo.id)
+      } else {
+        // Crear nuevo
+        const { data: numData } = await supabase.rpc("generar_numero_recibo", { p_sucursal: suc })
+        const numero = numData || `REC X 00000-${Date.now()}`
+        const clienteNombre = clientes.find(c => String(c.id) === String(reciboClienteIdForm))?.nombre || ""
+        const { data: newRec } = await supabase.from("recibos").insert({
+          numero,
+          sucursal: suc,
+          cliente_id: reciboClienteIdForm,
+          cliente_nombre: clienteNombre,
+          caja_id: reciboCajaId || null,
+          caja_nombre: reciboCajasDisponibles.find(c => c.id === reciboCajaId)?.nombre || null,
+          nota_venta_id: reciboNvId || null,
+          cobrador_nombre: reciboCobradorNombre || null,
+          concepto: reciboConcepto || null,
+          importe: totalPagos,
+          importe_no_conciliado: Math.max(0, totalPagos - totalAsig),
+          moneda: reciboMoneda,
+          tipo_cotizacion: reciboTipoCotizacion || null,
+          cotizacion: reciboCotizacion || null,
+          observaciones: reciboObservaciones || null,
+          estado: "borrador",
+          fecha: new Date().toISOString().split("T")[0],
+        }).select().single()
+
+        if (newRec) {
+          if (reciboPagosForm.length > 0) {
+            await supabase.from("recibo_pagos").insert(reciboPagosForm.map(p => ({ ...p, id: undefined, recibo_id: newRec.id })))
+          }
+          const impsConAsig = reciboImputacionesForm.filter(i => i.asignacion > 0)
+          if (impsConAsig.length > 0) {
+            await supabase.from("recibo_imputaciones").insert(impsConAsig.map(i => ({ ...i, id: undefined, recibo_id: newRec.id })))
+          }
+          setCreandoRecibo(false)
+          await cargarDetalleRecibo(newRec.id)
         }
       }
+      await cargarRecibos()
+    } catch (err) { alert("Error al guardar: " + (err as Error).message) }
+    finally { setReciboGuardando(false) }
+  }
+
+  const publicarRecibo = async () => {
+    if (!selectedRecibo) return
+    const { createClient } = await import("@/lib/supabase/client")
+    const supabase = createClient()
+
+    // Validaciones
+    if (!selectedRecibo.cliente_id) { alert("El recibo debe tener un cliente."); return }
+    const pagos = reciboPagosForm
+    if (!pagos || pagos.length === 0) { alert("El recibo debe tener al menos un medio de pago."); return }
+
+    // Validar tarjeta sin NV
+    if (pagos.some(p => p.es_tarjeta) && !selectedRecibo.nota_venta_id) {
+      alert("Para cobrar con tarjeta, el recibo debe estar vinculado a una factura donde el recargo ya esté calculado.")
+      return
     }
-    if (facturaVinculada) {
-      documentosVinculados.push({
-        tipo: "FAC",
-        numero: facturaVinculada.numero,
-        onClick: () => { setSelectedRecibo(null); setSelectedFactura(facturaVinculada); setActiveView("facturas") }
+
+    // Extracto abierto
+    const { data: extracto } = await supabase.from("extractos_caja").select("id").eq("caja_id", selectedRecibo.caja_id).eq("estado", "abierto").single()
+    if (!extracto) { alert(`No hay extracto abierto para "${selectedRecibo.caja_nombre}". Abrí un extracto en Finanzas → Extractos de Caja.`); return }
+
+    // Movimientos en caja
+    for (const pago of pagos) {
+      await supabase.from("movimientos_caja").insert({
+        extracto_id: extracto.id,
+        valor_id: pago.valor_id,
+        valor_nombre: pago.valor_nombre,
+        tipo_movimiento: "ingreso",
+        importe: pago.importe,
+        moneda: pago.moneda,
+        concepto: `Recibo ${selectedRecibo.numero} - ${selectedRecibo.cliente_nombre}`,
+        documento_origen_tipo: "recibo",
+        documento_origen_id: selectedRecibo.id,
+        documento_origen_numero: selectedRecibo.numero,
+        estado_movimiento: "confirmado",
       })
+      // Cupón si tarjeta
+      if (pago.es_tarjeta) {
+        const { data: cupon } = await supabase.from("cupones_tarjeta").insert({
+          numero_cupon: pago.numero_cupon || null,
+          tarjeta_nombre: pago.tarjeta_nombre,
+          forma_pago_nombre: pago.valor_nombre,
+          forma_pago_id: pago.valor_id,
+          cliente_nombre: selectedRecibo.cliente_nombre,
+          sucursal: selectedRecibo.sucursal,
+          extracto_id: extracto.id,
+          importe: pago.importe,
+          estado: "en_cartera",
+          venta_id: selectedRecibo.nota_venta_id,
+          venta_numero: selectedRecibo.nota_venta_numero,
+        }).select().single()
+        if (cupon) {
+          await supabase.from("recibo_pagos").update({ cupon_tarjeta_id: cupon.id }).eq("id", pago.id)
+        }
+      }
+      // Cheque
+      if (pago.es_cheque && pago.cheque_id) {
+        await supabase.from("cheques_terceros").update({ origen_nombre: selectedRecibo.cliente_nombre }).eq("id", pago.cheque_id)
+      }
     }
+
+    // Imputar comprobantes
+    for (const imp of reciboImputacionesForm) {
+      if (imp.asignacion <= 0) continue
+      const { data: factura } = await supabase.from("facturas").select("saldo, estado, total").eq("id", imp.comprobante_id).single()
+      if (factura) {
+        const nuevoSaldo = (factura.saldo || 0) - imp.asignacion
+        await supabase.from("facturas").update({
+          saldo: Math.max(0, nuevoSaldo),
+          estado: nuevoSaldo <= 0.01 ? "conciliada" : factura.estado,
+        }).eq("id", imp.comprobante_id)
+      }
+    }
+
+    // Calcular no conciliado
+    const totalAsig = reciboImputacionesForm.reduce((s, i) => s + (i.asignacion || 0), 0)
+    const noConciliado = Math.max(0, selectedRecibo.importe - totalAsig)
+
+    // Publicar
+    await supabase.from("recibos").update({
+      estado: "publicado",
+      importe_no_conciliado: noConciliado,
+      fecha_publicacion: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", selectedRecibo.id)
+
+    await cargarDetalleRecibo(selectedRecibo.id)
+    await cargarRecibos()
+    alert("Recibo publicado correctamente.")
+  }
+
+  const cancelarReciboPublicado = async () => {
+    if (!selectedRecibo || selectedRecibo.estado !== "publicado") return
+    if (!cancelarReciboMotivo.trim()) { alert("Ingresá un motivo de cancelación."); return }
+    const { createClient } = await import("@/lib/supabase/client")
+    const supabase = createClient()
+
+    // Revertir movimientos caja
+    await supabase.from("movimientos_caja").update({ estado_movimiento: "cancelado" }).eq("documento_origen_tipo", "recibo").eq("documento_origen_id", selectedRecibo.id)
+
+    // Cancelar cupones
+    for (const pago of reciboPagosForm) {
+      if (pago.cupon_tarjeta_id) {
+        await supabase.from("cupones_tarjeta").update({ estado: "cancelado" }).eq("id", pago.cupon_tarjeta_id)
+      }
+    }
+
+    // Revertir imputaciones
+    for (const imp of reciboImputacionesForm) {
+      if (imp.asignacion <= 0) continue
+      const { data: factura } = await supabase.from("facturas").select("saldo, total").eq("id", imp.comprobante_id).single()
+      if (factura) {
+        const saldoRestaurado = (factura.saldo || 0) + imp.asignacion
+        await supabase.from("facturas").update({
+          saldo: Math.min(saldoRestaurado, factura.total),
+          estado: "abierta",
+        }).eq("id", imp.comprobante_id)
+      }
+    }
+
+    await supabase.from("recibos").update({
+      estado: "cancelado",
+      fecha_cancelacion: new Date().toISOString(),
+      motivo_cancelacion: cancelarReciboMotivo,
+    }).eq("id", selectedRecibo.id)
+
+    setShowCancelarReciboModal(false)
+    setCancelarReciboMotivo("")
+    await cargarDetalleRecibo(selectedRecibo.id)
+    await cargarRecibos()
+    alert("Recibo cancelado.")
+  }
+
+  const resetFormRecibo = () => {
+    setReciboClienteIdForm(null)
+    setReciboPagosForm([])
+    setReciboImputacionesForm([])
+    setReciboFacturaIdForm(null)
+    setReciboMontoForm(0)
+    setReciboCajaId("")
+    setReciboMoneda("ARS")
+    setReciboTipoCotizacion("")
+    setReciboCotizacion(0)
+    setReciboConcepto("")
+    setReciboCobradorNombre("")
+    setReciboNvId("")
+    setReciboObservaciones("")
+    setReciboTab("pagos")
+    setShowAddPagoModal(false)
+    setAddPagoValorId("")
+    setAddPagoImporte(0)
+    setAddPagoTarjetaNombre("")
+    setAddPagoCuotas(1)
+    setAddPagoNumeroCupon("")
+  }
+
+  const seleccionRapida = () => {
+    const totalPagos = reciboPagosForm.reduce((s, p) => s + (p.importe || 0), 0)
+    let restante = totalPagos
+    setReciboImputacionesForm(prev => prev.map(imp => {
+      if (restante <= 0) return { ...imp, asignacion: 0 }
+      const asig = Math.min(imp.saldo_actual, restante)
+      restante -= asig
+      return { ...imp, asignacion: asig }
+    }))
+  }
+
+  const asignarPagosAFacturas = () => {
+    const totalPagos = reciboPagosForm.reduce((s, p) => s + (p.importe || 0), 0)
+    const marcadas = reciboImputacionesForm.filter(i => i.asignacion > 0)
+    if (marcadas.length === 0) { seleccionRapida(); return }
+    const totalSaldoMarcadas = marcadas.reduce((s, i) => s + i.saldo_actual, 0)
+    if (totalSaldoMarcadas === 0) return
+    let restante = totalPagos
+    setReciboImputacionesForm(prev => prev.map(imp => {
+      if (imp.asignacion <= 0 && marcadas.find(m => m.comprobante_id === imp.comprobante_id)) {
+        const prop = (imp.saldo_actual / totalSaldoMarcadas) * totalPagos
+        const asig = Math.min(imp.saldo_actual, prop, restante)
+        restante -= asig
+        return { ...imp, asignacion: Math.round(asig * 100) / 100 }
+      }
+      return imp
+    }))
+  }
+
+  // ─── RENDER: Formulario Recibo (Crear / Editar) ─────────────────────────
+  const renderFormularioRecibo = () => {
+    const esBorrador = !selectedRecibo || selectedRecibo.estado === "borrador"
+    const esSoloLectura = selectedRecibo ? selectedRecibo.estado !== "borrador" : false
+    const clienteSeleccionado = clientes.find(c => String(c.id) === String(reciboClienteIdForm))
+    const totalPagos = reciboPagosForm.reduce((s, p) => s + (p.importe || 0), 0)
+    const totalAsig = reciboImputacionesForm.reduce((s, i) => s + (i.asignacion || 0), 0)
+    const noConciliado = Math.max(0, totalPagos - totalAsig)
 
     return (
       <div>
-        <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
-          <button onClick={() => { setSelectedRecibo(null); setEditandoRecibo(false) }} className="hover:text-emerald-700">Recibos</button>
-          {documentosVinculados.length > 0 && (
-            <>
-              <span>/</span>
-              {documentosVinculados.map((doc, idx) => (
-                <span key={idx} className="flex items-center gap-2">
-                  <button onClick={doc.onClick} className="hover:text-emerald-700 text-emerald-600">{doc.tipo}</button>
-                  {idx < documentosVinculados.length - 1 && <span>/</span>}
-                </span>
-              ))}
-            </>
-          )}
-          <span>/</span>
-          <span className="font-medium text-gray-900">{selectedRecibo.numero}</span>
-        </div>
-
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-<BotonVolver onClick={() => { setSelectedRecibo(null); setEditandoRecibo(false) }} variant="minimal" texto="" />
-            <div>
-              <h1 className="text-2xl font-bold text-emerald-900">{selectedRecibo.numero}</h1>
-              <p className="text-sm text-gray-500">{formatDateTime(selectedRecibo.fecha)} | {selectedRecibo.sucursal}</p>
-            </div>
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-4">
+          <BotonVolver onClick={() => { setCreandoRecibo(false); setEditandoRecibo(false); setSelectedRecibo(null); resetFormRecibo() }} variant="minimal" texto="" />
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold text-emerald-900">{selectedRecibo ? selectedRecibo.numero : "Nuevo Recibo"}</h1>
+            {selectedRecibo && <div className="flex items-center gap-2 mt-1">
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${selectedRecibo.estado === "borrador" ? "bg-gray-100 text-gray-700" : selectedRecibo.estado === "publicado" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{selectedRecibo.estado === "borrador" ? "Borrador" : selectedRecibo.estado === "publicado" ? "Publicado" : "Cancelado"}</span>
+            </div>}
           </div>
-          <div className="flex items-center gap-2">
-            {selectedRecibo.estado === "borrador" && !editandoRecibo && (
-              <button 
-                onClick={() => {
-                  setEditandoRecibo(true)
-                  setReciboPagosForm(selectedRecibo.pagos.map(p => ({ forma_pago: p.forma_pago, importe: p.importe, moneda: p.moneda })))
-                }}
-                className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 flex items-center gap-1"
-              >
-                <Edit className="w-4 h-4" /> Editar
-              </button>
-            )}
-            <button className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1">
-              <Download className="w-4 h-4" /> Descargar PDF
-            </button>
-            <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
-              selectedRecibo.estado === 'publicado' ? 'bg-green-100 text-green-700' : 
-              selectedRecibo.estado === 'cancelado' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-            }`}>
-              {selectedRecibo.estado === 'publicado' ? 'Publicado' : selectedRecibo.estado === 'cancelado' ? 'Cancelado' : 'Borrador'}
-            </span>
+          <div className="flex gap-2">
+            {esBorrador && <button onClick={guardarRecibo} disabled={reciboGuardando} className="bg-emerald-700 text-white px-4 py-2 rounded text-sm hover:bg-emerald-800 disabled:opacity-50">{reciboGuardando ? "Guardando..." : "Guardar"}</button>}
+            {selectedRecibo?.estado === "borrador" && <button onClick={publicarRecibo} className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 flex items-center gap-1"><CheckCircle className="w-4 h-4" />Confirmar</button>}
+            {selectedRecibo?.estado === "publicado" && <button onClick={() => setShowCancelarReciboModal(true)} className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700">Cancelar Recibo</button>}
           </div>
         </div>
 
-        {(editandoRecibo || selectedRecibo.estado === "publicado" || selectedRecibo.estado === "cancelado") && (
-        <div className="bg-gray-800 rounded-t-lg px-4 py-3 flex items-center justify-between mb-0">
-          <div className="flex items-center gap-2">
-            {selectedRecibo.estado === "publicado" && (
-              <button 
-                onClick={() => {
-                  setCancelarReciboMotivo("")
-                  setCancelarReciboDescripcion("")
-                  setShowCancelarReciboModal(true)
-                }}
-                className="px-3 py-1.5 text-sm border border-gray-400 text-white rounded-md hover:bg-gray-700 flex items-center gap-1"
-              >
-                <XCircle className="w-4 h-4" /> Cancelar Recibo
-              </button>
-            )}
-          </div>
-          {selectedRecibo.estado === "borrador" && (
-            <div className="flex items-center gap-2">
-              <button 
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  const totalPagos = reciboPagosForm.reduce((sum, p) => sum + p.importe, 0)
-                  const updatedRecibo = { 
-                    ...selectedRecibo, 
-                    pagos: [...reciboPagosForm], 
-                    importe: totalPagos,
-                    total: totalPagos,
-                    importe_no_conciliado: totalPagos
-                  }
-                  setRecibos(prev => prev.map(r => r.id === selectedRecibo.id ? updatedRecibo : r))
-                  setSelectedRecibo(updatedRecibo)
-                  setEditandoRecibo(false)
-                }}
-                className="px-3 py-1.5 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700 flex items-center gap-1"
-              >
-                <Save className="w-4 h-4" /> Guardar Cambios
-              </button>
-              <button 
-                onClick={() => {
-                  if (reciboPagosForm.length === 0) {
-                    alert("Debe agregar al menos una forma de pago antes de confirmar")
-                    return
-                  }
-                  const totalPagos = reciboPagosForm.reduce((sum, p) => sum + p.importe, 0)
-                  const updatedRecibo = { 
-                    ...selectedRecibo, 
-                    pagos: reciboPagosForm, 
-                    importe: totalPagos,
-                    total: totalPagos,
-                    importe_no_conciliado: totalPagos,
-                    estado: "publicado" as const
-                  }
-                  setRecibos(recibos.map(r => r.id === selectedRecibo.id ? updatedRecibo : r))
-                  setSelectedRecibo(updatedRecibo)
-                }}
-                disabled={reciboPagosForm.length === 0}
-                className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 flex items-center gap-1 disabled:bg-gray-300 disabled:cursor-not-allowed"
-              >
-                <CheckCircle className="w-4 h-4" /> Confirmar
-              </button>
-            </div>
-          )}
-        </div>
-        )}
-
-        <div className={`bg-white ${editandoRecibo || selectedRecibo.estado === "publicado" || selectedRecibo.estado === "cancelado" ? "rounded-b-lg" : "rounded-lg"} shadow-sm p-6`}>
-          <div className="grid grid-cols-2 gap-8 mb-6">
-            <div className="space-y-4">
-              <h3 className="font-semibold text-gray-900 border-b pb-2">Datos del Recibo</h3>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div><span className="text-gray-500">Numero:</span> <span className="font-medium">{selectedRecibo.numero}</span></div>
-                <div><span className="text-gray-500">Fecha:</span> <span className="font-medium">{formatDate(selectedRecibo.fecha)}</span></div>
-                <div><span className="text-gray-500">NV:</span> <span className="font-medium text-emerald-700">{selectedRecibo.nota_venta_numero || "-"}</span></div>
-                <div><span className="text-gray-500">Cobrador:</span> <span className="font-medium">{selectedRecibo.cobrador_nombre}</span></div>
-                <div><span className="text-gray-500">Caja:</span> <span className="font-medium">{selectedRecibo.caja}</span></div>
-                <div><span className="text-gray-500">Sucursal:</span> <span className="font-medium">{selectedRecibo.sucursal}</span></div>
+        {/* Cabecera 2 columnas */}
+        <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-3">
+              <div><label className="text-xs font-medium text-gray-500">Sucursal</label><input value={sucursalActiva?.nombre || ""} disabled className="w-full border rounded px-2 py-1.5 text-sm bg-gray-50" /></div>
+              <div><label className="text-xs font-medium text-gray-500">Cliente *</label>
+                <select value={reciboClienteIdForm || ""} onChange={e => { const v = e.target.value; setReciboClienteIdForm(v || null); if (v) cargarComprobantesCliente(v) }} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm">
+                  <option value="">Seleccionar cliente...</option>
+                  {clientes.map(c => <option key={c.id} value={c.id}>{c.codigo || ""} - {c.nombre}</option>)}
+                </select>
               </div>
-            </div>
-            <div className="space-y-4">
-              <h3 className="font-semibold text-gray-900 border-b pb-2">Cliente</h3>
-              {clienteRecibo && (
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div><span className="text-gray-500">Nombre:</span> <span className="font-medium">{clienteRecibo.nombre}</span></div>
-                  <div><span className="text-gray-500">Documento:</span> <span className="font-medium">{clienteRecibo.tipo_documento}: {clienteRecibo.numero_documento}</span></div>
-                  <div><span className="text-gray-500">Telefono:</span> <span className="font-medium">{clienteRecibo.telefono || clienteRecibo.celular || "-"}</span></div>
-                  <div><span className="text-gray-500">Email:</span> <span className="font-medium">{clienteRecibo.email || "-"}</span></div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className="text-xs font-medium text-gray-500">Importe</label><input value={`$ ${totalPagos.toLocaleString()}`} disabled className="w-full border rounded px-2 py-1.5 text-sm bg-gray-50" /></div>
+                <div><label className="text-xs font-medium text-gray-500">No Conciliado</label><input value={`$ ${noConciliado.toLocaleString()}`} disabled className="w-full border rounded px-2 py-1.5 text-sm bg-gray-50" /></div>
+              </div>
+              <div><label className="text-xs font-medium text-gray-500">Moneda</label>
+                <select value={reciboMoneda} onChange={e => setReciboMoneda(e.target.value)} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm">
+                  <option value="ARS">ARS</option><option value="USD">USD</option>
+                </select>
+              </div>
+              {reciboMoneda === "USD" && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div><label className="text-xs font-medium text-gray-500">Tipo Cotización</label>
+                    <select value={reciboTipoCotizacion} onChange={e => setReciboTipoCotizacion(e.target.value)} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm">
+                      <option value="">Seleccionar</option><option value="Divisa">Divisa</option><option value="Blue">Blue</option><option value="Billete">Billete</option><option value="Oficial">Oficial</option>
+                    </select>
+                  </div>
+                  <div><label className="text-xs font-medium text-gray-500">Cotización</label><input type="number" value={reciboCotizacion} onChange={e => setReciboCotizacion(Number(e.target.value))} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm" /></div>
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Créditos sin conciliar del cliente */}
-          {clienteRecibo && (() => {
-            const recibosSinConciliar = recibos.filter(
-              r => r.cliente_id === clienteRecibo.id &&
-                   r.id !== selectedRecibo.id &&
-                   r.importe_no_conciliado > 0
-            )
-            const ncSinConciliar = ajustes.filter(
-              a => a.cliente_id === clienteRecibo.id &&
-                   a.estado === "publicado" &&
-                   a.numero.startsWith("NC-") &&
-                   (a.saldo_disponible ?? a.total) > 0
-            ).map(a => ({ id: a.id, numero: a.numero, fecha: a.fecha, disponible: a.saldo_disponible ?? a.total, ajuste: a }))
-
-            const totalItems = recibosSinConciliar.length + ncSinConciliar.length
-            if (totalItems === 0) return null
-
-            const totalAFavor =
-              recibosSinConciliar.reduce((s, r) => s + r.importe_no_conciliado, 0) +
-              ncSinConciliar.reduce((s, nc) => s + nc.disponible, 0)
-
-            return (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 overflow-hidden mb-4">
-                <div className="flex items-center justify-between px-4 py-2.5 border-b border-amber-200">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-amber-500" />
-                    <span className="text-sm font-semibold text-amber-800">Creditos disponibles</span>
-                    <span className="text-xs bg-amber-200 text-amber-800 rounded-full px-2 py-0.5 font-medium">{totalItems}</span>
-                  </div>
-                  <span className="text-sm font-bold text-amber-800">Total a favor: {formatCurrency(totalAFavor)}</span>
-                </div>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-xs text-amber-700 uppercase border-b border-amber-200">
-                      <th className="text-left py-2 px-4">Comprobante</th>
-                      <th className="text-left py-2 px-4">Fecha</th>
-                      <th className="text-left py-2 px-4">Categoría</th>
-                      <th className="text-right py-2 px-4">Disponible</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recibosSinConciliar.map(r => (
-                      <tr key={`r-${r.id}`} className="border-b border-amber-100 last:border-0">
-                        <td className="py-2 px-4 font-medium text-amber-900">{r.numero}</td>
-                        <td className="py-2 px-4 text-amber-700">{new Date(r.fecha).toLocaleDateString('es-AR')}</td>
-                        <td className="py-2 px-4 text-amber-700">—</td>
-                        <td className="py-2 px-4 text-right font-bold text-green-700">{formatCurrency(r.importe_no_conciliado)}</td>
-                      </tr>
-                    ))}
-                    {ncSinConciliar.map(nc => (
-                      <tr key={`nc-${nc.id}`} onClick={() => setNcDetallePopup(nc.ajuste)} className="border-b border-amber-100 last:border-0 bg-emerald-50/40 cursor-pointer hover:bg-emerald-100/60">
-                        <td className="py-2 px-4 font-medium text-emerald-800">
-                          <span className="text-xs bg-emerald-100 text-emerald-700 rounded px-1 mr-1">NC</span>
-                          {nc.numero}
-                        </td>
-                        <td className="py-2 px-4 text-amber-700">{new Date(nc.fecha).toLocaleDateString('es-AR')}</td>
-                        <td className="py-2 px-4">
-                          {nc.ajuste?.categoria
-                            ? <span className="text-xs bg-emerald-100 text-emerald-700 font-medium px-2 py-0.5 rounded">{nc.ajuste.categoria.charAt(0).toUpperCase() + nc.ajuste.categoria.slice(1)}</span>
-                            : <span className="text-amber-600 text-xs">—</span>}
-                        </td>
-                        <td className="py-2 px-4 text-right font-bold text-green-700">{formatCurrency(nc.disponible)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )
-          })()}
-
-          <div className="border-b pb-2 mb-4">
-            <h3 className="font-semibold text-gray-900">Formas de Pago</h3>
-          </div>
-          
-          {selectedRecibo.estado === "borrador" ? (
-            <>
-            <table className="w-full text-sm mb-6">
-              <thead>
-                <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
-                  <th className="text-left py-2 px-3">Forma de Pago</th>
-                  <th className="text-left py-2 px-3 w-32">Moneda</th>
-                  <th className="text-right py-2 px-3 w-40">Importe</th>
-                  <th className="w-10"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {reciboPagosForm.length === 0 ? (
-                  <tr><td colSpan={4} className="py-4 text-center text-gray-500 text-sm">Sin formas de pago. Agregue una.</td></tr>
-                ) : reciboPagosForm.map((pago, index) => (
-                  <tr key={index} className="border-b">
-                    <td className="py-2 px-3">
-                      <select value={pago.forma_pago} onChange={(e) => {
-                        const updated = [...reciboPagosForm]
-                        updated[index].forma_pago = e.target.value
-                        setReciboPagosForm(updated)
-                      }} className="w-full border border-gray-300 rounded px-2 py-1 text-sm">
-                        <option value="Efectivo">Efectivo</option>
-                        <option value="Transferencia">Transferencia Bancaria</option>
-                        <option value="Tarjeta Debito">Tarjeta Debito</option>
-                        <option value="Tarjeta Credito">Tarjeta Credito</option>
-                        <option value="Cheque">Cheque</option>
-                        <option value="MercadoPago">MercadoPago</option>
-                      </select>
-                    </td>
-                    <td className="py-2 px-3">
-                      <select value={pago.moneda} onChange={(e) => {
-                        const updated = [...reciboPagosForm]
-                        updated[index].moneda = e.target.value as "ARS" | "USD"
-                        setReciboPagosForm(updated)
-                      }} className="w-full border border-gray-300 rounded px-2 py-1 text-sm">
-                        <option value="ARS">ARS</option>
-                        <option value="USD">USD</option>
-                      </select>
-                    </td>
-                    <td className="py-2 px-3">
-                      <input type="number" value={pago.importe} min="0" step="0.01"
-                        onChange={(e) => {
-                          const updated = [...reciboPagosForm]
-                          updated[index].importe = parseFloat(e.target.value) || 0
-                          setReciboPagosForm(updated)
-                        }}
-                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right" />
-                    </td>
-                    <td className="py-2 px-3">
-                      <button onClick={() => setReciboPagosForm(reciboPagosForm.filter((_, i) => i !== index))} className="text-red-500 hover:text-red-700">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <button
-              onClick={() => setReciboPagosForm([...reciboPagosForm, { forma_pago: "Efectivo", importe: 0, moneda: "ARS" }])}
-              className="text-sm text-emerald-700 hover:text-emerald-800 font-medium flex items-center gap-1 mb-4"
-            >
-              <Plus className="w-4 h-4" /> Agregar Pago
-            </button>
-          </>
-          ) : (
-            <table className="w-full text-sm mb-6">
-              <thead>
-                <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
-                  <th className="text-left py-2 px-3">Forma de Pago</th>
-                  <th className="text-center py-2 px-3">Moneda</th>
-                  <th className="text-right py-2 px-3">Importe</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedRecibo.pagos.length === 0 ? (
-                  <tr><td colSpan={3} className="py-4 text-center text-gray-500 text-sm">Sin formas de pago registradas</td></tr>
-                ) : selectedRecibo.pagos.map((p, idx) => (
-                  <tr key={idx} className="border-b">
-                    <td className="py-2 px-3">{p.forma_pago}</td>
-                    <td className="py-2 px-3 text-center">{p.moneda}</td>
-                    <td className="py-2 px-3 text-right font-medium">{formatCurrency(p.importe, p.moneda)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          <div className="flex justify-end">
-            <div className="w-64 space-y-2 text-sm">
-              <div className="flex justify-between font-bold text-lg border-t pt-2"><span>Total:</span><span className="text-green-600">{formatCurrency(selectedRecibo.importe, selectedRecibo.moneda)}</span></div>
-              <div className="flex justify-between text-gray-500"><span>No Conciliado:</span><span>{formatCurrency(selectedRecibo.importe_no_conciliado, selectedRecibo.moneda)}</span></div>
-            </div>
-          </div>
-
-          {/* Cancelación si existe */}
-          {selectedRecibo.cancelacion && (
-            <div className="mt-6 bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <XCircle className="w-5 h-5 text-red-600 mt-0.5" />
-                <div className="flex-1">
-                  <div className="flex justify-between items-start">
-                    <span className="font-medium text-red-800">Recibo Cancelado</span>
-                    <span className="text-xs text-red-600">{selectedRecibo.cancelacion.fecha}</span>
-                  </div>
-                  <p className="text-sm text-red-700 mt-1">
-                    <span className="font-medium">Motivo:</span> {selectedRecibo.cancelacion.motivo}
-                  </p>
-                  <p className="text-sm text-red-700 mt-1">
-                    <span className="font-medium">Descripción:</span> {selectedRecibo.cancelacion.descripcion}
-                  </p>
-                  <p className="text-xs text-red-500 mt-2">Por: {selectedRecibo.cancelacion.usuario}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Seguimiento */}
-          <SeguimientoPanel seguimiento={selectedRecibo.seguimiento || []} />
-        </div>
-
-        {/* Modal Cancelar Recibo */}
-        {showCancelarReciboModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
-            <div className="px-6 py-4 border-b flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-gray-900">Cancelar Recibo</h3>
-              <button onClick={() => setShowCancelarReciboModal(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Motivo de Cancelación <span className="text-red-500">*</span></label>
-                <select 
-                  value={cancelarReciboMotivo}
-                  onChange={(e) => setCancelarReciboMotivo(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                >
-                  <option value="">Seleccionar motivo...</option>
-                  {motivosCancelacionRecibo.map(m => (
-                    <option key={m.id} value={m.nombre}>{m.nombre}</option>
-                  ))}
+            <div className="space-y-3">
+              <div><label className="text-xs font-medium text-gray-500">Fecha</label><input type="date" value={selectedRecibo?.fecha || new Date().toISOString().split("T")[0]} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm" /></div>
+              <div><label className="text-xs font-medium text-gray-500">Caja</label>
+                <select value={reciboCajaId} onChange={e => { setReciboCajaId(e.target.value); cargarValoresCaja(e.target.value) }} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm">
+                  <option value="">Seleccionar caja...</option>
+                  {reciboCajasDisponibles.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción <span className="text-red-500">*</span></label>
-                <textarea 
-                  value={cancelarReciboDescripcion}
-                  onChange={(e) => setCancelarReciboDescripcion(e.target.value)}
-                  placeholder="Describa el motivo de la cancelación..."
-                  rows={4}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none"
-                />
-              </div>
-            </div>
-            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3 rounded-b-lg">
-              <button 
-                onClick={() => setShowCancelarReciboModal(false)}
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-100"
-              >
-                Cancelar
-              </button>
-              <button 
-                onClick={() => {
-                  if (!cancelarReciboMotivo || !cancelarReciboDescripcion.trim()) {
-                    alert("Debe completar el motivo y la descripción para cancelar el recibo")
-                    return
-                  }
-                  const fechaHoy = new Date().toLocaleDateString('es-AR')
-                  const fechaISO = new Date().toISOString()
-
-                  // 1. Buscar todas las aplicaciones donde este recibo fue crédito
-                  const aplicacionesARevertir = conciliacionHistorial
-                    .flatMap(h => h.aplicaciones)
-                    .filter(a => a.credito_numero === selectedRecibo.numero)
-
-                  // 2. Revertir saldo de cada factura involucrada
-                  if (aplicacionesARevertir.length > 0) {
-                    setFacturas(prev => prev.map(f => {
-                      const montoRevertir = aplicacionesARevertir
-                        .filter(a => a.debito_numero === f.numero)
-                        .reduce((sum, a) => sum + a.monto, 0)
-                      if (montoRevertir > 0) {
-                        const nuevoSaldo = f.saldo + montoRevertir
-                        return {
-                          ...f,
-                          saldo: nuevoSaldo,
-                          estado: nuevoSaldo > 0 ? "abierta" as const : f.estado
-                        }
-                      }
-                      return f
-                    }))
-
-                    // 3. Generar movimiento de reversión en cuenta corriente
-                    const totalRevertido = aplicacionesARevertir.reduce((sum, a) => sum + a.monto, 0)
-                    const clienteDelRecibo = clientes.find(c => c.id === selectedRecibo.cliente_id)
-                    if (clienteDelRecibo) {
-                      const saldoAnterior = clienteDelRecibo.saldo_cuenta_corriente
-                      const nuevoMov: MovimientoCuentaCorriente = {
-                        id: movimientosCC.length + 1,
-                        cliente_id: clienteDelRecibo.id,
-                        fecha: fechaISO,
-                        tipo: "debito",
-                        concepto: `Reversión por cancelación de recibo ${selectedRecibo.numero}`,
-                        documento_tipo: "recibo_cancelado",
-                        documento_numero: selectedRecibo.numero,
-                        documento_id: selectedRecibo.id,
-                        moneda: selectedRecibo.moneda || "ARS",
-                        importe: totalRevertido,
-                        saldo_posterior: saldoAnterior + totalRevertido
-                      }
-                      setMovimientosCC(prev => [...prev, nuevoMov])
-                    }
-
-                    // 4. Marcar el historial de conciliación como revertido y agregar entrada de reversión
-                    setConciliacionHistorial(prev => {
-                      const clienteDelRecibo2 = clientes.find(c => c.id === selectedRecibo.cliente_id)
-                      const historialMarcado = prev.map(h => ({
-                        ...h,
-                        aplicaciones: h.aplicaciones.map(a =>
-                          a.credito_numero === selectedRecibo.numero
-                            ? { ...a, revertida: true }
-                            : a
-                        )
-                      }))
-                      // Agregar registro de reversión
-                      const nuevaEntradaReversion = {
-                        id: prev.length + 1,
-                        fecha: fechaISO,
-                        cliente_id: selectedRecibo.cliente_id,
-                        cliente_nombre: clienteDelRecibo2?.nombre || "",
-                        tipo: "reversion" as const,
-                        motivo: `Cancelación de recibo ${selectedRecibo.numero}: ${cancelarReciboDescripcion.trim()}`,
-                        aplicaciones: aplicacionesARevertir.map(a => ({
-                          ...a,
-                          revertida: true,
-                          monto: -a.monto,
-                          debito_tipo: a.debito_tipo,
-                          debito_numero: a.debito_numero,
-                          credito_tipo: a.credito_tipo,
-                          credito_numero: a.credito_numero,
-                        })),
-                        total_conciliado: -aplicacionesARevertir.reduce((sum, a) => sum + a.monto, 0),
-                        usuario: "Admin"
-                      }
-                      return [...historialMarcado, nuevaEntradaReversion]
-                    })
-                  }
-
-                  // 5. Cancelar el recibo — importe_no_conciliado queda en 0 (no reutilizable)
-                  const updatedRecibo = {
-                    ...selectedRecibo,
-                    estado: "cancelado" as const,
-                    importe_no_conciliado: 0,
-                    cancelacion: {
-                      motivo: cancelarReciboMotivo,
-                      descripcion: cancelarReciboDescripcion.trim(),
-                      fecha: fechaHoy,
-                      usuario: "Max Solina"
-                    },
-                    seguimiento: [
-                      ...(selectedRecibo.seguimiento || []),
-                      {
-                        fecha: fechaHoy,
-                        usuario: "Max Solina",
-                        accion: "Recibo cancelado",
-                        detalle: `Motivo: ${cancelarReciboMotivo}. ${cancelarReciboDescripcion.trim()}${aplicacionesARevertir.length > 0 ? `. Se revirtieron ${aplicacionesARevertir.length} aplicación/es de conciliación.` : ""}`
-                      }
-                    ]
-                  }
-                  setRecibos(prev => prev.map(r => r.id === selectedRecibo.id ? updatedRecibo : r))
-                  setSelectedRecibo(updatedRecibo)
-                  setShowCancelarReciboModal(false)
-                  setCancelarReciboMotivo("")
-                  setCancelarReciboDescripcion("")
-                }}
-                disabled={!cancelarReciboMotivo || !cancelarReciboDescripcion.trim()}
-                className="px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-              >
-                Confirmar Cancelación
-              </button>
+              <div><label className="text-xs font-medium text-gray-500">Nota de Venta</label><input value={reciboNvId} onChange={e => setReciboNvId(e.target.value)} disabled={esSoloLectura} placeholder="ID o número de NV (opcional)" className="w-full border rounded px-2 py-1.5 text-sm" /></div>
+              <div><label className="text-xs font-medium text-gray-500">Cobrador</label><input value={reciboCobradorNombre} onChange={e => setReciboCobradorNombre(e.target.value)} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm" /></div>
+              <div><label className="text-xs font-medium text-gray-500">Concepto</label><input value={reciboConcepto} onChange={e => setReciboConcepto(e.target.value)} disabled={esSoloLectura} placeholder="Concepto libre (si no hay NV)" className="w-full border rounded px-2 py-1.5 text-sm" /></div>
             </div>
           </div>
         </div>
-        )}
-      </div>
-    )
-  }
 
-  // Recibos
-  const renderRecibos = () => {
-    if (selectedRecibo) return renderFichaRecibo()
-    if (creandoRecibo) return renderCrearRecibo()
-    
-    return (
-    <div>
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold text-emerald-900">Recibos</h1>
-        <button 
-          onClick={() => { setCreandoRecibo(true); setReciboClienteIdForm(null); setReciboPagosForm([]) }}
-          className="bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" /> Nuevo Recibo
-        </button>
-      </div>
-
-      <div className="mb-4">
-        <OdooFilterBar
-          moduleName="recibos"
-          filterOptions={[
-            { field: "estado", label: "Estado", values: [
-              { value: "borrador", label: "Borrador" },
-              { value: "publicado", label: "Publicado" },
-            ]},
-            { field: "moneda", label: "Moneda", values: [
-              { value: "ARS", label: "ARS" },
-              { value: "USD", label: "USD" },
-            ]},
-          ]}
-          groupByOptions={[
-            { id: "estado", label: "Estado", field: "estado" },
-            { id: "cliente", label: "Cliente", field: "cliente" },
-          ]}
-          activeFilters={activeFiltersRecibos}
-          activeGroupBy={activeGroupByRecibos}
-          searchTerm={searchQuery}
-          onFiltersChange={setActiveFiltersRecibos}
-          onGroupByChange={setActiveGroupByRecibos}
-          onSearchChange={setSearchQuery}
-          savedFilters={savedFiltersRecibos}
-          {...makeSavedFilterHandlers(setSavedFiltersRecibos, setActiveFiltersRecibos, setActiveGroupByRecibos, setSearchQuery)}
-          totalCount={recibos.length}
-          filteredCount={recibos.filter(r => {
-            const q = searchQuery.toLowerCase()
-            return !q || r.numero.toLowerCase().includes(q) || r.cliente_nombre.toLowerCase().includes(q)
-          }).length}
-        />
-      </div>
-
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="bg-gray-50 border-b-2 border-gray-200">
-              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
-              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cliente</th>
-              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
-              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Nota de Venta</th>
-              <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Estado</th>
-              <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Moneda</th>
-              <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Importe</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recibos.map(recibo => (
-              <tr 
-                key={recibo.id} 
-                onClick={() => {
-                  setSelectedRecibo(recibo)
-                  if (recibo.estado === "borrador") {
-                    setReciboPagosForm(recibo.pagos.map(p => ({ forma_pago: p.forma_pago, importe: p.importe, moneda: p.moneda })))
-                  }
-                }}
-                className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
-              >
-                <td className="py-3 px-4 font-mono text-sm text-emerald-700 font-medium">{recibo.numero}</td>
-                <td className="py-3 px-4 text-sm">{recibo.cliente_nombre}</td>
-                <td className="py-3 px-4 text-sm text-gray-600">{formatDate(recibo.fecha)}</td>
-                <td className="py-3 px-4 text-sm text-blue-600">{recibo.nota_venta_numero || "-"}</td>
-                <td className="py-3 px-4 text-center">
-                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${recibo.estado === "publicado" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"}`}>
-                    {recibo.estado === "publicado" ? "Publicado" : "Borrador"}
-                  </span>
-                </td>
-                <td className="py-3 px-4 text-center text-sm font-medium">{recibo.moneda}</td>
-                <td className="py-3 px-4 text-right font-medium">{formatCurrency(recibo.importe, recibo.moneda)}</td>
-              </tr>
+        {/* Tabs */}
+        <div className="bg-white rounded-lg shadow-sm">
+          <div className="border-b flex">
+            {["pagos", "comprobantes", "descuentos", "otra_info", "observaciones"].map(t => (
+              <button key={t} onClick={() => setReciboTab(t)} className={`px-4 py-2.5 text-sm font-medium ${reciboTab === t ? "border-b-2 border-emerald-600 text-emerald-700" : "text-gray-500 hover:text-gray-700"}`}>
+                {t === "pagos" ? "Información de Pago" : t === "comprobantes" ? "Comprobantes" : t === "descuentos" ? "Desc./Recargos" : t === "otra_info" ? "Otra Información" : "Observaciones"}
+              </button>
             ))}
-          </tbody>
-        </table>
-{recibos.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
-            No se encontraron recibos
+          </div>
+          <div className="p-4">
+            {/* TAB PAGOS */}
+            {reciboTab === "pagos" && (
+              <div className="space-y-3">
+                {esBorrador && (
+                  <div className="flex gap-2">
+                    <button onClick={() => { if (!reciboCajaId) { alert("Seleccioná una caja primero."); return } setShowAddPagoModal(true); setAddPagoValorId(""); setAddPagoImporte(0); setAddPagoTarjetaNombre(""); setAddPagoCuotas(1); setAddPagoNumeroCupon("") }} className="bg-emerald-700 text-white px-3 py-1.5 rounded text-sm hover:bg-emerald-800 flex items-center gap-1"><Plus className="w-4 h-4" />Añadir un elemento</button>
+                  </div>
+                )}
+                {reciboPagosForm.length > 0 ? (
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b text-left text-xs text-gray-500"><th className="py-2">Nombre (valor)</th><th className="text-right">Imp. Comp.</th><th>Mon. Comp.</th><th className="text-right">Importe</th><th>Moneda</th>{esBorrador && <th></th>}</tr></thead>
+                    <tbody>{reciboPagosForm.map((p, i) => (
+                      <tr key={i} className="border-b">
+                        <td className="py-1.5">{p.valor_nombre}{p.es_tarjeta && <span className="ml-1 text-xs text-blue-600">({p.tarjeta_nombre} x{p.cantidad_cuotas})</span>}</td>
+                        <td className="text-right">${(p.importe_comprobante || p.importe)?.toLocaleString()}</td>
+                        <td>{p.moneda_comprobante || p.moneda}</td>
+                        <td className="text-right font-medium">${p.importe?.toLocaleString()}</td>
+                        <td>{p.moneda}</td>
+                        {esBorrador && <td className="text-right"><button onClick={() => setReciboPagosForm(prev => prev.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button></td>}
+                      </tr>
+                    ))}</tbody>
+                    <tfoot><tr className="border-t font-medium"><td className="py-2">Total</td><td></td><td></td><td className="text-right">${totalPagos.toLocaleString()}</td><td></td>{esBorrador && <td></td>}</tr></tfoot>
+                  </table>
+                ) : <p className="text-sm text-gray-400 py-6 text-center">No hay medios de pago agregados.</p>}
+              </div>
+            )}
+
+            {/* TAB COMPROBANTES */}
+            {reciboTab === "comprobantes" && (
+              <div className="space-y-3">
+                <div className="flex gap-2 mb-2">
+                  {esBorrador && <>
+                    <button onClick={asignarPagosAFacturas} className="px-3 py-1.5 border rounded text-sm hover:bg-gray-50">Asignar pagos a las facturas</button>
+                    <button onClick={seleccionRapida} className="px-3 py-1.5 border rounded text-sm hover:bg-gray-50">Selección Rápida</button>
+                  </>}
+                </div>
+                <h4 className="text-sm font-semibold text-gray-700">Débitos</h4>
+                {reciboImputacionesForm.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead><tr className="border-b text-left text-xs text-gray-500"><th className="py-2">Referencia</th><th>Fecha</th><th>Venc.</th><th className="text-right">Saldo Mon.</th><th>Mon.</th><th className="text-right">Saldo</th><th className="text-right">Asignación</th></tr></thead>
+                      <tbody>{reciboImputacionesForm.map((imp, i) => (
+                        <tr key={i} className="border-b">
+                          <td className="py-1.5 font-medium">{imp.comprobante_referencia}</td>
+                          <td>{imp.fecha_comprobante}</td>
+                          <td>{imp.fecha_vencimiento}</td>
+                          <td className="text-right">${imp.saldo_moneda?.toLocaleString()}</td>
+                          <td>{imp.moneda_comprobante}</td>
+                          <td className="text-right">${imp.saldo_actual?.toLocaleString()}</td>
+                          <td className="text-right">{esBorrador ? (
+                            <input type="number" value={imp.asignacion} onChange={e => {
+                              const val = Math.min(Number(e.target.value), imp.saldo_actual)
+                              setReciboImputacionesForm(prev => prev.map((x, idx) => idx === i ? { ...x, asignacion: Math.max(0, val) } : x))
+                            }} className="w-24 border rounded px-2 py-1 text-sm text-right" />
+                          ) : <span>${imp.asignacion?.toLocaleString()}</span>}</td>
+                        </tr>
+                      ))}</tbody>
+                      <tfoot><tr className="border-t font-medium"><td className="py-2" colSpan={5}></td><td className="text-right">Total:</td><td className="text-right">${totalAsig.toLocaleString()}</td></tr></tfoot>
+                    </table>
+                  </div>
+                ) : <p className="text-sm text-gray-400 py-4">Seleccioná un cliente para ver sus comprobantes pendientes.</p>}
+              </div>
+            )}
+
+            {/* TAB DESCUENTOS */}
+            {reciboTab === "descuentos" && <p className="text-sm text-gray-400 py-8 text-center">En desarrollo.</p>}
+
+            {/* TAB OTRA INFO */}
+            {reciboTab === "otra_info" && <p className="text-sm text-gray-400 py-8 text-center">En desarrollo.</p>}
+
+            {/* TAB OBSERVACIONES */}
+            {reciboTab === "observaciones" && (
+              <textarea value={reciboObservaciones} onChange={e => setReciboObservaciones(e.target.value)} disabled={esSoloLectura} className="w-full h-40 text-sm border rounded p-2" placeholder="Observaciones..." />
+            )}
+          </div>
+        </div>
+
+        {/* Modal agregar pago */}
+        {showAddPagoModal && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setShowAddPagoModal(false)}>
+            <div className="bg-white rounded-lg shadow-xl w-[480px] p-6" onClick={e => e.stopPropagation()}>
+              <h3 className="text-lg font-bold mb-4">Agregar Medio de Pago</h3>
+              <div className="space-y-3">
+                <div><label className="text-xs font-medium text-gray-500">Forma de Pago</label>
+                  <select value={addPagoValorId} onChange={e => setAddPagoValorId(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm">
+                    <option value="">Seleccionar...</option>
+                    {reciboValoresCaja.map(v => <option key={v.id} value={v.id}>{v.nombre} ({v.moneda})</option>)}
+                  </select>
+                </div>
+                <div><label className="text-xs font-medium text-gray-500">Importe</label><input type="number" value={addPagoImporte} onChange={e => setAddPagoImporte(Number(e.target.value))} className="w-full border rounded px-2 py-1.5 text-sm" /></div>
+                {(() => {
+                  const valorSel = reciboValoresCaja.find(v => v.id === addPagoValorId)
+                  if (valorSel?.tipo === "tarjeta") {
+                    return (
+                      <div className="space-y-3 p-3 bg-blue-50 rounded">
+                        <p className="text-xs text-blue-700 font-medium">Datos de tarjeta</p>
+                        <div><label className="text-xs text-gray-500">Tarjeta</label>
+                          <select value={addPagoTarjetaNombre} onChange={e => setAddPagoTarjetaNombre(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm">
+                            <option value="">Seleccionar...</option><option value="Visa">Visa</option><option value="Mastercard">Mastercard</option><option value="Cabal">Cabal</option><option value="Amex">Amex</option>
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div><label className="text-xs text-gray-500">Cuotas</label>
+                            <select value={addPagoCuotas} onChange={e => setAddPagoCuotas(Number(e.target.value))} className="w-full border rounded px-2 py-1.5 text-sm">
+                              {[1, 3, 6, 9, 12, 18, 24].map(n => <option key={n} value={n}>{n}</option>)}
+                            </select>
+                          </div>
+                          <div><label className="text-xs text-gray-500">N° Cupón</label><input value={addPagoNumeroCupon} onChange={e => setAddPagoNumeroCupon(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="Opcional" /></div>
+                        </div>
+                      </div>
+                    )
+                  }
+                  return null
+                })()}
+              </div>
+              <div className="flex justify-end gap-2 mt-4">
+                <button onClick={() => setShowAddPagoModal(false)} className="px-4 py-2 border rounded text-sm hover:bg-gray-50">Cancelar</button>
+                <button onClick={() => {
+                  const valorSel = reciboValoresCaja.find(v => v.id === addPagoValorId)
+                  if (!valorSel || addPagoImporte <= 0) { alert("Seleccioná un valor y un importe válido."); return }
+                  const esTarjeta = valorSel.tipo === "tarjeta"
+                  // Validar tarjeta sin NV
+                  if (esTarjeta && !reciboNvId && !selectedRecibo?.nota_venta_id) {
+                    alert("Para cobrar con tarjeta, el recibo debe estar vinculado a una factura donde el recargo ya esté calculado.")
+                    return
+                  }
+                  const nuevoPago: ReciboPago = {
+                    id: crypto.randomUUID(),
+                    recibo_id: selectedRecibo?.id || "",
+                    valor_id: valorSel.id,
+                    valor_nombre: valorSel.nombre,
+                    tipo_valor: valorSel.tipo,
+                    importe_comprobante: addPagoImporte,
+                    moneda_comprobante: valorSel.moneda,
+                    importe: addPagoImporte,
+                    moneda: valorSel.moneda,
+                    es_tarjeta: esTarjeta,
+                    tarjeta_nombre: esTarjeta ? addPagoTarjetaNombre : null,
+                    cantidad_cuotas: esTarjeta ? addPagoCuotas : 1,
+                    numero_cupon: esTarjeta ? addPagoNumeroCupon : null,
+                    recargo_porcentaje: 0,
+                    recargo_importe: 0,
+                    es_cheque: valorSel.tipo === "banco_cheques",
+                    cheque_id: null,
+                    cupon_tarjeta_id: null,
+                  }
+                  setReciboPagosForm(prev => [...prev, nuevoPago])
+                  setShowAddPagoModal(false)
+                }} className="bg-emerald-700 text-white px-4 py-2 rounded text-sm hover:bg-emerald-800">Agregar</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal cancelar recibo */}
+        {showCancelarReciboModal && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setShowCancelarReciboModal(false)}>
+            <div className="bg-white rounded-lg shadow-xl w-[400px] p-6" onClick={e => e.stopPropagation()}>
+              <h3 className="text-lg font-bold mb-4 text-red-700">Cancelar Recibo</h3>
+              <p className="text-sm text-gray-600 mb-3">Esta acción revertirá los movimientos de caja, cupones y las imputaciones de facturas.</p>
+              <div><label className="text-xs font-medium text-gray-500">Motivo *</label><textarea value={cancelarReciboMotivo} onChange={e => setCancelarReciboMotivo(e.target.value)} className="w-full border rounded p-2 text-sm h-24" placeholder="Ingresá el motivo..." /></div>
+              <div className="flex justify-end gap-2 mt-4">
+                <button onClick={() => setShowCancelarReciboModal(false)} className="px-4 py-2 border rounded text-sm hover:bg-gray-50">Volver</button>
+                <button onClick={cancelarReciboPublicado} className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700">Confirmar Cancelación</button>
+              </div>
+            </div>
           </div>
         )}
       </div>
-    </div>
     )
   }
+
+  // ─── RENDER: Lista de Recibos ───────────────────────────────────────────────
+  const renderRecibos = () => {
+    if (selectedRecibo || editandoRecibo) return renderFormularioRecibo()
+    if (creandoRecibo) return renderFormularioRecibo()
+
+    // Cargar al montar
+    if (!recibosLoaded) { cargarRecibos(); cargarCajasDisponibles() }
+
+    const q = searchQuery.toLowerCase()
+    const listaFiltrada = recibos.filter(r => {
+      // Filtros OdooBar
+      for (const f of activeFiltersRecibos) {
+        if (f.field === "estado" && r.estado !== f.value) return false
+        if (f.field === "moneda" && r.moneda !== f.value) return false
+      }
+      if (q && !r.numero?.toLowerCase().includes(q) && !r.cliente_nombre?.toLowerCase().includes(q)) return false
+      return true
+    })
+
+    return (
+      <div>
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-2xl font-bold text-emerald-900">Recibos</h1>
+          <button onClick={() => { resetFormRecibo(); setCreandoRecibo(true); setSelectedRecibo(null); setEditandoRecibo(false); cargarCajasDisponibles() }} className="bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-emerald-800 flex items-center gap-2"><Plus className="w-4 h-4" />Nuevo Recibo</button>
+        </div>
+        <div className="mb-4">
+          <OdooFilterBar moduleName="recibos"
+            filterOptions={[
+              { field: "estado", label: "Estado", values: [{ value: "borrador", label: "Borrador" }, { value: "publicado", label: "Publicado" }, { value: "cancelado", label: "Cancelado" }] },
+              { field: "moneda", label: "Moneda", values: [{ value: "ARS", label: "ARS" }, { value: "USD", label: "USD" }] },
+            ]}
+            groupByOptions={[{ id: "estado", label: "Estado", field: "estado" }, { id: "cliente", label: "Cliente", field: "cliente_nombre" }]}
+            activeFilters={activeFiltersRecibos} activeGroupBy={activeGroupByRecibos} searchTerm={searchQuery}
+            onFiltersChange={setActiveFiltersRecibos} onGroupByChange={setActiveGroupByRecibos} onSearchChange={setSearchQuery}
+            savedFilters={savedFiltersRecibos}
+            {...makeSavedFilterHandlers(setSavedFiltersRecibos, setActiveFiltersRecibos, setActiveGroupByRecibos, setSearchQuery)}
+            totalCount={recibos.length} filteredCount={listaFiltrada.length}
+          />
+        </div>
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          <table className="w-full">
+            <thead><tr className="bg-gray-50 border-b text-left text-xs text-gray-500 uppercase"><th className="px-4 py-3">Número</th><th className="px-4 py-3">Cliente</th><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Nota de Venta</th><th className="px-4 py-3">Estado</th><th className="px-4 py-3">Moneda</th><th className="px-4 py-3 text-right">Importe</th></tr></thead>
+            <tbody>{listaFiltrada.map(r => (
+              <tr key={r.id} onClick={async () => { await cargarDetalleRecibo(r.id); cargarCajasDisponibles(); if (r.caja_id) cargarValoresCaja(r.caja_id) }} className="border-b hover:bg-gray-50 cursor-pointer">
+                <td className="px-4 py-3 font-medium text-sm">{r.numero}</td>
+                <td className="px-4 py-3 text-sm">{r.cliente_nombre}</td>
+                <td className="px-4 py-3 text-sm">{r.fecha}</td>
+                <td className="px-4 py-3 text-sm">{r.nota_venta_numero || "—"}</td>
+                <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${r.estado === "borrador" ? "bg-gray-100 text-gray-700" : r.estado === "publicado" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{r.estado === "borrador" ? "Borrador" : r.estado === "publicado" ? "Publicado" : "Cancelado"}</span></td>
+                <td className="px-4 py-3 text-sm">{r.moneda}</td>
+                <td className="px-4 py-3 text-sm text-right font-medium">${r.importe?.toLocaleString()}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+          {listaFiltrada.length === 0 && <div className="text-center py-12 text-gray-500">No se encontraron recibos</div>}
+        </div>
+      </div>
+    )
+  }
+
   
   // Conciliacion de Deuda - Estilo Odoo
   const renderConciliacion = () => {
