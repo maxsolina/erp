@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 // Modulo de Ventas - Cell Home ERP v5
 import React, { useState, useMemo, useRef, useEffect, useCallback } from "react"
@@ -833,12 +833,77 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
             onCobroConfirmado?.(totalRecargos, desgloseRecargos)
             setCobrado(true)
           }}
-          className="mt-3 w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg flex items-center justify-center gap-2"
+          className="mt-3 w-full py-2 bg-indigo-900 hover:bg-indigo-800 text-white text-sm font-semibold rounded-lg flex items-center justify-center gap-2"
         >
           <CheckCircle className="w-4 h-4" />
           Confirmar cobro y registrar en cuenta corriente
         </button>
       )}
+    </div>
+  )
+}
+
+// ─── VentasListSection (wrapper reutilizable con OdooFilterBar) ───────────────
+function VentasListSection<T extends object>({
+  title, subtitle, moduleName, data, searchFields, filterFields, actions, children, emptyMessage,
+}: {
+  title: string
+  subtitle?: string
+  moduleName: string
+  data: T[]
+  searchFields: (keyof T)[]
+  filterFields: { field: keyof T; label: string }[]
+  actions?: React.ReactNode
+  children: (filtered: T[]) => React.ReactNode
+  emptyMessage?: string
+}) {
+  const [search, setSearch] = useState("")
+  const [activeFilters, setActiveFilters] = useState<FilterOption[]>([])
+  const [activeGroupBy, setActiveGroupBy] = useState<GroupByOption[]>([])
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([])
+
+  const filtered = useMemo(() => {
+    let result = [...data]
+    if (search) {
+      const q = search.toLowerCase()
+      result = result.filter(row => searchFields.some(f => String(row[f] ?? "").toLowerCase().includes(q)))
+    }
+    for (const f of activeFilters) {
+      result = result.filter(row => String(row[f.field as keyof T] ?? "") === f.value)
+    }
+    return result
+  }, [data, search, activeFilters, searchFields])
+
+  const filterOptions = useMemo(() =>
+    filterFields.map(ff => {
+      const vals = [...new Set(data.map(row => String(row[ff.field] ?? "")).filter(v => v && v !== "null" && v !== "undefined"))]
+      return { field: String(ff.field), label: ff.label, values: vals.sort().map(v => ({ value: v, label: v })) }
+    }).filter(f => f.values.length > 0),
+  [data, filterFields])
+
+  const groupByOptions: GroupByOption[] = filterFields.map(ff => ({ id: String(ff.field), label: ff.label, field: String(ff.field) }))
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <div>
+          <h1 className="text-2xl font-bold text-amber-900">{title}</h1>
+          {subtitle && <p className="text-gray-500 mt-1 text-sm">{subtitle}</p>}
+        </div>
+        {actions}
+      </div>
+      <OdooFilterBar moduleName={moduleName} filterOptions={filterOptions} groupByOptions={groupByOptions}
+        activeFilters={activeFilters} activeGroupBy={activeGroupBy} searchTerm={search}
+        onFiltersChange={setActiveFilters} onGroupByChange={setActiveGroupBy} onSearchChange={setSearch}
+        savedFilters={savedFilters}
+        onSaveFilter={(f) => setSavedFilters(p => [...p, { ...f, id: `f-${Date.now()}`, createdBy: "current_user" }])}
+        onDeleteFilter={(id) => setSavedFilters(p => p.filter(f => f.id !== id))}
+        onApplyFilter={(f) => { setActiveFilters(f.filters); setActiveGroupBy(f.groupBy) }}
+        totalCount={data.length} filteredCount={filtered.length}
+      />
+      <div className="mt-4">
+        {children(filtered)}
+      </div>
     </div>
   )
 }
@@ -2176,7 +2241,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-emerald-900">Dashboard de Ventas</h1>
+        <h1 className="text-2xl font-bold text-amber-900">Dashboard de Ventas</h1>
         
         {/* KPIs */}
         <div className="grid grid-cols-4 gap-4">
@@ -2278,7 +2343,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div className="flex items-center gap-4 mb-6">
 <BotonVolver onClick={() => setSelectedCliente(null)} variant="minimal" texto="" />
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-emerald-900">{selectedOTData.nro}</h1>
+            <h1 className="text-2xl font-bold text-amber-900">{selectedOTData.nro}</h1>
             <p className="text-sm text-gray-500">{selectedOTData.fecha} | {selectedOTData.cliente?.nombre}</p>
           </div>
           <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
@@ -2381,10 +2446,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     return (
       <div>
         <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold text-emerald-900">Clientes</h1>
+          <h1 className="text-2xl font-bold text-amber-900">Clientes</h1>
           <button 
             onClick={() => { setEditingItem(null); setCreandoCliente(true) }}
-            className="bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors flex items-center gap-2"
+            className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 transition-colors flex items-center gap-2"
           >
             <Plus className="w-4 h-4" /> Nuevo Cliente
           </button>
@@ -2422,7 +2487,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-50 border-b-2 border-gray-200">
+              <tr className="border-b bg-gray-50">
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Código</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Nombre</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Documento</th>
@@ -2506,7 +2571,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div className="flex items-center gap-4 mb-6">
 <BotonVolver onClick={() => setCreandoCliente(false)} variant="minimal" texto="" />
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-emerald-900">{editingItem ? "Editar Cliente" : "Nuevo Cliente"}</h1>
+            <h1 className="text-2xl font-bold text-amber-900">{editingItem ? "Editar Cliente" : "Nuevo Cliente"}</h1>
           </div>
         </div>
 
@@ -2709,7 +2774,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </button>
               <button
                 type="submit"
-                className="px-3 py-1.5 text-sm bg-emerald-700 text-white rounded hover:bg-emerald-800 flex items-center gap-1.5"
+                className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded hover:bg-indigo-800 flex items-center gap-1.5"
               >
                 <CheckCircle className="w-3.5 h-3.5" /> {editingItem ? "Guardar Cambios" : "Crear Cliente"}
               </button>
@@ -2736,7 +2801,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           </button>
           <div className="flex-1">
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-emerald-900">{selectedCliente.nombre}</h1>
+              <h1 className="text-2xl font-bold text-amber-900">{selectedCliente.nombre}</h1>
               {selectedCliente.categoria && (
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getCategoriaColor(selectedCliente.categoria)}`}>
                   {selectedCliente.categoria === "publico" ? "Público"
@@ -3180,7 +3245,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         }
                         // OT está en módulo Taller, solo cerramos el popup
                       }}
-                      className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2"
+                      className="px-4 py-2 text-sm bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 flex items-center gap-2"
                     >
                       <ArrowRight className="w-4 h-4" />
                       Ir al Comprobante
@@ -3481,14 +3546,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   return (
       <div>
         <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold text-emerald-900">Notas de Venta</h1>
+          <h1 className="text-2xl font-bold text-amber-900">Notas de Venta</h1>
           <button 
             onClick={() => { 
               setCreandoNV(true)
               setNvLineas([])
               setNvClienteId(null)
             }}
-            className="bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors flex items-center gap-2"
+            className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 transition-colors flex items-center gap-2"
           >
             <Plus className="w-4 h-4" /> Nueva Nota de Venta
           </button>
@@ -3535,7 +3600,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-50 border-b-2 border-gray-200">
+              <tr className="border-b bg-gray-50">
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Comprobante</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cliente</th>
@@ -3876,7 +3941,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div className="flex items-center gap-4 mb-6">
 <BotonVolver onClick={() => setNvPrevisualizando(false)} variant="minimal" texto="" />
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-emerald-900">Nueva Nota de Venta</h1>
+            <h1 className="text-2xl font-bold text-amber-900">Nueva Nota de Venta</h1>
             <p className="text-sm text-gray-500">{new Date().toLocaleDateString('es-AR')} | Puerto Norte</p>
           </div>
           <span className="px-4 py-2 rounded-full text-sm font-semibold bg-amber-100 text-amber-700">
@@ -3906,7 +3971,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </button>
             <button 
               onClick={() => handleCrearNVFinal("inmediata")}
-              className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 flex items-center gap-1"
+              className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 flex items-center gap-1"
             >
               <CheckCircle className="w-4 h-4" /> Confirmar Venta
             </button>
@@ -4038,7 +4103,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div className="flex items-center gap-4 mb-6">
 <BotonVolver onClick={() => setCreandoNV(false)} variant="minimal" texto="" />
           <div>
-            <h1 className="text-2xl font-bold text-emerald-900">{editingNVId ? "Editar Nota de Venta" : "Nueva Nota de Venta"}</h1>
+            <h1 className="text-2xl font-bold text-amber-900">{editingNVId ? "Editar Nota de Venta" : "Nueva Nota de Venta"}</h1>
             <p className="text-sm text-gray-500">{editingNVId ? "Modifique los datos de la nota de venta" : "Complete los datos para crear la nota de venta"}</p>
           </div>
         </div>
@@ -4510,7 +4575,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <button
                   onClick={() => setNvPrevisualizando(true)}
                   disabled={!nvClienteId || nvLineas.length === 0}
-                  className="w-full bg-emerald-700 text-white px-4 py-3 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  className="w-full bg-indigo-900 text-white px-4 py-3 rounded-md text-sm font-medium hover:bg-indigo-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   Continuar
                 </button>
@@ -4564,7 +4629,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <div className="flex items-center gap-3">
 <BotonVolver onClick={() => setSelectedNV(null)} variant="minimal" texto="" />
             <div>
-              <h1 className="text-2xl font-bold text-emerald-900">{selectedNV.numero}</h1>
+              <h1 className="text-2xl font-bold text-amber-900">{selectedNV.numero}</h1>
               <p className="text-sm text-gray-500">{formatDateTime(selectedNV.fecha)} | {selectedNV.sucursal}</p>
             </div>
           </div>
@@ -4797,7 +4862,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <div className="flex items-center gap-4">
             <BotonVolver onClick={() => setSelectedOE(null)} variant="minimal" texto="" />
             <div>
-              <h1 className="text-2xl font-bold text-emerald-900">{selectedOE.numero}</h1>
+              <h1 className="text-2xl font-bold text-amber-900">{selectedOE.numero}</h1>
               <p className="text-sm text-gray-500">Orden de Entrega</p>
             </div>
           </div>
@@ -4978,7 +5043,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       ))
                       setSelectedOE({ ...selectedOE, estado: 'confirmada' })
                     }}
-                    className="w-full bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-emerald-800"
+                    className="w-full bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800"
                   >
                     Confirmar Reserva
                   </button>
@@ -5094,7 +5159,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div className="flex items-center gap-4 mb-6">
 <BotonVolver onClick={() => { setCreandoOE(false); setOeNvId(null) }} variant="minimal" texto="" />
           <div>
-            <h1 className="text-2xl font-bold text-emerald-900">Nueva Orden de Entrega</h1>
+            <h1 className="text-2xl font-bold text-amber-900">Nueva Orden de Entrega</h1>
             <p className="text-sm text-gray-500">Seleccione una Nota de Venta para generar la OE</p>
           </div>
         </div>
@@ -5165,7 +5230,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <button
                   onClick={handleCrearOE}
                   disabled={!oeNvId}
-                  className="w-full bg-emerald-700 text-white px-4 py-3 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  className="w-full bg-indigo-900 text-white px-4 py-3 rounded-md text-sm font-medium hover:bg-indigo-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   Crear Orden de Entrega
                 </button>
@@ -5394,7 +5459,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         setUbicacionRecepcionId(primeraUbic?.id ?? null)
                         setShowConfirmarRecepcionModal(true)
                       }}
-                      className="w-full py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700"
+                      className="w-full py-2 bg-indigo-900 text-white text-sm font-medium rounded-lg hover:bg-indigo-800"
                     >
                       Confirmar recepcion del equipo
                     </button>
@@ -5564,7 +5629,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div className="flex items-center gap-4 mb-6">
 <BotonVolver onClick={resetForm} variant="minimal" texto="" />
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-emerald-900">Nueva Toma de Equipo</h1>
+            <h1 className="text-2xl font-bold text-amber-900">Nueva Toma de Equipo</h1>
             <p className="text-sm text-gray-500">Complete el wizard para registrar la toma</p>
           </div>
         </div>
@@ -5646,7 +5711,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <button
                   onClick={() => tomaEquipoClienteId && setTomaEquipoPaso(2)}
                   disabled={!tomaEquipoClienteId}
-                  className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+                  className="px-6 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   Siguiente <ArrowRight className="w-4 h-4" />
                 </button>
@@ -5710,7 +5775,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <button
                   onClick={() => tomaEquipoModeloId && setTomaEquipoPaso(3)}
                   disabled={!tomaEquipoModeloId}
-                  className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+                  className="px-6 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   Siguiente <ArrowRight className="w-4 h-4" />
                 </button>
@@ -5808,7 +5873,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </button>
                 <button
                   onClick={() => setTomaEquipoPaso(4)}
-                  className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2"
+                  className="px-6 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 flex items-center gap-2"
                 >
                   Siguiente <ArrowRight className="w-4 h-4" />
                 </button>
@@ -5890,7 +5955,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </button>
                 <button
                   onClick={handleConfirmar}
-                  className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2"
+                  className="px-6 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 flex items-center gap-2"
                 >
                   <CheckCircle className="w-4 h-4" /> Confirmar Operación
                 </button>
@@ -6141,7 +6206,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div className="flex items-center gap-4 mb-6">
           <BotonVolver onClick={resetFormSenia} variant="minimal" texto="" />
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-emerald-900">Nueva Seña de Equipo</h1>
+            <h1 className="text-2xl font-bold text-amber-900">Nueva Seña de Equipo</h1>
             <p className="text-sm text-gray-500">Complete los datos para reservar el equipo</p>
           </div>
         </div>
@@ -6300,7 +6365,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <button
               onClick={handleCrear}
               disabled={!seniaClienteId || !seniaFechaLimite || !seniaEquipoNombre}
-              className="px-6 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-6 py-2.5 bg-indigo-900 text-white rounded-lg text-sm font-semibold hover:bg-indigo-800 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <CheckCircle className="w-4 h-4" /> Crear Seña
             </button>
@@ -6544,7 +6609,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <>
                       <input type="date" value={seniaFechaLimiteEdit} onChange={e => setSeniaFechaLimiteEdit(e.target.value)}
                         className="border border-gray-300 rounded px-2 py-1 text-xs" />
-                      <button onClick={handleActualizarFecha} className="text-xs bg-emerald-600 text-white px-2 py-1 rounded hover:bg-emerald-700">Guardar</button>
+                      <button onClick={handleActualizarFecha} className="text-xs bg-indigo-900 text-white px-2 py-1 rounded hover:bg-indigo-800">Guardar</button>
                       <button onClick={() => setSeniaEditandoFecha(false)} className="text-xs text-gray-500 hover:underline">Cancelar</button>
                     </>
                   ) : (
@@ -6615,7 +6680,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </div>
                 <div className="flex items-end">
                   <button onClick={handleRegistrarSenia} disabled={seniaRegistrando}
-                    className="w-full py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:bg-gray-300 flex items-center justify-center gap-2">
+                    className="w-full py-2 bg-indigo-900 text-white text-sm font-semibold rounded-lg hover:bg-indigo-800 disabled:bg-gray-300 flex items-center justify-center gap-2">
                     <CreditCard className="w-4 h-4" />
                     {seniaRegistrando ? "Registrando..." : "Registrar seña"}
                   </button>
@@ -6793,7 +6858,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <button
                 onClick={handleConfirmarCierre}
                 disabled={seniaCerrando || seniaMediosCierre.length === 0}
-                className="w-full py-3 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full py-3 bg-indigo-900 text-white font-semibold rounded-lg hover:bg-indigo-800 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 <CheckCircle className="w-5 h-5" />
                 {seniaCerrando ? "Procesando..." : "Confirmar y entregar equipo"}
@@ -6855,7 +6920,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   setActiveView("facturas")
                 }
               }}
-              className="px-4 py-2.5 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 flex items-center gap-2 whitespace-nowrap"
+              className="px-4 py-2.5 bg-indigo-900 text-white font-semibold rounded-lg hover:bg-indigo-800 flex items-center gap-2 whitespace-nowrap"
             >
               <Receipt className="w-4 h-4" /> Ir a factura para finalizar operación
             </button>
@@ -6887,30 +6952,23 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   const renderListadoSeniasEquipo = () => {
-    const seniasFiltradas = seniasEquipo.filter(s => {
-      const matchEstado = seniaFiltroEstado === "todos" || s.estado === seniaFiltroEstado
-      const matchVencida = !seniaFiltroVencidas || (s.estado === "en_curso" && diasRestantes(s.fecha_limite) !== null && (diasRestantes(s.fecha_limite) as number) < 0)
-      const matchSearch = searchQuery === "" ||
-        s.numero.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.cliente_nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.equipo_nombre.toLowerCase().includes(searchQuery.toLowerCase())
-      return matchEstado && matchVencida && matchSearch
-    })
-
     return (
-      <div>
-        {/* Header */}
-        <div className="flex items-center justify-between mb-5">
-          <div>
-            <h1 className="text-2xl font-bold text-emerald-900">Seña de Equipo</h1>
-            <p className="text-gray-500 mt-1 text-sm">Gestione las reservas de equipos con seña</p>
-          </div>
+      <VentasListSection
+        title="Seña de Equipo"
+        subtitle="Gestione las reservas de equipos con seña"
+        moduleName="senias_equipo"
+        data={seniasEquipo}
+        searchFields={["numero", "cliente_nombre", "equipo_nombre"]}
+        filterFields={[{field: "estado", label: "Estado"}, {field: "estado_senia", label: "Estado Seña"}]}
+        actions={
           <button onClick={() => { setCreandoSenia(true) }}
-            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors text-sm font-medium">
+            className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800 transition-colors text-sm font-medium">
             <Plus className="w-4 h-4" /> Nueva Seña
           </button>
-        </div>
-
+        }
+      >
+        {(filtered) => (
+          <>
         {/* Stats */}
         <div className="grid grid-cols-4 gap-4 mb-5">
           <div className="bg-white rounded-lg border p-4">
@@ -6933,25 +6991,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           </div>
         </div>
 
-        {/* Filtros rápidos */}
-        <div className="flex items-center gap-3 mb-4 flex-wrap">
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Buscar..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 w-56" />
-          </div>
-          {(["todos", "en_curso", "confirmada", "cancelada"] as const).map(est => (
-            <button key={est} onClick={() => setSeniaFiltroEstado(est)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${seniaFiltroEstado === est ? "bg-emerald-600 text-white border-emerald-600" : "border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
-              {est === "todos" ? "Todos" : est === "en_curso" ? "En curso" : est === "confirmada" ? "Confirmadas" : "Canceladas"}
-            </button>
-          ))}
-          <button onClick={() => setSeniaFiltroVencidas(v => !v)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1 ${seniaFiltroVencidas ? "bg-red-500 text-white border-red-500" : "border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
-            <AlertCircle className="w-3 h-3" /> Vencidas
-          </button>
-        </div>
-
         {/* Tabla */}
         <div className="bg-white rounded-lg border overflow-hidden">
           <table className="w-full">
@@ -6969,10 +7008,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </tr>
             </thead>
             <tbody>
-              {seniasFiltradas.length === 0 && (
+              {filtered.length === 0 && (
                 <tr><td colSpan={9} className="py-12 text-center text-sm text-gray-400">No hay señas de equipo registradas</td></tr>
               )}
-              {seniasFiltradas.map(s => {
+              {filtered.map(s => {
                 const dias = diasRestantes(s.fecha_limite)
                 const vencida = dias !== null && dias < 0 && s.estado === "en_curso"
                 return (
@@ -7016,7 +7055,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </tbody>
           </table>
         </div>
-      </div>
+          </>
+        )}
+      </VentasListSection>
     )
   }
 
@@ -7031,22 +7072,25 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   if (tomaEquipoCreando) return renderCrearTomaEquipo()
 
     return (
-      <div>
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-emerald-900">Toma de Equipo en Parte de Pago</h1>
-            <p className="text-gray-500 mt-1">Gestione las tomas de equipos usados como parte de pago</p>
-          </div>
+      <VentasListSection
+        title="Toma de Equipo en Parte de Pago"
+        subtitle="Gestione las tomas de equipos usados como parte de pago"
+        moduleName="tomas_equipo"
+        data={tomasEquipo}
+        searchFields={["numero", "cliente_nombre", "modelo_equipo"] as const}
+        filterFields={[{field: "estado", label: "Estado"}, {field: "estado_recepcion", label: "Recepción"}]}
+        actions={
           <button 
             onClick={() => setTomaEquipoCreando(true)}
-            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors"
+            className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800 transition-colors"
           >
             <Plus className="w-4 h-4" />
             Nueva Toma
           </button>
-        </div>
-
+        }
+      >
+        {(filtered) => (
+          <>
         {/* Stats */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
@@ -7089,12 +7133,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </tr>
             </thead>
             <tbody>
-              {tomasEquipo.length === 0 && (
+              {filtered.length === 0 && (
                 <tr>
                   <td colSpan={10} className="py-10 text-center text-sm text-gray-400">No hay tomas de equipo registradas</td>
                 </tr>
               )}
-              {tomasEquipo.map(toma => {
+              {filtered.map(toma => {
                 const fechaObj = new Date(toma.fecha)
                 const fecha = fechaObj.toLocaleDateString('es-AR')
                 const hora = fechaObj.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
@@ -7143,7 +7187,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </tbody>
           </table>
         </div>
-      </div>
+          </>
+        )}
+      </VentasListSection>
     )
   }
 
@@ -7155,10 +7201,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     return (
     <div>
       <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold text-emerald-900">Ordenes de Entrega</h1>
+        <h1 className="text-2xl font-bold text-amber-900">Ordenes de Entrega</h1>
         <button
           onClick={() => { setCreandoOE(true); setOeNvId(null) }}
-          className="bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors flex items-center gap-2"
+          className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 transition-colors flex items-center gap-2"
         >
           <Plus className="w-4 h-4" /> Nueva Orden de Entrega
         </button>
@@ -7201,7 +7247,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="bg-gray-50 border-b-2 border-gray-200">
+            <tr className="border-b bg-gray-50">
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Nota de Venta</th>
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cliente</th>
@@ -7263,7 +7309,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <div className="flex items-center gap-3">
 <BotonVolver onClick={() => setSelectedRemito(null)} variant="minimal" texto="" />
             <div>
-              <h1 className="text-2xl font-bold text-emerald-900">{selectedRemito.numero}</h1>
+              <h1 className="text-2xl font-bold text-amber-900">{selectedRemito.numero}</h1>
               <p className="text-sm text-gray-500">{formatDateTime(selectedRemito.fecha)} | {selectedRemito.sucursal}</p>
             </div>
           </div>
@@ -7314,7 +7360,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <button
               onClick={() => handleConfirmarEntregaRemito(selectedRemito)}
               disabled={confirmandoRemito}
-              className="ml-auto px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+              className="ml-auto px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
             >
               {confirmandoRemito ? "Confirmando..." : "Confirmar Entrega"}
             </button>
@@ -7375,30 +7421,18 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     if (selectedRemito) return renderFichaRemito()
     
     return (
-    <div>
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold text-emerald-900">Remitos</h1>
-      </div>
-
-      <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-        <div className="flex gap-4 items-center">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por número o cliente..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-          </div>
-        </div>
-      </div>
-
+    <VentasListSection
+      title="Remitos"
+      moduleName="remitos"
+      data={remitos}
+      searchFields={["numero", "cliente_nombre"]}
+      filterFields={[{field: "estado", label: "Estado"}, {field: "control_factura", label: "Control Factura"}]}
+    >
+      {(filtered) => (
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="bg-gray-50 border-b-2 border-gray-200">
+            <tr className="border-b bg-gray-50">
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cliente</th>
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
@@ -7409,7 +7443,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </tr>
           </thead>
           <tbody>
-            {remitos.map(remito => (
+            {filtered.map(remito => (
               <tr 
                 key={remito.id} 
                 onClick={() => setSelectedRemito(remito)}
@@ -7434,13 +7468,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             ))}
           </tbody>
         </table>
-        {remitos.length === 0 && (
+        {filtered.length === 0 && (
           <div className="text-center py-12 text-gray-500">
             No se encontraron remitos
           </div>
 )}
       </div>
-    </div>
+      )}
+    </VentasListSection>
     )
   }
   
@@ -7598,7 +7633,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div className="flex items-center gap-4 mb-6">
 <BotonVolver onClick={() => setFacturaPrevisualizando(false)} variant="minimal" texto="" />
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-emerald-900">{numeroProvisorio}</h1>
+            <h1 className="text-2xl font-bold text-amber-900">{numeroProvisorio}</h1>
             <p className="text-sm text-gray-500">{new Date().toLocaleDateString('es-AR')} | Puerto Norte</p>
           </div>
           <button className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1">
@@ -7630,7 +7665,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 }
                 handleCrearFacturaFinal()
               }}
-              className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 flex items-center gap-1"
+              className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 flex items-center gap-1"
             >
               <CheckCircle className="w-4 h-4" /> Confirmar Factura
             </button>
@@ -7813,7 +7848,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div className="flex items-center gap-4 mb-6">
 <BotonVolver onClick={() => { setCreandoFactura(false); setFacturaClienteId(null); setFacturaLineas([]) }} variant="minimal" texto="" />
           <div>
-            <h1 className="text-2xl font-bold text-emerald-900">Nueva Factura</h1>
+            <h1 className="text-2xl font-bold text-amber-900">Nueva Factura</h1>
             <p className="text-sm text-gray-500">Complete los datos para crear la factura</p>
           </div>
         </div>
@@ -8000,7 +8035,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <div className="bg-white rounded-lg shadow-sm p-4">
               <div className="space-y-3">
                 <button onClick={() => setFacturaPrevisualizando(true)} disabled={!facturaClienteId || facturaLineas.filter(l => l.producto_nombre.trim() !== "").length === 0}
-                  className="w-full bg-emerald-700 text-white px-4 py-3 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">
+                  className="w-full bg-indigo-900 text-white px-4 py-3 rounded-md text-sm font-medium hover:bg-indigo-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">
                   Continuar
                 </button>
                 <button onClick={() => { setCreandoFactura(false); setFacturaClienteId(null); setFacturaLineas([]); setFacturaPrevisualizando(false); setFacturaListaPreciosId(1) }}
@@ -8035,7 +8070,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <div className="flex items-center gap-3">
 <BotonVolver onClick={() => setSelectedFactura(null)} variant="minimal" texto="" />
             <div>
-              <h1 className="text-2xl font-bold text-emerald-900">{selectedFactura.numero}</h1>
+              <h1 className="text-2xl font-bold text-amber-900">{selectedFactura.numero}</h1>
                 <p className="text-sm text-gray-500">{formatDateTime(selectedFactura.fecha)}</p>
             </div>
           </div>
@@ -8133,7 +8168,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     setFacturas(prev => prev.map(f => f.id === selectedFactura.id ? updatedFactura : f))
                     setSelectedFactura(updatedFactura)
                   }}
-                  className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 flex items-center gap-1"
+                  className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 flex items-center gap-1"
                 >
                   <CheckCircle className="w-4 h-4" /> Confirmar Factura
                 </button>
@@ -8159,7 +8194,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     setSelectedFactura(null)
                     setActiveView("recibos")
                   }}
-                  className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 flex items-center gap-1"
+                  className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 flex items-center gap-1"
                 >
                   <DollarSign className="w-4 h-4" /> Registrar Cobro
                 </button>
@@ -8568,10 +8603,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     return (
     <div>
       <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold text-emerald-900">Facturas</h1>
+        <h1 className="text-2xl font-bold text-amber-900">Facturas</h1>
         <button
           onClick={() => { setCreandoFactura(true); setFacturaClienteId(null); setFacturaLineas([]) }}
-          className="bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors flex items-center gap-2"
+          className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 transition-colors flex items-center gap-2"
         >
           <Plus className="w-4 h-4" /> Nueva Factura
         </button>
@@ -8617,7 +8652,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="bg-gray-50 border-b-2 border-gray-200">
+            <tr className="border-b bg-gray-50">
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cliente</th>
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
@@ -9027,13 +9062,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div className="flex items-center gap-4 mb-4">
           <BotonVolver onClick={() => { setCreandoRecibo(false); setEditandoRecibo(false); setSelectedRecibo(null); resetFormRecibo() }} variant="minimal" texto="" />
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-emerald-900">{selectedRecibo ? selectedRecibo.numero : "Nuevo Recibo"}</h1>
+            <h1 className="text-2xl font-bold text-amber-900">{selectedRecibo ? selectedRecibo.numero : "Nuevo Recibo"}</h1>
             {selectedRecibo && <div className="flex items-center gap-2 mt-1">
               <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${selectedRecibo.estado === "borrador" ? "bg-gray-100 text-gray-700" : selectedRecibo.estado === "publicado" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{selectedRecibo.estado === "borrador" ? "Borrador" : selectedRecibo.estado === "publicado" ? "Publicado" : "Cancelado"}</span>
             </div>}
           </div>
           <div className="flex gap-2">
-            {esBorrador && <button onClick={guardarRecibo} disabled={reciboGuardando} className="bg-emerald-700 text-white px-4 py-2 rounded text-sm hover:bg-emerald-800 disabled:opacity-50">{reciboGuardando ? "Guardando..." : "Guardar"}</button>}
+            {esBorrador && <button onClick={guardarRecibo} disabled={reciboGuardando} className="bg-indigo-900 text-white px-4 py-2 rounded text-sm hover:bg-indigo-800 disabled:opacity-50">{reciboGuardando ? "Guardando..." : "Guardar"}</button>}
             {selectedRecibo?.estado === "borrador" && <button onClick={publicarRecibo} className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 flex items-center gap-1"><CheckCircle className="w-4 h-4" />Confirmar</button>}
             {selectedRecibo?.estado === "publicado" && <button onClick={() => setShowCancelarReciboModal(true)} className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700">Cancelar Recibo</button>}
           </div>
@@ -9100,7 +9135,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <div className="space-y-3">
                 {esBorrador && (
                   <div className="flex gap-2">
-                    <button onClick={() => { if (!reciboCajaId) { alert("Seleccioná una caja primero."); return } setShowAddPagoModal(true); setAddPagoValorId(""); setAddPagoImporte(0); setAddPagoTarjetaNombre(""); setAddPagoCuotas(1); setAddPagoNumeroCupon("") }} className="bg-emerald-700 text-white px-3 py-1.5 rounded text-sm hover:bg-emerald-800 flex items-center gap-1"><Plus className="w-4 h-4" />Añadir un elemento</button>
+                    <button onClick={() => { if (!reciboCajaId) { alert("Seleccioná una caja primero."); return } setShowAddPagoModal(true); setAddPagoValorId(""); setAddPagoImporte(0); setAddPagoTarjetaNombre(""); setAddPagoCuotas(1); setAddPagoNumeroCupon("") }} className="bg-indigo-900 text-white px-3 py-1.5 rounded text-sm hover:bg-indigo-800 flex items-center gap-1"><Plus className="w-4 h-4" />Añadir un elemento</button>
                   </div>
                 )}
                 {reciboPagosForm.length > 0 ? (
@@ -9243,7 +9278,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   }
                   setReciboPagosForm(prev => [...prev, nuevoPago])
                   setShowAddPagoModal(false)
-                }} className="bg-emerald-700 text-white px-4 py-2 rounded text-sm hover:bg-emerald-800">Agregar</button>
+                }} className="bg-indigo-900 text-white px-4 py-2 rounded text-sm hover:bg-indigo-800">Agregar</button>
               </div>
             </div>
           </div>
@@ -9289,8 +9324,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     return (
       <div>
         <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold text-emerald-900">Recibos</h1>
-          <button onClick={() => { resetFormRecibo(); setCreandoRecibo(true); setSelectedRecibo(null); setEditandoRecibo(false); cargarCajasDisponibles() }} className="bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-emerald-800 flex items-center gap-2"><Plus className="w-4 h-4" />Nuevo Recibo</button>
+          <h1 className="text-2xl font-bold text-amber-900">Recibos</h1>
+          <button onClick={() => { resetFormRecibo(); setCreandoRecibo(true); setSelectedRecibo(null); setEditandoRecibo(false); cargarCajasDisponibles() }} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" />Nuevo Recibo</button>
         </div>
         <div className="mb-4">
           <OdooFilterBar moduleName="recibos"
@@ -9577,7 +9612,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     return (
       <div>
         <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold text-gray-800">Conciliacion de Deuda</h1>
+          <h1 className="text-2xl font-bold text-amber-900">Conciliacion de Deuda</h1>
         </div>
 
         {/* Tabs Conciliar / Historial */}
@@ -9876,7 +9911,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           return (
                           <tr
                             key={`nc-${nc.id}`}
-                            className={`border-b hover:bg-emerald-50 cursor-pointer ${seleccionado ? 'bg-emerald-100' : 'bg-emerald-50/30'} ${esConciliado ? 'opacity-50' : ''}`}
+                            className={`border-b hover:bg-gray-50 cursor-pointer ${seleccionado ? 'bg-emerald-100' : 'bg-emerald-50/30'} ${esConciliado ? 'opacity-50' : ''}`}
                             onClick={() => !esConciliado && toggleCreditoSeleccion(nc)}
                           >
                             <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
@@ -9929,7 +9964,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <button 
               onClick={ejecutarConciliacion}
               disabled={montoAConciliar <= 0}
-              className="px-4 py-1.5 text-sm bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              className="px-4 py-1.5 text-sm bg-indigo-900 text-white rounded hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
             >
               <CheckCircle className="w-4 h-4" /> Ejecutar Conciliacion
             </button>
@@ -10208,21 +10243,26 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
   // Ajustes de Cliente
   const renderAjustes = () => (
-    <div>
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold text-emerald-900">Ajustes de Cliente</h1>
+    <VentasListSection
+      title="Ajustes de Cliente"
+      moduleName="ajustes"
+      data={ajustes}
+      searchFields={["numero", "cliente_nombre", "concepto"]}
+      filterFields={[{field: "estado", label: "Estado"}, {field: "moneda", label: "Moneda"}]}
+      actions={
         <button 
           onClick={() => { setEditingItem(null); setModalType("ajuste"); setShowModal(true) }}
-          className="bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-emerald-800 transition-colors flex items-center gap-2"
+          className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 transition-colors flex items-center gap-2"
         >
           <Plus className="w-4 h-4" /> Nuevo Ajuste
         </button>
-      </div>
-
+      }
+    >
+      {(filtered) => (
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="bg-gray-50 border-b-2 border-gray-200">
+            <tr className="border-b bg-gray-50">
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cliente</th>
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
@@ -10233,7 +10273,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </tr>
           </thead>
           <tbody>
-            {ajustes.map(ajuste => (
+            {filtered.map(ajuste => (
               <tr key={ajuste.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
                 <td className="py-3 px-4 font-mono text-sm text-emerald-700 font-medium">{ajuste.numero}</td>
                 <td className="py-3 px-4 text-sm">{ajuste.cliente_nombre}</td>
@@ -10254,13 +10294,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             ))}
           </tbody>
         </table>
-        {ajustes.length === 0 && (
+        {filtered.length === 0 && (
           <div className="text-center py-12 text-gray-500">
             No se encontraron ajustes
           </div>
         )}
       </div>
-    </div>
+      )}
+    </VentasListSection>
   )
 
   // Notas de Débito / Crédito — usa el estado real de ajustes
@@ -10287,7 +10328,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="text-2xl font-bold text-emerald-900">{ajuste.numero}</h1>
+              <h1 className="text-2xl font-bold text-amber-900">{ajuste.numero}</h1>
               <p className="text-sm text-gray-500">{formatDate(ajuste.fecha)}</p>
             </div>
           </div>
@@ -10387,7 +10428,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div>
           <div className="flex justify-between items-center mb-4">
           <div>
-            <h1 className="text-2xl font-bold text-emerald-900">{titulo}</h1>
+            <h1 className="text-2xl font-bold text-amber-900">{titulo}</h1>
           </div>
         </div>
 
@@ -10431,7 +10472,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           ) : (
             <table className="w-full">
               <thead>
-                <tr className="bg-gray-50 border-b-2 border-gray-200">
+                <tr className="border-b bg-gray-50">
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cliente</th>
@@ -10833,14 +10874,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   const renderListaCategoriasCliente = () => {
-    const filtered = categoriasCliente.filter(c =>
-      c.nombre.toLowerCase().includes(categoriaSearchText.toLowerCase()) ||
-      c.descripcion.toLowerCase().includes(categoriaSearchText.toLowerCase())
-    )
     return (
-      <div>
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4 bg-white border-b border-gray-200 py-3 px-4 -mx-6 -mt-6">
+      <VentasListSection
+        title="Categorías de Cliente"
+        moduleName="categorias_cliente"
+        data={categoriasCliente}
+        searchFields={["nombre", "descripcion"]}
+        filterFields={[{field: "activa", label: "Activa"}]}
+        actions={
           <button
             onClick={() => {
               const nueva: CategoriaCliente = { id: 0, nombre: "", lista_precios_defecto_id: null, descripcion: "", activa: true, seguimiento: [] }
@@ -10849,20 +10890,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               setCreandoCategoria(true)
               setModoEdicionCategoria(true)
             }}
-            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 transition-colors text-sm font-medium"
+            className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-1.5 rounded hover:bg-indigo-800 transition-colors text-sm font-medium"
           >
             <Plus className="w-4 h-4" /> Crear
           </button>
-          <div className="flex-1 flex items-center justify-center">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input type="text" placeholder="Buscar categoría..." value={categoriaSearchText} onChange={(e) => setCategoriaSearchText(e.target.value)}
-                className="pl-9 pr-4 py-1.5 border border-gray-300 rounded text-sm w-64 focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500" />
-            </div>
-          </div>
-          <span className="text-sm text-gray-500">1-{filtered.length} de {filtered.length}</span>
-        </div>
-
+        }
+      >
+        {(filtered) => (
         <div className="bg-white border border-gray-200 rounded overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -10877,7 +10911,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               {filtered.map((cat, idx) => {
                 const lista = listasPrecios.find(l => l.id === cat.lista_precios_defecto_id)
                 return (
-                  <tr key={cat.id} className={`border-b border-gray-100 hover:bg-emerald-50 cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                  <tr key={cat.id} className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
                     onClick={() => { setSelectedCategoria(cat); setEditingCategoria(null); setModoEdicionCategoria(false); setCreandoCategoria(false) }}>
                     <td className="py-3 px-4 font-medium text-gray-900">{cat.nombre}</td>
                     <td className="py-3 px-4 text-gray-600 text-sm">{cat.descripcion || "-"}</td>
@@ -10894,7 +10928,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </tbody>
           </table>
         </div>
-      </div>
+        )}
+      </VentasListSection>
     )
   }
 
@@ -10957,7 +10992,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div className="flex items-center justify-between mb-6 bg-white border-b border-gray-200 py-3 px-4 -mx-6">
           {isEditing ? (
             <div className="flex items-center gap-2">
-              <button onClick={guardar} disabled={!current.nombre.trim()} className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+              <button onClick={guardar} disabled={!current.nombre.trim()} className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-1.5 rounded hover:bg-indigo-800 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
                 <Save className="w-4 h-4" /> Guardar
               </button>
               <button onClick={descartar} className="flex items-center gap-2 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
@@ -11059,42 +11094,24 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   const renderListaListasPrecios = () => {
-    const filteredListas = listasPrecios.filter(l =>
-      l.nombre.toLowerCase().includes(listaPreciosSearchText.toLowerCase()) ||
-      l.tipo.toLowerCase().includes(listaPreciosSearchText.toLowerCase())
-    )
-
     return (
-      <div>
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4 bg-white border-b border-gray-200 py-3 px-4 -mx-6 -mt-6">
+      <VentasListSection
+        title="Listas de Precios"
+        moduleName="listas_precios"
+        data={listasPrecios}
+        searchFields={["nombre", "tipo"]}
+        filterFields={[{field: "tipo", label: "Tipo"}, {field: "moneda", label: "Moneda"}, {field: "estado", label: "Estado"}]}
+        actions={
           <button 
             onClick={crearNuevaListaPrecios}
-            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 transition-colors text-sm font-medium"
+            className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-1.5 rounded hover:bg-indigo-800 transition-colors text-sm font-medium"
           >
             <Plus className="w-4 h-4" />
             Crear
           </button>
-          
-          <div className="flex-1 flex items-center justify-center gap-4">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar lista de precios..."
-                value={listaPreciosSearchText}
-                onChange={(e) => setListaPreciosSearchText(e.target.value)}
-                className="pl-9 pr-4 py-1.5 border border-gray-300 rounded text-sm w-64 focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
-              />
-            </div>
-          </div>
-
-          <span className="text-sm text-gray-500">
-            1-{filteredListas.length} de {filteredListas.length}
-          </span>
-        </div>
-
-        {/* Tabla */}
+        }
+      >
+        {(filtered) => (
         <div className="bg-white border border-gray-200 rounded overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -11109,12 +11126,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </tr>
             </thead>
             <tbody>
-              {filteredListas.map((lista, idx) => {
+              {filtered.map((lista, idx) => {
                 const versionesCount = versionesLista.filter(v => v.lista_precios_id === lista.id).length
                 return (
                   <tr 
                     key={lista.id} 
-                    className={`border-b border-gray-100 hover:bg-emerald-50 cursor-pointer transition-colors ${
+                    className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors ${
                       idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
                     }`}
                     onClick={() => {
@@ -11161,7 +11178,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   </tr>
                 )
               })}
-              {filteredListas.length === 0 && (
+              {filtered.length === 0 && (
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-gray-500">
                     No se encontraron listas de precios
@@ -11171,7 +11188,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </tbody>
           </table>
         </div>
-      </div>
+        )}
+      </VentasListSection>
     )
   }
 
@@ -11203,7 +11221,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div className="flex items-center justify-between mb-6 bg-white border-b border-gray-200 py-3 px-4 -mx-6">
           {isEditing ? (
             <div className="flex items-center gap-2">
-              <button onClick={guardarListaPrecios} disabled={!currentLista.nombre.trim()} className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+              <button onClick={guardarListaPrecios} disabled={!currentLista.nombre.trim()} className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-1.5 rounded hover:bg-indigo-800 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
                 <Save className="w-4 h-4" /> Guardar
               </button>
               <button onClick={descartarListaPrecios} className="flex items-center gap-2 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
@@ -11341,7 +11359,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <div>
               {!creandoListaPrecios && (
                 <div className="flex justify-end mb-4">
-                  <button onClick={() => crearNuevaVersion(selectedListaPrecios.id)} className="flex items-center gap-2 bg-emerald-600 text-white px-3 py-1.5 rounded text-sm hover:bg-emerald-700">
+                  <button onClick={() => crearNuevaVersion(selectedListaPrecios.id)} className="flex items-center gap-2 bg-indigo-900 text-white px-3 py-1.5 rounded text-sm hover:bg-indigo-800">
                     <Plus className="w-4 h-4" /> Nueva Versión
                   </button>
                 </div>
@@ -11361,7 +11379,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   </thead>
                   <tbody>
                     {versionesDeLista.map((version, idx) => (
-                      <tr key={version.id} className={`border-b border-gray-100 hover:bg-emerald-50 cursor-pointer ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                      <tr key={version.id} className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
                         onClick={() => { setSelectedVersion(version); setActiveView("versiones_lista") }}>
                         <td className="py-2 px-3 font-medium text-gray-900">{version.nombre}</td>
                         <td className="py-2 px-3 text-center text-gray-600">{new Date(version.fecha_inicial).toLocaleDateString("es-AR")}</td>
@@ -11487,7 +11505,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <button onClick={() => { setModalNuevaVersionBasada(false); setNuevaVersionBasadaForm({ nombre: "", fecha_inicial: "", fecha_final: "", copiar_lineas: true }) }}
                   className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">Cancelar</button>
                 <button onClick={() => crearVersionBasadaEnOtra(selectedVersion)}
-                  className="px-4 py-2 text-sm bg-emerald-600 text-white rounded hover:bg-emerald-700">Crear Versi��n</button>
+                  className="px-4 py-2 text-sm bg-indigo-900 text-white rounded hover:bg-indigo-800">Crear Versi��n</button>
               </div>
             </div>
           </div>
@@ -11504,45 +11522,21 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   const renderListaVersiones = () => {
-    let filteredVersiones = versionesLista
-    
-    if (versionFilterLista) {
-      filteredVersiones = filteredVersiones.filter(v => v.lista_precios_id === versionFilterLista)
-    }
-    
-    if (versionSearchText) {
-      filteredVersiones = filteredVersiones.filter(v =>
-        v.nombre.toLowerCase().includes(versionSearchText.toLowerCase()) ||
-        v.lista_precios_nombre.toLowerCase().includes(versionSearchText.toLowerCase())
-      )
-    }
-
     return (
-      <div>
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4 bg-white border-b border-gray-200 py-3 px-4 -mx-6 -mt-6">
+      <VentasListSection
+        title="Versiones de Lista de Precios"
+        moduleName="versiones_lista"
+        data={versionesLista}
+        searchFields={["nombre", "lista_precios_nombre"]}
+        filterFields={[{field: "lista_precios_nombre", label: "Lista"}, {field: "estado", label: "Estado"}]}
+        actions={
           <button onClick={() => crearNuevaVersion()} disabled={listasPrecios.length === 0}
-            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 transition-colors text-sm font-medium disabled:opacity-50">
+            className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-1.5 rounded hover:bg-indigo-800 transition-colors text-sm font-medium disabled:opacity-50">
             <Plus className="w-4 h-4" /> Crear
           </button>
-          
-          <div className="flex-1 flex items-center justify-center gap-4">
-            <select value={versionFilterLista || ""} onChange={(e) => setVersionFilterLista(e.target.value ? Number(e.target.value) : null)}
-              className="px-3 py-1.5 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-emerald-500">
-              <option value="">Todas las listas</option>
-              {listasPrecios.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}
-            </select>
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input type="text" placeholder="Buscar versión..." value={versionSearchText} onChange={(e) => setVersionSearchText(e.target.value)}
-                className="pl-9 pr-4 py-1.5 border border-gray-300 rounded text-sm w-64 focus:ring-1 focus:ring-emerald-500" />
-            </div>
-          </div>
-
-          <span className="text-sm text-gray-500">1-{filteredVersiones.length} de {filteredVersiones.length}</span>
-        </div>
-
-        {/* Tabla */}
+        }
+      >
+        {(filtered) => (
         <div className="bg-white border border-gray-200 rounded overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -11557,8 +11551,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </tr>
             </thead>
             <tbody>
-              {filteredVersiones.map((version, idx) => (
-                <tr key={version.id} className={`border-b border-gray-100 hover:bg-emerald-50 cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+              {filtered.map((version, idx) => (
+                <tr key={version.id} className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
                   onClick={() => { setSelectedVersion(version); setEditingVersion(null); setModoEdicionVersion(false); setCreandoVersion(false) }}>
                   <td className="py-3 px-4 text-gray-600">{version.lista_precios_nombre}</td>
                   <td className="py-3 px-4 font-medium text-gray-900">{version.nombre}</td>
@@ -11576,13 +11570,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <td className="py-3 px-4 text-center text-gray-500 text-xs">{new Date(version.ultima_actualizacion).toLocaleString("es-AR")}</td>
                 </tr>
               ))}
-              {filteredVersiones.length === 0 && (
+              {filtered.length === 0 && (
                 <tr><td colSpan={7} className="py-8 text-center text-gray-500">No se encontraron versiones</td></tr>
               )}
             </tbody>
           </table>
         </div>
-      </div>
+        )}
+      </VentasListSection>
     )
   }
 
@@ -11617,7 +11612,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div className="flex items-center justify-between mb-6 bg-white border-b border-gray-200 py-3 px-4 -mx-6">
           {isEditing ? (
             <div className="flex items-center gap-2">
-              <button onClick={guardarVersion} disabled={!currentVersion.nombre.trim()} className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+              <button onClick={guardarVersion} disabled={!currentVersion.nombre.trim()} className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-1.5 rounded hover:bg-indigo-800 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
                 <Save className="w-4 h-4" /> Guardar
               </button>
               <button onClick={descartarVersion} className="flex items-center gap-2 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
@@ -11637,7 +11632,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   setSelectedVersion(updated)
                   setEditingVersion(null)
                 }}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-colors font-medium"
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 transition-colors font-medium"
               >
                 <CheckCircle className="w-4 h-4" /> Confirmar Lista
               </button>
@@ -12050,20 +12045,24 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     }
 
     return (
-      <div>
-        <div className="flex items-center justify-between mb-4 bg-white border-b border-gray-200 py-3 px-4 -mx-6 -mt-6">
-          <div>
-            <h1 className="text-xl font-bold text-emerald-900">Notas de Crédito — Categorías</h1>
-            <p className="text-sm text-gray-500 mt-0.5">{ncCategorias.length} categoría{ncCategorias.length !== 1 ? "s" : ""}</p>
-          </div>
+      <VentasListSection
+        title="Notas de Crédito — Categorías"
+        subtitle={`${ncCategorias.length} categoría${ncCategorias.length !== 1 ? "s" : ""}`}
+        moduleName="nc_categorias"
+        data={ncCategorias}
+        searchFields={["nombre"]}
+        filterFields={[{field: "activa", label: "Activa"}]}
+        actions={
           <button
             onClick={() => { setNcCategoriaCreando(true); setNcCategoriaNombre("") }}
-            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-1.5 rounded hover:bg-emerald-700 text-sm font-medium"
+            className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-1.5 rounded hover:bg-indigo-800 text-sm font-medium"
           >
             <Plus className="w-4 h-4" /> Nueva Categoría
           </button>
-        </div>
-
+        }
+      >
+        {(filtered) => (
+          <>
         {ncCategoriaCreando && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 mb-4 flex items-center gap-3">
             <input
@@ -12078,7 +12077,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <button
               onClick={guardarCategoria}
               disabled={ncCategoriaLoading || !ncCategoriaNombre.trim()}
-              className="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded hover:bg-emerald-700 disabled:opacity-50"
+              className="px-4 py-2 bg-indigo-900 text-white text-sm font-medium rounded hover:bg-indigo-800 disabled:opacity-50"
             >
               {ncCategoriaLoading ? "Guardando..." : "Guardar"}
             </button>
@@ -12101,10 +12100,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </tr>
             </thead>
             <tbody>
-              {ncCategorias.length === 0 && (
+              {filtered.length === 0 && (
                 <tr><td colSpan={3} className="py-10 text-center text-gray-400 text-sm">No hay categorías creadas</td></tr>
               )}
-              {ncCategorias.map((cat, idx) => (
+              {filtered.map((cat, idx) => (
                 <tr key={cat.id} className={`border-b border-gray-100 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}>
                   <td className="py-3 px-4">
                     {ncCategoriaEditId === cat.id ? (
@@ -12158,7 +12157,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </tbody>
           </table>
         </div>
-      </div>
+          </>
+        )}
+      </VentasListSection>
     )
   }
 
@@ -12209,7 +12210,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-semibold text-emerald-900">
+          <h2 className="text-lg font-semibold text-amber-900">
             {editingItem ? "Editar Cliente" : "Nuevo Cliente"}
           </h2>
           <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
@@ -12349,7 +12350,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               Cancelar
             </button>
             <button type="submit"
-              className="px-4 py-2 text-sm font-medium text-white bg-emerald-700 rounded-md hover:bg-emerald-800">
+              className="px-4 py-2 text-sm font-medium text-white bg-indigo-900 rounded-md hover:bg-indigo-800">
               {editingItem ? "Guardar Cambios" : "Crear Cliente"}
             </button>
           </div>
@@ -12373,7 +12374,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-between p-4 border-b">
-            <h2 className="text-lg font-semibold text-emerald-900">
+            <h2 className="text-lg font-semibold text-amber-900">
               {editingItem ? `Editar Nota de Venta ${editingItem.numero}` : "Nueva Nota de Venta"}
             </h2>
             <button onClick={() => { setShowModal(false); setNvLineas([]); setNvClienteId(null) }} className="text-gray-500 hover:text-gray-700">
@@ -12866,7 +12867,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 Cancelar
               </button>
               <button type="submit"
-                className="px-4 py-2 text-sm font-medium text-white bg-emerald-700 rounded-md hover:bg-emerald-800">
+                className="px-4 py-2 text-sm font-medium text-white bg-indigo-900 rounded-md hover:bg-indigo-800">
                 {editingItem ? "Guardar Cambios" : "Crear Nota de Venta"}
               </button>
             </div>
@@ -12887,7 +12888,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-between p-4 border-b">
-            <h2 className="text-lg font-semibold text-emerald-900">Nuevo Recibo</h2>
+            <h2 className="text-lg font-semibold text-amber-900">Nuevo Recibo</h2>
             <button onClick={() => { setShowModal(false); setReciboPagos([]); setReciboClienteId(null) }} className="text-gray-500 hover:text-gray-700">
               <X className="w-5 h-5" />
             </button>
@@ -13073,7 +13074,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 Cancelar
               </button>
               <button type="submit"
-                className="px-4 py-2 text-sm font-medium text-white bg-emerald-700 rounded-md hover:bg-emerald-800">
+                className="px-4 py-2 text-sm font-medium text-white bg-indigo-900 rounded-md hover:bg-indigo-800">
                 Crear Recibo
               </button>
             </div>
@@ -13094,7 +13095,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-between p-4 border-b">
-            <h2 className="text-lg font-semibold text-emerald-900">Nuevo Ajuste de Cliente</h2>
+            <h2 className="text-lg font-semibold text-amber-900">Nuevo Ajuste de Cliente</h2>
             <button onClick={() => { setShowModal(false); setAjusteLineas([]); setAjusteClienteId(null) }} className="text-gray-500 hover:text-gray-700">
               <X className="w-5 h-5" />
             </button>
@@ -13269,7 +13270,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 Cancelar
               </button>
               <button type="submit"
-                className="px-4 py-2 text-sm font-medium text-white bg-emerald-700 rounded-md hover:bg-emerald-800">
+                className="px-4 py-2 text-sm font-medium text-white bg-indigo-900 rounded-md hover:bg-indigo-800">
                 Crear Ajuste
               </button>
             </div>
@@ -13490,7 +13491,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       setConfirmandoRecepcion(false)
                     }
                   }}
-                  className="px-5 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-5 py-2 bg-indigo-900 text-white text-sm font-semibold rounded-lg hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {confirmandoRecepcion ? "Confirmando..." : "Confirmar recepción"}
                 </button>
@@ -13552,7 +13553,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           setSeniaEquipoBateria(batMatch ? Number(batMatch[1]) : undefined)
                           setShowSeniaSerieModal(false)
                         }}
-                        className="flex items-center gap-4 p-4 rounded-lg border border-gray-200 hover:bg-emerald-50 hover:border-emerald-300 cursor-pointer transition-all"
+                        className="flex items-center gap-4 p-4 rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-emerald-300 cursor-pointer transition-all"
                       >
                         <div className="flex-1">
                           <span className="font-mono font-semibold text-gray-900">{serie.serie}</span>
@@ -13700,7 +13701,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     setSeriesSeleccionadasTemp([])
                   }}
                   disabled={seriesSeleccionadasTemp.length !== nvLineas[serieModalLineaIndex]?.cantidad}
-                  className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-900 hover:bg-indigo-800 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Confirmar seleccion
                 </button>

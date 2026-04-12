@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useERP, Sucursal } from "@/contexts/erp-context"
 import { Plus, Pencil, Trash2, Check, X, Building2, Users } from "lucide-react"
+import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -119,7 +120,7 @@ function FormSucursal({
         <button
           onClick={() => onGuardar(form)}
           disabled={guardando}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50"
+          className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50"
         >
           {guardando ? "Guardando..." : "Guardar"}
         </button>
@@ -195,22 +196,22 @@ function PanelUsuarios({
             <p className="text-center text-gray-400 py-10 text-sm">Cargando...</p>
           ) : (
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+              <thead className="border-b bg-gray-50">
                 <tr>
-                  <th className="text-left px-5 py-3">Usuario</th>
-                  <th className="text-center px-3 py-3">Habilitado</th>
-                  <th className="text-center px-3 py-3">Sucursal principal</th>
-                  <th className="text-center px-3 py-3">Ver NV otras sucursales</th>
-                  <th className="px-3 py-3"></th>
+                  <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Usuario</th>
+                  <th className="text-center py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Habilitado</th>
+                  <th className="text-center py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Sucursal principal</th>
+                  <th className="text-center py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Ver NV otras sucursales</th>
+                  <th className="py-2 px-4"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody>
                 {usuarios.map(u => {
                   const asig = asignaciones.find(a => a.usuario_id === u.id)
                   const habilitado = !!asig
                   const loading = guardando === u.id
                   return (
-                    <tr key={u.id} className="hover:bg-gray-50">
+                    <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="px-5 py-3 font-medium text-gray-800">{u.nombre} <span className="text-gray-400 font-normal">({u.username})</span></td>
                       <td className="px-3 py-3 text-center">
                         <input
@@ -279,6 +280,10 @@ export default function ModuloConfigSucursales() {
   const [verUsuarios, setVerUsuarios] = useState<Sucursal | null>(null)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [activeFilters, setActiveFilters] = useState<FilterOption[]>([])
+  const [activeGroupBy, setActiveGroupBy] = useState<GroupByOption[]>([])
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([])
 
   useEffect(() => {
     fetch("/api/depositos")
@@ -327,20 +332,79 @@ export default function ModuloConfigSucursales() {
     if (res.ok) setSucursales(prev => prev.filter(s => s.id !== id))
   }
 
+  const sucursalesFiltradas = useMemo(() => {
+    let result = [...sucursales]
+
+    if (searchTerm) {
+      const q = searchTerm.toLowerCase()
+      result = result.filter(s =>
+        s.codigo.toLowerCase().includes(q)
+        || s.nombre.toLowerCase().includes(q)
+        || String(s.direccion ?? "").toLowerCase().includes(q)
+        || String(s.telefono ?? "").toLowerCase().includes(q),
+      )
+    }
+
+    for (const filter of activeFilters) {
+      result = result.filter(s => String((s as any)[filter.field] ?? "") === filter.value)
+    }
+
+    return result
+  }, [sucursales, searchTerm, activeFilters])
+
+  const filterOptions = useMemo(
+    () => [
+      {
+        field: "activa",
+        label: "Estado",
+        values: [
+          { value: "true", label: "Activas" },
+          { value: "false", label: "Inactivas" },
+        ],
+      },
+    ],
+    [],
+  )
+
+  const groupByOptions: GroupByOption[] = [
+    { id: "activa", label: "Estado", field: "activa" },
+  ]
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-gray-900">Sucursales</h2>
+        <h2 className="text-2xl font-bold text-amber-900">Sucursales</h2>
         {!creando && !editando && (
           <button
             onClick={() => setCreando(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"
+            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800"
           >
             <Plus className="w-4 h-4" />
             Nueva sucursal
           </button>
         )}
       </div>
+
+      <OdooFilterBar
+        moduleName="sucursales"
+        filterOptions={filterOptions}
+        groupByOptions={groupByOptions}
+        activeFilters={activeFilters}
+        activeGroupBy={activeGroupBy}
+        searchTerm={searchTerm}
+        onFiltersChange={setActiveFilters}
+        onGroupByChange={setActiveGroupBy}
+        onSearchChange={setSearchTerm}
+        savedFilters={savedFilters}
+        onSaveFilter={(filter) => setSavedFilters(prev => [...prev, { ...filter, id: `f-${Date.now()}`, createdBy: "current_user" }])}
+        onDeleteFilter={(id) => setSavedFilters(prev => prev.filter(f => f.id !== id))}
+        onApplyFilter={(filter) => {
+          setActiveFilters(filter.filters)
+          setActiveGroupBy(filter.groupBy)
+        }}
+        totalCount={sucursales.length}
+        filteredCount={sucursalesFiltradas.length}
+      />
 
       {creando && (
         <FormSucursal
@@ -355,27 +419,27 @@ export default function ModuloConfigSucursales() {
 
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+          <thead className="border-b bg-gray-50">
             <tr>
-              <th className="text-left px-5 py-3">Codigo</th>
-              <th className="text-left px-5 py-3">Nombre</th>
-              <th className="text-left px-5 py-3">Direccion</th>
-              <th className="text-left px-5 py-3">Telefono</th>
-              <th className="text-center px-3 py-3">Activa</th>
-              <th className="px-3 py-3"></th>
+              <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Codigo</th>
+              <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Nombre</th>
+              <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Direccion</th>
+              <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Telefono</th>
+              <th className="text-center py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Activa</th>
+              <th className="py-2 px-4"></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
-            {sucursales.length === 0 && (
+          <tbody>
+            {sucursalesFiltradas.length === 0 && (
               <tr>
                 <td colSpan={6} className="text-center text-gray-400 py-10">
                   No hay sucursales. Crea la primera.
                 </td>
               </tr>
             )}
-            {sucursales.map(s => (
+            {sucursalesFiltradas.map(s => (
               <>
-                <tr key={s.id} className="hover:bg-gray-50">
+                <tr key={s.id} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="px-5 py-3 font-mono text-xs font-medium text-gray-600">{s.codigo}</td>
                   <td className="px-5 py-3 font-medium text-gray-900">{s.nombre}</td>
                   <td className="px-5 py-3 text-gray-500">{s.direccion ?? "—"}</td>

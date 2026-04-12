@@ -644,7 +644,7 @@ export default function ModuloContabilidad() {
         <div className="flex items-center gap-3 mb-4">
           <button 
             onClick={crearNuevaMoneda}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex-shrink-0"
+            className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800 transition-colors text-sm font-medium flex-shrink-0"
           >
             Crear
           </button>
@@ -677,23 +677,21 @@ export default function ModuloContabilidad() {
         {/* Tabla */}
         <div className="bg-white border border-gray-200 rounded overflow-hidden">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr className="text-xs text-gray-500 uppercase tracking-wider">
-                <th className="text-left py-3 px-4 font-medium">Moneda</th>
-                <th className="text-left py-3 px-4 font-medium">Fecha</th>
-                <th className="text-right py-3 px-4 font-medium">Tasa actual</th>
-                <th className="text-right py-3 px-4 font-medium">Factor de redondeo</th>
-                <th className="text-right py-3 px-4 font-medium">Precisión de cálculo</th>
-                <th className="text-left py-3 px-4 font-medium">Posición del símbolo</th>
+            <thead className="border-b bg-gray-50">
+              <tr>
+                <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Moneda</th>
+                <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Fecha</th>
+                <th className="text-right py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Tasa actual</th>
+                <th className="text-right py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Factor de redondeo</th>
+                <th className="text-right py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Precisión de cálculo</th>
+                <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Posición del símbolo</th>
               </tr>
             </thead>
             <tbody>
               {filteredMonedas.map((moneda, idx) => (
                 <tr 
                   key={moneda.id} 
-                  className={`border-b border-gray-100 hover:bg-blue-50 cursor-pointer transition-colors ${
-                    idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
-                  }`}
+                  className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
                   onClick={() => {
                     setSelectedMoneda(moneda)
                     setEditingMoneda(null)
@@ -765,7 +763,7 @@ export default function ModuloContabilidad() {
               <button 
                 onClick={guardarMoneda}
                 disabled={!currentMoneda.nombre.trim()}
-                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-1.5 rounded hover:bg-indigo-800 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="w-4 h-4" />
                 Guardar
@@ -946,11 +944,11 @@ export default function ModuloContabilidad() {
             <div>
               {/* Tabla de cotizaciones */}
               <table className="w-full">
-                <thead>
-                  <tr className="text-xs text-gray-500 uppercase tracking-wider border-b border-gray-200">
-                    <th className="text-left py-2 px-3 font-medium">Fecha</th>
-                    <th className="text-left py-2 px-3 font-medium">Tipo de Cotización</th>
-                    <th className="text-right py-2 px-3 font-medium">Tasa</th>
+                <thead className="border-b bg-gray-50">
+                  <tr>
+                    <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Fecha</th>
+                    <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Tipo de Cotización</th>
+                    <th className="text-right py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Tasa</th>
                     <th className="w-10"></th>
                   </tr>
                 </thead>
@@ -1182,7 +1180,7 @@ export default function ModuloContabilidad() {
         <div className="flex items-center gap-3 mb-4">
           <button 
             onClick={crearNuevoTipoCotizacion}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex-shrink-0"
+            className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800 transition-colors text-sm font-medium flex-shrink-0"
           >
             Crear
           </button>
@@ -1215,20 +1213,18 @@ export default function ModuloContabilidad() {
         {/* Tabla */}
         <div className="bg-white border border-gray-200 rounded overflow-hidden">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr className="text-xs text-gray-500 uppercase tracking-wider">
-                <th className="text-left py-3 px-4 font-medium">Nombre</th>
-                <th className="text-left py-3 px-4 font-medium">Descripción</th>
-                <th className="text-center py-3 px-4 font-medium">Activo</th>
+            <thead className="border-b bg-gray-50">
+              <tr>
+                <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Nombre</th>
+                <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Descripción</th>
+                <th className="text-center py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Activo</th>
               </tr>
             </thead>
             <tbody>
               {filteredTipos.map((tipo, idx) => (
                 <tr 
                   key={tipo.id} 
-                  className={`border-b border-gray-100 hover:bg-blue-50 cursor-pointer transition-colors ${
-                    idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
-                  }`}
+                  className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
                   onClick={() => {
                     setSelectedTipoCotizacion(tipo)
                     setEditingTipoCotizacion(null)
@@ -1305,7 +1301,7 @@ export default function ModuloContabilidad() {
               <button 
                 onClick={guardarTipoCotizacion}
                 disabled={!currentTipo.nombre.trim()}
-                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-1.5 rounded hover:bg-indigo-800 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="w-4 h-4" />
                 Guardar

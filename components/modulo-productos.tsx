@@ -2,7 +2,8 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from "react"
 import { createClient } from "@supabase/supabase-js"
-import { Search, Plus, Edit2, Package, CheckCircle, XCircle, ChevronLeft } from "lucide-react"
+import { Plus, Edit2, Package, CheckCircle, XCircle, ChevronLeft } from "lucide-react"
+import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
 
 // ─── Supabase ─────────────────────────────────────────────────────────────────
 
@@ -435,10 +436,10 @@ export default function ModuloProductos() {
   const [error, setError] = useState<string | null>(null)
   const [vista, setVista] = useState<Vista>("listado")
   const [seleccionado, setSeleccionado] = useState<Producto | null>(null)
-  const [busqueda, setBusqueda] = useState("")
-  const [filtroActivo, setFiltroActivo] = useState<"todos" | "activos" | "inactivos">("activos")
-  const [filtroCategoria, setFiltroCategoria] = useState("")
-  const [filtroTipo, setFiltroTipo] = useState("")
+  const [searchTerm, setSearchTerm] = useState("")
+  const [activeFilters, setActiveFilters] = useState<FilterOption[]>([])
+  const [activeGroupBy, setActiveGroupBy] = useState<GroupByOption[]>([])
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([])
 
   const cargarProductos = useCallback(async () => {
     setCargando(true)
@@ -485,18 +486,63 @@ export default function ModuloProductos() {
   }
 
   const productosFiltrados = useMemo(() => {
-    return productos.filter(p => {
-      if (filtroActivo === "activos" && !p.activo) return false
-      if (filtroActivo === "inactivos" && p.activo) return false
-      if (filtroCategoria && p.categoria !== filtroCategoria) return false
-      if (filtroTipo && p.tipo !== filtroTipo) return false
-      if (busqueda) {
-        const q = busqueda.toLowerCase()
-        if (!p.nombre.toLowerCase().includes(q) && !p.codigo_interno.toLowerCase().includes(q) && !p.marca.toLowerCase().includes(q) && !p.categoria.toLowerCase().includes(q)) return false
-      }
-      return true
-    })
-  }, [productos, filtroActivo, filtroCategoria, filtroTipo, busqueda])
+    let result = [...productos]
+
+    if (searchTerm) {
+      const q = searchTerm.toLowerCase()
+      result = result.filter(p =>
+        p.nombre.toLowerCase().includes(q)
+        || p.codigo_interno.toLowerCase().includes(q)
+        || p.marca.toLowerCase().includes(q)
+        || p.categoria.toLowerCase().includes(q),
+      )
+    }
+
+    for (const filter of activeFilters) {
+      result = result.filter(p => String((p as any)[filter.field] ?? "") === filter.value)
+    }
+
+    return result
+  }, [productos, searchTerm, activeFilters])
+
+  const filterOptions = useMemo(() => {
+    const categorias = [...new Set(productos.map(p => p.categoria).filter(Boolean))]
+    const tipos = [...new Set(productos.map(p => p.tipo).filter(Boolean))]
+    const marcas = [...new Set(productos.map(p => p.marca).filter(Boolean))]
+
+    return [
+      {
+        field: "activo",
+        label: "Estado",
+        values: [
+          { value: "true", label: "Activos" },
+          { value: "false", label: "Inactivos" },
+        ],
+      },
+      {
+        field: "categoria",
+        label: "Categoría",
+        values: categorias.sort().map(c => ({ value: c, label: c })),
+      },
+      {
+        field: "tipo",
+        label: "Tipo",
+        values: tipos.sort().map(t => ({ value: t, label: t })),
+      },
+      {
+        field: "marca",
+        label: "Marca",
+        values: marcas.sort().map(m => ({ value: m, label: m })),
+      },
+    ].filter(option => option.values.length > 0)
+  }, [productos])
+
+  const groupByOptions: GroupByOption[] = [
+    { id: "categoria", label: "Categoría", field: "categoria" },
+    { id: "tipo", label: "Tipo", field: "tipo" },
+    { id: "marca", label: "Marca", field: "marca" },
+    { id: "activo", label: "Estado", field: "activo" },
+  ]
 
   // ── Vista formulario ────────────────────────────────────────────────────────
   if (vista !== "listado") {
@@ -530,7 +576,7 @@ export default function ModuloProductos() {
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white">
         <div>
-          <h1 className="text-2xl font-bold text-indigo-900">Productos</h1>
+          <h1 className="text-2xl font-bold text-amber-900">Productos</h1>
           <p className="text-xs text-gray-500 mt-0.5">{productosFiltrados.length} resultado{productosFiltrados.length !== 1 ? "s" : ""}</p>
         </div>
         <button
@@ -542,45 +588,28 @@ export default function ModuloProductos() {
         </button>
       </div>
 
-      {/* Filtros */}
-      <div className="flex flex-wrap items-center gap-3 px-6 py-3 border-b border-gray-200 bg-white">
-        <div className="relative flex-1 min-w-48">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Buscar por nombre, código, marca..."
-            value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm rounded-md border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-900"
-          />
-        </div>
-        <select
-          value={filtroActivo}
-          onChange={e => setFiltroActivo(e.target.value as any)}
-          className="px-3 py-2 text-sm rounded-md border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-900"
-        >
-          <option value="todos">Todos</option>
-          <option value="activos">Activos</option>
-          <option value="inactivos">Inactivos</option>
-        </select>
-        <select
-          value={filtroCategoria}
-          onChange={e => setFiltroCategoria(e.target.value)}
-          className="px-3 py-2 text-sm rounded-md border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-900"
-        >
-          <option value="">Todas las categorías</option>
-          {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select
-          value={filtroTipo}
-          onChange={e => setFiltroTipo(e.target.value)}
-          className="px-3 py-2 text-sm rounded-md border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-900"
-        >
-          <option value="">Todos los tipos</option>
-          <option value="almacenable">Almacenable</option>
-          <option value="servicio">Servicio</option>
-          <option value="consumible">Consumible</option>
-        </select>
+      {/* OdooFilterBar */}
+      <div className="px-6 py-3 border-b border-gray-200 bg-white">
+        <OdooFilterBar
+          moduleName="productos"
+          filterOptions={filterOptions}
+          groupByOptions={groupByOptions}
+          activeFilters={activeFilters}
+          activeGroupBy={activeGroupBy}
+          searchTerm={searchTerm}
+          onFiltersChange={setActiveFilters}
+          onGroupByChange={setActiveGroupBy}
+          onSearchChange={setSearchTerm}
+          savedFilters={savedFilters}
+          onSaveFilter={(filter) => setSavedFilters(prev => [...prev, { ...filter, id: `f-${Date.now()}`, createdBy: "current_user" }])}
+          onDeleteFilter={(id) => setSavedFilters(prev => prev.filter(f => f.id !== id))}
+          onApplyFilter={(filter) => {
+            setActiveFilters(filter.filters)
+            setActiveGroupBy(filter.groupBy)
+          }}
+          totalCount={productos.length}
+          filteredCount={productosFiltrados.length}
+        />
       </div>
 
       {/* Tabla */}
@@ -599,15 +628,15 @@ export default function ModuloProductos() {
           </div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="bg-white border-b border-gray-200 sticky top-0">
+            <thead className="border-b bg-gray-50 sticky top-0">
               <tr>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Código</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nombre</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Categoría</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Marca</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Tipo</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Stock</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Estado</th>
+                <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Código</th>
+                <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Nombre</th>
+                <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Categoría</th>
+                <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Marca</th>
+                <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Tipo</th>
+                <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Stock</th>
+                <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Estado</th>
               </tr>
             </thead>
             <tbody>
@@ -615,7 +644,7 @@ export default function ModuloProductos() {
                 <tr
                   key={p.id}
                   onClick={() => { setSeleccionado(p); setVista("editar") }}
-                  className={`border-b border-gray-100 hover:bg-indigo-50 cursor-pointer transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}
+                  className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
                 >
                   <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.codigo_interno}</td>
                   <td className="px-4 py-3">

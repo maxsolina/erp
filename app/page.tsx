@@ -10,6 +10,7 @@ import ModuloContabilidad from "@/components/modulo-contabilidad"
 import ModuloFinanzas from "@/components/modulo-finanzas"
 import ERPWrapper from "@/components/erp-wrapper"
 import ModuloConfigSucursales from "@/components/modulo-config-sucursales"
+import ModuloTaller from "@/components/modulo-taller"
 
 // Types
 interface Cliente {
@@ -2600,17 +2601,13 @@ function CellHomeERPContent() {
             )}
           </main>
         </div>
+      ) : activeModule === "taller" ? (
+        <div className="pt-11">
+          <ModuloTaller />
+        </div>
       ) : (
-        <div className="flex pt-11">
-          {/* Sidebar */}
-          <aside className="w-52 bg-white border-r border-gray-200 fixed top-11 left-0 bottom-0 overflow-y-auto">
-            {renderSidebar()}
-          </aside>
-
-          {/* Main Content */}
-          <main className="ml-52 flex-1 p-6 min-h-[calc(100vh-44px)]">
-            {renderContent()}
-          </main>
+        <div className="flex items-center justify-center pt-11 h-96 text-gray-400 text-sm">
+          Seleccioná un módulo del menú superior
         </div>
       )}
 

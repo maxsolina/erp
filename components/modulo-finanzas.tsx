@@ -10,6 +10,7 @@ import {
   FileCheck, Settings, DollarSign, Landmark, BookOpen, Banknote,
   ArrowDownUp, RefreshCw, Download, Eye, Filter
 } from "lucide-react"
+import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -157,6 +158,10 @@ interface ConceptoRegistroCaja {
   requiere_observacion: boolean
   visible_en_banco: boolean
   visible_en_caja: boolean
+  visible_en_ajuste_cajas: boolean
+  visible_en_ajuste_banco: boolean
+  visible_en_transferencias: boolean
+  visible_en_cancelaciones: boolean
   activo: boolean
 }
 
@@ -393,6 +398,45 @@ interface TipoPrestamo {
   nombre: string
   cuenta_prestamo: string
   cuenta_intereses: string
+  cuenta_intereses_devengar: string | null
+  cuenta_iva_devengar: string | null
+  cuenta_percepciones_devengar: string | null
+  cuenta_refinanciacion: string | null
+  cuenta_preexistente: string | null
+  concepto_liquidacion: string | null
+  activo: boolean
+}
+
+interface Banco {
+  id: string
+  codigo: string
+  nombre: string
+  direccion: string | null
+  telefono: string | null
+  email: string | null
+  activo: boolean
+}
+
+interface Chequera {
+  id: string
+  cuenta_bancaria_id: string
+  nombre: string
+  tipo: 'diferidos' | 'corrientes'
+  desde_numero: number
+  hasta_numero: number
+  proximo_numero: number
+  estado: 'en_uso' | 'agotada' | 'anulada'
+}
+
+interface TipoMovimientoBancario {
+  id: string
+  nombre: string
+  codigo_causal: string
+  emite_cheques_diferidos: boolean
+  emite_cheques_corrientes: boolean
+  disponible_en_pagos: boolean
+  disponible_en_cobros: boolean
+  disponible_en_finanzas: boolean
   activo: boolean
 }
 
@@ -691,7 +735,7 @@ const CUOTAS_OPTIONS = [1, 2, 3, 4, 5, 6, 9, 12, 18, 24]
 function SectionHeader({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between mb-6">
-      <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+      <h2 className="text-2xl font-bold text-amber-900">{title}</h2>
       <div className="flex gap-2">{children}</div>
     </div>
   )
@@ -1395,8 +1439,6 @@ function SeccionExtractosCaja() {
   const [vista, setVista] = useState<"lista" | "detalle">("lista")
   const [extractoSel, setExtractoSel] = useState<ExtractoCaja | null>(null)
   const [tabDetalle, setTabDetalle] = useState<"saldos" | "movimientos" | "cheques" | "cupones">("saldos")
-  const [filtroEstado, setFiltroEstado] = useState("todos")
-  const [filtroCaja, setFiltroCaja] = useState("todas")
 
   // Modal nuevo
   const [mostrarNuevo, setMostrarNuevo] = useState(false)
@@ -1421,10 +1463,7 @@ function SeccionExtractosCaja() {
   const cargarExtractos = async () => {
     setLoading(true)
     const supabase = createClient()
-    let query = supabase.from("extractos_caja").select("*").order("fecha_apertura", { ascending: false }).limit(100)
-    if (filtroEstado !== "todos") query = query.eq("estado", filtroEstado)
-    if (filtroCaja !== "todas") query = query.eq("caja_id", filtroCaja)
-    const { data } = await query
+    const { data } = await supabase.from("extractos_caja").select("*").order("fecha_apertura", { ascending: false }).limit(200)
     setExtractos(data || [])
     setLoading(false)
   }
@@ -1435,8 +1474,7 @@ function SeccionExtractosCaja() {
     setCajasDisp(data || [])
   }
 
-  useEffect(() => { cargarCajas() }, [])
-  useEffect(() => { cargarExtractos() }, [filtroEstado, filtroCaja])
+  useEffect(() => { cargarCajas(); cargarExtractos() }, [])
 
   const abrirDetalle = async (ext: ExtractoCaja) => {
     const supabase = createClient()
@@ -1555,34 +1593,14 @@ function SeccionExtractosCaja() {
   if (vista === "lista") {
     return (
       <div>
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Finanzas</p>
-            <h1 className="text-2xl font-bold text-indigo-900">Extractos de Caja</h1>
-          </div>
-          <button onClick={iniciarApertura}
-            className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Nuevo Extracto
-          </button>
-        </div>
-
-        <div className="flex gap-3 mb-4">
-          <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-            <option value="todos">Todos los estados</option>
-            <option value="abierto">Abierto</option>
-            <option value="cerrado">Cerrado</option>
-          </select>
-          <select value={filtroCaja} onChange={e => setFiltroCaja(e.target.value)}
-            className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-            <option value="todas">Todas las cajas</option>
-            {cajasDisp.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-          </select>
-        </div>
-
-        {loading ? (
-          <div className="text-center py-12 text-gray-500">Cargando...</div>
-        ) : (
+        <FinanzasListSection<ExtractoCaja>
+          title="Extractos de Caja" subtitle="Finanzas" moduleName="finanzas_extractos_caja"
+          data={extractos} loading={loading}
+          searchFields={["numero", "caja_nombre", "sucursal", "responsable_nombre"]}
+          filterFields={[{ field: "estado", label: "Estado" }, { field: "caja_nombre", label: "Caja" }, { field: "sucursal", label: "Sucursal" }]}
+          actions={<button onClick={iniciarApertura} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Extracto</button>}
+        >
+          {(filtered) => (
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
             <table className="w-full">
               <thead>
@@ -1597,7 +1615,7 @@ function SeccionExtractosCaja() {
                 </tr>
               </thead>
               <tbody>
-                {extractos.map(ext => (
+                {filtered.map(ext => (
                   <tr key={ext.id} onClick={() => abrirDetalle(ext)}
                     className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
                     <td className="py-3 px-4 font-mono text-sm text-indigo-900 font-medium">{ext.numero}</td>
@@ -1617,14 +1635,15 @@ function SeccionExtractosCaja() {
                 ))}
               </tbody>
             </table>
-            {extractos.length === 0 && (
+            {filtered.length === 0 && (
               <div className="text-center py-12 text-gray-500">
                 <Receipt className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                No hay extractos{filtroEstado !== "todos" || filtroCaja !== "todas" ? " con los filtros seleccionados" : ""}
+                No hay extractos con los filtros seleccionados
               </div>
             )}
           </div>
-        )}
+          )}
+        </FinanzasListSection>
 
         {/* Modal Nuevo Extracto */}
         {mostrarNuevo && (
@@ -1708,7 +1727,7 @@ function SeccionExtractosCaja() {
             ← Extractos
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-indigo-900">{extractoSel?.numero}</h1>
+            <h1 className="text-2xl font-bold text-amber-900">{extractoSel?.numero}</h1>
             <p className="text-sm text-gray-500">{extractoSel?.caja_nombre} — {extractoSel?.sucursal}</p>
           </div>
           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
@@ -2437,7 +2456,7 @@ function ConfigCajas() {
         <div className="flex justify-between items-center mb-6">
           <div>
             <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Configuración</p>
-            <h1 className="text-2xl font-bold text-indigo-900">Cajas</h1>
+            <h1 className="text-2xl font-bold text-amber-900">Cajas</h1>
           </div>
           <button onClick={() => { setCajaSeleccionada(null); setVista("detalle") }}
             className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2">
@@ -2494,7 +2513,7 @@ function ConfigCajas() {
           className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium">
           ← Cajas
         </button>
-        <h1 className="text-2xl font-bold text-indigo-900">
+        <h1 className="text-2xl font-bold text-amber-900">
           {cajaSeleccionada ? cajaSeleccionada.nombre : "Nueva Caja"}
         </h1>
         {cajaSeleccionada && (
@@ -2748,20 +2767,14 @@ function RegistrosCaja() {
 
   if (vista === "lista") {
     return (
-      <div>
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Banco y Caja</p>
-            <h1 className="text-2xl font-bold text-indigo-900">Registros de Caja</h1>
-          </div>
-          <button onClick={nuevoRegistro}
-            className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Nuevo Registro
-          </button>
-        </div>
-        {loading ? (
-          <div className="text-center py-12 text-gray-500">Cargando...</div>
-        ) : (
+      <FinanzasListSection<RegistroCaja>
+        title="Registros de Caja" subtitle="Banco y Caja" moduleName="finanzas_registros_caja"
+        data={registros} loading={loading}
+        searchFields={["numero", "caja_nombre", "concepto_nombre", "moneda"]}
+        filterFields={[{ field: "estado", label: "Estado" }, { field: "caja_nombre", label: "Caja" }, { field: "moneda", label: "Moneda" }]}
+        actions={<button onClick={nuevoRegistro} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Registro</button>}
+      >
+        {(filtered) => (
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
             <table className="w-full">
               <thead>
@@ -2777,7 +2790,7 @@ function RegistrosCaja() {
                 </tr>
               </thead>
               <tbody>
-                {registros.map(r => (
+                {filtered.map(r => (
                   <tr key={r.id} onClick={() => abrirDetalle(r)} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
                     <td className="py-3 px-4 font-mono text-sm text-indigo-900 font-medium">{r.numero}</td>
                     <td className="py-3 px-4 text-gray-600">{r.fecha}</td>
@@ -2795,10 +2808,10 @@ function RegistrosCaja() {
                 ))}
               </tbody>
             </table>
-            {registros.length === 0 && <div className="text-center py-12 text-gray-500">No hay registros de caja</div>}
+            {filtered.length === 0 && <div className="text-center py-12 text-gray-500">No hay registros de caja</div>}
           </div>
         )}
-      </div>
+      </FinanzasListSection>
     )
   }
 
@@ -2807,7 +2820,7 @@ function RegistrosCaja() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <button onClick={() => setVista("lista")} className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium">← Registros</button>
-          <h1 className="text-2xl font-bold text-indigo-900">{regSel ? regSel.numero : "Nuevo Registro de Caja"}</h1>
+          <h1 className="text-2xl font-bold text-amber-900">{regSel ? regSel.numero : "Nuevo Registro de Caja"}</h1>
           {regSel && (
             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${regSel.estado === "confirmado" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
               {regSel.estado === "confirmado" ? "Confirmado" : "Borrador"}
@@ -3068,7 +3081,6 @@ function AjustesCaja() {
   const [loading, setLoading] = useState(true)
   const [vista, setVista] = useState<"lista" | "detalle">("lista")
   const [ajusteSel, setAjusteSel] = useState<AjusteCaja | null>(null)
-  const [filtroEstado, setFiltroEstado] = useState("todos")
   const [guardando, setGuardando] = useState(false)
   const [valoresCaja, setValoresCaja] = useState<CajaValor[]>([])
 
@@ -3089,10 +3101,8 @@ function AjustesCaja() {
   const cargarDatos = async () => {
     setLoading(true)
     const supabase = createClient()
-    let query = supabase.from("ajustes_caja").select("*").order("created_at", { ascending: false }).limit(100)
-    if (filtroEstado !== "todos") query = query.eq("estado", filtroEstado)
     const [ajRes, cajRes, conRes] = await Promise.all([
-      query,
+      supabase.from("ajustes_caja").select("*").order("created_at", { ascending: false }).limit(200),
       supabase.from("cajas").select("*").eq("activo", true).order("nombre"),
       supabase.from("conceptos_registro_caja").select("*").eq("activo", true).eq("visible_en_caja", true).order("nombre"),
     ])
@@ -3102,7 +3112,7 @@ function AjustesCaja() {
     setLoading(false)
   }
 
-  useEffect(() => { cargarDatos() }, [filtroEstado])
+  useEffect(() => { cargarDatos() }, [])
 
   const cargarValoresCaja = async (cajaId: string) => {
     const supabase = createClient()
@@ -3209,28 +3219,14 @@ function AjustesCaja() {
 
   if (vista === "lista") {
     return (
-      <div>
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Banco y Caja</p>
-            <h1 className="text-2xl font-bold text-indigo-900">Ajustes de Caja</h1>
-          </div>
-          <button onClick={nuevoAjuste}
-            className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Nuevo Ajuste
-          </button>
-        </div>
-        <div className="flex gap-2 mb-4">
-          {["todos", "borrador", "publicado"].map(e => (
-            <button key={e} onClick={() => setFiltroEstado(e)}
-              className={`px-3 py-1.5 text-sm rounded-md ${filtroEstado === e ? "bg-indigo-900 text-white" : "bg-white border border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
-              {e === "todos" ? "Todos" : e === "borrador" ? "Borrador" : "Publicado"}
-            </button>
-          ))}
-        </div>
-        {loading ? (
-          <div className="text-center py-12 text-gray-500">Cargando...</div>
-        ) : (
+      <FinanzasListSection<AjusteCaja>
+        title="Ajustes de Caja" subtitle="Banco y Caja" moduleName="finanzas_ajustes_caja"
+        data={ajustes} loading={loading}
+        searchFields={["numero", "concepto_nombre", "caja_nombre", "valor_nombre"]}
+        filterFields={[{ field: "estado", label: "Estado" }, { field: "tipo_ajuste", label: "Tipo" }, { field: "caja_nombre", label: "Caja" }]}
+        actions={<button onClick={nuevoAjuste} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Ajuste</button>}
+      >
+        {(filtered) => (
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
             <table className="w-full">
               <thead>
@@ -3246,7 +3242,7 @@ function AjustesCaja() {
                 </tr>
               </thead>
               <tbody>
-                {ajustes.map(a => (
+                {filtered.map(a => (
                   <tr key={a.id} onClick={() => abrirDetalle(a)} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
                     <td className="py-3 px-4 font-mono text-sm text-indigo-900 font-medium">{a.numero}</td>
                     <td className="py-3 px-4 text-gray-600">{a.fecha}</td>
@@ -3268,10 +3264,10 @@ function AjustesCaja() {
                 ))}
               </tbody>
             </table>
-            {ajustes.length === 0 && <div className="text-center py-12 text-gray-500">No hay ajustes de caja</div>}
+            {filtered.length === 0 && <div className="text-center py-12 text-gray-500">No hay ajustes de caja</div>}
           </div>
         )}
-      </div>
+      </FinanzasListSection>
     )
   }
 
@@ -3280,7 +3276,7 @@ function AjustesCaja() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <button onClick={() => setVista("lista")} className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium">← Ajustes</button>
-          <h1 className="text-2xl font-bold text-indigo-900">{ajusteSel ? ajusteSel.numero : "Nuevo Ajuste de Caja"}</h1>
+          <h1 className="text-2xl font-bold text-amber-900">{ajusteSel ? ajusteSel.numero : "Nuevo Ajuste de Caja"}</h1>
           {ajusteSel && (
             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${ajusteSel.estado === "publicado" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
               {ajusteSel.estado === "publicado" ? "Publicado" : "Borrador"}
@@ -3547,20 +3543,14 @@ function RegistrosBanco() {
 
   if (vista === "lista") {
     return (
-      <div>
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Banco y Caja</p>
-            <h1 className="text-2xl font-bold text-indigo-900">Registros de Banco</h1>
-          </div>
-          <button onClick={nuevoRegistro}
-            className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Nuevo Registro
-          </button>
-        </div>
-        {loading ? (
-          <div className="text-center py-12 text-gray-500">Cargando...</div>
-        ) : (
+      <FinanzasListSection<RegistroBanco>
+        title="Registros de Banco" subtitle="Banco y Caja" moduleName="finanzas_registros_banco"
+        data={registros} loading={loading}
+        searchFields={["numero", "cuenta_bancaria_nombre", "concepto_nombre"]}
+        filterFields={[{ field: "estado", label: "Estado" }, { field: "cuenta_bancaria_nombre", label: "Cuenta Bancaria" }]}
+        actions={<button onClick={nuevoRegistro} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Registro</button>}
+      >
+        {(filtered) => (
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
             <table className="w-full">
               <thead>
@@ -3575,7 +3565,7 @@ function RegistrosBanco() {
                 </tr>
               </thead>
               <tbody>
-                {registros.map(r => (
+                {filtered.map(r => (
                   <tr key={r.id} onClick={() => abrirDetalle(r)} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
                     <td className="py-3 px-4 font-mono text-sm text-indigo-900 font-medium">{r.numero}</td>
                     <td className="py-3 px-4 text-gray-600">{r.fecha}</td>
@@ -3592,10 +3582,10 @@ function RegistrosBanco() {
                 ))}
               </tbody>
             </table>
-            {registros.length === 0 && <div className="text-center py-12 text-gray-500">No hay registros de banco</div>}
+            {filtered.length === 0 && <div className="text-center py-12 text-gray-500">No hay registros de banco</div>}
           </div>
         )}
-      </div>
+      </FinanzasListSection>
     )
   }
 
@@ -3604,7 +3594,7 @@ function RegistrosBanco() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <button onClick={() => setVista("lista")} className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium">← Registros</button>
-          <h1 className="text-2xl font-bold text-indigo-900">{regSel ? regSel.numero : "Nuevo Registro de Banco"}</h1>
+          <h1 className="text-2xl font-bold text-amber-900">{regSel ? regSel.numero : "Nuevo Registro de Banco"}</h1>
           {regSel && (
             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${regSel.estado === "confirmado" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
               {regSel.estado === "confirmado" ? "Confirmado" : "Borrador"}
@@ -3808,7 +3798,6 @@ function AjustesBanco() {
   const [loading, setLoading] = useState(true)
   const [vista, setVista] = useState<"lista" | "detalle">("lista")
   const [ajusteSel, setAjusteSel] = useState<AjusteBanco | null>(null)
-  const [filtroEstado, setFiltroEstado] = useState("todos")
   const [guardando, setGuardando] = useState(false)
 
   const [formCuentaNombre, setFormCuentaNombre] = useState("")
@@ -3825,10 +3814,8 @@ function AjustesBanco() {
   const cargarDatos = async () => {
     setLoading(true)
     const supabase = createClient()
-    let query = supabase.from("ajustes_banco").select("*").order("created_at", { ascending: false }).limit(100)
-    if (filtroEstado !== "todos") query = query.eq("estado", filtroEstado)
     const [ajRes, conRes] = await Promise.all([
-      query,
+      supabase.from("ajustes_banco").select("*").order("created_at", { ascending: false }).limit(200),
       supabase.from("conceptos_registro_caja").select("*").eq("activo", true).eq("visible_en_banco", true).order("nombre"),
     ])
     setAjustes(ajRes.data || [])
@@ -3836,7 +3823,7 @@ function AjustesBanco() {
     setLoading(false)
   }
 
-  useEffect(() => { cargarDatos() }, [filtroEstado])
+  useEffect(() => { cargarDatos() }, [])
 
   const estadoLabel = (e: string) => ({ borrador: "Borrador", ajuste_pendiente: "Ajuste Pendiente", publicado: "Publicado" }[e] || e)
   const estadoColor = (e: string) => ({ borrador: "bg-yellow-100 text-yellow-700", ajuste_pendiente: "bg-blue-100 text-blue-700", publicado: "bg-green-100 text-green-700" }[e] || "bg-gray-100 text-gray-500")
@@ -3900,29 +3887,14 @@ function AjustesBanco() {
 
   if (vista === "lista") {
     return (
-      <div>
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Banco y Caja</p>
-            <h1 className="text-2xl font-bold text-indigo-900">Ajustes de Banco</h1>
-          </div>
-          <button onClick={nuevoAjuste}
-            className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Nuevo Ajuste
-          </button>
-        </div>
-        <div className="flex gap-2 mb-4">
-          {["todos", "borrador", "ajuste_pendiente", "publicado"].map(e => (
-            <button key={e} onClick={() => setFiltroEstado(e)}
-              className={`px-3 py-1.5 text-sm rounded-md ${filtroEstado === e ? "bg-indigo-900 text-white" : "bg-white border border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
-              {estadoLabel(e === "todos" ? "todos" : e).replace("todos", "Todos")}
-              {e === "todos" && "Todos"}
-            </button>
-          ))}
-        </div>
-        {loading ? (
-          <div className="text-center py-12 text-gray-500">Cargando...</div>
-        ) : (
+      <FinanzasListSection<AjusteBanco>
+        title="Ajustes de Banco" subtitle="Banco y Caja" moduleName="finanzas_ajustes_banco"
+        data={ajustes} loading={loading}
+        searchFields={["numero", "cuenta_bancaria_nombre", "concepto_nombre"]}
+        filterFields={[{ field: "estado", label: "Estado" }, { field: "cuenta_bancaria_nombre", label: "Cuenta Bancaria" }]}
+        actions={<button onClick={nuevoAjuste} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Ajuste</button>}
+      >
+        {(filtered) => (
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
             <table className="w-full">
               <thead>
@@ -3936,7 +3908,7 @@ function AjustesBanco() {
                 </tr>
               </thead>
               <tbody>
-                {ajustes.map(a => (
+                {filtered.map(a => (
                   <tr key={a.id} onClick={() => abrirDetalle(a)} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
                     <td className="py-3 px-4 font-mono text-sm text-indigo-900 font-medium">{a.numero}</td>
                     <td className="py-3 px-4 text-gray-600">{a.fecha}</td>
@@ -3952,10 +3924,10 @@ function AjustesBanco() {
                 ))}
               </tbody>
             </table>
-            {ajustes.length === 0 && <div className="text-center py-12 text-gray-500">No hay ajustes de banco</div>}
+            {filtered.length === 0 && <div className="text-center py-12 text-gray-500">No hay ajustes de banco</div>}
           </div>
         )}
-      </div>
+      </FinanzasListSection>
     )
   }
 
@@ -3964,7 +3936,7 @@ function AjustesBanco() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <button onClick={() => setVista("lista")} className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium">← Ajustes</button>
-          <h1 className="text-2xl font-bold text-indigo-900">{ajusteSel ? ajusteSel.numero : "Nuevo Ajuste de Banco"}</h1>
+          <h1 className="text-2xl font-bold text-amber-900">{ajusteSel ? ajusteSel.numero : "Nuevo Ajuste de Banco"}</h1>
           {ajusteSel && (
             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${estadoColor(ajusteSel.estado)}`}>
               {estadoLabel(ajusteSel.estado)}
@@ -4339,29 +4311,14 @@ function TransferenciasCaja() {
   // ── Vista Lista ──
   if (!seleccion && !modoCrear) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Transferencias de Caja</h2>
-          <button onClick={iniciarCreacion}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">
-            <Plus className="w-4 h-4" /> Nueva Transferencia
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          {["todos", "pendiente", "publicado", "borrador", "cancelado"].map(e => (
-            <button key={e} onClick={() => setFiltroEstado(e)}
-              className={`px-3 py-1.5 text-xs rounded-full font-medium ${filtroEstado === e ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-              {e === "todos" ? "Todas" : e.charAt(0).toUpperCase() + e.slice(1) + "s"}
-            </button>
-          ))}
-          <div className="ml-auto relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar..."
-              className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-          </div>
-        </div>
-
+      <FinanzasListSection<TransferenciaCaja>
+        title="Transferencias de Caja" moduleName="finanzas_transferencias_caja"
+        data={lista}
+        searchFields={["numero", "caja_desde_nombre", "caja_hasta_nombre", "sucursal", "concepto"]}
+        filterFields={[{ field: "estado", label: "Estado" }, { field: "sucursal", label: "Sucursal" }]}
+        actions={<button onClick={iniciarCreacion} className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800"><Plus className="w-4 h-4" /> Nueva Transferencia</button>}
+      >
+        {(filtered) => (
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
@@ -4377,9 +4334,9 @@ function TransferenciasCaja() {
               </tr>
             </thead>
             <tbody>
-              {listaFiltrada.length === 0 ? (
+              {filtered.length === 0 ? (
                 <tr><td colSpan={8} className="py-12 text-center text-gray-500">No hay transferencias</td></tr>
-              ) : listaFiltrada.map(t => (
+              ) : filtered.map(t => (
                 <tr key={t.id} onClick={() => cargarDetalle(t.id)}
                   className={`border-b cursor-pointer hover:bg-gray-50 ${t.estado === "pendiente" ? "bg-yellow-50" : ""}`}>
                   <td className="py-3 px-4 font-mono text-xs">{t.numero}</td>
@@ -4395,7 +4352,8 @@ function TransferenciasCaja() {
             </tbody>
           </table>
         </div>
-      </div>
+        )}
+      </FinanzasListSection>
     )
   }
 
@@ -4409,7 +4367,7 @@ function TransferenciasCaja() {
           <X className="w-5 h-5" />
         </button>
         <div className="flex-1">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className="text-2xl font-bold text-amber-900">
             {modoCrear ? "Nueva Transferencia de Caja" : seleccion?.numero}
           </h2>
           {seleccion && <div className="mt-1">{badgeEstado(seleccion.estado)}</div>}
@@ -4417,7 +4375,7 @@ function TransferenciasCaja() {
         <div className="flex items-center gap-2">
           {(modoCrear || seleccion?.estado === "borrador") && (
             <button onClick={guardar} disabled={guardando}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50">
+              className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50">
               {guardando ? "Guardando..." : "Guardar"}
             </button>
           )}
@@ -4538,7 +4496,7 @@ function TransferenciasCaja() {
                 </button>
               )}
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 border-b">
                   <tr>
                     <th className="text-left py-2 px-3 font-medium text-gray-700">Nombre (Valor)</th>
                     <th className="text-right py-2 px-3 font-medium text-gray-700">Importe</th>
@@ -4781,22 +4739,14 @@ function Depositos() {
 
   if (!seleccion && !modoCrear) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Depósitos</h2>
-          <button onClick={iniciarCreacion} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"><Plus className="w-4 h-4" /> Nuevo Depósito</button>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {["todos", "borrador", "deposito_pendiente", "publicado"].map(e => (
-            <button key={e} onClick={() => setFiltroEstado(e)} className={`px-3 py-1.5 text-xs rounded-full font-medium ${filtroEstado === e ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-              {e === "todos" ? "Todos" : e === "deposito_pendiente" ? "Pendientes" : e.charAt(0).toUpperCase() + e.slice(1) + "s"}
-            </button>
-          ))}
-          <div className="ml-auto relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar..." className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg" />
-          </div>
-        </div>
+      <FinanzasListSection<Deposito>
+        title="Depósitos" moduleName="finanzas_depositos"
+        data={lista}
+        searchFields={["numero", "cuenta_bancaria_nombre", "sucursal", "caja_egreso_nombre"]}
+        filterFields={[{ field: "estado", label: "Estado" }, { field: "sucursal", label: "Sucursal" }, { field: "cuenta_bancaria_nombre", label: "Cuenta Bancaria" }]}
+        actions={<button onClick={iniciarCreacion} className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800"><Plus className="w-4 h-4" /> Nuevo Depósito</button>}
+      >
+        {(filtered) => (
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b"><tr>
@@ -4808,8 +4758,8 @@ function Depositos() {
               <th className="text-center py-3 px-4 font-medium text-gray-700">Estado</th>
             </tr></thead>
             <tbody>
-              {listaFiltrada.length === 0 ? <tr><td colSpan={6} className="py-12 text-center text-gray-500">No hay depósitos</td></tr> :
-              listaFiltrada.map(d => (
+              {filtered.length === 0 ? <tr><td colSpan={6} className="py-12 text-center text-gray-500">No hay depósitos</td></tr> :
+              filtered.map(d => (
                 <tr key={d.id} onClick={() => cargarDetalle(d.id)} className="border-b cursor-pointer hover:bg-gray-50">
                   <td className="py-3 px-4 font-mono text-xs">{d.numero}</td>
                   <td className="py-3 px-4">{d.cuenta_bancaria_nombre}</td>
@@ -4822,7 +4772,8 @@ function Depositos() {
             </tbody>
           </table>
         </div>
-      </div>
+        )}
+      </FinanzasListSection>
     )
   }
 
@@ -4831,12 +4782,12 @@ function Depositos() {
       <div className="flex items-center gap-3">
         <button onClick={() => { setSeleccion(null); setModoCrear(false) }} className="p-1.5 hover:bg-gray-100 rounded-md"><X className="w-5 h-5" /></button>
         <div className="flex-1">
-          <h2 className="text-lg font-semibold text-gray-900">{modoCrear ? "Nuevo Depósito" : seleccion?.numero}</h2>
+          <h2 className="text-2xl font-bold text-amber-900">{modoCrear ? "Nuevo Depósito" : seleccion?.numero}</h2>
           {seleccion && <div className="mt-1">{badgeEstado(seleccion.estado)}</div>}
         </div>
         <div className="flex items-center gap-2">
           {(modoCrear || seleccion?.estado === "borrador") && (
-            <button onClick={guardar} disabled={guardando} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50">{guardando ? "Guardando..." : "Guardar"}</button>
+            <button onClick={guardar} disabled={guardando} className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50">{guardando ? "Guardando..." : "Guardar"}</button>
           )}
           {seleccion?.estado === "borrador" && (
             <button onClick={confirmarDeposito} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"><Check className="w-4 h-4 inline mr-1" /> Confirmar</button>
@@ -4899,7 +4850,7 @@ function Depositos() {
           {tabActiva === "valores" && (
             <div className="space-y-3">
               {!esSoloLectura && <button onClick={agregarValor} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-indigo-50 text-indigo-700 rounded-md hover:bg-indigo-100"><Plus className="w-3 h-3" /> Añadir valor</button>}
-              <table className="w-full text-sm"><thead className="bg-gray-50"><tr>
+              <table className="w-full text-sm"><thead className="bg-gray-50 border-b"><tr>
                 <th className="text-left py-2 px-3 font-medium text-gray-700">Valor</th>
                 <th className="text-right py-2 px-3 font-medium text-gray-700">Importe</th>
                 {!esSoloLectura && <th className="w-10"></th>}
@@ -5080,17 +5031,14 @@ function Extracciones() {
 
   if (!seleccion && !modoCrear) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Extracciones</h2>
-          <button onClick={iniciarCreacion} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"><Plus className="w-4 h-4" /> Nueva Extracción</button>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="ml-auto relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar..." className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg" />
-          </div>
-        </div>
+      <FinanzasListSection<Extraccion>
+        title="Extracciones" moduleName="finanzas_extracciones"
+        data={lista}
+        searchFields={["numero", "cuenta_bancaria_nombre", "sucursal", "caja_ingreso_nombre"]}
+        filterFields={[{ field: "estado", label: "Estado" }, { field: "sucursal", label: "Sucursal" }, { field: "cuenta_bancaria_nombre", label: "Cuenta Bancaria" }]}
+        actions={<button onClick={iniciarCreacion} className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800"><Plus className="w-4 h-4" /> Nueva Extracción</button>}
+      >
+        {(filtered) => (
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b"><tr>
@@ -5102,8 +5050,8 @@ function Extracciones() {
               <th className="text-center py-3 px-4 font-medium text-gray-700">Estado</th>
             </tr></thead>
             <tbody>
-              {listaFiltrada.length === 0 ? <tr><td colSpan={6} className="py-12 text-center text-gray-500">No hay extracciones</td></tr> :
-              listaFiltrada.map(d => (
+              {filtered.length === 0 ? <tr><td colSpan={6} className="py-12 text-center text-gray-500">No hay extracciones</td></tr> :
+              filtered.map(d => (
                 <tr key={d.id} onClick={() => cargarDetalle(d.id)} className="border-b cursor-pointer hover:bg-gray-50">
                   <td className="py-3 px-4 font-mono text-xs">{d.numero}</td>
                   <td className="py-3 px-4">{d.cuenta_bancaria_nombre}</td>
@@ -5116,7 +5064,8 @@ function Extracciones() {
             </tbody>
           </table>
         </div>
-      </div>
+        )}
+      </FinanzasListSection>
     )
   }
 
@@ -5125,12 +5074,12 @@ function Extracciones() {
       <div className="flex items-center gap-3">
         <button onClick={() => { setSeleccion(null); setModoCrear(false) }} className="p-1.5 hover:bg-gray-100 rounded-md"><X className="w-5 h-5" /></button>
         <div className="flex-1">
-          <h2 className="text-lg font-semibold text-gray-900">{modoCrear ? "Nueva Extracción" : seleccion?.numero}</h2>
+          <h2 className="text-2xl font-bold text-amber-900">{modoCrear ? "Nueva Extracción" : seleccion?.numero}</h2>
           {seleccion && <div className="mt-1">{badgeEstado(seleccion.estado)}</div>}
         </div>
         <div className="flex items-center gap-2">
           {(modoCrear || seleccion?.estado === "borrador") && (
-            <button onClick={guardar} disabled={guardando} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50">{guardando ? "Guardando..." : "Guardar"}</button>
+            <button onClick={guardar} disabled={guardando} className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50">{guardando ? "Guardando..." : "Guardar"}</button>
           )}
           {seleccion?.estado === "borrador" && (
             <button onClick={confirmarExtraccion} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"><Check className="w-4 h-4 inline mr-1" /> Confirmar</button>
@@ -5194,7 +5143,7 @@ function Extracciones() {
           {tabActiva === "valores" && (
             <div className="space-y-3">
               {!esSoloLectura && <button onClick={agregarValor} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-indigo-50 text-indigo-700 rounded-md hover:bg-indigo-100"><Plus className="w-3 h-3" /> Añadir valor</button>}
-              <table className="w-full text-sm"><thead className="bg-gray-50"><tr>
+              <table className="w-full text-sm"><thead className="bg-gray-50 border-b"><tr>
                 <th className="text-left py-2 px-3 font-medium text-gray-700">Valor</th>
                 <th className="text-right py-2 px-3 font-medium text-gray-700">Importe</th>
                 {!esSoloLectura && <th className="w-10"></th>}
@@ -5370,43 +5319,45 @@ function TransferenciasBancarias() {
 
   if (!seleccion && !modoCrear) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Transferencias Bancarias</h2>
-          <button onClick={iniciarCreacion} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"><Plus className="w-4 h-4" /> Nueva Transferencia</button>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="ml-auto relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar..." className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg" />
+      <FinanzasListSection<TransferenciaBancaria>
+        title="Transferencias Bancarias"
+        moduleName="finanzas_transferencias_bancarias"
+        data={lista}
+        searchFields={["numero", "desde_cuenta_nombre", "hasta_cuenta_nombre", "sucursal"]}
+        filterFields={[
+          { field: "estado", label: "Estado" },
+          { field: "sucursal", label: "Sucursal" },
+        ]}
+        actions={<button onClick={iniciarCreacion} className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800"><Plus className="w-4 h-4" /> Nueva Transferencia</button>}
+      >
+        {(filtered) => (
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b"><tr>
+                <th className="text-left py-3 px-4 font-medium text-gray-700">N° Transferencia</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-700">Desde Cuenta</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-700">Hasta Cuenta</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-700">Sucursal</th>
+                <th className="text-right py-3 px-4 font-medium text-gray-700">Importe</th>
+                <th className="text-center py-3 px-4 font-medium text-gray-700">Estado</th>
+              </tr></thead>
+              <tbody>
+                {filtered.length === 0 ? <tr><td colSpan={6} className="py-12 text-center text-gray-500">No hay transferencias bancarias</td></tr> :
+                filtered.map(d => (
+                  <tr key={d.id} onClick={() => cargarDetalle(d.id)} className="border-b cursor-pointer hover:bg-gray-50">
+                    <td className="py-3 px-4 font-mono text-xs">{d.numero}</td>
+                    <td className="py-3 px-4">{d.desde_cuenta_nombre}</td>
+                    <td className="py-3 px-4">{d.hasta_cuenta_nombre}</td>
+                    <td className="py-3 px-4">{d.sucursal}</td>
+                    <td className="py-3 px-4 text-right font-medium">${d.importe_origen?.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</td>
+                    <td className="py-3 px-4 text-center">{badgeEstado(d.estado)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b"><tr>
-              <th className="text-left py-3 px-4 font-medium text-gray-700">N° Transferencia</th>
-              <th className="text-left py-3 px-4 font-medium text-gray-700">Desde Cuenta</th>
-              <th className="text-left py-3 px-4 font-medium text-gray-700">Hasta Cuenta</th>
-              <th className="text-left py-3 px-4 font-medium text-gray-700">Sucursal</th>
-              <th className="text-right py-3 px-4 font-medium text-gray-700">Importe</th>
-              <th className="text-center py-3 px-4 font-medium text-gray-700">Estado</th>
-            </tr></thead>
-            <tbody>
-              {listaFiltrada.length === 0 ? <tr><td colSpan={6} className="py-12 text-center text-gray-500">No hay transferencias bancarias</td></tr> :
-              listaFiltrada.map(d => (
-                <tr key={d.id} onClick={() => cargarDetalle(d.id)} className="border-b cursor-pointer hover:bg-gray-50">
-                  <td className="py-3 px-4 font-mono text-xs">{d.numero}</td>
-                  <td className="py-3 px-4">{d.desde_cuenta_nombre}</td>
-                  <td className="py-3 px-4">{d.hasta_cuenta_nombre}</td>
-                  <td className="py-3 px-4">{d.sucursal}</td>
-                  <td className="py-3 px-4 text-right font-medium">${d.importe_origen?.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</td>
-                  <td className="py-3 px-4 text-center">{badgeEstado(d.estado)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        )}
+      </FinanzasListSection>
     )
   }
 
@@ -5415,12 +5366,12 @@ function TransferenciasBancarias() {
       <div className="flex items-center gap-3">
         <button onClick={() => { setSeleccion(null); setModoCrear(false) }} className="p-1.5 hover:bg-gray-100 rounded-md"><X className="w-5 h-5" /></button>
         <div className="flex-1">
-          <h2 className="text-lg font-semibold text-gray-900">{modoCrear ? "Nueva Transferencia Bancaria" : seleccion?.numero}</h2>
+          <h2 className="text-2xl font-bold text-amber-900">{modoCrear ? "Nueva Transferencia Bancaria" : seleccion?.numero}</h2>
           {seleccion && <div className="mt-1">{badgeEstado(seleccion.estado)}</div>}
         </div>
         <div className="flex items-center gap-2">
           {(modoCrear || seleccion?.estado === "borrador") && (
-            <button onClick={guardar} disabled={guardando} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50">{guardando ? "Guardando..." : "Guardar"}</button>
+            <button onClick={guardar} disabled={guardando} className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50">{guardando ? "Guardando..." : "Guardar"}</button>
           )}
           {seleccion?.estado === "borrador" && (
             <button onClick={confirmarTransferenciaBancaria} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"><Check className="w-4 h-4 inline mr-1" /> Confirmar</button>
@@ -5681,8 +5632,8 @@ function ConversionMonedas() {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Conversión de Monedas</h2>
-          <button onClick={iniciarCreacion} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"><Plus className="w-4 h-4" /> Nueva Conversión</button>
+          <h2 className="text-2xl font-bold text-amber-900">Conversión de Monedas</h2>
+          <button onClick={iniciarCreacion} className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800"><Plus className="w-4 h-4" /> Nueva Conversión</button>
         </div>
         <div className="flex items-center gap-2">
           <div className="ml-auto relative">
@@ -5728,12 +5679,12 @@ function ConversionMonedas() {
       <div className="flex items-center gap-3">
         <button onClick={() => { setSeleccion(null); setModoCrear(false) }} className="p-1.5 hover:bg-gray-100 rounded-md"><X className="w-5 h-5" /></button>
         <div className="flex-1">
-          <h2 className="text-lg font-semibold text-gray-900">{modoCrear ? "Nueva Conversión de Moneda" : seleccion?.numero}</h2>
+          <h2 className="text-2xl font-bold text-amber-900">{modoCrear ? "Nueva Conversión de Moneda" : seleccion?.numero}</h2>
           {seleccion && <div className="mt-1">{badgeEstado(seleccion.estado)}</div>}
         </div>
         <div className="flex items-center gap-2">
           {(modoCrear || seleccion?.estado === "borrador") && (
-            <button onClick={guardar} disabled={guardando} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50">{guardando ? "Guardando..." : "Guardar"}</button>
+            <button onClick={guardar} disabled={guardando} className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50">{guardando ? "Guardando..." : "Guardar"}</button>
           )}
           {seleccion?.estado === "borrador" && (
             <button onClick={confirmarConversion} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"><Check className="w-4 h-4 inline mr-1" /> Confirmar</button>
@@ -6135,7 +6086,7 @@ function Prestamos() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between p-4 border-b">
-        <h2 className="text-lg font-semibold">Préstamos</h2>
+        <h2 className="text-2xl font-bold text-amber-900">Préstamos</h2>
         <button onClick={iniciarCreacion} className="px-3 py-1.5 bg-indigo-900 text-white rounded text-sm hover:bg-indigo-800 flex items-center gap-1"><Plus className="h-4 w-4" />Nuevo</button>
       </div>
       <div className="flex flex-1 overflow-hidden">
@@ -6530,7 +6481,7 @@ function NegociacionChequesComp() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between p-4 border-b">
-        <h2 className="text-lg font-semibold">Negociación de Cheques</h2>
+        <h2 className="text-2xl font-bold text-amber-900">Negociación de Cheques</h2>
         <button onClick={iniciarCreacion} className="px-3 py-1.5 bg-indigo-900 text-white rounded text-sm hover:bg-indigo-800 flex items-center gap-1"><Plus className="h-4 w-4" />Nuevo</button>
       </div>
       <div className="flex flex-1 overflow-hidden">
@@ -6679,7 +6630,7 @@ function ChequesTerceros() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between p-4 border-b">
-        <h2 className="text-lg font-semibold">Cheques de Terceros</h2>
+        <h2 className="text-2xl font-bold text-amber-900">Cheques de Terceros</h2>
       </div>
       <div className="p-4 space-y-3">
         <div className="flex gap-2">
@@ -6716,7 +6667,7 @@ function ChequesPropios() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between p-4 border-b">
-        <h2 className="text-lg font-semibold">Cheques Propios</h2>
+        <h2 className="text-2xl font-bold text-amber-900">Cheques Propios</h2>
       </div>
       <div className="p-4">
         <div className="relative mb-3"><Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" /><input placeholder="Buscar..." value={busqueda} onChange={e => setBusqueda(e.target.value)} className="w-full border rounded pl-8 h-9 text-sm" /></div>
@@ -6857,7 +6808,7 @@ function ConciliacionBancaria() {
   if (pantalla === 'filtros') {
     return (
       <div className="p-6 max-w-4xl">
-        <h2 className="text-xl font-bold text-gray-900 mb-6">Conciliación Bancaria — Filtros</h2>
+        <h2 className="text-2xl font-bold text-amber-900 mb-6">Conciliación Bancaria — Filtros</h2>
         <div className="grid grid-cols-2 gap-6 mb-6">
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-1">Banco</label>
@@ -6926,7 +6877,7 @@ function ConciliacionBancaria() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold text-gray-900">Conciliación Bancaria</h2>
+        <h2 className="text-2xl font-bold text-amber-900">Conciliación Bancaria</h2>
         <div className="flex gap-2">
           <button onClick={()=>setPantalla('filtros')} className="px-3 py-1.5 border rounded text-sm hover:bg-gray-50 flex items-center gap-1"><Filter className="w-4 h-4"/>Cambiar Filtros</button>
           <button onClick={descargarCSV} className="px-3 py-1.5 border rounded text-sm hover:bg-gray-50 flex items-center gap-1"><Download className="w-4 h-4"/>Descargar</button>
@@ -7091,7 +7042,7 @@ function Cupones() {
 
   return (
     <div className="p-6">
-      <h2 className="text-xl font-bold text-gray-900 mb-4">Cupones de Tarjeta</h2>
+      <h2 className="text-2xl font-bold text-amber-900 mb-4">Cupones de Tarjeta</h2>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <div className="relative flex-1 min-w-[200px]"><Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400"/><input placeholder="Buscar por tarjeta, cupón, cliente..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} className="w-full pl-8 h-9 border rounded text-sm" /></div>
         <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={sinCancelados} onChange={e=>setSinCancelados(e.target.checked)} className="rounded"/>Sin Cancelados</label>
@@ -7272,7 +7223,7 @@ function ConciliacionTarjetas() {
       <div className="p-6">
         <button onClick={()=>{setDetalle(null); cargarLista()}} className="text-sm text-indigo-600 hover:underline mb-4 flex items-center gap-1"><X className="w-3 h-3"/>Volver al listado</button>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-gray-900">{detalle.numero}</h2>
+          <h2 className="text-2xl font-bold text-amber-900">{detalle.numero}</h2>
           <div className="flex gap-2">
             {detalle.estado==='borrador' && (
               <>
@@ -7426,7 +7377,7 @@ function ConciliacionTarjetas() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold text-gray-900">Conciliación de Tarjetas</h2>
+        <h2 className="text-2xl font-bold text-amber-900">Conciliación de Tarjetas</h2>
         <button onClick={nuevaConciliacion} className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4"/>Nueva Conciliación</button>
       </div>
       {lista.length === 0 ? (
@@ -7453,6 +7404,982 @@ function ConciliacionTarjetas() {
           </table>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Bancos Config ──────────────────────────────────────────────────────────
+
+function ListaBancos() {
+  const [bancos, setBancos] = useState<Banco[]>([])
+  const [loading, setLoading] = useState(true)
+  const [mostrarModal, setMostrarModal] = useState(false)
+  const [editando, setEditando] = useState<Banco | null>(null)
+  const [form, setForm] = useState({ codigo: '', nombre: '', direccion: '', telefono: '', email: '', activo: true })
+
+  const cargar = async () => {
+    setLoading(true)
+    const supabase = createClient()
+    const { data } = await supabase.from('bancos').select('*').order('nombre')
+    if (data) setBancos(data)
+    setLoading(false)
+  }
+
+  useEffect(() => { cargar() }, [])
+
+  const abrirNuevo = () => { setEditando(null); setForm({ codigo: '', nombre: '', direccion: '', telefono: '', email: '', activo: true }); setMostrarModal(true) }
+  const abrirEditar = (b: Banco) => { setEditando(b); setForm({ codigo: b.codigo, nombre: b.nombre, direccion: b.direccion || '', telefono: b.telefono || '', email: b.email || '', activo: b.activo }); setMostrarModal(true) }
+
+  const guardar = async () => {
+    if (!form.codigo || !form.nombre) return
+    const supabase = createClient()
+    const datos = { ...form, direccion: form.direccion || null, telefono: form.telefono || null, email: form.email || null }
+    if (editando) { await supabase.from('bancos').update(datos).eq('id', editando.id) }
+    else { await supabase.from('bancos').insert(datos) }
+    setMostrarModal(false); await cargar()
+  }
+
+  const toggleActivo = async (b: Banco) => {
+    const supabase = createClient()
+    await supabase.from('bancos').update({ activo: !b.activo }).eq('id', b.id)
+    await cargar()
+  }
+
+  return (
+    <div>
+      <div className="flex justify-end mb-4">
+        <button onClick={abrirNuevo} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Banco</button>
+      </div>
+      {loading ? <div className="text-center py-12 text-gray-500">Cargando...</div> : (
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-gray-50 border-b-2 border-gray-200">
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Código</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Nombre</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Dirección</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Teléfono</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Email</th>
+                <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Activo</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bancos.map(b => (
+                <tr key={b.id} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="py-3 px-4 font-mono text-sm text-gray-600">{b.codigo}</td>
+                  <td className="py-3 px-4 font-medium">{b.nombre}</td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{b.direccion || '—'}</td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{b.telefono || '—'}</td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{b.email || '—'}</td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${b.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{b.activo ? 'Activo' : 'Inactivo'}</span>
+                  </td>
+                  <td className="py-3 px-4">
+                    <button onClick={() => abrirEditar(b)} className="text-indigo-600 hover:text-indigo-800 text-sm mr-3">Editar</button>
+                    <button onClick={() => toggleActivo(b)} className="text-gray-500 hover:text-gray-700 text-sm">{b.activo ? 'Desactivar' : 'Activar'}</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {bancos.length === 0 && <div className="text-center py-12 text-gray-500">No hay bancos configurados</div>}
+        </div>
+      )}
+
+      {mostrarModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">{editando ? 'Editar Banco' : 'Nuevo Banco'}</h3>
+              <button onClick={() => setMostrarModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Código BCRA *</label>
+                  <input value={form.codigo} onChange={e => setForm(f => ({ ...f, codigo: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" placeholder="ej: 285" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Nombre *</label>
+                  <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Dirección</label>
+                <input value={form.direccion} onChange={e => setForm(f => ({ ...f, direccion: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Teléfono</label>
+                  <input value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                  <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={form.activo} onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))} className="rounded" />
+                <span className="text-sm">Activo</span>
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button onClick={() => setMostrarModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50">Cancelar</button>
+              <button onClick={guardar} className="px-4 py-2 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800">Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ListaCuentasBancarias() {
+  const [cuentas, setCuentas] = useState<(CuentaBancaria & { banco_id?: string; disponible_facturas_credito?: boolean; direccion_propietario?: string })[]>([])
+  const [bancosDisp, setBancosDisp] = useState<Banco[]>([])
+  const [loading, setLoading] = useState(true)
+  const [vista, setVista] = useState<'lista' | 'detalle'>('lista')
+  const [editando, setEditando] = useState<any>(null)
+  const [chequeras, setChequeras] = useState<Chequera[]>([])
+  const [form, setForm] = useState({ banco_id: '', numero_cuenta: '', cbu: '', tipo_cuenta: 'cuenta_corriente', moneda: 'ARS', propietario: '', direccion_propietario: '', diario_nombre: '', disponible_facturas_credito: false, activo: true })
+  const [guardando, setGuardando] = useState(false)
+  const [formChequera, setFormChequera] = useState({ nombre: '', tipo: 'diferidos' as 'diferidos' | 'corrientes', desde_numero: 0, hasta_numero: 9999999, proximo_numero: 1 })
+
+  const cargar = async () => {
+    setLoading(true)
+    const supabase = createClient()
+    const [ctRes, bRes] = await Promise.all([
+      supabase.from('cuentas_bancarias').select('*').order('banco_nombre'),
+      supabase.from('bancos').select('*').eq('activo', true).order('nombre'),
+    ])
+    setCuentas(ctRes.data || [])
+    setBancosDisp(bRes.data || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { cargar() }, [])
+
+  const cargarChequeras = async (cuentaId: string) => {
+    const supabase = createClient()
+    const { data } = await supabase.from('chequeras').select('*').eq('cuenta_bancaria_id', cuentaId).order('nombre')
+    setChequeras(data || [])
+  }
+
+  const nueva = () => {
+    setEditando(null); setChequeras([])
+    setForm({ banco_id: '', numero_cuenta: '', cbu: '', tipo_cuenta: 'cuenta_corriente', moneda: 'ARS', propietario: '', direccion_propietario: '', diario_nombre: '', disponible_facturas_credito: false, activo: true })
+    setVista('detalle')
+  }
+
+  const abrirDetalle = async (c: any) => {
+    setEditando(c)
+    setForm({
+      banco_id: c.banco_id || '', numero_cuenta: c.numero_cuenta, cbu: c.cbu || '',
+      tipo_cuenta: c.tipo_cuenta, moneda: c.moneda, propietario: c.propietario || '',
+      direccion_propietario: c.direccion_propietario || '', diario_nombre: c.diario_nombre || '',
+      disponible_facturas_credito: c.disponible_facturas_credito || false, activo: c.activo,
+    })
+    await cargarChequeras(c.id)
+    setVista('detalle')
+  }
+
+  const guardar = async () => {
+    if (!form.numero_cuenta) return
+    setGuardando(true)
+    const supabase = createClient()
+    const banco = bancosDisp.find(b => b.id === form.banco_id)
+    const datos = { ...form, banco_nombre: banco?.nombre || form.propietario || 'Sin banco', cbu: form.cbu || null, direccion_propietario: form.direccion_propietario || null }
+    if (editando) { await supabase.from('cuentas_bancarias').update(datos).eq('id', editando.id) }
+    else { await supabase.from('cuentas_bancarias').insert(datos) }
+    setGuardando(false); await cargar(); setVista('lista')
+  }
+
+  const toggleActivo = async (c: CuentaBancaria) => {
+    const supabase = createClient()
+    await supabase.from('cuentas_bancarias').update({ activo: !c.activo }).eq('id', c.id)
+    await cargar()
+  }
+
+  const agregarChequera = async () => {
+    if (!editando || !formChequera.nombre) return
+    const supabase = createClient()
+    await supabase.from('chequeras').insert({ cuenta_bancaria_id: editando.id, ...formChequera })
+    setFormChequera({ nombre: '', tipo: 'diferidos', desde_numero: 0, hasta_numero: 9999999, proximo_numero: 1 })
+    await cargarChequeras(editando.id)
+  }
+
+  const eliminarChequera = async (id: string) => {
+    const supabase = createClient()
+    await supabase.from('chequeras').delete().eq('id', id)
+    if (editando) await cargarChequeras(editando.id)
+  }
+
+  if (vista === 'detalle') {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setVista('lista')} className="text-sm text-indigo-700 hover:text-indigo-900 font-medium">← Cuentas</button>
+            <h2 className="text-2xl font-bold text-amber-900">{editando ? `Cuenta ${editando.numero_cuenta}` : 'Nueva Cuenta Bancaria'}</h2>
+          </div>
+          <button onClick={guardar} disabled={guardando} className="px-4 py-2 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800">{guardando ? 'Guardando...' : 'Guardar'}</button>
+        </div>
+        <div className="bg-white rounded-lg shadow-sm p-6 space-y-6">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3 border-b pb-2">Información del Banco</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Banco</label>
+                <select value={form.banco_id} onChange={e => setForm(f => ({ ...f, banco_id: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                  <option value="">Seleccionar banco...</option>
+                  {bancosDisp.map(b => <option key={b.id} value={b.id}>{b.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">N° de Cuenta *</label>
+                <input value={form.numero_cuenta} onChange={e => setForm(f => ({ ...f, numero_cuenta: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">CBU</label>
+                <input value={form.cbu} onChange={e => setForm(f => ({ ...f, cbu: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de Cuenta</label>
+                <select value={form.tipo_cuenta} onChange={e => setForm(f => ({ ...f, tipo_cuenta: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                  <option value="cuenta_corriente">Cuenta Corriente</option>
+                  <option value="caja_ahorro">Caja de Ahorro</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Moneda</label>
+                <select value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                  <option value="ARS">ARS</option>
+                  <option value="USD">USD</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3 border-b pb-2">Propietario de la Cuenta</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Propietario</label>
+                <input value={form.propietario} onChange={e => setForm(f => ({ ...f, propietario: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Dirección</label>
+                <input value={form.direccion_propietario} onChange={e => setForm(f => ({ ...f, direccion_propietario: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3 border-b pb-2">Información Contable</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Diario Contable</label>
+                <input value={form.diario_nombre} onChange={e => setForm(f => ({ ...f, diario_nombre: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" placeholder="ej: Banco Macro CC (ARS)" />
+              </div>
+              <div className="flex items-end">
+                <label className="flex items-center gap-2 p-2">
+                  <input type="checkbox" checked={form.disponible_facturas_credito} onChange={e => setForm(f => ({ ...f, disponible_facturas_credito: e.target.checked }))} className="rounded" />
+                  <span className="text-sm">Disponible en Facturas de Crédito</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {editando && form.moneda === 'ARS' && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 border-b pb-2">Chequeras</h3>
+              <div className="flex gap-2 mb-3 items-end">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500">Nombre</label>
+                  <input value={formChequera.nombre} onChange={e => setFormChequera(f => ({ ...f, nombre: e.target.value }))} className="w-full border rounded px-2 py-1.5 text-sm" />
+                </div>
+                <div className="w-36">
+                  <label className="text-xs text-gray-500">Tipo</label>
+                  <select value={formChequera.tipo} onChange={e => setFormChequera(f => ({ ...f, tipo: e.target.value as 'diferidos' | 'corrientes' }))} className="w-full border rounded px-2 py-1.5 text-sm">
+                    <option value="diferidos">Diferidos</option>
+                    <option value="corrientes">Corrientes</option>
+                  </select>
+                </div>
+                <div className="w-24">
+                  <label className="text-xs text-gray-500">Desde N°</label>
+                  <input type="number" value={formChequera.desde_numero} onChange={e => setFormChequera(f => ({ ...f, desde_numero: Number(e.target.value) }))} className="w-full border rounded px-2 py-1.5 text-sm" />
+                </div>
+                <div className="w-24">
+                  <label className="text-xs text-gray-500">Hasta N°</label>
+                  <input type="number" value={formChequera.hasta_numero} onChange={e => setFormChequera(f => ({ ...f, hasta_numero: Number(e.target.value) }))} className="w-full border rounded px-2 py-1.5 text-sm" />
+                </div>
+                <div className="w-24">
+                  <label className="text-xs text-gray-500">Próx. N°</label>
+                  <input type="number" value={formChequera.proximo_numero} onChange={e => setFormChequera(f => ({ ...f, proximo_numero: Number(e.target.value) }))} className="w-full border rounded px-2 py-1.5 text-sm" />
+                </div>
+                <button onClick={agregarChequera} className="px-3 py-1.5 bg-indigo-900 text-white rounded text-sm hover:bg-indigo-800 flex items-center gap-1"><Plus className="w-4 h-4" />Agregar</button>
+              </div>
+              {chequeras.length === 0 ? <p className="text-center py-6 text-gray-400 text-sm">No hay chequeras</p> : (
+                <div className="overflow-x-auto border rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b text-left text-xs text-gray-500">
+                        <th className="py-2 px-3">Nombre</th>
+                        <th className="px-3">Tipo</th>
+                        <th className="px-3 text-right">Desde</th>
+                        <th className="px-3 text-right">Hasta</th>
+                        <th className="px-3 text-right">Próximo</th>
+                        <th className="px-3 text-center">Estado</th>
+                        <th className="px-3"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {chequeras.map(ch => (
+                        <tr key={ch.id} className="border-b">
+                          <td className="py-1.5 px-3 font-medium">{ch.nombre}</td>
+                          <td className="px-3">{ch.tipo === 'diferidos' ? 'Diferidos' : 'Corrientes'}</td>
+                          <td className="px-3 text-right font-mono">{ch.desde_numero}</td>
+                          <td className="px-3 text-right font-mono">{ch.hasta_numero}</td>
+                          <td className="px-3 text-right font-mono">{ch.proximo_numero}</td>
+                          <td className="px-3 text-center">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ch.estado === 'en_uso' ? 'bg-green-100 text-green-700' : ch.estado === 'agotada' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                              {ch.estado === 'en_uso' ? 'En uso' : ch.estado === 'agotada' ? 'Agotada' : 'Anulada'}
+                            </span>
+                          </td>
+                          <td className="px-3"><button onClick={() => eliminarChequera(ch.id)} className="text-red-500 hover:text-red-700"><Trash2 className="w-3.5 h-3.5" /></button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div className="flex justify-end mb-4">
+        <button onClick={nueva} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nueva Cuenta Bancaria</button>
+      </div>
+      {loading ? <div className="text-center py-12 text-gray-500">Cargando...</div> : (
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-gray-50 border-b-2 border-gray-200">
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">N° Cuenta</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Banco</th>
+                <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Moneda</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Tipo</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Propietario</th>
+                <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Activo</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cuentas.map(c => (
+                <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => abrirDetalle(c)}>
+                  <td className="py-3 px-4 font-mono text-sm text-indigo-900 font-medium">{c.numero_cuenta}</td>
+                  <td className="py-3 px-4">{c.banco_nombre}</td>
+                  <td className="py-3 px-4 text-center"><span className="px-2 py-0.5 rounded bg-gray-100 text-xs font-semibold">{c.moneda}</span></td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{c.tipo_cuenta === 'cuenta_corriente' ? 'Cuenta Corriente' : 'Caja de Ahorro'}</td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{c.propietario || '—'}</td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${c.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{c.activo ? 'Activo' : 'Inactivo'}</span>
+                  </td>
+                  <td className="py-3 px-4" onClick={e => e.stopPropagation()}>
+                    <button onClick={() => abrirDetalle(c)} className="text-indigo-600 hover:text-indigo-800 text-sm mr-3">Editar</button>
+                    <button onClick={() => toggleActivo(c)} className="text-gray-500 hover:text-gray-700 text-sm">{c.activo ? 'Desactivar' : 'Activar'}</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {cuentas.length === 0 && <div className="text-center py-12 text-gray-500">No hay cuentas bancarias</div>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ListaTiposMovimiento() {
+  const [tipos, setTipos] = useState<TipoMovimientoBancario[]>([])
+  const [loading, setLoading] = useState(true)
+  const [mostrarModal, setMostrarModal] = useState(false)
+  const [editando, setEditando] = useState<TipoMovimientoBancario | null>(null)
+  const [form, setForm] = useState({ nombre: '', codigo_causal: '', emite_cheques_diferidos: false, emite_cheques_corrientes: false, disponible_en_pagos: false, disponible_en_cobros: false, disponible_en_finanzas: true, activo: true })
+
+  const cargar = async () => {
+    setLoading(true)
+    const supabase = createClient()
+    const { data } = await supabase.from('tipos_movimiento_bancario').select('*').order('nombre')
+    if (data) setTipos(data)
+    setLoading(false)
+  }
+
+  useEffect(() => { cargar() }, [])
+
+  const abrirNuevo = () => {
+    setEditando(null)
+    setForm({ nombre: '', codigo_causal: '', emite_cheques_diferidos: false, emite_cheques_corrientes: false, disponible_en_pagos: false, disponible_en_cobros: false, disponible_en_finanzas: true, activo: true })
+    setMostrarModal(true)
+  }
+
+  const abrirEditar = (t: TipoMovimientoBancario) => {
+    setEditando(t)
+    setForm({ nombre: t.nombre, codigo_causal: t.codigo_causal, emite_cheques_diferidos: t.emite_cheques_diferidos, emite_cheques_corrientes: t.emite_cheques_corrientes, disponible_en_pagos: t.disponible_en_pagos, disponible_en_cobros: t.disponible_en_cobros, disponible_en_finanzas: t.disponible_en_finanzas, activo: t.activo })
+    setMostrarModal(true)
+  }
+
+  const guardar = async () => {
+    if (!form.nombre || !form.codigo_causal) return
+    const supabase = createClient()
+    if (editando) { await supabase.from('tipos_movimiento_bancario').update(form).eq('id', editando.id) }
+    else { await supabase.from('tipos_movimiento_bancario').insert(form) }
+    setMostrarModal(false); await cargar()
+  }
+
+  const toggleActivo = async (t: TipoMovimientoBancario) => {
+    const supabase = createClient()
+    await supabase.from('tipos_movimiento_bancario').update({ activo: !t.activo }).eq('id', t.id)
+    await cargar()
+  }
+
+  const checkIcon = (val: boolean) => val ? <span className="text-green-600 font-bold">✓</span> : <span className="text-gray-300">—</span>
+
+  return (
+    <div>
+      <div className="flex justify-end mb-4">
+        <button onClick={abrirNuevo} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Tipo</button>
+      </div>
+      {loading ? <div className="text-center py-12 text-gray-500">Cargando...</div> : (
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-gray-50 border-b-2 border-gray-200">
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Nombre</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Código</th>
+                <th className="text-center py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Chq. Dif.</th>
+                <th className="text-center py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Chq. Corr.</th>
+                <th className="text-center py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Pagos</th>
+                <th className="text-center py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Cobros</th>
+                <th className="text-center py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Finanzas</th>
+                <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Activo</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tipos.map(t => (
+                <tr key={t.id} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="py-3 px-4 font-medium">{t.nombre}</td>
+                  <td className="py-3 px-4 font-mono text-sm text-gray-600">{t.codigo_causal}</td>
+                  <td className="py-3 px-3 text-center">{checkIcon(t.emite_cheques_diferidos)}</td>
+                  <td className="py-3 px-3 text-center">{checkIcon(t.emite_cheques_corrientes)}</td>
+                  <td className="py-3 px-3 text-center">{checkIcon(t.disponible_en_pagos)}</td>
+                  <td className="py-3 px-3 text-center">{checkIcon(t.disponible_en_cobros)}</td>
+                  <td className="py-3 px-3 text-center">{checkIcon(t.disponible_en_finanzas)}</td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${t.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{t.activo ? 'Activo' : 'Inactivo'}</span>
+                  </td>
+                  <td className="py-3 px-4">
+                    <button onClick={() => abrirEditar(t)} className="text-indigo-600 hover:text-indigo-800 text-sm mr-3">Editar</button>
+                    <button onClick={() => toggleActivo(t)} className="text-gray-500 hover:text-gray-700 text-sm">{t.activo ? 'Desactivar' : 'Activar'}</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {tipos.length === 0 && <div className="text-center py-12 text-gray-500">No hay tipos de movimiento</div>}
+        </div>
+      )}
+
+      {mostrarModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">{editando ? 'Editar Tipo de Movimiento' : 'Nuevo Tipo de Movimiento'}</h3>
+              <button onClick={() => setMostrarModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Nombre *</label>
+                  <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Código Causal *</label>
+                  <input value={form.codigo_causal} onChange={e => setForm(f => ({ ...f, codigo_causal: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" placeholder="ej: TR, CHQD" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center gap-2"><input type="checkbox" checked={form.emite_cheques_diferidos} onChange={e => setForm(f => ({ ...f, emite_cheques_diferidos: e.target.checked }))} className="rounded" /><span className="text-sm">Emite Cheques Diferidos</span></label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={form.emite_cheques_corrientes} onChange={e => setForm(f => ({ ...f, emite_cheques_corrientes: e.target.checked }))} className="rounded" /><span className="text-sm">Emite Cheques Corrientes</span></label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={form.disponible_en_pagos} onChange={e => setForm(f => ({ ...f, disponible_en_pagos: e.target.checked }))} className="rounded" /><span className="text-sm">Disponible en Pagos</span></label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={form.disponible_en_cobros} onChange={e => setForm(f => ({ ...f, disponible_en_cobros: e.target.checked }))} className="rounded" /><span className="text-sm">Disponible en Cobros</span></label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={form.disponible_en_finanzas} onChange={e => setForm(f => ({ ...f, disponible_en_finanzas: e.target.checked }))} className="rounded" /><span className="text-sm">Disponible en Finanzas</span></label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={form.activo} onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))} className="rounded" /><span className="text-sm">Activo</span></label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button onClick={() => setMostrarModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50">Cancelar</button>
+              <button onClick={guardar} className="px-4 py-2 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800">Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BancosConfig() {
+  const [subVista, setSubVista] = useState<'bancos' | 'cuentas' | 'tipos'>('cuentas')
+
+  return (
+    <div>
+      <div className="mb-6">
+        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Configuración</p>
+        <h1 className="text-2xl font-bold text-amber-900">Bancos</h1>
+      </div>
+
+      <div className="flex gap-1 bg-white border border-gray-200 rounded-md p-1 mb-6 w-fit">
+        {([
+          { id: 'cuentas' as const, label: 'Cuentas Bancarias' },
+          { id: 'bancos' as const, label: 'Bancos' },
+          { id: 'tipos' as const, label: 'Tipos de Movimiento' },
+        ]).map(item => (
+          <button key={item.id} onClick={() => setSubVista(item.id)}
+            className={`px-4 py-2 text-sm rounded transition-colors ${subVista === item.id ? 'bg-indigo-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {subVista === 'bancos' && <ListaBancos />}
+      {subVista === 'cuentas' && <ListaCuentasBancarias />}
+      {subVista === 'tipos' && <ListaTiposMovimiento />}
+    </div>
+  )
+}
+
+// ─── Conceptos ──────────────────────────────────────────────────────────────
+
+function Conceptos() {
+  const [conceptos, setConceptos] = useState<ConceptoRegistroCaja[]>([])
+  const [loading, setLoading] = useState(true)
+  const [mostrarModal, setMostrarModal] = useState(false)
+  const [editando, setEditando] = useState<ConceptoRegistroCaja | null>(null)
+
+  const cargar = async () => {
+    setLoading(true)
+    const supabase = createClient()
+    const { data } = await supabase.from('conceptos_registro_caja').select('*').order('nombre')
+    if (data) setConceptos(data)
+    setLoading(false)
+  }
+
+  useEffect(() => { cargar() }, [])
+
+  const toggleActivo = async (c: ConceptoRegistroCaja) => {
+    const supabase = createClient()
+    await supabase.from('conceptos_registro_caja').update({ activo: !c.activo }).eq('id', c.id)
+    await cargar()
+  }
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Configuración</p>
+          <h1 className="text-2xl font-bold text-amber-900">Conceptos</h1>
+        </div>
+        <button onClick={() => { setEditando(null); setMostrarModal(true) }} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Concepto</button>
+      </div>
+
+      {loading ? <div className="text-center py-12 text-gray-500">Cargando...</div> : (
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-gray-50 border-b-2 border-gray-200">
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Código</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Nombre</th>
+                <th className="text-center py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Aj. Caja</th>
+                <th className="text-center py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Aj. Banco</th>
+                <th className="text-center py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Reg. Caja</th>
+                <th className="text-center py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Reg. Banco</th>
+                <th className="text-center py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Transf.</th>
+                <th className="text-center py-3 px-3 text-xs font-semibold text-gray-500 uppercase">Req. Obs.</th>
+                <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Activo</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {conceptos.map(c => (
+                <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="py-3 px-4 font-mono text-sm text-gray-600">{c.codigo}</td>
+                  <td className="py-3 px-4 font-medium">{c.nombre}</td>
+                  <td className="py-3 px-3 text-center">{c.visible_en_ajuste_cajas ? <span className="text-green-600 font-bold">✓</span> : <span className="text-gray-300">—</span>}</td>
+                  <td className="py-3 px-3 text-center">{c.visible_en_ajuste_banco ? <span className="text-green-600 font-bold">✓</span> : <span className="text-gray-300">—</span>}</td>
+                  <td className="py-3 px-3 text-center">{c.visible_en_caja ? <span className="text-green-600 font-bold">✓</span> : <span className="text-gray-300">—</span>}</td>
+                  <td className="py-3 px-3 text-center">{c.visible_en_banco ? <span className="text-green-600 font-bold">✓</span> : <span className="text-gray-300">—</span>}</td>
+                  <td className="py-3 px-3 text-center">{c.visible_en_transferencias ? <span className="text-green-600 font-bold">✓</span> : <span className="text-gray-300">—</span>}</td>
+                  <td className="py-3 px-3 text-center">{c.requiere_observacion ? <span className="text-green-600 font-bold">✓</span> : <span className="text-gray-300">—</span>}</td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${c.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{c.activo ? 'Activo' : 'Inactivo'}</span>
+                  </td>
+                  <td className="py-3 px-4">
+                    <button onClick={() => { setEditando(c); setMostrarModal(true) }} className="text-indigo-600 hover:text-indigo-800 text-sm mr-3">Editar</button>
+                    <button onClick={() => toggleActivo(c)} className="text-gray-500 hover:text-gray-700 text-sm">{c.activo ? 'Desactivar' : 'Activar'}</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {conceptos.length === 0 && <div className="text-center py-12 text-gray-500">No hay conceptos configurados</div>}
+        </div>
+      )}
+
+      {mostrarModal && (
+        <ModalConcepto
+          concepto={editando}
+          onGuardar={async (datos) => {
+            const supabase = createClient()
+            if (editando) { await supabase.from('conceptos_registro_caja').update(datos).eq('id', editando.id) }
+            else { await supabase.from('conceptos_registro_caja').insert(datos) }
+            setMostrarModal(false); await cargar()
+          }}
+          onCerrar={() => setMostrarModal(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+function ModalConcepto({ concepto, onGuardar, onCerrar }: { concepto: ConceptoRegistroCaja | null; onGuardar: (datos: any) => Promise<void>; onCerrar: () => void }) {
+  const [form, setForm] = useState({
+    codigo: concepto?.codigo || '',
+    nombre: concepto?.nombre || '',
+    cuenta_contable_ingresos: concepto?.cuenta_contable_ingresos || '',
+    cuenta_contable_egresos: concepto?.cuenta_contable_egresos || '',
+    visible_en_ajuste_cajas: concepto?.visible_en_ajuste_cajas || false,
+    visible_en_ajuste_banco: concepto?.visible_en_ajuste_banco || false,
+    visible_en_caja: concepto?.visible_en_caja || false,
+    visible_en_banco: concepto?.visible_en_banco || false,
+    visible_en_transferencias: concepto?.visible_en_transferencias || false,
+    visible_en_cancelaciones: concepto?.visible_en_cancelaciones || false,
+    requiere_observacion: concepto?.requiere_observacion || false,
+    activo: concepto?.activo ?? true,
+  })
+  const [guardando, setGuardando] = useState(false)
+
+  const guardar = async () => {
+    if (!form.codigo || !form.nombre) return
+    setGuardando(true)
+    await onGuardar({ ...form, cuenta_contable_ingresos: form.cuenta_contable_ingresos || null, cuenta_contable_egresos: form.cuenta_contable_egresos || null })
+    setGuardando(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">{concepto ? 'Editar Concepto' : 'Nuevo Concepto'}</h3>
+          <button onClick={onCerrar} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Código *</label>
+              <input value={form.codigo} onChange={e => setForm(f => ({ ...f, codigo: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" placeholder="ej: COM, DifCaja" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Nombre *</label>
+              <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta Contable de Ingresos</label>
+              <input value={form.cuenta_contable_ingresos} onChange={e => setForm(f => ({ ...f, cuenta_contable_ingresos: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta Contable de Egresos</label>
+              <input value={form.cuenta_contable_egresos} onChange={e => setForm(f => ({ ...f, cuenta_contable_egresos: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Visible en</p>
+            <div className="grid grid-cols-3 gap-3">
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.visible_en_ajuste_cajas} onChange={e => setForm(f => ({ ...f, visible_en_ajuste_cajas: e.target.checked }))} className="rounded" /><span className="text-sm">Ajuste de Cajas</span></label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.visible_en_ajuste_banco} onChange={e => setForm(f => ({ ...f, visible_en_ajuste_banco: e.target.checked }))} className="rounded" /><span className="text-sm">Ajuste de Banco</span></label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.visible_en_caja} onChange={e => setForm(f => ({ ...f, visible_en_caja: e.target.checked }))} className="rounded" /><span className="text-sm">Registros de Caja</span></label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.visible_en_banco} onChange={e => setForm(f => ({ ...f, visible_en_banco: e.target.checked }))} className="rounded" /><span className="text-sm">Registros de Banco</span></label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.visible_en_transferencias} onChange={e => setForm(f => ({ ...f, visible_en_transferencias: e.target.checked }))} className="rounded" /><span className="text-sm">Transferencias entre Cajas</span></label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.visible_en_cancelaciones} onChange={e => setForm(f => ({ ...f, visible_en_cancelaciones: e.target.checked }))} className="rounded" /><span className="text-sm">Cancelaciones Auto.</span></label>
+            </div>
+          </div>
+
+          <div className="flex gap-6">
+            <label className="flex items-center gap-2"><input type="checkbox" checked={form.requiere_observacion} onChange={e => setForm(f => ({ ...f, requiere_observacion: e.target.checked }))} className="rounded" /><span className="text-sm">Requiere Observación</span></label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={form.activo} onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))} className="rounded" /><span className="text-sm">Activo</span></label>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 mt-6">
+          <button onClick={onCerrar} className="px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50">Cancelar</button>
+          <button onClick={guardar} disabled={guardando} className="px-4 py-2 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800">{guardando ? 'Guardando...' : 'Guardar'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Tipos de Préstamos ─────────────────────────────────────────────────────
+
+function TiposPrestamos() {
+  const [tipos, setTipos] = useState<TipoPrestamo[]>([])
+  const [loading, setLoading] = useState(true)
+  const [mostrarModal, setMostrarModal] = useState(false)
+  const [editando, setEditando] = useState<TipoPrestamo | null>(null)
+
+  const cargar = async () => {
+    setLoading(true)
+    const supabase = createClient()
+    const { data } = await supabase.from('tipos_prestamo').select('*').order('nombre')
+    if (data) setTipos(data)
+    setLoading(false)
+  }
+
+  useEffect(() => { cargar() }, [])
+
+  const toggleActivo = async (t: TipoPrestamo) => {
+    const supabase = createClient()
+    await supabase.from('tipos_prestamo').update({ activo: !t.activo }).eq('id', t.id)
+    await cargar()
+  }
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Configuración</p>
+          <h1 className="text-2xl font-bold text-amber-900">Tipos de Préstamos</h1>
+        </div>
+        <button onClick={() => { setEditando(null); setMostrarModal(true) }} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Tipo</button>
+      </div>
+
+      {loading ? <div className="text-center py-12 text-gray-500">Cargando...</div> : (
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-gray-50 border-b-2 border-gray-200">
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Nombre</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cuenta Préstamo</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cuenta Intereses</th>
+                <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Activo</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tipos.map(t => (
+                <tr key={t.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => { setEditando(t); setMostrarModal(true) }}>
+                  <td className="py-3 px-4 font-medium text-indigo-900">{t.nombre}</td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{t.cuenta_prestamo || '—'}</td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{t.cuenta_intereses || '—'}</td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${t.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{t.activo ? 'Activo' : 'Inactivo'}</span>
+                  </td>
+                  <td className="py-3 px-4" onClick={e => e.stopPropagation()}>
+                    <button onClick={() => { setEditando(t); setMostrarModal(true) }} className="text-indigo-600 hover:text-indigo-800 text-sm mr-3">Editar</button>
+                    <button onClick={() => toggleActivo(t)} className="text-gray-500 hover:text-gray-700 text-sm">{t.activo ? 'Desactivar' : 'Activar'}</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {tipos.length === 0 && <div className="text-center py-12 text-gray-500">No hay tipos de préstamo configurados</div>}
+        </div>
+      )}
+
+      {mostrarModal && (
+        <ModalTipoPrestamo
+          tipo={editando}
+          onGuardar={async (datos) => {
+            const supabase = createClient()
+            if (editando) { await supabase.from('tipos_prestamo').update(datos).eq('id', editando.id) }
+            else { await supabase.from('tipos_prestamo').insert(datos) }
+            setMostrarModal(false); await cargar()
+          }}
+          onCerrar={() => setMostrarModal(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+function ModalTipoPrestamo({ tipo, onGuardar, onCerrar }: { tipo: TipoPrestamo | null; onGuardar: (datos: any) => Promise<void>; onCerrar: () => void }) {
+  const [form, setForm] = useState({
+    nombre: tipo?.nombre || '',
+    cuenta_prestamo: tipo?.cuenta_prestamo || '',
+    cuenta_intereses: tipo?.cuenta_intereses || '',
+    cuenta_intereses_devengar: tipo?.cuenta_intereses_devengar || '',
+    cuenta_iva_devengar: tipo?.cuenta_iva_devengar || '',
+    cuenta_percepciones_devengar: tipo?.cuenta_percepciones_devengar || '',
+    cuenta_refinanciacion: tipo?.cuenta_refinanciacion || '',
+    cuenta_preexistente: tipo?.cuenta_preexistente || '',
+    concepto_liquidacion: tipo?.concepto_liquidacion || '',
+    activo: tipo?.activo ?? true,
+  })
+  const [guardando, setGuardando] = useState(false)
+
+  const guardar = async () => {
+    if (!form.nombre) return
+    setGuardando(true)
+    const datos = {
+      ...form,
+      cuenta_prestamo: form.cuenta_prestamo || null,
+      cuenta_intereses: form.cuenta_intereses || null,
+      cuenta_intereses_devengar: form.cuenta_intereses_devengar || null,
+      cuenta_iva_devengar: form.cuenta_iva_devengar || null,
+      cuenta_percepciones_devengar: form.cuenta_percepciones_devengar || null,
+      cuenta_refinanciacion: form.cuenta_refinanciacion || null,
+      cuenta_preexistente: form.cuenta_preexistente || null,
+      concepto_liquidacion: form.concepto_liquidacion || null,
+    }
+    await onGuardar(datos)
+    setGuardando(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">{tipo ? 'Editar Tipo de Préstamo' : 'Nuevo Tipo de Préstamo'}</h3>
+          <button onClick={onCerrar} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Nombre *</label>
+            <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" placeholder="ej: SGR, Bancario" />
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Cuentas Contables</p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta Préstamo</label>
+                <input value={form.cuenta_prestamo} onChange={e => setForm(f => ({ ...f, cuenta_prestamo: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" placeholder="ej: 21010705 Préstamo SGR" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta de Intereses</label>
+                <input value={form.cuenta_intereses} onChange={e => setForm(f => ({ ...f, cuenta_intereses: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" placeholder="ej: 62010103 Intereses Préstamos Bancarios Recibidos" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta de Intereses a Devengar</label>
+                <input value={form.cuenta_intereses_devengar} onChange={e => setForm(f => ({ ...f, cuenta_intereses_devengar: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" placeholder="ej: 11040403 Intereses Bancarios a Devengar" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta de IVA a Devengar</label>
+                <input value={form.cuenta_iva_devengar} onChange={e => setForm(f => ({ ...f, cuenta_iva_devengar: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" placeholder="ej: 11040101 I.V.A. Crédito Fiscal" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta de Percepciones a Devengar</label>
+                <input value={form.cuenta_percepciones_devengar} onChange={e => setForm(f => ({ ...f, cuenta_percepciones_devengar: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" placeholder="ej: 11040102 I.V.A. Percepciones" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta para Saldos Cancelados / Refinanciación</label>
+                <input value={form.cuenta_refinanciacion} onChange={e => setForm(f => ({ ...f, cuenta_refinanciacion: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" placeholder="ej: 99999998 Cuenta Puente para Movimientos Bancarios" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta para Préstamos Preexistentes</label>
+                <input value={form.cuenta_preexistente} onChange={e => setForm(f => ({ ...f, cuenta_preexistente: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" placeholder="ej: 21010704 Préstamos Bancarios" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Concepto por Defecto en Liquidación</label>
+                <input value={form.concepto_liquidacion} onChange={e => setForm(f => ({ ...f, concepto_liquidacion: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
+              </div>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={form.activo} onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))} className="rounded" />
+            <span className="text-sm">Activo</span>
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 mt-6">
+          <button onClick={onCerrar} className="px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50">Cancelar</button>
+          <button onClick={guardar} disabled={guardando} className="px-4 py-2 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800">{guardando ? 'Guardando...' : 'Guardar'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── FinanzasListSection (wrapper reutilizable con OdooFilterBar) ────────────
+
+function FinanzasListSection<T extends object>({
+  title, subtitle, moduleName, data, searchFields, filterFields, actions, children, loading,
+}: {
+  title: string
+  subtitle?: string
+  moduleName: string
+  data: T[]
+  searchFields: (keyof T)[]
+  filterFields: { field: keyof T; label: string }[]
+  actions?: React.ReactNode
+  children: (filtered: T[]) => React.ReactNode
+  loading?: boolean
+}) {
+  const [search, setSearch] = useState("")
+  const [activeFilters, setActiveFilters] = useState<FilterOption[]>([])
+  const [activeGroupBy, setActiveGroupBy] = useState<GroupByOption[]>([])
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([])
+
+  const filtered = useMemo(() => {
+    let result = [...data]
+    if (search) {
+      const q = search.toLowerCase()
+      result = result.filter(row => searchFields.some(f => String(row[f] ?? "").toLowerCase().includes(q)))
+    }
+    for (const f of activeFilters) {
+      result = result.filter(row => String(row[f.field as keyof T] ?? "") === f.value)
+    }
+    return result
+  }, [data, search, activeFilters, searchFields])
+
+  const filterOptions = useMemo(() =>
+    filterFields.map(ff => {
+      const vals = [...new Set(data.map(row => String(row[ff.field] ?? "")).filter(v => v && v !== "null" && v !== "undefined"))]
+      return { field: String(ff.field), label: ff.label, values: vals.sort().map(v => ({ value: v, label: v })) }
+    }).filter(f => f.values.length > 0),
+  [data, filterFields])
+
+  const groupByOptions: GroupByOption[] = filterFields.map(ff => ({ id: String(ff.field), label: ff.label, field: String(ff.field) }))
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <div>
+          {subtitle && <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">{subtitle}</p>}
+          <h1 className="text-2xl font-bold text-amber-900">{title}</h1>
+        </div>
+        {actions}
+      </div>
+      <OdooFilterBar moduleName={moduleName} filterOptions={filterOptions} groupByOptions={groupByOptions}
+        activeFilters={activeFilters} activeGroupBy={activeGroupBy} searchTerm={search}
+        onFiltersChange={setActiveFilters} onGroupByChange={setActiveGroupBy} onSearchChange={setSearch}
+        savedFilters={savedFilters}
+        onSaveFilter={(f) => setSavedFilters(p => [...p, { ...f, id: `f-${Date.now()}`, createdBy: "current_user" }])}
+        onDeleteFilter={(id) => setSavedFilters(p => p.filter(f => f.id !== id))}
+        onApplyFilter={(f) => { setActiveFilters(f.filters); setActiveGroupBy(f.groupBy) }}
+        totalCount={data.length} filteredCount={filtered.length}
+      />
+      <div className="mt-4">
+        {loading ? <div className="text-center py-12 text-gray-500">Cargando...</div> : children(filtered)}
+      </div>
     </div>
   )
 }
@@ -7695,6 +8622,9 @@ export default function ModuloFinanzas() {
           {activeItem === "conciliacion_tarjetas" && <ConciliacionTarjetas />}
           {activeItem === "simulador" && <SeccionSimulador tarjetas={tarjetas} grupos={grupos} recargos={recargos} />}
           {activeItem === "cajas" && <ConfigCajas />}
+          {activeItem === "bancos_config" && <BancosConfig />}
+          {activeItem === "conceptos" && <Conceptos />}
+          {activeItem === "tipos_prestamos" && <TiposPrestamos />}
         </div>
       </div>
     </div>

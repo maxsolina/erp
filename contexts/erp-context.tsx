@@ -11,7 +11,7 @@ export interface Usuario {
   username: string
   nombre: string
   email: string
-  rol: "admin" | "supervisor" | "vendedor" | "comprador" | "cajero" | "deposito"
+  rol: "admin" | "supervisor" | "vendedor" | "comprador" | "cajero" | "deposito" | "tecnico"
   sucursal_id: number
   sucursal_nombre: string
   activo: boolean

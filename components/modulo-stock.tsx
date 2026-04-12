@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import React, { useState, useMemo, useRef, useEffect } from "react"
 import { Search, Filter, ChevronDown, X, Plus, FileText, Truck, Package, ArrowRight, Eye, Edit, Trash2, Download, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Calendar, Tag, RefreshCw, Barcode, QrCode, Layers, ArrowLeftRight, ClipboardCheck, TrendingUp, TrendingDown, Box, Warehouse, Hash, RotateCcw, ChevronRight, MessageSquare, Star, User, Activity, BarChart3, Settings, DollarSign, Users, GripVertical } from "lucide-react"
@@ -477,7 +477,7 @@ function FormNuevoDeposito({
       </div>
 
       <div className="bg-white rounded-lg shadow-sm p-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">Nuevo Depósito</h2>
+        <h2 className="text-2xl font-bold text-amber-900 mb-6">Nuevo Depósito</h2>
 
         {error && (
           <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
@@ -559,11 +559,73 @@ function FormNuevoDeposito({
           <button
             onClick={handleGuardar}
             disabled={guardando}
-            className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 text-sm disabled:opacity-50"
+            className="px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 text-sm disabled:opacity-50"
           >
             {guardando ? "Guardando..." : "Guardar"}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── StockListSection (wrapper reutilizable con OdooFilterBar) ───────────────
+
+function StockListSection<T extends object>({
+  title, moduleName, data, searchFields, filterFields, actions, children, emptyMessage,
+}: {
+  title: string
+  moduleName: string
+  data: T[]
+  searchFields: (keyof T)[]
+  filterFields: { field: keyof T; label: string }[]
+  actions?: React.ReactNode
+  children: (filtered: T[]) => React.ReactNode
+  emptyMessage?: string
+}) {
+  const [search, setSearch] = useState("")
+  const [activeFilters, setActiveFilters] = useState<FilterOption[]>([])
+  const [activeGroupBy, setActiveGroupBy] = useState<GroupByOption[]>([])
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([])
+
+  const filtered = useMemo(() => {
+    let result = [...data]
+    if (search) {
+      const q = search.toLowerCase()
+      result = result.filter(row => searchFields.some(f => String(row[f] ?? "").toLowerCase().includes(q)))
+    }
+    for (const f of activeFilters) {
+      result = result.filter(row => String(row[f.field as keyof T] ?? "") === f.value)
+    }
+    return result
+  }, [data, search, activeFilters, searchFields])
+
+  const filterOptions = useMemo(() =>
+    filterFields.map(ff => {
+      const vals = [...new Set(data.map(row => String(row[ff.field] ?? "")).filter(v => v && v !== "null" && v !== "undefined"))]
+      return { field: String(ff.field), label: ff.label, values: vals.sort().map(v => ({ value: v, label: v })) }
+    }).filter(f => f.values.length > 0),
+  [data, filterFields])
+
+  const groupByOptions: GroupByOption[] = filterFields.map(ff => ({ id: String(ff.field), label: ff.label, field: String(ff.field) }))
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold text-amber-900">{title}</h1>
+        {actions}
+      </div>
+      <OdooFilterBar moduleName={moduleName} filterOptions={filterOptions} groupByOptions={groupByOptions}
+        activeFilters={activeFilters} activeGroupBy={activeGroupBy} searchTerm={search}
+        onFiltersChange={setActiveFilters} onGroupByChange={setActiveGroupBy} onSearchChange={setSearch}
+        savedFilters={savedFilters}
+        onSaveFilter={(f) => setSavedFilters(p => [...p, { ...f, id: `f-${Date.now()}`, createdBy: "current_user" }])}
+        onDeleteFilter={(id) => setSavedFilters(p => p.filter(f => f.id !== id))}
+        onApplyFilter={(f) => { setActiveFilters(f.filters); setActiveGroupBy(f.groupBy) }}
+        totalCount={data.length} filteredCount={filtered.length}
+      />
+      <div className="mt-4">
+        {children(filtered)}
       </div>
     </div>
   )
@@ -1462,7 +1524,7 @@ export default function ModuloStock() {
           <h1 className="text-2xl font-bold text-amber-900">Transferencias Internas</h1>
           <button 
             onClick={() => { resetTransferenciaForm(); setCreandoTransferencia(true) }}
-            className="bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-800 flex items-center gap-2"
+            className="bg-indigo-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
             Nueva Transferencia
@@ -1930,7 +1992,7 @@ export default function ModuloStock() {
                             setTransProductSearchTerm("")
                             setTransShowProductSearch(false)
                           }}
-                          className="w-full px-4 py-2 text-left hover:bg-amber-50 flex items-center justify-between border-b border-gray-100 last:border-0"
+                          className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center justify-between border-b border-gray-100 last:border-0"
                         >
                           <div>
                             <div className="text-sm font-medium text-gray-900">{producto.nombre}</div>
@@ -2682,59 +2744,68 @@ export default function ModuloStock() {
   // Render Control de Inventario
   const renderControlInventario = () => {
     return (
-      <div>
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold text-amber-900">Control de Inventario</h1>
+      <StockListSection<ControlInventario>
+        title="Control de Inventario"
+        moduleName="control-inventario"
+        data={controlesInventario}
+        searchFields={["numero", "deposito_nombre", "concepto", "ubicacion_nombre", "sucursal"]}
+        filterFields={[
+          { field: "estado", label: "Estado" },
+          { field: "deposito_nombre", label: "Depósito" },
+          { field: "sucursal", label: "Sucursal" },
+        ]}
+        actions={
           <button 
             onClick={() => setCreandoControl(true)}
-            className="bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-800 flex items-center gap-2"
+            className="bg-indigo-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
             Nuevo Control
           </button>
-        </div>
-
-        {/* Tabla */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Comprobante</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Depósito</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Fecha</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Concepto</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Ubicación</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Sucursal</th>
-                <th className="text-center py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {controlesInventario.map(c => (
-                <tr 
-                  key={c.id} 
-                  onClick={() => setSelectedControl(c)}
-                  className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
-                >
-                  <td className="py-3 px-4 font-mono text-sm text-amber-700 font-medium">{c.numero}</td>
-                  <td className="py-3 px-4 text-sm">{c.deposito_nombre}</td>
-                  <td className="py-3 px-4 text-sm">{formatDate(c.fecha)}</td>
-                  <td className="py-3 px-4 text-sm">{c.concepto}</td>
-                  <td className="py-3 px-4 text-sm">{c.ubicacion_nombre}</td>
-                  <td className="py-3 px-4 text-sm">{c.sucursal}</td>
-                  <td className="py-3 px-4 text-center">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getEstadoControlColor(c.estado)}`}>
-                      {getEstadoLabel(c.estado)}
-                    </span>
-                  </td>
+        }
+      >
+        {(filtered) => (
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Comprobante</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Depósito</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Fecha</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Concepto</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Ubicación</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Sucursal</th>
+                  <th className="text-center py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Estado</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {controlesInventario.length === 0 && (
-            <div className="text-center py-8 text-gray-500">No hay controles de inventario</div>
-          )}
-        </div>
-      </div>
+              </thead>
+              <tbody>
+                {filtered.map(c => (
+                  <tr 
+                    key={c.id} 
+                    onClick={() => setSelectedControl(c)}
+                    className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                  >
+                    <td className="py-3 px-4 font-mono text-sm text-amber-700 font-medium">{c.numero}</td>
+                    <td className="py-3 px-4 text-sm">{c.deposito_nombre}</td>
+                    <td className="py-3 px-4 text-sm">{formatDate(c.fecha)}</td>
+                    <td className="py-3 px-4 text-sm">{c.concepto}</td>
+                    <td className="py-3 px-4 text-sm">{c.ubicacion_nombre}</td>
+                    <td className="py-3 px-4 text-sm">{c.sucursal}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getEstadoControlColor(c.estado)}`}>
+                        {getEstadoLabel(c.estado)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {filtered.length === 0 && (
+              <div className="text-center py-8 text-gray-500">No hay controles de inventario</div>
+            )}
+          </div>
+        )}
+      </StockListSection>
     )
   }
 
@@ -2742,110 +2813,128 @@ export default function ModuloStock() {
   const renderAjustes = (tipo: "positivo" | "negativo") => {
     const ajustesFiltrados = ajustes.filter(a => a.tipo === tipo)
     const titulo = tipo === "positivo" ? "Ajustes Positivos" : "Ajustes Negativos"
-    const icono = tipo === "positivo" ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />
 
     return (
-      <div>
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold text-amber-900">{titulo}</h1>
-          <button className="bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-800 flex items-center gap-2">
+      <StockListSection<AjusteInventario>
+        title={titulo}
+        moduleName={`ajustes-${tipo}`}
+        data={ajustesFiltrados}
+        searchFields={["numero", "deposito_nombre", "ubicacion_nombre", "concepto"]}
+        filterFields={[
+          { field: "estado", label: "Estado" },
+          { field: "deposito_nombre", label: "Depósito" },
+          { field: "concepto", label: "Concepto" },
+        ]}
+        actions={
+          <button className="bg-indigo-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2">
             <Plus className="w-4 h-4" />
             Nuevo Ajuste
           </button>
-        </div>
-
-        {/* Tabla */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Comprobante</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Depósito</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Ubicación</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Fecha</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Concepto</th>
-                <th className="text-center py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ajustesFiltrados.map(a => (
-                <tr key={a.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
-                  <td className="py-3 px-4 font-mono text-sm text-amber-700 font-medium">{a.numero}</td>
-                  <td className="py-3 px-4 text-sm">{a.deposito_nombre}</td>
-                  <td className="py-3 px-4 text-sm">{a.ubicacion_nombre}</td>
-                  <td className="py-3 px-4 text-sm">{formatDate(a.fecha)}</td>
-                  <td className="py-3 px-4 text-sm">{a.concepto}</td>
-                  <td className="py-3 px-4 text-center">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getEstadoControlColor(a.estado)}`}>
-                      {getEstadoLabel(a.estado)}
-                    </span>
-                  </td>
+        }
+      >
+        {(filtered) => (
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Comprobante</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Depósito</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Ubicación</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Fecha</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Concepto</th>
+                  <th className="text-center py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Estado</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {ajustesFiltrados.length === 0 && (
-            <div className="text-center py-8 text-gray-500">No hay ajustes {tipo === "positivo" ? "positivos" : "negativos"}</div>
-          )}
-        </div>
-      </div>
+              </thead>
+              <tbody>
+                {filtered.map(a => (
+                  <tr key={a.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
+                    <td className="py-3 px-4 font-mono text-sm text-amber-700 font-medium">{a.numero}</td>
+                    <td className="py-3 px-4 text-sm">{a.deposito_nombre}</td>
+                    <td className="py-3 px-4 text-sm">{a.ubicacion_nombre}</td>
+                    <td className="py-3 px-4 text-sm">{formatDate(a.fecha)}</td>
+                    <td className="py-3 px-4 text-sm">{a.concepto}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getEstadoControlColor(a.estado)}`}>
+                        {getEstadoLabel(a.estado)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {filtered.length === 0 && (
+              <div className="text-center py-8 text-gray-500">No hay ajustes {tipo === "positivo" ? "positivos" : "negativos"}</div>
+            )}
+          </div>
+        )}
+      </StockListSection>
     )
   }
 
   // Render Pedidos de Abastecimiento
   const renderPedidosAbastecimiento = () => {
     return (
-      <div>
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold text-amber-900">Pedidos de Abastecimiento</h1>
+      <StockListSection<PedidoAbastecimiento>
+        title="Pedidos de Abastecimiento"
+        moduleName="pedidos-abastecimiento"
+        data={pedidosAbastecimiento}
+        searchFields={["numero", "deposito_origen_nombre", "deposito_destino_nombre", "categoria_ubicacion"]}
+        filterFields={[
+          { field: "estado", label: "Estado" },
+          { field: "deposito_origen_nombre", label: "Depósito Origen" },
+          { field: "deposito_destino_nombre", label: "Depósito Destino" },
+          { field: "sucursal", label: "Sucursal" },
+        ]}
+        actions={
           <button 
             onClick={() => setCreandoPedido(true)}
-            className="bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-800 flex items-center gap-2"
+            className="bg-indigo-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
             Solicitar Abastecimiento
           </button>
-        </div>
-
-        {/* Tabla */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Comprobante</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Fecha</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Depósito Origen</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Depósito Destino</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Categor��a</th>
-                <th className="text-center py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pedidosAbastecimiento.map(p => (
-                <tr 
-                  key={p.id} 
-                  onClick={() => setSelectedPedido(p)}
-                  className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
-                >
-                  <td className="py-3 px-4 font-mono text-sm text-amber-700 font-medium">{p.numero}</td>
-                  <td className="py-3 px-4 text-sm">{formatDate(p.fecha)}</td>
-                  <td className="py-3 px-4 text-sm">{p.deposito_origen_nombre}</td>
-                  <td className="py-3 px-4 text-sm">{p.deposito_destino_nombre}</td>
-                  <td className="py-3 px-4 text-sm">{p.categoria_ubicacion}</td>
-                  <td className="py-3 px-4 text-center">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getEstadoPedidoColor(p.estado)}`}>
-                      {getEstadoLabel(p.estado)}
-                    </span>
-                  </td>
+        }
+      >
+        {(filtered) => (
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Comprobante</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Fecha</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Depósito Origen</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Depósito Destino</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Categoría</th>
+                  <th className="text-center py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Estado</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {pedidosAbastecimiento.length === 0 && (
-            <div className="text-center py-8 text-gray-500">No hay pedidos de abastecimiento</div>
-          )}
-        </div>
-      </div>
+              </thead>
+              <tbody>
+                {filtered.map(p => (
+                  <tr 
+                    key={p.id} 
+                    onClick={() => setSelectedPedido(p)}
+                    className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                  >
+                    <td className="py-3 px-4 font-mono text-sm text-amber-700 font-medium">{p.numero}</td>
+                    <td className="py-3 px-4 text-sm">{formatDate(p.fecha)}</td>
+                    <td className="py-3 px-4 text-sm">{p.deposito_origen_nombre}</td>
+                    <td className="py-3 px-4 text-sm">{p.deposito_destino_nombre}</td>
+                    <td className="py-3 px-4 text-sm">{p.categoria_ubicacion}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getEstadoPedidoColor(p.estado)}`}>
+                        {getEstadoLabel(p.estado)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {filtered.length === 0 && (
+              <div className="text-center py-8 text-gray-500">No hay pedidos de abastecimiento</div>
+            )}
+          </div>
+        )}
+      </StockListSection>
     )
   }
 
@@ -2888,7 +2977,7 @@ export default function ModuloStock() {
           {/* Formulario de edición */}
           {editandoDeposito ? (
             <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Editar Depósito</h2>
+              <h2 className="text-2xl font-bold text-amber-900 mb-6">Editar Depósito</h2>
               <div className="grid grid-cols-2 gap-x-12 gap-y-4">
                 <div className="space-y-4">
                   <div className="flex items-center gap-4">
@@ -2927,7 +3016,7 @@ export default function ModuloStock() {
                 <button onClick={() => setEditandoDeposito(false)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
                   Cancelar
                 </button>
-                <button onClick={() => setEditandoDeposito(false)} className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 text-sm">
+                <button onClick={() => setEditandoDeposito(false)} className="px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 text-sm">
                   Guardar
                 </button>
               </div>
@@ -2935,7 +3024,7 @@ export default function ModuloStock() {
           ) : (
           /* Ficha del depósito (solo lectura) */
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">{selectedDeposito.nombre}</h2>
+            <h2 className="text-2xl font-bold text-amber-900 mb-6">{selectedDeposito.nombre}</h2>
             
             {/* Campos principales */}
             <div className="grid grid-cols-2 gap-x-12 gap-y-4 mb-6">
@@ -3074,49 +3163,57 @@ export default function ModuloStock() {
 
     // Lista de depósitos
     return (
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Depósitos</h1>
+      <StockListSection<Deposito>
+        title="Depósitos"
+        moduleName="config-depositos"
+        data={depositos}
+        searchFields={["nombre", "codigo", "sucursal", "direccion"]}
+        filterFields={[
+          { field: "sucursal", label: "Sucursal" },
+        ]}
+        actions={
           <button 
             onClick={() => setCreandoDeposito(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600"
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800"
           >
             <Plus className="w-4 h-4" />
             Crear
           </button>
-        </div>
-        
-        <div className="bg-white rounded-lg shadow-sm">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Nombre del almacén</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Nombre corto</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Sucursal</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Dirección</th>
-                <th className="text-center py-3 px-4 text-sm font-medium text-gray-700">Activo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {depositos.map(deposito => (
-                <tr 
-                  key={deposito.id} 
-                  className="border-b border-gray-100 hover:bg-amber-50 cursor-pointer"
-                  onClick={() => setSelectedDeposito(deposito)}
-                >
-                  <td className="py-3 px-4 text-sm text-blue-600 hover:underline">{deposito.nombre}</td>
-                  <td className="py-3 px-4 text-sm text-gray-600">{deposito.codigo}</td>
-                  <td className="py-3 px-4 text-sm text-gray-600">{deposito.sucursal}</td>
-                  <td className="py-3 px-4 text-sm text-gray-600">{deposito.direccion}</td>
-                  <td className="py-3 px-4 text-center">
-                    <input type="checkbox" checked={deposito.activo} readOnly className="rounded border-gray-300" />
-                  </td>
+        }
+      >
+        {(filtered) => (
+          <div className="bg-white rounded-lg shadow-sm">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Nombre del almacén</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Nombre corto</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Sucursal</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Dirección</th>
+                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-700">Activo</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              </thead>
+              <tbody>
+                {filtered.map(deposito => (
+                  <tr 
+                    key={deposito.id} 
+                    className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                    onClick={() => setSelectedDeposito(deposito)}
+                  >
+                    <td className="py-3 px-4 text-sm text-blue-600 hover:underline">{deposito.nombre}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{deposito.codigo}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{deposito.sucursal}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{deposito.direccion}</td>
+                    <td className="py-3 px-4 text-center">
+                      <input type="checkbox" checked={deposito.activo} readOnly className="rounded border-gray-300" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </StockListSection>
     )
   }
 
@@ -3154,7 +3251,7 @@ export default function ModuloStock() {
           {/* Formulario de edición */}
           {editandoUbicacion ? (
             <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Editar Ubicación</h2>
+              <h2 className="text-2xl font-bold text-amber-900 mb-6">Editar Ubicación</h2>
               <div className="grid grid-cols-2 gap-x-12 gap-y-4">
                 <div className="space-y-4">
                   <div className="flex items-center gap-4">
@@ -3216,7 +3313,7 @@ export default function ModuloStock() {
                 <button onClick={() => setEditandoUbicacion(false)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
                   Cancelar
                 </button>
-                <button onClick={() => setEditandoUbicacion(false)} className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 text-sm">
+                <button onClick={() => setEditandoUbicacion(false)} className="px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 text-sm">
                   Guardar
                 </button>
               </div>
@@ -3224,7 +3321,7 @@ export default function ModuloStock() {
           ) : (
             /* Ficha de la ubicación (solo lectura) */
             <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Physical Locations / {selectedUbicacion.codigo}</h2>
+              <h2 className="text-2xl font-bold text-amber-900 mb-6">Physical Locations / {selectedUbicacion.codigo}</h2>
               
               {/* Campos principales */}
               <div className="grid grid-cols-2 gap-x-12 gap-y-4">
@@ -3287,7 +3384,7 @@ export default function ModuloStock() {
           </div>
           
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Nueva Ubicación</h2>
+            <h2 className="text-2xl font-bold text-amber-900 mb-6">Nueva Ubicación</h2>
             {errorUbicacion && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{errorUbicacion}</div>
             )}
@@ -3373,7 +3470,7 @@ export default function ModuloStock() {
               <button
                 onClick={handleGuardarUbicacion}
                 disabled={guardandoUbicacion}
-                className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 text-sm disabled:opacity-50"
+                className="px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 text-sm disabled:opacity-50"
               >
                 {guardandoUbicacion ? "Guardando..." : "Guardar"}
               </button>
@@ -3385,66 +3482,63 @@ export default function ModuloStock() {
 
     // Lista de ubicaciones
     return (
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Ubicaciones</h1>
+      <StockListSection<Ubicacion>
+        title="Ubicaciones"
+        moduleName="config-ubicaciones"
+        data={ubicaciones}
+        searchFields={["codigo", "nombre", "tipo", "categoria_nombre"]}
+        filterFields={[
+          { field: "tipo", label: "Tipo" },
+          { field: "categoria_nombre", label: "Categoría" },
+        ]}
+        actions={
           <button 
             onClick={() => setCreandoUbicacion(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600"
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800"
           >
             <Plus className="w-4 h-4" />
             Crear
           </button>
-        </div>
-        
-        {/* Buscador */}
-        <div className="mb-4">
-          <div className="relative w-96">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input 
-              type="text"
-              placeholder="Buscar ubicación..."
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm"
-            />
+        }
+      >
+        {(filtered) => (
+          <div className="bg-white rounded-lg shadow-sm">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Nombre de la Ubicación</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Tipo de ubicación</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Categoría de Ubicación</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Depósito</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Sucursal</th>
+                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-700">Disp. NV</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(ubicacion => {
+                  const deposito = depositos.find(d => d.id === ubicacion.deposito_id)
+                  return (
+                    <tr 
+                      key={ubicacion.id} 
+                      className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                      onClick={() => setSelectedUbicacion(ubicacion)}
+                    >
+                      <td className="py-3 px-4 text-sm text-blue-600 hover:underline">Physical Locations / {ubicacion.codigo}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600 capitalize">{ubicacion.tipo === "interna" ? "Ubicación interna" : ubicacion.tipo}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{ubicacion.categoria_nombre}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{deposito?.nombre || "-"}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{deposito?.sucursal || "-"}</td>
+                      <td className="py-3 px-4 text-center">
+                        <input type="checkbox" checked={ubicacion.disponible_venta} readOnly className="rounded border-gray-300" />
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
-        </div>
-        
-        <div className="bg-white rounded-lg shadow-sm">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Nombre de la Ubicación</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Tipo de ubicación</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Categoría de Ubicación</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Depósito</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Sucursal</th>
-                <th className="text-center py-3 px-4 text-sm font-medium text-gray-700">Disp. NV</th>
-              </tr>
-            </thead>
-            <tbody>
-          {ubicaciones.map(ubicacion => {
-            const deposito = depositos.find(d => d.id === ubicacion.deposito_id)
-                return (
-                  <tr 
-                    key={ubicacion.id} 
-                    className="border-b border-gray-100 hover:bg-amber-50 cursor-pointer"
-                    onClick={() => setSelectedUbicacion(ubicacion)}
-                  >
-                    <td className="py-3 px-4 text-sm text-blue-600 hover:underline">Physical Locations / {ubicacion.codigo}</td>
-                    <td className="py-3 px-4 text-sm text-gray-600 capitalize">{ubicacion.tipo === "interna" ? "Ubicación interna" : ubicacion.tipo}</td>
-                    <td className="py-3 px-4 text-sm text-gray-600">{ubicacion.categoria_nombre}</td>
-                    <td className="py-3 px-4 text-sm text-gray-600">{deposito?.nombre || "-"}</td>
-                    <td className="py-3 px-4 text-sm text-gray-600">{deposito?.sucursal || "-"}</td>
-                    <td className="py-3 px-4 text-center">
-                      <input type="checkbox" checked={ubicacion.disponible_venta} readOnly className="rounded border-gray-300" />
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        )}
+      </StockListSection>
     )
   }
 
@@ -3622,11 +3716,6 @@ export default function ModuloStock() {
 
   // Render Configuración - Categorías de Ubicación
   const renderConfigCategorias = () => {
-    const categoriasFiltradas = mockCategoriasUbicacion.filter(cat =>
-      cat.nombre.toLowerCase().includes(busquedaCategoria.toLowerCase()) ||
-      cat.codigo.toLowerCase().includes(busquedaCategoria.toLowerCase())
-    )
-
     // Ver ficha de categoría
     if (selectedCategoria) {
       return (
@@ -3655,7 +3744,7 @@ export default function ModuloStock() {
 
           {editandoCategoria ? (
             <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Editar Categoría</h2>
+              <h2 className="text-2xl font-bold text-amber-900 mb-6">Editar Categoría</h2>
               <div className="space-y-4 max-w-xl">
                 <div className="flex items-center gap-4">
                   <label className="w-32 text-sm text-gray-600">Código *</label>
@@ -3674,14 +3763,14 @@ export default function ModuloStock() {
                 <button onClick={() => setEditandoCategoria(false)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
                   Cancelar
                 </button>
-                <button onClick={() => setEditandoCategoria(false)} className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 text-sm">
+                <button onClick={() => setEditandoCategoria(false)} className="px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 text-sm">
                   Guardar
                 </button>
               </div>
             </div>
           ) : (
             <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">{selectedCategoria.nombre}</h2>
+              <h2 className="text-2xl font-bold text-amber-900 mb-6">{selectedCategoria.nombre}</h2>
               <div className="space-y-3 max-w-xl">
                 <div className="flex items-center gap-4">
                   <label className="w-32 text-sm text-gray-600">Código</label>
@@ -3746,7 +3835,7 @@ export default function ModuloStock() {
           </div>
           
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Nueva Categoría</h2>
+            <h2 className="text-2xl font-bold text-amber-900 mb-6">Nueva Categoría</h2>
             <div className="space-y-4 max-w-xl">
               <div className="flex items-center gap-4">
                 <label className="w-32 text-sm text-gray-600">Código *</label>
@@ -3765,7 +3854,7 @@ export default function ModuloStock() {
               <button onClick={() => setCreandoCategoria(false)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
                 Cancelar
               </button>
-              <button onClick={() => setCreandoCategoria(false)} className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 text-sm">
+              <button onClick={() => setCreandoCategoria(false)} className="px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 text-sm">
                 Guardar
               </button>
             </div>
@@ -3776,62 +3865,53 @@ export default function ModuloStock() {
 
     // Lista de categorías
     return (
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Categorías de Ubicación</h1>
+      <StockListSection<CategoriaUbicacion>
+        title="Categorías de Ubicación"
+        moduleName="config-categorias"
+        data={mockCategoriasUbicacion}
+        searchFields={["codigo", "nombre", "descripcion"]}
+        filterFields={[]}
+        actions={
           <button 
             onClick={() => setCreandoCategoria(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600"
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800"
           >
             <Plus className="w-4 h-4" />
             Crear
           </button>
-        </div>
-        
-        {/* Buscador */}
-        <div className="mb-4">
-          <div className="relative max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por código o nombre..."
-              value={busquedaCategoria}
-              onChange={(e) => setBusquedaCategoria(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm"
-            />
-          </div>
-        </div>
-
-        {/* Tabla de categorías */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Código</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Nombre</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Descripción</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Ubicaciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {categoriasFiltradas.map(cat => (
-                <tr 
-                  key={cat.id} 
-                  onClick={() => setSelectedCategoria(cat)}
-                  className="border-b border-gray-100 hover:bg-amber-50 cursor-pointer"
-                >
-                  <td className="py-3 px-4 text-sm font-medium text-blue-600">{cat.codigo}</td>
-                  <td className="py-3 px-4 text-sm text-gray-900">{cat.nombre}</td>
-                  <td className="py-3 px-4 text-sm text-gray-600">{cat.descripcion || "-"}</td>
-                  <td className="py-3 px-4 text-sm text-gray-600">
-                    {ubicaciones.filter(u => u.categoria_nombre === cat.nombre).length}
-                  </td>
+        }
+      >
+        {(filtered) => (
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Código</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Nombre</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Descripción</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Ubicaciones</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              </thead>
+              <tbody>
+                {filtered.map(cat => (
+                  <tr 
+                    key={cat.id} 
+                    onClick={() => setSelectedCategoria(cat)}
+                    className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                  >
+                    <td className="py-3 px-4 text-sm font-medium text-blue-600">{cat.codigo}</td>
+                    <td className="py-3 px-4 text-sm text-gray-900">{cat.nombre}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{cat.descripcion || "-"}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">
+                      {ubicaciones.filter(u => u.categoria_nombre === cat.nombre).length}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </StockListSection>
     )
   }
 
@@ -3846,38 +3926,44 @@ export default function ModuloStock() {
     ]
 
     return (
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Tipos de Operación</h1>
-          <button className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600">
+      <StockListSection<(typeof tiposOperacion)[number]>
+        title="Tipos de Operación"
+        moduleName="config-tipos-operacion"
+        data={tiposOperacion}
+        searchFields={["codigo", "nombre", "descripcion"]}
+        filterFields={[]}
+        actions={
+          <button className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800">
             <Plus className="w-4 h-4" />
             Crear
           </button>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Código</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Nombre</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Descripción</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Secuencia</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tiposOperacion.map(tipo => (
-                <tr key={tipo.id} className="border-b border-gray-100 hover:bg-amber-50 cursor-pointer">
-                  <td className="py-3 px-4 text-sm font-medium text-blue-600">{tipo.codigo}</td>
-                  <td className="py-3 px-4 text-sm text-gray-900">{tipo.nombre}</td>
-                  <td className="py-3 px-4 text-sm text-gray-600">{tipo.descripcion}</td>
-                  <td className="py-3 px-4 text-sm text-gray-600 font-mono">{tipo.secuencia}</td>
+        }
+      >
+        {(filtered) => (
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Código</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Nombre</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Descripción</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Secuencia</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              </thead>
+              <tbody>
+                {filtered.map(tipo => (
+                  <tr key={tipo.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
+                    <td className="py-3 px-4 text-sm font-medium text-blue-600">{tipo.codigo}</td>
+                    <td className="py-3 px-4 text-sm text-gray-900">{tipo.nombre}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{tipo.descripcion}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600 font-mono">{tipo.secuencia}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </StockListSection>
     )
   }
 
@@ -3892,38 +3978,46 @@ export default function ModuloStock() {
     ]
 
     return (
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Posiciones de Ubicaciones</h1>
-          <button className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600">
+      <StockListSection<(typeof posiciones)[number]>
+        title="Posiciones de Ubicaciones"
+        moduleName="config-posiciones"
+        data={posiciones}
+        searchFields={["codigo", "nombre", "ubicacion"]}
+        filterFields={[
+          { field: "ubicacion", label: "Ubicación" },
+        ]}
+        actions={
+          <button className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800">
             <Plus className="w-4 h-4" />
             Crear
           </button>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Código</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Nombre</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Ubicación</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Capacidad</th>
-              </tr>
-            </thead>
-            <tbody>
-              {posiciones.map(pos => (
-                <tr key={pos.id} className="border-b border-gray-100 hover:bg-amber-50 cursor-pointer">
-                  <td className="py-3 px-4 text-sm font-medium text-blue-600">{pos.codigo}</td>
-                  <td className="py-3 px-4 text-sm text-gray-900">{pos.nombre}</td>
-                  <td className="py-3 px-4 text-sm text-gray-600">{pos.ubicacion}</td>
-                  <td className="py-3 px-4 text-sm text-gray-600">{pos.capacidad} uds</td>
+        }
+      >
+        {(filtered) => (
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Código</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Nombre</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Ubicación</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Capacidad</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              </thead>
+              <tbody>
+                {filtered.map(pos => (
+                  <tr key={pos.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
+                    <td className="py-3 px-4 text-sm font-medium text-blue-600">{pos.codigo}</td>
+                    <td className="py-3 px-4 text-sm text-gray-900">{pos.nombre}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{pos.ubicacion}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{pos.capacidad} uds</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </StockListSection>
     )
   }
 
@@ -3937,40 +4031,46 @@ export default function ModuloStock() {
     ]
 
     return (
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Rutas</h1>
-          <button className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600">
+      <StockListSection<(typeof rutas)[number]>
+        title="Rutas"
+        moduleName="config-rutas"
+        data={rutas}
+        searchFields={["nombre"]}
+        filterFields={[]}
+        actions={
+          <button className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800">
             <Plus className="w-4 h-4" />
             Crear
           </button>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Nombre</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Secuencia</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Activa</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rutas.map(ruta => (
-                <tr key={ruta.id} className="border-b border-gray-100 hover:bg-amber-50 cursor-pointer">
-                  <td className="py-3 px-4 text-sm font-medium text-blue-600">{ruta.nombre}</td>
-                  <td className="py-3 px-4 text-sm text-gray-600">{ruta.secuencia}</td>
-                  <td className="py-3 px-4">
-                    <span className={`px-2 py-1 text-xs rounded-full ${ruta.activa ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
-                      {ruta.activa ? "Activa" : "Inactiva"}
-                    </span>
-                  </td>
+        }
+      >
+        {(filtered) => (
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Nombre</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Secuencia</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Activa</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              </thead>
+              <tbody>
+                {filtered.map(ruta => (
+                  <tr key={ruta.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
+                    <td className="py-3 px-4 text-sm font-medium text-blue-600">{ruta.nombre}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{ruta.secuencia}</td>
+                    <td className="py-3 px-4">
+                      <span className={`px-2 py-1 text-xs rounded-full ${ruta.activa ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+                        {ruta.activa ? "Activa" : "Inactiva"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </StockListSection>
     )
   }
 
@@ -3984,42 +4084,50 @@ export default function ModuloStock() {
     ]
 
     return (
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Reglas</h1>
-          <button className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600">
+      <StockListSection<(typeof reglas)[number]>
+        title="Reglas"
+        moduleName="config-reglas"
+        data={reglas}
+        searchFields={["nombre", "accion", "ruta"]}
+        filterFields={[
+          { field: "accion", label: "Acción" },
+        ]}
+        actions={
+          <button className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800">
             <Plus className="w-4 h-4" />
             Crear
           </button>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Nombre</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Acción</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Ruta</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Activa</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reglas.map(regla => (
-                <tr key={regla.id} className="border-b border-gray-100 hover:bg-amber-50 cursor-pointer">
-                  <td className="py-3 px-4 text-sm font-medium text-blue-600">{regla.nombre}</td>
-                  <td className="py-3 px-4 text-sm text-gray-900">{regla.accion}</td>
-                  <td className="py-3 px-4 text-sm text-gray-600">{regla.ruta}</td>
-                  <td className="py-3 px-4">
-                    <span className={`px-2 py-1 text-xs rounded-full ${regla.activa ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
-                      {regla.activa ? "Activa" : "Inactiva"}
-                    </span>
-                  </td>
+        }
+      >
+        {(filtered) => (
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Nombre</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Acción</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Ruta</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-600 uppercase">Activa</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              </thead>
+              <tbody>
+                {filtered.map(regla => (
+                  <tr key={regla.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
+                    <td className="py-3 px-4 text-sm font-medium text-blue-600">{regla.nombre}</td>
+                    <td className="py-3 px-4 text-sm text-gray-900">{regla.accion}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{regla.ruta}</td>
+                    <td className="py-3 px-4">
+                      <span className={`px-2 py-1 text-xs rounded-full ${regla.activa ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+                        {regla.activa ? "Activa" : "Inactiva"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </StockListSection>
     )
   }
 
@@ -4074,7 +4182,7 @@ export default function ModuloStock() {
               <ChevronRight className={`w-3 h-3 transition-transform ${cuboCamposOcultos ? "" : "rotate-90"}`} />
               {cuboCamposOcultos ? "Mostrar campos" : "Ocultar campos"}
             </button>
-            <button className="px-3 py-1.5 text-sm bg-amber-600 text-white rounded flex items-center gap-1 hover:bg-amber-700">
+            <button className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded flex items-center gap-1 hover:bg-indigo-800">
               <Download className="w-4 h-4" /> Exportar
             </button>
           </div>

@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import React, { useState, useEffect } from "react"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Settings, Lock, Unlock, FileBox, Ship, Plane, Pencil, ChevronLeft, ChevronRight as ChevronRightIcon } from "lucide-react"
@@ -543,6 +543,63 @@ interface MovimientoCtaCteProveedor {
 }
 
 // Depósitos y ubicaciones se cargan desde Supabase dinámicamente
+
+// ─── ComprasListSection (wrapper reutilizable con OdooFilterBar) ─────────────
+function ComprasListSection<T extends object>({
+  title, subtitle, moduleName, data, searchFields, filterFields, actions, children,
+}: {
+  title: string; subtitle?: string; moduleName: string; data: T[]
+  searchFields: (keyof T)[]; filterFields: { field: keyof T; label: string }[]
+  actions?: React.ReactNode; children: (filtered: T[]) => React.ReactNode
+}) {
+  const [search, setSearch] = useState("")
+  const [activeFilters, setActiveFilters] = useState<FilterOption[]>([])
+  const [activeGroupBy, setActiveGroupBy] = useState<GroupByOption[]>([])
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([])
+
+  const filtered = useMemo(() => {
+    let result = [...data]
+    if (search) {
+      const q = search.toLowerCase()
+      result = result.filter(row => searchFields.some(f => String(row[f] ?? "").toLowerCase().includes(q)))
+    }
+    for (const f of activeFilters) {
+      result = result.filter(row => String(row[f.field as keyof T] ?? "") === f.value)
+    }
+    return result
+  }, [data, search, activeFilters, searchFields])
+
+  const filterOptions = useMemo(() =>
+    filterFields.map(ff => {
+      const vals = [...new Set(data.map(row => String(row[ff.field] ?? "")).filter(v => v && v !== "null" && v !== "undefined"))]
+      return { field: String(ff.field), label: ff.label, values: vals.sort().map(v => ({ value: v, label: v })) }
+    }).filter(f => f.values.length > 0),
+  [data, filterFields])
+
+  const groupByOptions: GroupByOption[] = filterFields.map(ff => ({ id: String(ff.field), label: ff.label, field: String(ff.field) }))
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <div>
+          <h1 className="text-2xl font-bold text-amber-900">{title}</h1>
+          {subtitle && <p className="text-gray-500 mt-1 text-sm">{subtitle}</p>}
+        </div>
+        {actions}
+      </div>
+      <OdooFilterBar moduleName={moduleName} filterOptions={filterOptions} groupByOptions={groupByOptions}
+        activeFilters={activeFilters} activeGroupBy={activeGroupBy} searchTerm={search}
+        onFiltersChange={setActiveFilters} onGroupByChange={setActiveGroupBy} onSearchChange={setSearch}
+        savedFilters={savedFilters}
+        onSaveFilter={(f) => setSavedFilters(p => [...p, { ...f, id: `f-${Date.now()}`, createdBy: "current_user" }])}
+        onDeleteFilter={(id) => setSavedFilters(p => p.filter(f => f.id !== id))}
+        onApplyFilter={(f) => { setActiveFilters(f.filters); setActiveGroupBy(f.groupBy) }}
+        totalCount={data.length} filteredCount={filtered.length}
+      />
+      <div className="mt-4">{children(filtered)}</div>
+    </div>
+  )
+}
 
 export default function ModuloCompras() {
   // Estado global persistente
@@ -1111,12 +1168,12 @@ export default function ModuloCompras() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Proveedores</h1>
+            <h1 className="text-2xl font-bold text-amber-900">Proveedores</h1>
             <p className="text-gray-500 mt-1">Gestione sus proveedores nacionales e internacionales</p>
           </div>
           <button 
             onClick={() => setCreandoProveedor(true)}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800 transition-colors"
           >
             <Plus className="w-4 h-4" />
             Nuevo Proveedor
@@ -1255,7 +1312,7 @@ export default function ModuloCompras() {
           <div className="flex items-center gap-4">
             <BotonVolver onClick={() => setSelectedProveedor(null)} variant="minimal" texto="" />
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{selectedProveedor.nombre}</h1>
+              <h1 className="text-2xl font-bold text-amber-900">{selectedProveedor.nombre}</h1>
               <p className="text-sm text-gray-500">{selectedProveedor.codigo} | {selectedProveedor.cuit}</p>
             </div>
           </div>
@@ -1304,7 +1361,7 @@ export default function ModuloCompras() {
                 setProveedorTabActivo("contactos")
                 setEditandoProveedor(true)
               }}
-              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1"
+              className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 flex items-center gap-1"
             >
               <Edit className="w-4 h-4" /> Editar
             </button>
@@ -1559,7 +1616,7 @@ export default function ModuloCompras() {
         <div className="flex items-center gap-4 mb-6">
           <BotonVolver onClick={handleCancelar} variant="minimal" texto="" />
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className="text-2xl font-bold text-amber-900">
               {modoEdicion ? `Editando: ${selectedProveedor?.nombre}` : "Nuevo Proveedor"}
             </h1>
             <p className="text-sm text-gray-500">
@@ -2034,7 +2091,7 @@ export default function ModuloCompras() {
           <button
             onClick={handleGuardar}
             disabled={!prov.nombre.trim() || (prov.tipo_documento !== "Sin documento" && !prov.numero_documento.trim())}
-            className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Save className="w-4 h-4" />
             {modoEdicion ? "Guardar Cambios" : "Crear Proveedor"}
@@ -2086,7 +2143,7 @@ export default function ModuloCompras() {
         {/* Cabecera */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Órdenes de Compra</h1>
+            <h1 className="text-2xl font-bold text-amber-900">Órdenes de Compra</h1>
             <p className="text-gray-500 mt-1 text-sm">Gestione las órdenes de compra a proveedores</p>
           </div>
           <button
@@ -2100,7 +2157,7 @@ export default function ModuloCompras() {
               })
               setCreandoOC(true)
             }}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium"
+            className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800 text-sm font-medium"
           >
             <Plus className="w-4 h-4" />
             Nueva OC
@@ -2376,7 +2433,7 @@ export default function ModuloCompras() {
           <div className="flex items-center gap-4">
             <BotonVolver onClick={() => setSelectedOC(null)} variant="minimal" texto="" />
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{oc.numero}</h1>
+              <h1 className="text-2xl font-bold text-amber-900">{oc.numero}</h1>
               <p className="text-sm text-gray-500">{formatDate(oc.fecha)} | {oc.proveedor_nombre}</p>
             </div>
           </div>
@@ -2385,7 +2442,7 @@ export default function ModuloCompras() {
               <>
                 <button
                   onClick={() => confirmarOC(oc)}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800"
                 >
                   <CheckCircle className="w-4 h-4" />
                   Confirmar
@@ -2650,7 +2707,7 @@ export default function ModuloCompras() {
                 <div className="text-center py-8">
                   <p className="text-sm text-gray-400 mb-4">No hay facturas vinculadas aún</p>
                   {oc.metodo_compra === 'inmediato' && oc.estado !== 'borrador' && (
-                    <button className="flex items-center gap-2 mx-auto px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+                    <button className="flex items-center gap-2 mx-auto px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800">
                       <Plus className="w-4 h-4" />
                       Crear Factura de Compra
                     </button>
@@ -2826,7 +2883,7 @@ export default function ModuloCompras() {
         <div className="flex items-center gap-3 mb-4">
           <button
             onClick={guardarOC}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800"
           >
             <Save className="w-4 h-4" />
             Guardar
@@ -2849,7 +2906,7 @@ export default function ModuloCompras() {
 
         <div className="flex items-center gap-4 mb-6">
           <BotonVolver onClick={() => setCreandoOC(false)} variant="minimal" texto="" />
-          <h1 className="text-2xl font-bold text-gray-900">Nueva Orden de Compra</h1>
+          <h1 className="text-2xl font-bold text-amber-900">Nueva Orden de Compra</h1>
         </div>
 
         {/* Cabecera */}
@@ -3220,21 +3277,21 @@ export default function ModuloCompras() {
     if (creandoLegajo) return renderCrearLegajo()
 
     return (
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Legajos de Importación</h1>
-            <p className="text-gray-500 mt-1">Gestione importaciones complejas con múltiples gastos</p>
-          </div>
-          <button 
-            onClick={() => setCreandoLegajo(true)}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-          >
-            <Plus className="w-4 h-4" />
-            Nuevo Legajo
+      <ComprasListSection
+        title="Legajos de Importación"
+        subtitle="Gestione importaciones complejas con múltiples gastos"
+        moduleName="legajos_importacion"
+        data={legajosImportacion}
+        searchFields={["numero", "nombre", "despachante_nombre"]}
+        filterFields={[{ field: "estado", label: "Estado" }]}
+        actions={
+          <button onClick={() => setCreandoLegajo(true)} className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800">
+            <Plus className="w-4 h-4" /> Nuevo Legajo
           </button>
-        </div>
-
+        }
+      >
+        {(filtered) => (
+          <>
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
             <p className="text-sm text-gray-500">Total Legajos</p>
@@ -3268,7 +3325,7 @@ export default function ModuloCompras() {
               </tr>
             </thead>
             <tbody>
-              {legajosImportacion.map(legajo => (
+              {filtered.map(legajo => (
                 <tr 
                   key={legajo.id} 
                   className="border-b hover:bg-gray-50 cursor-pointer"
@@ -3294,7 +3351,9 @@ export default function ModuloCompras() {
             </tbody>
           </table>
         </div>
-      </div>
+          </>
+        )}
+      </ComprasListSection>
     )
   }
 
@@ -3316,18 +3375,18 @@ export default function ModuloCompras() {
           <div className="flex items-center gap-4">
             <BotonVolver onClick={() => setSelectedLegajo(null)} variant="minimal" texto="" />
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{selectedLegajo.numero}</h1>
+              <h1 className="text-2xl font-bold text-amber-900">{selectedLegajo.numero}</h1>
               <p className="text-sm text-gray-500">{selectedLegajo.nombre} | {formatDate(selectedLegajo.fecha_apertura)}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {selectedLegajo.estado === 'borrador' && (
-              <button className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">
+              <button className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800">
                 Confirmar
               </button>
             )}
             {selectedLegajo.estado === 'abierto' && (
-              <button className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700">
+              <button className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800">
                 Finalizar
               </button>
             )}
@@ -3565,7 +3624,7 @@ export default function ModuloCompras() {
         <div className="flex items-center gap-4 mb-6">
 <BotonVolver onClick={() => setCreandoLegajo(false)} variant="minimal" texto="" />
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Nuevo Legajo de Importación</h1>
+            <h1 className="text-2xl font-bold text-amber-900">Nuevo Legajo de Importación</h1>
           </div>
         </div>
         <div className="bg-white rounded-lg border p-6">
@@ -3583,21 +3642,21 @@ export default function ModuloCompras() {
     if (creandoDespachoSimple) return renderCrearDespachoSimple()
 
     return (
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Despachos Simples</h1>
-            <p className="text-gray-500 mt-1">Importaciones USA con estructura de costos simplificada</p>
-          </div>
-          <button 
-            onClick={() => setCreandoDespachoSimple(true)}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-          >
-            <Plus className="w-4 h-4" />
-            Nuevo Despacho
+      <ComprasListSection
+        title="Despachos Simples"
+        subtitle="Importaciones USA con estructura de costos simplificada"
+        moduleName="despachos_simples"
+        data={despachosSimples}
+        searchFields={["numero", "nombre", "proveedor_nombre"]}
+        filterFields={[{ field: "estado", label: "Estado" }]}
+        actions={
+          <button onClick={() => setCreandoDespachoSimple(true)} className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800">
+            <Plus className="w-4 h-4" /> Nuevo Despacho
           </button>
-        </div>
-
+        }
+      >
+        {(filtered) => (
+          <>
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
             <p className="text-sm text-gray-500">Total Despachos</p>
@@ -3631,7 +3690,7 @@ export default function ModuloCompras() {
               </tr>
             </thead>
             <tbody>
-              {despachosSimples.map(despacho => (
+              {filtered.map(despacho => (
                 <tr 
                   key={despacho.id} 
                   className="border-b hover:bg-gray-50 cursor-pointer"
@@ -3657,7 +3716,9 @@ export default function ModuloCompras() {
             </tbody>
           </table>
         </div>
-      </div>
+          </>
+        )}
+      </ComprasListSection>
     )
   }
 
@@ -3678,7 +3739,7 @@ export default function ModuloCompras() {
           <div className="flex items-center gap-4">
             <BotonVolver onClick={() => setSelectedDespachoSimple(null)} variant="minimal" texto="" />
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{selectedDespachoSimple.numero}</h1>
+              <h1 className="text-2xl font-bold text-amber-900">{selectedDespachoSimple.numero}</h1>
               <p className="text-sm text-gray-500">{selectedDespachoSimple.nombre} | {formatDate(selectedDespachoSimple.fecha)}</p>
             </div>
           </div>
@@ -3839,7 +3900,7 @@ export default function ModuloCompras() {
         <div className="flex items-center gap-4 mb-6">
 <BotonVolver onClick={() => setCreandoDespachoSimple(false)} variant="minimal" texto="" />
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Nuevo Despacho Simple</h1>
+            <h1 className="text-2xl font-bold text-amber-900">Nuevo Despacho Simple</h1>
           </div>
         </div>
         <div className="bg-white rounded-lg border p-6">
@@ -4177,7 +4238,7 @@ export default function ModuloCompras() {
         {/* Cabecera */}
         <div className="flex items-start justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Recepciones de Compra</h1>
+            <h1 className="text-2xl font-bold text-amber-900">Recepciones de Compra</h1>
             <p className="text-gray-500 mt-1 text-sm">Las recepciones se generan automáticamente desde Órdenes de Compra, Tomas de Equipo y Transferencias.</p>
           </div>
 
@@ -4431,7 +4492,7 @@ export default function ModuloCompras() {
           <div className="flex items-center gap-4">
             <BotonVolver onClick={() => setSelectedRecepcion(null)} variant="minimal" texto="" />
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{rec.numero}</h1>
+              <h1 className="text-2xl font-bold text-amber-900">{rec.numero}</h1>
               <p className="text-sm text-gray-500">
                 {new Date(rec.fecha).toLocaleDateString('es-AR')} | {rec.proveedor_nombre || 'Sin proveedor'}
               </p>
@@ -4441,7 +4502,7 @@ export default function ModuloCompras() {
             {editable && (
               <button
                 onClick={handleConfirmarRecepcion}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700"
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800"
               >
                 <CheckCircle className="w-4 h-4" />
                 Confirmar Recepción
@@ -4698,10 +4759,10 @@ export default function ModuloCompras() {
       <div>
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-emerald-900">Facturas de Compra</h1>
+            <h1 className="text-2xl font-bold text-amber-900">Facturas de Compra</h1>
             <p className="text-gray-500 mt-1">Gestione las facturas de proveedores</p>
           </div>
-          <button className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700">
+          <button className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800">
             <Plus className="w-4 h-4" /> Nueva Factura
           </button>
         </div>
@@ -4803,17 +4864,20 @@ export default function ModuloCompras() {
     const ncMock: { id: number; numero: string; fecha: string; proveedor: string; factura_origen: string; motivo: string; total: number; estado: string }[] = []
 
     return (
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-emerald-900">Notas de Crédito de Compra</h1>
-            <p className="text-gray-500 mt-1">Gestione las notas de crédito recibidas de proveedores</p>
-          </div>
-          <button className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700">
+      <ComprasListSection
+        title="Notas de Crédito de Compra"
+        subtitle="Gestione las notas de crédito recibidas de proveedores"
+        moduleName="nc_compra"
+        data={ncMock}
+        searchFields={["numero", "proveedor", "factura_origen"]}
+        filterFields={[{ field: "estado", label: "Estado" }]}
+        actions={
+          <button className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800">
             <Plus className="w-4 h-4" /> Nueva NC
           </button>
-        </div>
-
+        }
+      >
+        {(filtered) => (
         <div className="bg-white rounded-lg border overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
@@ -4828,7 +4892,7 @@ export default function ModuloCompras() {
               </tr>
             </thead>
             <tbody>
-              {ncMock.map(nc => (
+              {filtered.map(nc => (
                 <tr key={nc.id} className="border-b hover:bg-gray-50 cursor-pointer">
                   <td className="py-3 px-4 font-medium text-emerald-700">{nc.numero}</td>
                   <td className="py-3 px-4 text-sm">{new Date(nc.fecha).toLocaleDateString('es-AR')}</td>
@@ -4848,7 +4912,8 @@ export default function ModuloCompras() {
             </tbody>
           </table>
         </div>
-      </div>
+        )}
+      </ComprasListSection>
     )
   }
 
@@ -4859,17 +4924,20 @@ export default function ModuloCompras() {
     const ndMock: { id: number; numero: string; fecha: string; proveedor: string; factura_origen: string; motivo: string; total: number; estado: string }[] = []
 
     return (
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-emerald-900">Notas de Débito de Compra</h1>
-            <p className="text-gray-500 mt-1">Gestione las notas de débito recibidas de proveedores</p>
-          </div>
-          <button className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700">
+      <ComprasListSection
+        title="Notas de Débito de Compra"
+        subtitle="Gestione las notas de débito recibidas de proveedores"
+        moduleName="nd_compra"
+        data={ndMock}
+        searchFields={["numero", "proveedor", "factura_origen"]}
+        filterFields={[{ field: "estado", label: "Estado" }]}
+        actions={
+          <button className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800">
             <Plus className="w-4 h-4" /> Nueva ND
           </button>
-        </div>
-
+        }
+      >
+        {(filtered) => (
         <div className="bg-white rounded-lg border overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
@@ -4884,7 +4952,7 @@ export default function ModuloCompras() {
               </tr>
             </thead>
             <tbody>
-              {ndMock.map(nd => (
+              {filtered.map(nd => (
                 <tr key={nd.id} className="border-b hover:bg-gray-50 cursor-pointer">
                   <td className="py-3 px-4 font-medium text-emerald-700">{nd.numero}</td>
                   <td className="py-3 px-4 text-sm">{new Date(nd.fecha).toLocaleDateString('es-AR')}</td>
@@ -4904,7 +4972,8 @@ export default function ModuloCompras() {
             </tbody>
           </table>
         </div>
-      </div>
+        )}
+      </ComprasListSection>
     )
   }
 
@@ -4915,17 +4984,21 @@ export default function ModuloCompras() {
     const ordenesPagoMock: { id: number; numero: string; fecha: string; proveedor: string; facturas: string[]; monto: number; forma_pago: string; estado: string }[] = []
 
     return (
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-emerald-900">Órdenes de Pago</h1>
-            <p className="text-gray-500 mt-1">Gestione los pagos a proveedores</p>
-          </div>
-          <button className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700">
+      <ComprasListSection
+        title="Órdenes de Pago"
+        subtitle="Gestione los pagos a proveedores"
+        moduleName="ordenes_pago"
+        data={ordenesPagoMock}
+        searchFields={["numero", "proveedor", "forma_pago"]}
+        filterFields={[{ field: "estado", label: "Estado" }]}
+        actions={
+          <button className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800">
             <Plus className="w-4 h-4" /> Nueva Orden de Pago
           </button>
-        </div>
-
+        }
+      >
+        {(filtered) => (
+          <>
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
             <p className="text-sm text-gray-500">Total Órdenes</p>
@@ -4961,7 +5034,7 @@ export default function ModuloCompras() {
               </tr>
             </thead>
             <tbody>
-              {ordenesPagoMock.map(op => (
+              {filtered.map(op => (
                 <tr key={op.id} className="border-b hover:bg-gray-50 cursor-pointer">
                   <td className="py-3 px-4 font-medium text-emerald-700">{op.numero}</td>
                   <td className="py-3 px-4 text-sm">{new Date(op.fecha).toLocaleDateString('es-AR')}</td>
@@ -4983,7 +5056,9 @@ export default function ModuloCompras() {
             </tbody>
           </table>
         </div>
-      </div>
+          </>
+        )}
+      </ComprasListSection>
     )
   }
 
@@ -4994,14 +5069,16 @@ export default function ModuloCompras() {
     const movimientosMock: { id: number; fecha: string; proveedor: string; tipo: string; numero: string; debe: number; haber: number }[] = []
 
     return (
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-emerald-900">Cuenta Corriente Proveedores</h1>
-            <p className="text-gray-500 mt-1">Movimientos de cuenta corriente con proveedores</p>
-          </div>
-        </div>
-
+      <ComprasListSection
+        title="Cuenta Corriente Proveedores"
+        subtitle="Movimientos de cuenta corriente con proveedores"
+        moduleName="cta_cte_proveedores"
+        data={movimientosMock}
+        searchFields={["proveedor", "numero", "tipo"]}
+        filterFields={[{ field: "tipo", label: "Tipo" }]}
+      >
+        {(filtered) => (
+          <>
         <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
             <p className="text-sm text-gray-500">Total Deuda</p>
@@ -5030,7 +5107,7 @@ export default function ModuloCompras() {
               </tr>
             </thead>
             <tbody>
-              {movimientosMock.map(mov => (
+              {filtered.map(mov => (
                 <tr key={mov.id} className="border-b hover:bg-gray-50">
                   <td className="py-3 px-4 text-sm">{new Date(mov.fecha).toLocaleDateString('es-AR')}</td>
                   <td className="py-3 px-4 text-sm">{mov.proveedor}</td>
@@ -5051,7 +5128,9 @@ export default function ModuloCompras() {
             </tbody>
           </table>
         </div>
-      </div>
+          </>
+        )}
+      </ComprasListSection>
     )
   }
 
@@ -5062,17 +5141,20 @@ export default function ModuloCompras() {
     const tiposGastoMock: { id: number; codigo: string; nombre: string; activa_costo: boolean; criterio_distribucion: string }[] = []
 
     return (
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-emerald-900">Tipos de Gasto de Importación</h1>
-            <p className="text-gray-500 mt-1">Configure los tipos de gastos para importaciones</p>
-          </div>
-          <button className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700">
+      <ComprasListSection
+        title="Tipos de Gasto de Importación"
+        subtitle="Configure los tipos de gastos para importaciones"
+        moduleName="tipos_gasto"
+        data={tiposGastoMock}
+        searchFields={["codigo", "nombre"]}
+        filterFields={[{ field: "criterio_distribucion", label: "Criterio Distribución" }]}
+        actions={
+          <button className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800">
             <Plus className="w-4 h-4" /> Nuevo Tipo
           </button>
-        </div>
-
+        }
+      >
+        {(filtered) => (
         <div className="bg-white rounded-lg border overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
@@ -5085,7 +5167,7 @@ export default function ModuloCompras() {
               </tr>
             </thead>
             <tbody>
-              {tiposGastoMock.map(tipo => (
+              {filtered.map(tipo => (
                 <tr key={tipo.id} className="border-b hover:bg-gray-50">
                   <td className="py-3 px-4 font-medium">{tipo.codigo}</td>
                   <td className="py-3 px-4 text-sm">{tipo.nombre}</td>
@@ -5105,7 +5187,8 @@ export default function ModuloCompras() {
             </tbody>
           </table>
         </div>
-      </div>
+        )}
+      </ComprasListSection>
     )
   }
 
@@ -5230,13 +5313,13 @@ export default function ModuloCompras() {
             <div className="flex items-center gap-4">
               <BotonVolver onClick={() => setSelectedCatProv(null)} variant="minimal" texto="" />
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">{c.nombre}</h1>
+                <h1 className="text-2xl font-bold text-amber-900">{c.nombre}</h1>
                 <p className="text-sm text-gray-500">Categoría de Proveedor</p>
               </div>
             </div>
             <button
               onClick={() => handleEditar(c)}
-              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1"
+              className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 flex items-center gap-1"
             >
               <Edit className="w-4 h-4" /> Editar
             </button>
@@ -5325,7 +5408,7 @@ export default function ModuloCompras() {
         <div className="max-w-5xl mx-auto">
           <div className="flex items-center gap-4 mb-4">
             <BotonVolver onClick={() => { setCreandoCatProv(false); setSelectedCatProv(null); setNuevaCatProv(catProvFormVacio) }} variant="minimal" texto="" />
-            <h1 className="text-xl font-bold text-gray-900">
+            <h1 className="text-xl font-bold text-amber-900">
               {selectedCatProv ? `Editando: ${selectedCatProv.nombre}` : "Nueva Categoría de Proveedor"}
             </h1>
           </div>
@@ -5518,7 +5601,7 @@ export default function ModuloCompras() {
             <button
               onClick={handleGuardarCat}
               disabled={!cat.nombre.trim()}
-              className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-4 py-2 text-sm bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Save className="w-4 h-4" />
               {selectedCatProv ? "Guardar Cambios" : "Crear Categoría"}
@@ -5530,20 +5613,20 @@ export default function ModuloCompras() {
 
     // Vista listado
     return (
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Categorías de Proveedores</h1>
-            <p className="text-gray-500 mt-1">Configure las categorías para clasificar sus proveedores</p>
-          </div>
-          <button
-            onClick={handleNueva}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-          >
+      <ComprasListSection
+        title="Categorías de Proveedores"
+        subtitle="Configure las categorías para clasificar sus proveedores"
+        moduleName="categorias_proveedores"
+        data={categoriasProveedor}
+        searchFields={["nombre"]}
+        filterFields={[{ field: "tipo_control", label: "Tipo Control" }]}
+        actions={
+          <button onClick={handleNueva} className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800">
             <Plus className="w-4 h-4" /> Nueva Categoría
           </button>
-        </div>
-
+        }
+      >
+        {(filtered) => (
         <div className="bg-white rounded-lg border overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
@@ -5571,7 +5654,7 @@ export default function ModuloCompras() {
                   </td>
                 </tr>
               )}
-              {categoriasProveedor.map(c => (
+              {filtered.map(c => (
                 <tr
                   key={c.id}
                   onClick={() => handleVerDetalle(c)}
@@ -5596,7 +5679,8 @@ export default function ModuloCompras() {
             </tbody>
           </table>
         </div>
-      </div>
+        )}
+      </ComprasListSection>
     )
   }
 
@@ -5605,7 +5689,7 @@ export default function ModuloCompras() {
   // =====================================================
   const renderPlaceholder = (title: string) => (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-4">{title}</h1>
+      <h1 className="text-2xl font-bold text-amber-900 mb-4">{title}</h1>
       <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
         <p>Módulo en desarrollo</p>
       </div>
@@ -5941,7 +6025,7 @@ export default function ModuloCompras() {
                     setRecepcionCantidades(prev => ({ ...prev, [linea.producto_id]: cantCompletas }))
                     setModalSerieOpen(false)
                   }}
-                  className="px-4 py-2 text-sm rounded-lg font-medium transition-colors bg-emerald-600 hover:bg-emerald-700 text-white"
+                  className="px-4 py-2 text-sm rounded-lg font-medium transition-colors bg-indigo-900 hover:bg-indigo-800 text-white"
                 >
                   Confirmar ({completadas}/{cantTotal})
                 </button>
