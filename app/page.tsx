@@ -713,7 +713,7 @@ function CellHomeERPContent() {
   }, [])
 
   // Generic filter function that works on any array of data
-  const applyFilters = useCallback(<T extends Record<string, unknown>>(
+  const applyFilters = useCallback(<T extends object>(
     data: T[],
     config: FilterConfig,
     search: string,
@@ -722,10 +722,11 @@ function CellHomeERPContent() {
     conditions: FilterCondition[]
   ): T[] => {
     return data.filter(item => {
+      const rec = item as Record<string, unknown>
       // Search filter - check all string fields
       if (search) {
         const searchLower = search.toLowerCase()
-        const matchesSearch = Object.values(item).some(val => 
+        const matchesSearch = Object.values(rec).some(val => 
           String(val).toLowerCase().includes(searchLower)
         )
         if (!matchesSearch) return false
@@ -735,7 +736,7 @@ function CellHomeERPContent() {
       for (const qfId of quickFilters) {
         const qf = config.quickFilters.find(f => f.id === qfId)
         if (qf) {
-          const fieldValue = item[qf.field]
+          const fieldValue = rec[qf.field]
           if (qf.operator === "equals" && fieldValue !== qf.value) return false
           if (qf.operator === "not_equals" && fieldValue === qf.value) return false
           if (qf.operator === "is_null" && fieldValue != null && fieldValue !== "") return false
@@ -746,7 +747,7 @@ function CellHomeERPContent() {
       if (dateFilter) {
         const df = config.dateFilters.find(f => f.id === dateFilter)
         if (df) {
-          const dateValue = new Date(item[df.field] as string)
+          const dateValue = new Date(rec[df.field] as string)
           const { start, end } = getDateRange(df.range)
           if (dateValue < start || dateValue > end) return false
         }
@@ -754,7 +755,7 @@ function CellHomeERPContent() {
 
       // Custom conditions
       for (const cond of conditions) {
-        const fieldValue = String(item[cond.field] || "").toLowerCase()
+        const fieldValue = String(rec[cond.field] || "").toLowerCase()
         const condValue = cond.value.toLowerCase()
         
         switch (cond.operator) {
@@ -784,7 +785,7 @@ function CellHomeERPContent() {
   }, [getDateRange])
 
   // Group data by field
-  const groupData = useCallback(<T extends Record<string, unknown>>(
+  const groupData = useCallback(<T extends object>(
     data: T[],
     groupField: string
   ): Map<string, T[]> => {
@@ -796,7 +797,7 @@ function CellHomeERPContent() {
     }
 
     data.forEach(item => {
-      const key = String(item[groupField] || "Sin asignar")
+      const key = String((item as Record<string, unknown>)[groupField] || "Sin asignar")
       if (!groups.has(key)) {
         groups.set(key, [])
       }
@@ -2206,7 +2207,7 @@ function CellHomeERPContent() {
                         <td className="py-3 px-4">{mockEquipos.find(e => e.id === f.equipo_id)?.nombre}</td>
                         <td className="py-3 px-4">
                           <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700">
-                            {f.categoria_reparacion}
+                            {categoriasReparacion.find(c => c.id === f.categoria_reparacion_id)?.nombre ?? "-"}
                           </span>
                         </td>
                         <td className="py-3 px-4">
@@ -2983,7 +2984,14 @@ function CellHomeERPContent() {
             if (editingTipoOT) {
               setTiposOT(prev => prev.map(t => t.id === editingTipoOT.id ? { ...t, ...data } as TipoOT : t))
             } else {
-              setTiposOT(prev => [...prev, { id: prev.length + 1, campos_visibles: [], ...data } as TipoOT])
+              setTiposOT(prev => [...prev, {
+                id: prev.length + 1,
+                nombre: String(data.nombre ?? ""),
+                area_id: Number(data.area_id ?? 0),
+                busca_garantia_compra: Boolean(data.busca_garantia_compra),
+                busca_garantia_reparacion: Boolean(data.busca_garantia_reparacion),
+                campos_visibles: [],
+              }])
             }
             setShowTipoOTModal(false)
             setEditingTipoOT(null)
@@ -3556,9 +3564,9 @@ function FilterBar({
 interface FieldConfig {
   name: string
   label: string
-  type: "text" | "email" | "select"
+  type: "text" | "email" | "select" | "checkbox"
   required?: boolean
-  value?: string | number
+  value?: string | number | boolean
   options?: { value: string | number; label: string }[]
 }
 
@@ -3572,7 +3580,9 @@ interface CRUDModalProps {
 function CRUDModal({ title, onClose, onSave, fields }: CRUDModalProps) {
   const [formData, setFormData] = useState<Record<string, unknown>>(() => {
     const initial: Record<string, unknown> = {}
-    fields.forEach(f => { initial[f.name] = f.value || "" })
+    fields.forEach(f => {
+      initial[f.name] = f.value ?? (f.type === "checkbox" ? false : "")
+    })
     return initial
   })
 
@@ -3609,6 +3619,16 @@ function CRUDModal({ title, onClose, onSave, fields }: CRUDModalProps) {
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
+              ) : field.type === "checkbox" ? (
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(formData[field.name])}
+                    onChange={(e) => setFormData(prev => ({ ...prev, [field.name]: e.target.checked }))}
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-sm text-gray-700">{field.label}</span>
+                </label>
               ) : (
                 <input
                   type={field.type}

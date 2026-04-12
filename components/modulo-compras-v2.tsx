@@ -1,6 +1,6 @@
 ﻿"use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useMemo } from "react"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Settings, Lock, Unlock, FileBox, Ship, Plane, Pencil, ChevronLeft, ChevronRight as ChevronRightIcon } from "lucide-react"
 import BotonVolver from "./ui/boton-volver"
 import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
@@ -25,12 +25,17 @@ import {
   fetchFacturasCompra,
   guardarFacturaCompra,
   fetchOrdenesPago,
+  fetchOrdenPagoDetalle,
   guardarOrdenPago,
+  eliminarOrdenPago,
+  confirmarOrdenPagoAPI,
+  cancelarOrdenPagoAPI,
   fetchNotasCreditoCompra,
   guardarNotaCreditoCompra,
   fetchNotasDebitoCompra,
   guardarNotaDebitoCompra,
 } from "@/lib/compras-actions"
+import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 
 // ── Datos geográficos ────────────────────────────────────────────────────────
 
@@ -408,26 +413,76 @@ interface NotaDebitoCompra {
 }
 
 interface OrdenPago {
-  id: number
+  id: string
   numero: string
   fecha: string
+  sucursal_id?: string
+  sucursal_nombre?: string
   proveedor_id: number
   proveedor_nombre: string
-  estado: "borrador" | "confirmada" | "cancelada"
-  moneda: "ARS" | "USD"
-  tipo_cambio: number
+  caja_id?: string
+  caja_nombre?: string
+  moneda: "ARS" | "USD" | "EUR"
+  tipo_cotizacion?: "oficial" | "blue" | "mep"
+  cotizacion?: number
+  importe: number
+  importe_ars?: number
+  importe_a_cuenta: number
+  importe_no_conciliado: number
+  concepto?: string
+  orden_compra_id?: number
+  orden_compra_numero?: string
+  estado: "borrador" | "publicado" | "cancelado"
+  periodo?: string
+  observaciones?: string
+  created_by?: string
+  created_at?: string
+  medios_pago?: OPMedioPago[]
+  comprobantes?: OPComprobante[]
+}
+
+interface OPMedioPago {
+  id?: string
+  op_id?: string
+  nombre?: string
+  forma_pago_id?: string
+  forma_pago_nombre?: string
+  tipo_operacion?: string
+  tipo_cotizacion?: "oficial" | "blue" | "mep"
+  cotizacion?: number
+  numero_operacion?: string
+  fecha_operacion?: string
+  importe: number
+  moneda: "ARS" | "USD" | "EUR"
+  importe_comp: number
+  moneda_comp?: "ARS" | "USD" | "EUR"
+  observaciones?: string
+}
+
+interface OPComprobante {
+  id?: string
+  op_id?: string
+  tipo: "debito" | "credito"
+  factura_id?: number
+  referencia: string
+  fecha?: string
+  vencimiento?: string
+  saldo_mon?: number
+  moneda_comp?: string
+  tipo_cotizacion?: string
+  cotizacion_original?: number
+  saldo_original: number
+  cotizacion?: number
+  importe_en_liquidacion?: number
+  saldo: number
   total: number
-  facturas_aplicadas: {
-    factura_id: number
-    factura_numero: string
-    importe_aplicado: number
-  }[]
-  pagos: {
-    forma_pago: string
-    importe: number
-    referencia?: string
-  }[]
-  seguimiento?: SeguimientoEntry[]
+  importe: number
+}
+
+interface CajaDisponible {
+  id: string
+  nombre: string
+  sucursal: string
 }
 
 interface LegajoImportacion {
@@ -923,6 +978,25 @@ export default function ModuloCompras() {
   // Órdenes de Pago
   const [selectedOP, setSelectedOP] = useState<OrdenPago | null>(null)
   const [creandoOP, setCreandoOP] = useState(false)
+  const [opTabActivo, setOpTabActivo] = useState<"info_pago" | "comprobantes" | "otra_info" | "observaciones">("info_pago")
+  const [opForm, setOpForm] = useState<Partial<OrdenPago>>({
+    proveedor_id: undefined,
+  })
+  const [opMediosPago, setOpMediosPago] = useState<OPMedioPago[]>([])
+  const [opComprobantesDebito, setOpComprobantesDebito] = useState<OPComprobante[]>([])
+  const [opComprobantesCredito, setOpComprobantesCredito] = useState<OPComprobante[]>([])
+  const [opModalMedioPago, setOpModalMedioPago] = useState(false)
+  const [opModalCancelacion, setOpModalCancelacion] = useState(false)
+  const [opSaving, setOpSaving] = useState(false)
+  const [cajasDisponibles, setCajasDisponibles] = useState<CajaDisponible[]>([])
+  const [opOCsProveedor, setOpOCsProveedor] = useState<{id: number; numero: string}[]>([])
+
+  // Cargar cajas disponibles
+  useEffect(() => {
+    const supabase = createSupabaseClient()
+    supabase.from("cajas").select("id, nombre, sucursal").eq("activo", true).order("nombre")
+      .then(({ data }) => { if (data) setCajasDisponibles(data) })
+  }, [])
 
   // Legajos de Importación
   const [legajosImportacion, setLegajosImportacion] = useState<LegajoImportacion[]>([])
@@ -4980,82 +5054,840 @@ export default function ModuloCompras() {
   // =====================================================
   // RENDER ÓRDENES DE PAGO
   // =====================================================
+
+  // ---- helpers OP ----
+  const initNuevaOP = () => {
+    const suc = sucursalActiva
+    setOpForm({
+      fecha: new Date().toISOString().split("T")[0],
+      moneda: "ARS",
+      importe: 0,
+      importe_a_cuenta: 0,
+      importe_no_conciliado: 0,
+      sucursal_nombre: suc?.nombre ?? "",
+      estado: "borrador",
+    })
+    setOpMediosPago([])
+    setOpComprobantesDebito([])
+    setOpComprobantesCredito([])
+    setOpTabActivo("info_pago")
+    setCreandoOP(true)
+    setSelectedOP(null)
+  }
+
+  const abrirFichaOP = (op: OrdenPago) => {
+    setSelectedOP(op)
+    setOpForm({ ...op })
+    setOpMediosPago(op.medios_pago ?? [])
+    setOpComprobantesDebito((op.comprobantes ?? []).filter(c => c.tipo === "debito"))
+    setOpComprobantesCredito((op.comprobantes ?? []).filter(c => c.tipo === "credito"))
+    setOpTabActivo("info_pago")
+    setCreandoOP(false)
+    // Cargar OCs del proveedor
+    setOpOCsProveedor(ordenesCompra.filter(oc => oc.proveedor_id === op.proveedor_id).map(oc => ({ id: oc.id, numero: oc.numero })))
+  }
+
+  const calcOpTotales = (medios: OPMedioPago[], debitos: OPComprobante[], creditos: OPComprobante[]) => {
+    const totalMedios = medios.reduce((s, m) => s + (m.importe_comp || 0), 0)
+    const totalDebitos = debitos.reduce((s, c) => s + (c.importe || 0), 0)
+    const totalCreditos = creditos.reduce((s, c) => s + (c.importe || 0), 0)
+    const noConciliado = totalMedios - totalDebitos + totalCreditos
+    const aCuenta = Math.max(0, noConciliado)
+    return { totalMedios, totalDebitos, totalCreditos, noConciliado, aCuenta }
+  }
+
+  const asignarPagosAFacturas = () => {
+    const facturasDelProv = facturasCompra
+      .filter(f => f.proveedor_id === opForm.proveedor_id && f.estado !== "pagada" && f.estado !== "cancelada" && (f.saldo ?? f.total) > 0)
+      .sort((a, b) => new Date(a.fecha_vencimiento || a.fecha).getTime() - new Date(b.fecha_vencimiento || b.fecha).getTime())
+
+    const totalDisponible = opMediosPago.reduce((s, m) => s + (m.importe_comp || 0), 0) -
+      opComprobantesCredito.reduce((s, c) => s + (c.importe || 0), 0)
+
+    let restante = totalDisponible
+    const nuevosDebitos: OPComprobante[] = []
+
+    for (const fac of facturasDelProv) {
+      if (restante <= 0) break
+      const saldoFac = fac.saldo ?? fac.total
+      const asignar = Math.min(restante, saldoFac)
+      nuevosDebitos.push({
+        tipo: "debito",
+        factura_id: fac.id,
+        referencia: fac.numero,
+        fecha: fac.fecha,
+        vencimiento: fac.fecha_vencimiento,
+        saldo_mon: saldoFac,
+        moneda_comp: fac.moneda,
+        cotizacion_original: fac.tipo_cambio,
+        saldo_original: saldoFac,
+        cotizacion: opForm.cotizacion,
+        saldo: saldoFac - asignar,
+        total: fac.total,
+        importe: asignar,
+      })
+      restante -= asignar
+    }
+
+    setOpComprobantesDebito(nuevosDebitos)
+    const tots = calcOpTotales(opMediosPago, nuevosDebitos, opComprobantesCredito)
+    setOpForm(prev => ({
+      ...prev,
+      importe_a_cuenta: tots.aCuenta,
+      importe_no_conciliado: tots.noConciliado,
+    }))
+  }
+
+  const guardarOPCompleta = async (): Promise<OrdenPago | null> => {
+    try {
+      setOpSaving(true)
+      if (!opForm.proveedor_id || typeof opForm.proveedor_id !== "number" || opForm.proveedor_id <= 0) {
+        alert("Debe seleccionar un proveedor válido antes de guardar la Orden de Pago.")
+        return null
+      }
+      const payload = {
+        ...opForm,
+        medios_pago: opMediosPago.map(({ id: _id, ...rest }) => rest),
+        comprobantes: [
+          ...opComprobantesDebito.map(({ id: _id, ...rest }) => rest),
+          ...opComprobantesCredito.map(({ id: _id, ...rest }) => rest),
+        ],
+      }
+      const saved = await guardarOrdenPago(payload, selectedOP?.id)
+      // Recargar lista y detalle completo (con medios_pago y comprobantes)
+      const [all, detalle] = await Promise.all([
+        fetchOrdenesPago(),
+        fetchOrdenPagoDetalle(String(saved.id)),
+      ])
+      setOrdenesPago(all)
+      if (detalle) abrirFichaOP(detalle as OrdenPago)
+      return detalle as OrdenPago
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Error al guardar OP")
+      return null
+    } finally {
+      setOpSaving(false)
+    }
+  }
+
+  const confirmarOPAction = async () => {
+    try {
+      setOpSaving(true)
+      const opGuardada = await guardarOPCompleta()
+      if (!opGuardada?.id) return
+      await confirmarOrdenPagoAPI(String(opGuardada.id))
+      const [all, detalle] = await Promise.all([
+        fetchOrdenesPago(),
+        fetchOrdenPagoDetalle(String(opGuardada.id)),
+      ])
+      setOrdenesPago(all)
+      if (detalle) abrirFichaOP(detalle as OrdenPago)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Error al confirmar OP")
+    } finally {
+      setOpSaving(false)
+    }
+  }
+
+  const cancelarOPAction = async () => {
+    if (!selectedOP) return
+    try {
+      setOpSaving(true)
+      await cancelarOrdenPagoAPI(selectedOP.id)
+      const all = await fetchOrdenesPago()
+      setOrdenesPago(all)
+      const opActualizada = all.find((o: OrdenPago) => o.id === selectedOP.id)
+      if (opActualizada) abrirFichaOP(opActualizada)
+      setOpModalCancelacion(false)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Error al cancelar OP")
+    } finally {
+      setOpSaving(false)
+    }
+  }
+
+  const eliminarOPAction = async () => {
+    if (!selectedOP) return
+    if (!confirm("¿Eliminar esta orden de pago en borrador?")) return
+    try {
+      await eliminarOrdenPago(selectedOP.id)
+      const all = await fetchOrdenesPago()
+      setOrdenesPago(all)
+      setSelectedOP(null)
+      setCreandoOP(false)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Error al eliminar OP")
+    }
+  }
+
+  // ---- Ficha OP ----
+  const renderFichaOP = () => {
+    const editable = (opForm.estado ?? "borrador") === "borrador"
+    const estadoColor: Record<string, string> = {
+      borrador: "bg-gray-100 text-gray-700",
+      publicado: "bg-green-100 text-green-700",
+      cancelado: "bg-red-100 text-red-700",
+    }
+    const estadoLabel: Record<string, string> = {
+      borrador: "Borrador",
+      publicado: "Publicado",
+      cancelado: "Cancelado",
+    }
+
+    const tots = calcOpTotales(opMediosPago, opComprobantesDebito, opComprobantesCredito)
+    const cajasFiltered = sucursalActiva
+      ? cajasDisponibles.filter(c => c.sucursal === sucursalActiva.nombre)
+      : cajasDisponibles
+
+    const tabsOP = [
+      { key: "info_pago" as const, label: "Información de Pago", count: opMediosPago.length },
+      { key: "comprobantes" as const, label: "Comprobantes", count: opComprobantesDebito.length + opComprobantesCredito.length },
+      { key: "otra_info" as const, label: "Otra Información", count: null },
+      { key: "observaciones" as const, label: "Observaciones", count: null },
+    ]
+
+    return (
+      <div>
+        {/* Breadcrumb */}
+        <div className="text-sm text-gray-500 mb-4 flex items-center gap-2">
+          <button onClick={() => { setSelectedOP(null); setCreandoOP(false) }} className="hover:text-blue-600">Órdenes de Pago</button>
+          <ChevronRight className="w-4 h-4" />
+          <span className="text-gray-900 font-medium">{opForm.numero || "Nueva OP"}</span>
+        </div>
+
+        {/* Header */}
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-4">
+            <BotonVolver onClick={() => { setSelectedOP(null); setCreandoOP(false) }} variant="minimal" texto="" />
+            <div>
+              <h1 className="text-2xl font-bold text-amber-900">{opForm.numero || "Nueva Orden de Pago"}</h1>
+              <p className="text-sm text-gray-500">{opForm.fecha ? formatDate(opForm.fecha) : ""} {opForm.proveedor_nombre ? `| ${opForm.proveedor_nombre}` : ""}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {editable && (
+              <>
+                <button
+                  onClick={guardarOPCompleta}
+                  disabled={opSaving}
+                  className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" />
+                  Guardar
+                </button>
+                {(selectedOP || creandoOP) && opForm.proveedor_id && opForm.importe && opForm.importe > 0 && opMediosPago.length > 0 && opForm.caja_id && (
+                  <button
+                    onClick={confirmarOPAction}
+                    disabled={opSaving}
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800 disabled:opacity-50"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Confirmar
+                  </button>
+                )}
+                {selectedOP && (
+                  <button onClick={eliminarOPAction} className="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50">
+                    Eliminar
+                  </button>
+                )}
+              </>
+            )}
+            {opForm.estado === "publicado" && (
+              <>
+                <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50">
+                  <Download className="w-4 h-4" />
+                  Descargar PDF
+                </button>
+                <button
+                  onClick={() => setOpModalCancelacion(true)}
+                  className="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50"
+                >
+                  Cancelar
+                </button>
+              </>
+            )}
+            <span className={`px-3 py-1.5 rounded-full text-sm font-semibold ${estadoColor[opForm.estado ?? "borrador"] ?? "bg-gray-100 text-gray-700"}`}>
+              {estadoLabel[opForm.estado ?? "borrador"] ?? opForm.estado}
+            </span>
+          </div>
+        </div>
+
+        {/* Barra de progreso */}
+        <div className="bg-white rounded-lg border px-6 py-4 mb-4">
+          <div className="flex items-center gap-0">
+            {(["borrador", "publicado"] as const).map((step, idx) => {
+              const stepLabel = { borrador: "Borrador", publicado: "Publicado" }[step]
+              const steps = ["borrador", "publicado"]
+              const currentIdx = steps.indexOf(opForm.estado ?? "borrador")
+              const isCurrent = opForm.estado === step
+              const isDone = currentIdx > idx || opForm.estado === "publicado"
+              return (
+                <React.Fragment key={step}>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                      opForm.estado === "cancelado" ? "bg-red-100 text-red-600" :
+                      isDone ? "bg-blue-600 text-white" :
+                      isCurrent ? "bg-blue-100 text-blue-700 ring-2 ring-blue-300" :
+                      "bg-gray-100 text-gray-400"
+                    }`}>
+                      {isDone && opForm.estado !== "cancelado" ? <CheckCircle className="w-4 h-4" /> : idx + 1}
+                    </div>
+                    <span className={`text-xs font-medium ${isCurrent || isDone ? "text-gray-900" : "text-gray-400"}`}>{stepLabel}</span>
+                  </div>
+                  {idx < 1 && <div className={`flex-1 h-0.5 mx-3 ${isDone ? "bg-blue-400" : "bg-gray-200"}`} />}
+                </React.Fragment>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Cabecera datos - 2 columnas */}
+        <div className="bg-white rounded-lg border p-6 mb-4">
+          <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+            {/* COLUMNA IZQUIERDA */}
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Sucursal</label>
+                {editable ? (
+                  <select
+                    value={opForm.sucursal_nombre ?? ""}
+                    onChange={e => setOpForm(prev => ({ ...prev, sucursal_nombre: e.target.value }))}
+                    className="w-full border rounded px-2 py-1.5 text-sm"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {sucursales.map(s => <option key={s.id} value={s.nombre}>{s.nombre}</option>)}
+                  </select>
+                ) : <p className="font-medium text-sm">{opForm.sucursal_nombre || "-"}</p>}
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Proveedor</label>
+                {editable ? (
+                  <select
+                    value={opForm.proveedor_id ?? ""}
+                    onChange={e => {
+                      const prov = proveedores.find(p => p.id === Number(e.target.value))
+                      setOpForm(prev => ({
+                        ...prev,
+                        proveedor_id: prov ? prov.id : undefined,
+                        proveedor_nombre: prov ? (prov.nombre || prov.razon_social || "") : "",
+                      }))
+                      if (prov) {
+                        setOpOCsProveedor(ordenesCompra.filter(oc => oc.proveedor_id === prov.id).map(oc => ({ id: oc.id, numero: oc.numero })))
+                      }
+                    }}
+                    className="w-full border rounded px-2 py-1.5 text-sm"
+                  >
+                    <option value="">Seleccionar proveedor...</option>
+                    {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre || p.razon_social}</option>)}
+                  </select>
+                ) : <p className="font-medium text-sm">{opForm.proveedor_nombre || "-"}</p>}
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Importe</label>
+                <p className="font-medium text-sm text-lg">{formatCurrency(tots.totalMedios, opForm.moneda as "ARS" | "USD" || "ARS")}</p>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Importe no Conciliado</label>
+                <p className={`font-medium text-sm ${tots.noConciliado > 0 ? "text-amber-600" : "text-gray-600"}`}>
+                  {formatCurrency(Math.abs(tots.noConciliado), opForm.moneda as "ARS" | "USD" || "ARS")}
+                </p>
+              </div>
+            </div>
+
+            {/* COLUMNA DERECHA */}
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Fecha</label>
+                {editable ? (
+                  <input
+                    type="date"
+                    value={opForm.fecha ?? ""}
+                    onChange={e => setOpForm(prev => ({ ...prev, fecha: e.target.value }))}
+                    className="w-full border rounded px-2 py-1.5 text-sm"
+                  />
+                ) : <p className="font-medium text-sm">{opForm.fecha ? formatDate(opForm.fecha) : "-"}</p>}
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Caja</label>
+                {editable ? (
+                  <select
+                    value={opForm.caja_id ?? ""}
+                    onChange={e => {
+                      const caja = cajasFiltered.find(c => c.id === e.target.value)
+                      setOpForm(prev => ({ ...prev, caja_id: e.target.value, caja_nombre: caja?.nombre ?? "" }))
+                    }}
+                    className="w-full border rounded px-2 py-1.5 text-sm"
+                  >
+                    <option value="">Seleccionar caja...</option>
+                    {cajasFiltered.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </select>
+                ) : <p className="font-medium text-sm">{opForm.caja_nombre || "-"}</p>}
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Importe a Cuenta</label>
+                <p className="font-medium text-sm text-emerald-600">{formatCurrency(tots.aCuenta, opForm.moneda as "ARS" | "USD" || "ARS")}</p>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Moneda</label>
+                {editable ? (
+                  <div className="flex gap-2 items-center">
+                    <select
+                      value={opForm.moneda ?? "ARS"}
+                      onChange={e => setOpForm(prev => ({ ...prev, moneda: e.target.value as "ARS" | "USD" | "EUR" }))}
+                      className="border rounded px-2 py-1.5 text-sm"
+                    >
+                      <option value="ARS">ARS</option>
+                      <option value="USD">USD</option>
+                      <option value="EUR">EUR</option>
+                    </select>
+                    {opForm.moneda && opForm.moneda !== "ARS" && (
+                      <>
+                        <select
+                          value={opForm.tipo_cotizacion ?? "oficial"}
+                          onChange={e => setOpForm(prev => ({ ...prev, tipo_cotizacion: e.target.value as "oficial" | "blue" | "mep" }))}
+                          className="border rounded px-2 py-1.5 text-sm"
+                        >
+                          <option value="oficial">Oficial</option>
+                          <option value="blue">Blue</option>
+                          <option value="mep">MEP</option>
+                        </select>
+                        <input
+                          type="number"
+                          placeholder="Cotización"
+                          value={opForm.cotizacion ?? ""}
+                          onChange={e => {
+                            const cot = parseFloat(e.target.value) || 0
+                            setOpForm(prev => ({
+                              ...prev,
+                              cotizacion: cot,
+                              importe_ars: (prev.importe ?? 0) * cot,
+                            }))
+                          }}
+                          className="border rounded px-2 py-1.5 text-sm w-28"
+                        />
+                        <span className="text-xs text-gray-500">= {formatCurrency((opForm.importe ?? 0) * (opForm.cotizacion ?? 0))}</span>
+                      </>
+                    )}
+                  </div>
+                ) : <p className="font-medium text-sm">{opForm.moneda}{opForm.cotizacion ? ` (${opForm.tipo_cotizacion} ${opForm.cotizacion})` : ""}</p>}
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Concepto</label>
+                {editable ? (
+                  <input
+                    value={opForm.concepto ?? ""}
+                    onChange={e => setOpForm(prev => ({ ...prev, concepto: e.target.value }))}
+                    className="w-full border rounded px-2 py-1.5 text-sm"
+                    placeholder="Descripción del pago..."
+                  />
+                ) : <p className="font-medium text-sm">{opForm.concepto || "-"}</p>}
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Orden de Compra</label>
+                {editable ? (
+                  <select
+                    value={opForm.orden_compra_id ?? ""}
+                    onChange={e => {
+                      const oc = opOCsProveedor.find(o => o.id === Number(e.target.value))
+                      setOpForm(prev => ({ ...prev, orden_compra_id: oc ? oc.id : undefined, orden_compra_numero: oc?.numero }))
+                    }}
+                    className="w-full border rounded px-2 py-1.5 text-sm"
+                  >
+                    <option value="">Sin OC vinculada</option>
+                    {opOCsProveedor.map(oc => <option key={oc.id} value={oc.id}>{oc.numero}</option>)}
+                  </select>
+                ) : <p className="font-medium text-sm">{opForm.orden_compra_numero || "-"}</p>}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="bg-white rounded-lg border overflow-hidden">
+          <div className="flex border-b">
+            {tabsOP.map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setOpTabActivo(tab.key)}
+                className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  opTabActivo === tab.key
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {tab.label}
+                {tab.count !== null && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{tab.count}</span>}
+              </button>
+            ))}
+          </div>
+
+          <div className="p-4">
+            {/* TAB INFORMACIÓN DE PAGO */}
+            {opTabActivo === "info_pago" && (
+              <div>
+                {editable && (
+                  <div className="mb-3">
+                    <button
+                      onClick={() => setOpModalMedioPago(true)}
+                      className="flex items-center gap-2 bg-indigo-900 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-800"
+                    >
+                      <Plus className="w-4 h-4" /> Añadir medio de pago
+                    </button>
+                  </div>
+                )}
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b">
+                    <tr className="text-xs font-semibold text-gray-600 uppercase">
+                      <th className="text-left py-2 px-3">Nombre</th>
+                      <th className="text-right py-2 px-3">Importe Comp.</th>
+                      <th className="text-center py-2 px-3">Mon. Comp.</th>
+                      <th className="text-right py-2 px-3">Importe</th>
+                      <th className="text-center py-2 px-3">Moneda</th>
+                      {editable && <th className="w-10"></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {opMediosPago.map((mp, idx) => (
+                      <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-2 px-3 text-sm">{mp.nombre || mp.forma_pago_nombre || "-"}</td>
+                        <td className="py-2 px-3 text-sm text-right font-medium">{formatCurrency(mp.importe_comp)}</td>
+                        <td className="py-2 px-3 text-sm text-center">{mp.moneda_comp || opForm.moneda}</td>
+                        <td className="py-2 px-3 text-sm text-right font-medium">{formatCurrency(mp.importe)}</td>
+                        <td className="py-2 px-3 text-sm text-center">{mp.moneda}</td>
+                        {editable && (
+                          <td className="py-2 px-3 text-center">
+                            <button
+                              onClick={() => {
+                                const nuevosMedios = opMediosPago.filter((_, i) => i !== idx)
+                                setOpMediosPago(nuevosMedios)
+                                const t = calcOpTotales(nuevosMedios, opComprobantesDebito, opComprobantesCredito)
+                                setOpForm(prev => ({ ...prev, importe: t.totalMedios, importe_a_cuenta: t.aCuenta, importe_no_conciliado: t.noConciliado }))
+                              }}
+                              className="text-red-400 hover:text-red-600"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                    {opMediosPago.length === 0 && (
+                      <tr><td colSpan={6} className="py-6 text-center text-gray-400 text-sm">Sin medios de pago cargados</td></tr>
+                    )}
+                  </tbody>
+                  {opMediosPago.length > 0 && (
+                    <tfoot className="bg-gray-50 font-semibold text-sm">
+                      <tr>
+                        <td className="py-2 px-3">Total</td>
+                        <td className="py-2 px-3 text-right">{formatCurrency(tots.totalMedios)}</td>
+                        <td></td>
+                        <td className="py-2 px-3 text-right">{formatCurrency(opMediosPago.reduce((s, m) => s + m.importe, 0))}</td>
+                        <td></td>
+                        {editable && <td></td>}
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            )}
+
+            {/* TAB COMPROBANTES */}
+            {opTabActivo === "comprobantes" && (
+              <div className="space-y-6">
+                {/* DÉBITOS */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-semibold text-gray-700 uppercase">Débitos (Facturas a pagar)</h3>
+                    {editable && opForm.proveedor_id && (
+                      <button
+                        onClick={asignarPagosAFacturas}
+                        className="flex items-center gap-1 text-xs px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        Asignar pagos a las facturas
+                      </button>
+                    )}
+                  </div>
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b">
+                      <tr className="text-xs font-semibold text-gray-600 uppercase">
+                        <th className="text-left py-2 px-3">Referencia</th>
+                        <th className="text-left py-2 px-3">Fecha</th>
+                        <th className="text-left py-2 px-3">Vencimiento</th>
+                        <th className="text-right py-2 px-3">Saldo Orig.</th>
+                        <th className="text-right py-2 px-3">Total</th>
+                        <th className="text-right py-2 px-3">Importe</th>
+                        <th className="text-right py-2 px-3">Saldo</th>
+                        {editable && <th className="w-10"></th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {opComprobantesDebito.map((comp, idx) => (
+                        <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="py-2 px-3 text-sm text-blue-600 font-medium">{comp.referencia}</td>
+                          <td className="py-2 px-3 text-sm">{comp.fecha ? formatDate(comp.fecha) : "-"}</td>
+                          <td className="py-2 px-3 text-sm">{comp.vencimiento ? formatDate(comp.vencimiento) : "-"}</td>
+                          <td className="py-2 px-3 text-sm text-right">{formatCurrency(comp.saldo_original)}</td>
+                          <td className="py-2 px-3 text-sm text-right">{formatCurrency(comp.total)}</td>
+                          <td className="py-2 px-3 text-sm text-right">
+                            {editable ? (
+                              <input
+                                type="number"
+                                value={comp.importe}
+                                onChange={e => {
+                                  const val = parseFloat(e.target.value) || 0
+                                  const newDebitos = [...opComprobantesDebito]
+                                  newDebitos[idx] = { ...newDebitos[idx], importe: val, saldo: newDebitos[idx].saldo_original - val }
+                                  setOpComprobantesDebito(newDebitos)
+                                  const t = calcOpTotales(opMediosPago, newDebitos, opComprobantesCredito)
+                                  setOpForm(prev => ({ ...prev, importe_a_cuenta: t.aCuenta, importe_no_conciliado: t.noConciliado }))
+                                }}
+                                className="w-24 border rounded px-2 py-1 text-sm text-right"
+                                min="0"
+                                max={comp.saldo_original}
+                              />
+                            ) : (
+                              <span className="font-medium">{formatCurrency(comp.importe)}</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-sm text-right">{formatCurrency(comp.saldo)}</td>
+                          {editable && (
+                            <td className="py-2 px-3">
+                              <button
+                                onClick={() => {
+                                  const newD = opComprobantesDebito.filter((_, i) => i !== idx)
+                                  setOpComprobantesDebito(newD)
+                                  const t = calcOpTotales(opMediosPago, newD, opComprobantesCredito)
+                                  setOpForm(prev => ({ ...prev, importe_a_cuenta: t.aCuenta, importe_no_conciliado: t.noConciliado }))
+                                }}
+                                className="text-red-400 hover:text-red-600"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                      {opComprobantesDebito.length === 0 && (
+                        <tr><td colSpan={8} className="py-4 text-center text-gray-400 text-sm">Sin facturas asignadas</td></tr>
+                      )}
+                    </tbody>
+                    {opComprobantesDebito.length > 0 && (
+                      <tfoot className="bg-gray-50 font-semibold text-sm">
+                        <tr>
+                          <td colSpan={5} className="py-2 px-3">Total</td>
+                          <td className="py-2 px-3 text-right">{formatCurrency(tots.totalDebitos)}</td>
+                          <td></td>
+                          {editable && <td></td>}
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+
+                {/* CRÉDITOS */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase mb-2">Créditos (Notas de Crédito)</h3>
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b">
+                      <tr className="text-xs font-semibold text-gray-600 uppercase">
+                        <th className="text-left py-2 px-3">Referencia</th>
+                        <th className="text-left py-2 px-3">Fecha</th>
+                        <th className="text-right py-2 px-3">Total</th>
+                        <th className="text-right py-2 px-3">Importe</th>
+                        {editable && <th className="w-10"></th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {opComprobantesCredito.map((comp, idx) => (
+                        <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="py-2 px-3 text-sm text-green-600 font-medium">{comp.referencia}</td>
+                          <td className="py-2 px-3 text-sm">{comp.fecha ? formatDate(comp.fecha) : "-"}</td>
+                          <td className="py-2 px-3 text-sm text-right">{formatCurrency(comp.total)}</td>
+                          <td className="py-2 px-3 text-sm text-right font-medium">{formatCurrency(comp.importe)}</td>
+                          {editable && (
+                            <td className="py-2 px-3">
+                              <button
+                                onClick={() => {
+                                  const newC = opComprobantesCredito.filter((_, i) => i !== idx)
+                                  setOpComprobantesCredito(newC)
+                                  const t = calcOpTotales(opMediosPago, opComprobantesDebito, newC)
+                                  setOpForm(prev => ({ ...prev, importe_a_cuenta: t.aCuenta, importe_no_conciliado: t.noConciliado }))
+                                }}
+                                className="text-red-400 hover:text-red-600"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                      {opComprobantesCredito.length === 0 && (
+                        <tr><td colSpan={5} className="py-4 text-center text-gray-400 text-sm">Sin notas de crédito aplicadas</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* TAB OTRA INFORMACIÓN */}
+            {opTabActivo === "otra_info" && (
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <p className="text-xs text-gray-500 uppercase mb-1">Periodo</p>
+                  <p className="font-medium">{opForm.periodo || (opForm.fecha ? `${String(new Date(opForm.fecha).getMonth()+1).padStart(2,"0")}/${new Date(opForm.fecha).getFullYear()}` : "-")}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase mb-1">Diario</p>
+                  <p className="font-medium">Compras ({opForm.moneda || "ARS"})</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase mb-1">Creado por</p>
+                  <p className="font-medium">{opForm.created_by || "-"}</p>
+                </div>
+              </div>
+            )}
+
+            {/* TAB OBSERVACIONES */}
+            {opTabActivo === "observaciones" && (
+              <div>
+                {editable ? (
+                  <textarea
+                    value={opForm.observaciones ?? ""}
+                    onChange={e => setOpForm(prev => ({ ...prev, observaciones: e.target.value }))}
+                    rows={6}
+                    className="w-full border rounded px-3 py-2 text-sm"
+                    placeholder="Observaciones de la orden de pago..."
+                  />
+                ) : (
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{opForm.observaciones || "Sin observaciones"}</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* MODAL CANCELACIÓN */}
+        {opModalCancelacion && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl w-full max-w-md p-6">
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Cancelar Orden de Pago</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                ¿Confirmar cancelación de la OP {opForm.numero}? Esta acción revierte todos los movimientos de caja y restaura los saldos de facturas.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setOpModalCancelacion(false)} className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">
+                  No, volver
+                </button>
+                <button
+                  onClick={cancelarOPAction}
+                  disabled={opSaving}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 disabled:opacity-50"
+                >
+                  Sí, cancelar OP
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ---- Lista OP ----
   const renderOrdenesPago = () => {
-    const ordenesPagoMock: { id: number; numero: string; fecha: string; proveedor: string; facturas: string[]; monto: number; forma_pago: string; estado: string }[] = []
+    if (selectedOP || creandoOP) return renderFichaOP()
 
     return (
       <ComprasListSection
         title="Órdenes de Pago"
         subtitle="Gestione los pagos a proveedores"
         moduleName="ordenes_pago"
-        data={ordenesPagoMock}
-        searchFields={["numero", "proveedor", "forma_pago"]}
-        filterFields={[{ field: "estado", label: "Estado" }]}
+        data={ordenesPago as (OrdenPago & Record<string, unknown>)[]}
+        searchFields={["numero", "proveedor_nombre"]}
+        filterFields={[
+          { field: "estado", label: "Estado" },
+          { field: "moneda", label: "Moneda" },
+          { field: "sucursal_nombre", label: "Sucursal" },
+        ]}
         actions={
-          <button className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800">
-            <Plus className="w-4 h-4" /> Nueva Orden de Pago
+          <button
+            onClick={initNuevaOP}
+            className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800"
+          >
+            <Plus className="w-4 h-4" /> Nueva OP
           </button>
         }
       >
         {(filtered) => (
           <>
-        <div className="grid grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Total Órdenes</p>
-            <p className="text-2xl font-bold text-gray-900">{ordenesPagoMock.length}</p>
-          </div>
-          <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Pagadas</p>
-            <p className="text-2xl font-bold text-emerald-600">{ordenesPagoMock.filter(o => o.estado === 'pagada').length}</p>
-          </div>
-          <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Emitidas</p>
-            <p className="text-2xl font-bold text-blue-600">{ordenesPagoMock.filter(o => o.estado === 'emitida').length}</p>
-          </div>
-          <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Total Pagado</p>
-            <p className="text-2xl font-bold text-emerald-600">
-              {formatCurrency(ordenesPagoMock.filter(o => o.estado === 'pagada').reduce((s, o) => s + o.monto, 0))}
-            </p>
-          </div>
-        </div>
+            <div className="grid grid-cols-4 gap-4 mb-6">
+              <div className="bg-white rounded-lg border p-4">
+                <p className="text-sm text-gray-500">Total Órdenes</p>
+                <p className="text-2xl font-bold text-gray-900">{ordenesPago.length}</p>
+              </div>
+              <div className="bg-white rounded-lg border p-4">
+                <p className="text-sm text-gray-500">Publicadas</p>
+                <p className="text-2xl font-bold text-emerald-600">{ordenesPago.filter(o => o.estado === "publicado").length}</p>
+              </div>
+              <div className="bg-white rounded-lg border p-4">
+                <p className="text-sm text-gray-500">Borrador</p>
+                <p className="text-2xl font-bold text-gray-600">{ordenesPago.filter(o => o.estado === "borrador").length}</p>
+              </div>
+              <div className="bg-white rounded-lg border p-4">
+                <p className="text-sm text-gray-500">Total Pagado</p>
+                <p className="text-2xl font-bold text-emerald-600">
+                  {formatCurrency(ordenesPago.filter(o => o.estado === "publicado").reduce((s, o) => s + (o.importe || 0), 0))}
+                </p>
+              </div>
+            </div>
 
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr className="text-xs text-gray-500 uppercase">
-                <th className="text-left py-3 px-4">Número</th>
-                <th className="text-left py-3 px-4">Fecha</th>
-                <th className="text-left py-3 px-4">Proveedor</th>
-                <th className="text-left py-3 px-4">Facturas</th>
-                <th className="text-left py-3 px-4">Forma de Pago</th>
-                <th className="text-right py-3 px-4">Monto</th>
-                <th className="text-center py-3 px-4">Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(op => (
-                <tr key={op.id} className="border-b hover:bg-gray-50 cursor-pointer">
-                  <td className="py-3 px-4 font-medium text-emerald-700">{op.numero}</td>
-                  <td className="py-3 px-4 text-sm">{new Date(op.fecha).toLocaleDateString('es-AR')}</td>
-                  <td className="py-3 px-4 text-sm">{op.proveedor}</td>
-                  <td className="py-3 px-4 text-sm text-blue-600">{op.facturas.join(", ")}</td>
-                  <td className="py-3 px-4 text-sm">{op.forma_pago}</td>
-                  <td className="py-3 px-4 text-sm text-right font-semibold">{formatCurrency(op.monto)}</td>
-                  <td className="py-3 px-4 text-center">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      op.estado === 'pagada' ? 'bg-green-100 text-green-700' : 
-                      op.estado === 'emitida' ? 'bg-blue-100 text-blue-700' :
-                      'bg-amber-100 text-amber-700'
-                    }`}>
-                      {op.estado.charAt(0).toUpperCase() + op.estado.slice(1)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            <div className="bg-white rounded-lg border overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b">
+                  <tr className="text-xs font-semibold text-gray-600 uppercase">
+                    <th className="text-left py-3 px-4">Número</th>
+                    <th className="text-left py-3 px-4">Fecha</th>
+                    <th className="text-left py-3 px-4">Proveedor</th>
+                    <th className="text-left py-3 px-4">Sucursal</th>
+                    <th className="text-left py-3 px-4">Caja</th>
+                    <th className="text-center py-3 px-4">Moneda</th>
+                    <th className="text-right py-3 px-4">Importe</th>
+                    <th className="text-center py-3 px-4">Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(op => (
+                    <tr
+                      key={op.id}
+                      onClick={() => abrirFichaOP(op as unknown as OrdenPago)}
+                      className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                    >
+                      <td className="py-3 px-4 font-medium text-emerald-700">{op.numero}</td>
+                      <td className="py-3 px-4 text-sm">{op.fecha ? new Date(op.fecha).toLocaleDateString("es-AR") : "-"}</td>
+                      <td className="py-3 px-4 text-sm">{op.proveedor_nombre}</td>
+                      <td className="py-3 px-4 text-sm">{(op as unknown as OrdenPago).sucursal_nombre || "-"}</td>
+                      <td className="py-3 px-4 text-sm">{(op as unknown as OrdenPago).caja_nombre || "-"}</td>
+                      <td className="py-3 px-4 text-sm text-center">{(op as unknown as OrdenPago).moneda}</td>
+                      <td className="py-3 px-4 text-sm text-right font-semibold">{formatCurrency((op as unknown as OrdenPago).importe || 0)}</td>
+                      <td className="py-3 px-4 text-center">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          op.estado === "publicado" ? "bg-green-100 text-green-700" :
+                          op.estado === "cancelado" ? "bg-red-100 text-red-700" :
+                          "bg-gray-100 text-gray-700"
+                        }`}>
+                          {op.estado === "publicado" ? "Publicado" : op.estado === "cancelado" ? "Cancelado" : "Borrador"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {filtered.length === 0 && (
+                    <tr><td colSpan={8} className="py-8 text-center text-gray-400">No hay órdenes de pago</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </>
         )}
       </ComprasListSection>
@@ -5749,6 +6581,160 @@ export default function ModuloCompras() {
       <main className="flex-1 ml-56 p-6 bg-gray-50 min-h-screen">
         {renderContent()}
       </main>
+
+      {/* ===== MODAL CREAR MEDIO DE PAGO OP ===== */}
+      {opModalMedioPago && (() => {
+        const MedioPagoModal = () => {
+          const [mpFormaPago, setMpFormaPago] = useState("")
+          const [mpFormaPagoId, setMpFormaPagoId] = useState("")
+          const [mpTipoOp, setMpTipoOp] = useState("")
+          const [mpTipoCot, setMpTipoCot] = useState<"oficial" | "blue" | "mep">("oficial")
+          const [mpCotizacion, setMpCotizacion] = useState(0)
+          const [mpNumOp, setMpNumOp] = useState("")
+          const [mpImporte, setMpImporte] = useState(0)
+          const [mpMoneda, setMpMoneda] = useState<"ARS" | "USD" | "EUR">(opForm.moneda ?? "ARS")
+          const [mpFechaOp, setMpFechaOp] = useState("")
+          const [mpObs, setMpObs] = useState("")
+          const [valoresCaja, setValoresCaja] = useState<{id: string; nombre: string; moneda: string; tipo: string}[]>([])
+
+          useEffect(() => {
+            if (!opForm.caja_id) return
+            const supabase = createSupabaseClient()
+            supabase.from("caja_valores").select("id, nombre, moneda, tipo").eq("caja_id", opForm.caja_id).eq("activo", true).order("nombre")
+              .then(({ data }) => { if (data) setValoresCaja(data) })
+          }, [opForm.caja_id])
+
+          const esMonedaExtranjera = mpMoneda !== "ARS"
+          const importeComp = esMonedaExtranjera && mpCotizacion > 0
+            ? mpImporte * mpCotizacion
+            : mpImporte
+
+          const guardarMedio = (yNuevo: boolean) => {
+            if (!mpFormaPago || mpImporte <= 0) return
+            const nombre = `${mpFormaPago} - ${opForm.caja_nombre || "Caja"} - ${mpMoneda} - ${mpMoneda} ${mpImporte.toFixed(2)}`
+            const nuevoMedio: OPMedioPago = {
+              forma_pago_id: mpFormaPagoId || undefined,
+              forma_pago_nombre: mpFormaPago,
+              nombre,
+              tipo_operacion: mpTipoOp || undefined,
+              tipo_cotizacion: esMonedaExtranjera ? mpTipoCot : undefined,
+              cotizacion: esMonedaExtranjera ? mpCotizacion : undefined,
+              numero_operacion: mpNumOp || undefined,
+              fecha_operacion: mpFechaOp || undefined,
+              importe: mpImporte,
+              moneda: mpMoneda,
+              importe_comp: opForm.moneda === mpMoneda ? mpImporte : importeComp,
+              moneda_comp: opForm.moneda ?? "ARS",
+              observaciones: mpObs || undefined,
+            }
+            const nuevosMedios = [...opMediosPago, nuevoMedio]
+            setOpMediosPago(nuevosMedios)
+            const t = calcOpTotales(nuevosMedios, opComprobantesDebito, opComprobantesCredito)
+            setOpForm(prev => ({ ...prev, importe: t.totalMedios, importe_a_cuenta: t.aCuenta, importe_no_conciliado: t.noConciliado }))
+
+            if (yNuevo) {
+              setMpFormaPago(""); setMpFormaPagoId(""); setMpImporte(0); setMpNumOp(""); setMpObs("")
+              setMpTipoOp(""); setMpFechaOp("")
+            } else {
+              setOpModalMedioPago(false)
+            }
+          }
+
+          return (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+                <h3 className="text-lg font-bold text-gray-900 mb-4">Crear Medio de Pago</h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-500">Forma de Pago *</label>
+                    <select value={mpFormaPagoId} onChange={e => {
+                      const sel = valoresCaja.find(v => v.id === e.target.value)
+                      setMpFormaPagoId(e.target.value)
+                      setMpFormaPago(sel?.nombre ?? "")
+                      if (sel?.moneda === "USD") setMpMoneda("USD")
+                      else if (sel?.moneda === "EUR") setMpMoneda("EUR")
+                      else setMpMoneda(opForm.moneda ?? "ARS")
+                    }} className="w-full border rounded px-2 py-1.5 text-sm">
+                      <option value="">{!opForm.caja_id ? "Seleccioná una caja primero" : valoresCaja.length === 0 ? "Sin valores para esta caja" : "Seleccionar..."}</option>
+                      {valoresCaja.map(v => <option key={v.id} value={v.id}>{v.nombre} ({v.moneda})</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500">Tipo de Operación</label>
+                    <input value={mpTipoOp} onChange={e => setMpTipoOp(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-500">Moneda</label>
+                      <select value={mpMoneda} onChange={e => setMpMoneda(e.target.value as "ARS"|"USD"|"EUR")} className="w-full border rounded px-2 py-1.5 text-sm">
+                        <option value="ARS">ARS</option>
+                        <option value="USD">USD</option>
+                        <option value="EUR">EUR</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-500">Importe *</label>
+                      <input type="number" value={mpImporte || ""} onChange={e => setMpImporte(parseFloat(e.target.value) || 0)} className="w-full border rounded px-2 py-1.5 text-sm" min="0" step="0.01" />
+                    </div>
+                  </div>
+                  {esMonedaExtranjera && (
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-xs font-medium text-gray-500">Tipo Cotización</label>
+                        <select value={mpTipoCot} onChange={e => setMpTipoCot(e.target.value as "oficial"|"blue"|"mep")} className="w-full border rounded px-2 py-1.5 text-sm">
+                          <option value="oficial">Oficial</option>
+                          <option value="blue">Blue</option>
+                          <option value="mep">MEP</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500">Cotización</label>
+                        <input type="number" value={mpCotizacion || ""} onChange={e => setMpCotizacion(parseFloat(e.target.value) || 0)} className="w-full border rounded px-2 py-1.5 text-sm" step="0.0001" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500">Equivalente ARS</label>
+                        <p className="font-medium text-sm pt-1.5">{formatCurrency(importeComp)}</p>
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-xs font-medium text-gray-500">Nº Operación</label>
+                    <input value={mpNumOp} onChange={e => setMpNumOp(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="Nº transferencia, cheque, etc." />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500">Fecha de Operación</label>
+                    <input type="date" value={mpFechaOp} onChange={e => setMpFechaOp(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500">Observaciones</label>
+                    <textarea value={mpObs} onChange={e => setMpObs(e.target.value)} rows={2} className="w-full border rounded px-2 py-1.5 text-sm" />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
+                  <button onClick={() => setOpModalMedioPago(false)} className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">
+                    Descartar
+                  </button>
+                  <button
+                    onClick={() => guardarMedio(true)}
+                    disabled={!mpFormaPago || mpImporte <= 0}
+                    className="px-4 py-2 border border-indigo-300 text-indigo-700 rounded-lg text-sm hover:bg-indigo-50 disabled:opacity-50"
+                  >
+                    Guardar y Nuevo
+                  </button>
+                  <button
+                    onClick={() => guardarMedio(false)}
+                    disabled={!mpFormaPago || mpImporte <= 0}
+                    className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50"
+                  >
+                    Guardar y Cerrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        }
+        return <MedioPagoModal />
+      })()}
 
       {/* ===== MODAL WIZARD REGISTRO DE UNIDADES ===== */}
       {modalSerieOpen && modalSerieProducto && (() => {

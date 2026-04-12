@@ -129,6 +129,7 @@ interface MovimientoCaja {
   documento_origen_tipo: string | null
   documento_origen_id: string | null
   documento_origen_numero: string | null
+  estado_movimiento?: string | null
   fecha: string
 }
 
@@ -209,15 +210,24 @@ interface RegistroCaja {
   valores?: RegistroCajaValor[]
 }
 
+interface AjusteValorLinea {
+  id?: string
+  ajuste_id?: string
+  valor_id: string
+  valor_nombre: string
+  tipo_movimiento: 'entrada' | 'salida'
+  importe: number
+}
+
 interface AjusteCaja {
   id: string
   numero: string
   concepto_id: string
   concepto_nombre: string
   importe: number
-  valor_id: string
-  valor_nombre: string
-  tipo_ajuste: 'ingreso' | 'egreso'
+  valor_id?: string
+  valor_nombre?: string
+  tipo_ajuste?: 'ingreso' | 'egreso'
   fecha: string
   sucursal: string
   caja_id: string
@@ -621,6 +631,8 @@ interface CuponTarjeta {
   estado: 'en_cartera' | 'conciliado' | 'rechazado' | 'cancelado'
   fecha_conciliacion: string | null
   venta_numero: string | null
+  conciliado?: boolean
+  rechazado?: boolean
 }
 
 interface ConciliacionTarjetaCargo {
@@ -1452,6 +1464,9 @@ function SeccionExtractosCaja() {
   const [saldosFisicos, setSaldosFisicos] = useState<Record<string, number>>({})
   const [errorCierre, setErrorCierre] = useState("")
 
+  // Modal detalle de valor (movimientos por valor)
+  const [saldoSelDetalle, setSaldoSelDetalle] = useState<ExtractoSaldo | null>(null)
+
   const [guardando, setGuardando] = useState(false)
 
   const formatFecha = (f: string | null) =>
@@ -1463,8 +1478,55 @@ function SeccionExtractosCaja() {
   const cargarExtractos = async () => {
     setLoading(true)
     const supabase = createClient()
-    const { data } = await supabase.from("extractos_caja").select("*").order("fecha_apertura", { ascending: false }).limit(200)
-    setExtractos(data || [])
+    const { data: extractosData } = await supabase
+      .from("extractos_caja")
+      .select("*")
+      .order("fecha_apertura", { ascending: false })
+      .limit(200)
+
+    if (!extractosData || extractosData.length === 0) {
+      setExtractos([])
+      setLoading(false)
+      return
+    }
+
+    const ids = extractosData.map((e: Record<string, unknown>) => e.id)
+    const [saldosRes, movsRes] = await Promise.all([
+      supabase.from("extracto_saldos").select("*").in("extracto_id", ids),
+      supabase.from("movimientos_caja")
+        .select("extracto_id, valor_id, tipo_movimiento, importe, estado_movimiento")
+        .in("extracto_id", ids),
+    ])
+
+    const saldosList = saldosRes.data || []
+    const movsList = movsRes.data || []
+
+    const enriched = extractosData.map((ext: Record<string, unknown>) => {
+      const extSaldos = saldosList
+        .filter((s: Record<string, unknown>) => s.extracto_id === ext.id)
+        .map((s: Record<string, unknown>) => {
+          const extMovs = movsList.filter(
+            (m: Record<string, unknown>) =>
+              m.extracto_id === ext.id &&
+              m.valor_id === s.valor_id &&
+              m.estado_movimiento !== "cancelado"
+          )
+          const ingresos = extMovs
+            .filter((m: Record<string, unknown>) => m.tipo_movimiento === "ingreso")
+            .reduce((a: number, m: Record<string, unknown>) => a + Number(m.importe), 0)
+          const egresos = extMovs
+            .filter((m: Record<string, unknown>) => m.tipo_movimiento === "egreso")
+            .reduce((a: number, m: Record<string, unknown>) => a + Number(m.importe), 0)
+          return {
+            ...s,
+            transacciones: extMovs.length,
+            saldo_estimado: Number(s.saldo_apertura) + ingresos - egresos,
+          }
+        })
+      return { ...ext, saldos: extSaldos }
+    })
+
+    setExtractos(enriched as unknown as ExtractoCaja[])
     setLoading(false)
   }
 
@@ -1483,9 +1545,9 @@ function SeccionExtractosCaja() {
       supabase.from("movimientos_caja").select("*").eq("extracto_id", ext.id).order("fecha", { ascending: false }),
     ])
     const saldos = (sR.data || []).map((s: ExtractoSaldo) => {
-      const movs = (mR.data || []).filter((m: MovimientoCaja) => m.valor_id === s.valor_id)
-      const ingresos = movs.filter((m: MovimientoCaja) => m.tipo_movimiento === "ingreso").reduce((a: number, m: MovimientoCaja) => a + Number(m.importe), 0)
-      const egresos = movs.filter((m: MovimientoCaja) => m.tipo_movimiento === "egreso").reduce((a: number, m: MovimientoCaja) => a + Number(m.importe), 0)
+      const movs = ((mR.data || []) as MovimientoCaja[]).filter((m) => m.valor_id === s.valor_id && m.estado_movimiento !== "cancelado")
+      const ingresos = movs.filter((m) => m.tipo_movimiento === "ingreso").reduce((a: number, m) => a + Number(m.importe), 0)
+      const egresos = movs.filter((m) => m.tipo_movimiento === "egreso").reduce((a: number, m) => a + Number(m.importe), 0)
       return { ...s, transacciones: movs.length, saldo_estimado: Number(s.saldo_apertura) + ingresos - egresos }
     })
     setExtractoSel({ ...ext, saldos, movimientos: mR.data || [] })
@@ -1612,6 +1674,7 @@ function SeccionExtractosCaja() {
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Apertura</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Cierre</th>
                   <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Estado</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Saldo Estimado</th>
                 </tr>
               </thead>
               <tbody>
@@ -1630,6 +1693,27 @@ function SeccionExtractosCaja() {
                       }`}>
                         {ext.estado === "abierto" ? "Abierto" : "Cerrado"}
                       </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      {ext.saldos && ext.saldos.length > 0 ? (
+                        <div className="flex flex-col gap-0.5">
+                          {ext.saldos.map((s: ExtractoSaldo) => {
+                            const monto = ext.estado === "cerrado"
+                              ? Number(s.saldo_cierre_ingresado ?? s.saldo_estimado ?? s.saldo_apertura)
+                              : (s.saldo_estimado ?? Number(s.saldo_apertura))
+                            return (
+                              <span key={s.id} className="text-xs font-mono">
+                                <span className="text-gray-500">{s.valor_nombre}:</span>{" "}
+                                <span className={monto < 0 ? "text-red-600 font-semibold" : "text-gray-900"}>
+                                  {s.moneda !== "ARS" ? s.moneda + " " : "$"}{formatMonto(monto)}
+                                </span>
+                              </span>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -1800,7 +1884,7 @@ function SeccionExtractosCaja() {
                 {extractoSel?.saldos?.map(s => {
                   const diff = extractoSel.estado === "cerrado" ? Number(s.saldo_cierre_ingresado ?? 0) - (s.saldo_estimado ?? 0) : 0
                   return (
-                    <tr key={s.id} className="border-b border-gray-100">
+                    <tr key={s.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => setSaldoSelDetalle(s)}>
                       <td className="py-3 px-4 font-medium">{s.valor_nombre}</td>
                       <td className="py-3 px-4 text-gray-600">{s.moneda}</td>
                       <td className="py-3 px-4 text-right font-mono">{formatMonto(Number(s.saldo_apertura))}</td>
@@ -1941,6 +2025,95 @@ function SeccionExtractosCaja() {
           </div>
         </div>
       )}
+
+      {/* Modal detalle movimientos por valor */}
+      {saldoSelDetalle && extractoSel && (() => {
+        const movsValor = ((extractoSel.movimientos || []) as MovimientoCaja[])
+          .filter(m => m.valor_id === saldoSelDetalle.valor_id)
+          .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
+        const saldoApertura = Number(saldoSelDetalle.saldo_apertura)
+        let saldoAcc = saldoApertura
+        const movsConSaldo = movsValor.map(m => {
+          const cancelado = m.estado_movimiento === "cancelado"
+          const imp = Number(m.importe)
+          if (!cancelado) saldoAcc += m.tipo_movimiento === "ingreso" ? imp : -imp
+          return { ...m, saldoAcum: cancelado ? null : saldoAcc }
+        })
+        const totalMovs = movsConSaldo.reduce((s, m) => m.estado_movimiento === "cancelado" ? s : s + (m.tipo_movimiento === "ingreso" ? Number(m.importe) : -Number(m.importe)), 0)
+        return (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl mx-4 max-h-[85vh] flex flex-col">
+              <div className="flex items-center justify-between p-4 border-b">
+                <h3 className="text-lg font-bold text-indigo-900">Saldos</h3>
+                <button onClick={() => setSaldoSelDetalle(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+              </div>
+              <div className="p-4 grid grid-cols-2 gap-4 border-b">
+                <div>
+                  <p className="text-xs text-gray-500">Saldo de apertura</p>
+                  <p className="font-mono font-semibold">{formatMonto(saldoApertura)}</p>
+                  <p className="text-xs text-gray-500 mt-2">Transacciones</p>
+                  <p className="font-mono font-semibold">{formatMonto(totalMovs)}</p>
+                  <p className="text-xs text-gray-500 mt-2">Saldo estimado</p>
+                  <p className="font-mono font-semibold">{formatMonto(saldoSelDetalle.saldo_estimado ?? saldoApertura)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Diario</p>
+                  <p className="font-medium text-indigo-700">{saldoSelDetalle.valor_nombre} ({saldoSelDetalle.moneda})</p>
+                  <p className="text-xs text-gray-500 mt-2">Moneda</p>
+                  <p className="font-medium">{saldoSelDetalle.moneda}</p>
+                </div>
+              </div>
+              <div className="flex-1 overflow-auto">
+                {movsConSaldo.length > 0 ? (
+                  <table className="w-full">
+                    <thead className="sticky top-0">
+                      <tr className="bg-gray-50 border-b-2 border-gray-200">
+                        <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Nombre</th>
+                        <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Referencia</th>
+                        <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
+                        <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Importe</th>
+                        <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Saldo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {movsConSaldo.map(m => {
+                        const cancelado = m.estado_movimiento === "cancelado"
+                        return (
+                        <tr key={m.id} className={`border-b border-gray-100 hover:bg-gray-50 ${cancelado ? "opacity-50" : ""}`}>
+                          <td className="py-2 px-3 text-sm">
+                            {m.valor_nombre}
+                            {cancelado && <span className="ml-2 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">Cancelado</span>}
+                          </td>
+                          <td className="py-2 px-3 text-sm text-gray-600">{m.documento_origen_numero || m.concepto || "—"}</td>
+                          <td className="py-2 px-3 text-sm text-gray-600">{formatFecha(m.fecha)}</td>
+                          <td className={`py-2 px-3 text-right font-mono text-sm ${cancelado ? "line-through text-gray-400" : m.tipo_movimiento === "ingreso" ? "text-green-700" : "text-red-700"}`}>
+                            {m.tipo_movimiento === "egreso" ? "-" : ""}{formatMonto(Number(m.importe))}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono text-sm font-medium">
+                            {m.saldoAcum !== null ? formatMonto(m.saldoAcum) : "—"}
+                          </td>
+                        </tr>
+                        )
+                      })}
+                      <tr className="bg-gray-50 font-semibold">
+                        <td colSpan={3} className="py-2 px-3 text-right text-sm text-gray-600">Total</td>
+                        <td className="py-2 px-3 text-right font-mono text-sm">{formatMonto(totalMovs)}</td>
+                        <td />
+                      </tr>
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">No hay movimientos para este valor</div>
+                )}
+              </div>
+              <div className="p-3 border-t flex justify-between items-center">
+                <p className="text-xs text-gray-400">{movsConSaldo.length} movimiento{movsConSaldo.length !== 1 ? "s" : ""}</p>
+                <button onClick={() => setSaldoSelDetalle(null)} className="text-sm text-indigo-700 hover:text-indigo-900 font-medium">Cerrar</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
@@ -3084,17 +3257,24 @@ function AjustesCaja() {
   const [guardando, setGuardando] = useState(false)
   const [valoresCaja, setValoresCaja] = useState<CajaValor[]>([])
 
-  // Form
+  // Form principal
   const [formConcepto, setFormConcepto] = useState("")
   const [formImporte, setFormImporte] = useState("")
-  const [formValor, setFormValor] = useState("")
-  const [formTipo, setFormTipo] = useState<"ingreso" | "egreso">("egreso")
   const [formFecha, setFormFecha] = useState(new Date().toISOString().split("T")[0])
   const [formCaja, setFormCaja] = useState("")
   const [formCuentaAnalitica, setFormCuentaAnalitica] = useState("")
   const [formAuto, setFormAuto] = useState(false)
   const [formObs, setFormObs] = useState("")
   const [errorObs, setErrorObs] = useState("")
+
+  // Líneas de valores (grilla)
+  const [formValoresLineas, setFormValoresLineas] = useState<AjusteValorLinea[]>([])
+
+  // Modal agregar valor
+  const [modalValor, setModalValor] = useState(false)
+  const [modalFP, setModalFP] = useState("")
+  const [modalTipoMov, setModalTipoMov] = useState<"entrada" | "salida">("salida")
+  const [modalImporte, setModalImporte] = useState("")
 
   const formatMonto = (m: number) => new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(m)
 
@@ -3120,24 +3300,19 @@ function AjustesCaja() {
     setValoresCaja(data || [])
   }
 
-  const determinarTipo = (conceptoId: string) => {
-    const c = conceptos.find(x => x.id === conceptoId)
-    if (!c) return
-    if (c.cuenta_contable_ingresos && !c.cuenta_contable_egresos) setFormTipo("ingreso")
-    else if (c.cuenta_contable_egresos && !c.cuenta_contable_ingresos) setFormTipo("egreso")
-    // Si tiene ambas, deja el selector manual
-  }
-
   const conceptoSelObj = conceptos.find(c => c.id === formConcepto)
-  const tieneAmbosTipos = conceptoSelObj?.cuenta_contable_ingresos && conceptoSelObj?.cuenta_contable_egresos
   const requiereObs = conceptoSelObj?.requiere_observacion
+
+  const defaultTipoMovByConcepto = (): "entrada" | "salida" => {
+    const c = conceptos.find(x => x.id === formConcepto)
+    if (c?.cuenta_contable_ingresos && !c?.cuenta_contable_egresos) return "entrada"
+    return "salida"
+  }
 
   const nuevoAjuste = () => {
     setAjusteSel(null)
     setFormConcepto("")
     setFormImporte("")
-    setFormValor("")
-    setFormTipo("egreso")
     setFormFecha(new Date().toISOString().split("T")[0])
     setFormCaja("")
     setFormCuentaAnalitica("")
@@ -3145,6 +3320,7 @@ function AjustesCaja() {
     setFormObs("")
     setErrorObs("")
     setValoresCaja([])
+    setFormValoresLineas([])
     setVista("detalle")
   }
 
@@ -3152,8 +3328,6 @@ function AjustesCaja() {
     setAjusteSel(aj)
     setFormConcepto(aj.concepto_id)
     setFormImporte(String(aj.importe))
-    setFormValor(aj.valor_id)
-    setFormTipo(aj.tipo_ajuste)
     setFormFecha(aj.fecha)
     setFormCaja(aj.caja_id)
     setFormCuentaAnalitica(aj.cuenta_analitica || "")
@@ -3161,30 +3335,77 @@ function AjustesCaja() {
     setFormObs(aj.observaciones || "")
     setErrorObs("")
     if (aj.caja_id) await cargarValoresCaja(aj.caja_id)
+    const supabase = createClient()
+    const { data: lineas } = await supabase
+      .from("ajuste_caja_valores")
+      .select("*")
+      .eq("ajuste_id", aj.id)
+    setFormValoresLineas(lineas || [])
     setVista("detalle")
   }
 
+  const abrirModalValor = () => {
+    setModalFP("")
+    setModalTipoMov(defaultTipoMovByConcepto())
+    setModalImporte("")
+    setModalValor(true)
+  }
+
+  const guardarValorLinea = () => {
+    if (!modalFP || !modalImporte) return
+    const vObj = valoresCaja.find(v => v.id === modalFP)
+    setFormValoresLineas(prev => [...prev, {
+      valor_id: modalFP,
+      valor_nombre: vObj ? `${vObj.nombre} (${vObj.moneda})` : modalFP,
+      tipo_movimiento: modalTipoMov,
+      importe: parseFloat(modalImporte),
+    }])
+    setModalValor(false)
+    setModalFP("")
+    setModalImporte("")
+    setModalTipoMov("salida")
+  }
+
+  const eliminarValorLinea = (idx: number) => {
+    setFormValoresLineas(prev => prev.filter((_, i) => i !== idx))
+  }
+
   const guardarAjuste = async () => {
-    if (!formConcepto || !formImporte || !formCaja || !formValor) return
+    if (!formConcepto || !formImporte || !formCaja || formValoresLineas.length === 0) return
     if (requiereObs && !formObs.trim()) { setErrorObs("Observaciones obligatorias para este concepto"); return }
     setGuardando(true)
     const supabase = createClient()
     const caja = cajasDisp.find(c => c.id === formCaja)
     const concepto = conceptos.find(c => c.id === formConcepto)
-    const valor = valoresCaja.find(v => v.id === formValor)
     const datos = {
       concepto_id: formConcepto, concepto_nombre: concepto?.nombre,
-      importe: parseFloat(formImporte), valor_id: formValor, valor_nombre: valor?.nombre,
-      tipo_ajuste: formTipo, fecha: formFecha, sucursal: caja?.sucursal,
+      importe: parseFloat(formImporte), fecha: formFecha, sucursal: caja?.sucursal,
       caja_id: formCaja, caja_nombre: caja?.nombre,
       cuenta_analitica: formCuentaAnalitica || null, es_automatico: formAuto, observaciones: formObs,
     }
+    let ajusteId: string
     if (ajusteSel?.id) {
       await supabase.from("ajustes_caja").update(datos).eq("id", ajusteSel.id)
+      ajusteId = ajusteSel.id
+      await supabase.from("ajuste_caja_valores").delete().eq("ajuste_id", ajusteId)
     } else {
       const { data: numData } = await supabase.rpc("generar_numero_ajuste_caja", { p_sucursal: caja?.sucursal || "" })
-      await supabase.from("ajustes_caja").insert({ ...datos, numero: numData })
+      const { data: inserted } = await supabase
+        .from("ajustes_caja")
+        .insert({ ...datos, numero: numData })
+        .select("id")
+        .single()
+      ajusteId = inserted!.id
     }
+    await supabase.from("ajuste_caja_valores").insert(
+      formValoresLineas.map(l => ({
+        ajuste_id: ajusteId,
+        valor_id: l.valor_id,
+        valor_nombre: l.valor_nombre,
+        tipo_movimiento: l.tipo_movimiento,
+        importe: l.importe,
+      }))
+    )
     setGuardando(false)
     await cargarDatos()
     setVista("lista")
@@ -3193,6 +3414,7 @@ function AjustesCaja() {
   const publicarAjuste = async () => {
     if (!ajusteSel) return
     if (requiereObs && !formObs.trim()) { setErrorObs("Observaciones obligatorias para este concepto"); return }
+    if (formValoresLineas.length === 0) { alert("Agregue al menos un valor antes de publicar."); return }
     setGuardando(true)
     const supabase = createClient()
     const { data: extracto } = await supabase
@@ -3203,12 +3425,19 @@ function AjustesCaja() {
       setGuardando(false)
       return
     }
-    await supabase.from("movimientos_caja").insert({
-      extracto_id: extracto.id, valor_id: ajusteSel.valor_id, valor_nombre: ajusteSel.valor_nombre,
-      tipo_movimiento: ajusteSel.tipo_ajuste, importe: ajusteSel.importe,
-      concepto: ajusteSel.concepto_nombre, documento_origen_tipo: "ajuste_caja",
-      documento_origen_id: ajusteSel.id, documento_origen_numero: ajusteSel.numero,
-    })
+    for (const linea of formValoresLineas) {
+      await supabase.from("movimientos_caja").insert({
+        extracto_id: extracto.id,
+        valor_id: linea.valor_id,
+        valor_nombre: linea.valor_nombre,
+        tipo_movimiento: linea.tipo_movimiento === "entrada" ? "ingreso" : "egreso",
+        importe: linea.importe,
+        concepto: ajusteSel.concepto_nombre,
+        documento_origen_tipo: "ajuste_caja",
+        documento_origen_id: ajusteSel.id,
+        documento_origen_numero: ajusteSel.numero,
+      })
+    }
     await supabase.from("ajustes_caja").update({ estado: "publicado" }).eq("id", ajusteSel.id)
     setGuardando(false)
     await cargarDatos()
@@ -3222,8 +3451,8 @@ function AjustesCaja() {
       <FinanzasListSection<AjusteCaja>
         title="Ajustes de Caja" subtitle="Banco y Caja" moduleName="finanzas_ajustes_caja"
         data={ajustes} loading={loading}
-        searchFields={["numero", "concepto_nombre", "caja_nombre", "valor_nombre"]}
-        filterFields={[{ field: "estado", label: "Estado" }, { field: "tipo_ajuste", label: "Tipo" }, { field: "caja_nombre", label: "Caja" }]}
+        searchFields={["numero", "concepto_nombre", "caja_nombre"]}
+        filterFields={[{ field: "estado", label: "Estado" }, { field: "caja_nombre", label: "Caja" }]}
         actions={<button onClick={nuevoAjuste} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Ajuste</button>}
       >
         {(filtered) => (
@@ -3235,8 +3464,6 @@ function AjustesCaja() {
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Concepto</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Caja</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Valor</th>
-                  <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Tipo</th>
                   <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Importe</th>
                   <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Estado</th>
                 </tr>
@@ -3248,12 +3475,6 @@ function AjustesCaja() {
                     <td className="py-3 px-4 text-gray-600">{a.fecha}</td>
                     <td className="py-3 px-4 text-gray-700">{a.concepto_nombre}</td>
                     <td className="py-3 px-4 text-gray-600">{a.caja_nombre}</td>
-                    <td className="py-3 px-4 text-gray-600">{a.valor_nombre}</td>
-                    <td className="py-3 px-4 text-center">
-                      <span className={`px-2 py-0.5 rounded text-xs font-semibold ${a.tipo_ajuste === "ingreso" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                        {a.tipo_ajuste === "ingreso" ? "Ingreso" : "Egreso"}
-                      </span>
-                    </td>
                     <td className="py-3 px-4 text-right font-mono">{formatMonto(Number(a.importe))}</td>
                     <td className="py-3 px-4 text-center">
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${a.estado === "publicado" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
@@ -3303,64 +3524,39 @@ function AjustesCaja() {
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow-sm p-6">
+      <div className="bg-white rounded-lg shadow-sm p-6 space-y-6">
         <div className="grid grid-cols-2 gap-6">
+          {/* Columna izquierda */}
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Concepto *</label>
-              <select value={formConcepto} onChange={e => { setFormConcepto(e.target.value); determinarTipo(e.target.value) }} disabled={esPublicado}
+              <select value={formConcepto} onChange={e => setFormConcepto(e.target.value)} disabled={esPublicado}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none disabled:bg-gray-100">
                 <option value="">Seleccionar...</option>
                 {conceptos.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </select>
-              {formConcepto && (
-                <div className="mt-1 flex items-center gap-2">
-                  <span className={`px-2 py-0.5 rounded text-xs font-semibold ${formTipo === "ingreso" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                    {formTipo === "ingreso" ? "Ingreso" : "Egreso"}
-                  </span>
-                  {requiereObs && <span className="text-xs text-amber-600">* Requiere observación</span>}
-                </div>
-              )}
+              {requiereObs && <span className="text-xs text-amber-600 mt-1 block">* Requiere observación</span>}
             </div>
-            {tieneAmbosTipos && (
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de Ajuste</label>
-                <div className="flex gap-2">
-                  {(["ingreso", "egreso"] as const).map(t => (
-                    <button key={t} onClick={() => !esPublicado && setFormTipo(t)}
-                      className={`px-4 py-2 text-sm rounded-md ${formTipo === t ? (t === "ingreso" ? "bg-green-600 text-white" : "bg-red-600 text-white") : "border border-gray-300 text-gray-600"}`}>
-                      {t === "ingreso" ? "Ingreso" : "Egreso"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Importe *</label>
-              <input type="number" step="0.01" value={formImporte} onChange={e => setFormImporte(e.target.value)} disabled={esPublicado}
+              <input type="number" step="0.01" min="0" value={formImporte} onChange={e => setFormImporte(e.target.value)} disabled={esPublicado}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none disabled:bg-gray-100" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Caja *</label>
-              <select value={formCaja} onChange={e => { setFormCaja(e.target.value); if (e.target.value) cargarValoresCaja(e.target.value) }} disabled={esPublicado}
+              <select value={formCaja} onChange={e => { setFormCaja(e.target.value); setFormValoresLineas([]); if (e.target.value) cargarValoresCaja(e.target.value) }} disabled={esPublicado}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none disabled:bg-gray-100">
                 <option value="">Seleccionar...</option>
                 {cajasDisp.map(c => <option key={c.id} value={c.id}>{c.nombre} — {c.sucursal}</option>)}
               </select>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Valor *</label>
-              <select value={formValor} onChange={e => setFormValor(e.target.value)} disabled={esPublicado || !formCaja}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none disabled:bg-gray-100">
-                <option value="">Seleccionar...</option>
-                {valoresCaja.map(v => <option key={v.id} value={v.id}>{v.nombre} ({v.moneda})</option>)}
-              </select>
-            </div>
-            <label className="flex items-center gap-3 p-3 rounded-md border border-gray-200 hover:bg-gray-50">
+            <label className="flex items-center gap-3 p-3 rounded-md border border-gray-200 hover:bg-gray-50 cursor-pointer">
               <input type="checkbox" checked={formAuto} onChange={e => setFormAuto(e.target.checked)} disabled={esPublicado} className="rounded" />
               <span className="text-sm">Automático</span>
             </label>
           </div>
+
+          {/* Columna derecha */}
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Fecha *</label>
@@ -3383,7 +3579,110 @@ function AjustesCaja() {
             </div>
           </div>
         </div>
+
+        {/* Sección Valor — grilla multi-línea */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Valor *</label>
+            {!esPublicado && formCaja && (
+              <button onClick={abrirModalValor} className="bg-indigo-900 text-white px-3 py-1.5 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-1.5">
+                <Plus className="w-3.5 h-3.5" /> Agregar
+              </button>
+            )}
+          </div>
+          <div className="border border-gray-200 rounded-md overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-gray-600 uppercase">Forma de Pago</th>
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-gray-600 uppercase">Tipo de Movimiento</th>
+                  <th className="text-right py-2 px-3 text-xs font-semibold text-gray-600 uppercase">Importe</th>
+                  {!esPublicado && <th className="py-2 px-3 w-10"></th>}
+                </tr>
+              </thead>
+              <tbody>
+                {formValoresLineas.map((linea, idx) => (
+                  <tr key={idx} className="border-b border-gray-100">
+                    <td className="py-2 px-3 text-sm text-gray-700">{linea.valor_nombre}</td>
+                    <td className="py-2 px-3">
+                      <span className={`px-2 py-0.5 rounded text-xs font-semibold ${linea.tipo_movimiento === "entrada" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                        {linea.tipo_movimiento === "entrada" ? "Entrada" : "Salida"}
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-sm">{formatMonto(linea.importe)}</td>
+                    {!esPublicado && (
+                      <td className="py-2 px-3 text-center">
+                        <button onClick={() => eliminarValorLinea(idx)} className="text-red-400 hover:text-red-600">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+                {formValoresLineas.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-6 text-center text-sm text-gray-400">
+                      {formCaja ? "Sin valores. Haga clic en «Agregar» para añadir un medio de pago." : "Seleccione una caja primero."}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
+
+      {/* Modal Agregar Valor */}
+      {modalValor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Agregar Valor</h3>
+              <button onClick={() => setModalValor(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Forma de Pago *</label>
+                <select value={modalFP} onChange={e => setModalFP(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                  <option value="">Seleccionar...</option>
+                  {valoresCaja.map(v => <option key={v.id} value={v.id}>{v.nombre} ({v.moneda})</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de Movimiento de Caja *</label>
+                <div className="flex gap-2">
+                  {(["entrada", "salida"] as const).map(t => (
+                    <button key={t} onClick={() => setModalTipoMov(t)}
+                      className={`flex-1 px-4 py-2 text-sm rounded-md border transition-colors ${modalTipoMov === t
+                        ? (t === "entrada" ? "bg-green-600 text-white border-green-600" : "bg-red-600 text-white border-red-600")
+                        : "border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
+                      {t === "entrada" ? "Entrada" : "Salida"}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  {modalTipoMov === "entrada" ? "Suma al saldo de la caja" : "Resta al saldo de la caja"}
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Importe *</label>
+                <input type="number" step="0.01" min="0" value={modalImporte} onChange={e => setModalImporte(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-6">
+              <button onClick={guardarValorLinea} disabled={!modalFP || !modalImporte}
+                className="flex-1 bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed">
+                Guardar
+              </button>
+              <button onClick={() => setModalValor(false)} className="flex-1 border border-gray-300 px-4 py-2 rounded-md text-sm hover:bg-gray-50">
+                Descartar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -8387,7 +8686,6 @@ function FinanzasListSection<T extends object>({
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 // Export de los datos para que ventas-module pueda usarlos
-export { tarjetasIniciales, gruposIniciales, recargosIniciales }
 export type { RecargoTarjeta as RecargoTarjetaType }
 
 export default function ModuloFinanzas() {

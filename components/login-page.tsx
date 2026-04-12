@@ -68,7 +68,7 @@ export default function LoginPage() {
                   className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
                   placeholder="Ingresá tu usuario"
                   required
-                  autoComplete="username"
+                  autoComplete="off"
                 />
               </div>
             </div>
@@ -89,7 +89,7 @@ export default function LoginPage() {
                   className="block w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
                   placeholder="Ingresá tu contraseña"
                   required
-                  autoComplete="current-password"
+                  autoComplete="off"
                 />
                 <button
                   type="button"

@@ -18,10 +18,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     .select("categoria_id, taller_categorias_reparacion(nombre)")
     .eq("tecnico_id", id)
 
-  ;(data as Record<string, unknown>).categorias_secundarias = (secs ?? []).map(s => ({
-    categoria_id: s.categoria_id,
-    nombre: (s.taller_categorias_reparacion as { nombre: string } | null)?.nombre ?? "",
-  }))
+  ;(data as Record<string, unknown>).categorias_secundarias = (secs ?? []).map(s => {
+    const categoria = Array.isArray(s.taller_categorias_reparacion)
+      ? s.taller_categorias_reparacion[0]
+      : s.taller_categorias_reparacion
+
+    return {
+      categoria_id: s.categoria_id,
+      nombre: (categoria as { nombre?: string } | null)?.nombre ?? "",
+    }
+  })
 
   return NextResponse.json(data)
 }

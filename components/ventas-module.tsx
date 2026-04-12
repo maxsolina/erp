@@ -1237,6 +1237,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [reciboCajasDisponibles, setReciboCajasDisponibles] = useState<{id: string; nombre: string; sucursal: string}[]>([])
   const [reciboValoresCaja, setReciboValoresCaja] = useState<{id: string; nombre: string; tipo: string; moneda: string}[]>([])
   const [reciboGuardando, setReciboGuardando] = useState(false)
+  const [reciboPublicando, setReciboPublicando] = useState(false)
   const [showAddPagoModal, setShowAddPagoModal] = useState(false)
   const [addPagoValorId, setAddPagoValorId] = useState<string>("")
   const [addPagoImporte, setAddPagoImporte] = useState<number>(0)
@@ -8745,15 +8746,40 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const { data } = await supabase.from("cajas").select("id, nombre, sucursal, activo").eq("activo", true)
     const filtradas = (data || []).filter((c: any) => c.sucursal === suc)
     setReciboCajasDisponibles(filtradas)
-    if (filtradas.length > 0 && !reciboCajaId) setReciboCajaId(filtradas[0].id)
+    if (filtradas.length > 0 && !reciboCajaId) {
+      setReciboCajaId(filtradas[0].id)
+      await cargarValoresCaja(filtradas[0].id)
+      return
+    }
+
+    if (reciboCajaId) {
+      await cargarValoresCaja(reciboCajaId)
+    }
   }
 
   const cargarValoresCaja = async (cajaId: string) => {
     if (!cajaId) { setReciboValoresCaja([]); return }
     const { createClient } = await import("@/lib/supabase/client")
     const supabase = createClient()
-    const { data } = await supabase.from("caja_valores").select("id, nombre, tipo, moneda").eq("caja_id", cajaId).eq("activo", true)
-    setReciboValoresCaja(data || [])
+    const { data, error } = await supabase
+      .from("caja_valores")
+      .select("id, nombre, tipo, moneda")
+      .eq("caja_id", cajaId)
+      .or("activo.eq.true,activo.is.null")
+      .order("nombre")
+
+    if (error) {
+      const { data: fallbackData } = await supabase
+        .from("caja_valores")
+        .select("id, nombre, tipo, moneda")
+        .eq("caja_id", cajaId)
+        .order("nombre")
+
+      setReciboValoresCaja((fallbackData || []) as { id: string; nombre: string; tipo: string; moneda: string }[])
+      return
+    }
+
+    setReciboValoresCaja((data || []) as { id: string; nombre: string; tipo: string; moneda: string }[])
   }
 
   const cargarComprobantesCliente = async (clienteId: string) => {
@@ -8781,8 +8807,96 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   const guardarRecibo = async () => {
+    if (reciboGuardando) return
     const { createClient } = await import("@/lib/supabase/client")
     const supabase = createClient()
+
+    const extractMissingColumn = (message?: string | null) => {
+      if (!message) return null
+      const m = message.match(/Could not find the '([^']+)' column/)
+      return m?.[1] ?? null
+    }
+
+    const updateReciboCompat = async (id: string, payload: Record<string, unknown>) => {
+      const currentPayload: Record<string, unknown> = { ...payload }
+      let lastError: Error | null = null
+
+      for (let i = 0; i < 20; i++) {
+        const { error } = await supabase.from("recibos").update(currentPayload).eq("id", id)
+        if (!error) return
+
+        lastError = new Error(error.message)
+        const missingColumn = extractMissingColumn(error.message)
+        if (!error.message.includes("schema cache") || !missingColumn || !(missingColumn in currentPayload)) {
+          throw lastError
+        }
+
+        delete currentPayload[missingColumn]
+      }
+
+      throw lastError ?? new Error("No se pudo actualizar el recibo por incompatibilidad de esquema")
+    }
+
+    const insertReciboCompat = async (payload: Record<string, unknown>) => {
+      const currentPayload: Record<string, unknown> = { ...payload }
+      let lastError: Error | null = null
+
+      for (let i = 0; i < 20; i++) {
+        const { data, error } = await supabase.from("recibos").insert(currentPayload).select().single()
+        if (!error) return data
+
+        lastError = new Error(error.message)
+        const missingColumn = extractMissingColumn(error.message)
+        if (!error.message.includes("schema cache") || !missingColumn || !(missingColumn in currentPayload)) {
+          throw lastError
+        }
+
+        delete currentPayload[missingColumn]
+      }
+
+      throw lastError ?? new Error("No se pudo crear el recibo por incompatibilidad de esquema")
+    }
+
+    const insertManyCompat = async (table: "recibo_pagos" | "recibo_imputaciones", rows: Record<string, unknown>[]) => {
+      if (rows.length === 0) return
+      const currentRows = rows.map(r => ({ ...r }))
+      let lastError: Error | null = null
+
+      for (let i = 0; i < 20; i++) {
+        console.log(`[insertManyCompat] intento ${i + 1} en ${table}, cols:`, Object.keys(currentRows[0] || {}))
+        const { error } = await supabase.from(table).insert(currentRows)
+        if (!error) return
+
+        console.error(`[insertManyCompat] error en ${table}:`, error.message, error.code, error.details)
+
+        // Si la tabla no existe, avisar y no bloquear el guardado del recibo
+        if (error.message.includes("Could not find the table")) {
+          console.warn(`[insertManyCompat] Tabla ${table} no existe. Ejecutá scripts/create-recibos.sql en Supabase SQL Editor.`)
+          return // no lanzar error, el recibo ya se guardó
+        }
+
+        lastError = new Error(error.message)
+        const missingColumn = extractMissingColumn(error.message)
+        if (!error.message.includes("schema cache") || !missingColumn) {
+          throw lastError
+        }
+
+        let removedAny = false
+        for (const row of currentRows) {
+          if (missingColumn in row) {
+            delete row[missingColumn]
+            removedAny = true
+          }
+        }
+
+        if (!removedAny) {
+          throw lastError
+        }
+      }
+
+      throw lastError ?? new Error(`No se pudo insertar en ${table} por incompatibilidad de esquema`)
+    }
+
     setReciboGuardando(true)
     try {
       const totalPagos = reciboPagosForm.reduce((s, p) => s + (p.importe || 0), 0)
@@ -8791,7 +8905,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
       if (selectedRecibo) {
         // Actualizar existente
-        await supabase.from("recibos").update({
+        const payloadUpdate = {
           cliente_id: reciboClienteIdForm,
           cliente_nombre: clientes.find(c => String(c.id) === String(reciboClienteIdForm))?.nombre || "",
           caja_id: reciboCajaId || null,
@@ -8806,18 +8920,22 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           cotizacion: reciboCotizacion || null,
           observaciones: reciboObservaciones || null,
           updated_at: new Date().toISOString(),
-        }).eq("id", selectedRecibo.id)
+        }
+
+        await updateReciboCompat(selectedRecibo.id, payloadUpdate)
 
         // Recrear pagos
-        await supabase.from("recibo_pagos").delete().eq("recibo_id", selectedRecibo.id)
+        const { error: delPagosErr } = await supabase.from("recibo_pagos").delete().eq("recibo_id", selectedRecibo.id)
+        if (delPagosErr && !delPagosErr.message.includes("Could not find the table")) throw delPagosErr
         if (reciboPagosForm.length > 0) {
-          await supabase.from("recibo_pagos").insert(reciboPagosForm.map(p => ({ ...p, id: undefined, recibo_id: selectedRecibo.id })))
+          await insertManyCompat("recibo_pagos", reciboPagosForm.map(({ id: _, ...p }) => ({ ...p, recibo_id: selectedRecibo.id })))
         }
         // Recrear imputaciones
-        await supabase.from("recibo_imputaciones").delete().eq("recibo_id", selectedRecibo.id)
+        const { error: delImpsErr } = await supabase.from("recibo_imputaciones").delete().eq("recibo_id", selectedRecibo.id)
+        if (delImpsErr && !delImpsErr.message.includes("Could not find the table")) throw delImpsErr
         const impsConAsig = reciboImputacionesForm.filter(i => i.asignacion > 0)
         if (impsConAsig.length > 0) {
-          await supabase.from("recibo_imputaciones").insert(impsConAsig.map(i => ({ ...i, id: undefined, recibo_id: selectedRecibo.id })))
+          await insertManyCompat("recibo_imputaciones", impsConAsig.map(({ id: _, ...i }) => ({ ...i, recibo_id: selectedRecibo.id })))
         }
 
         await cargarDetalleRecibo(selectedRecibo.id)
@@ -8826,7 +8944,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         const { data: numData } = await supabase.rpc("generar_numero_recibo", { p_sucursal: suc })
         const numero = numData || `REC X 00000-${Date.now()}`
         const clienteNombre = clientes.find(c => String(c.id) === String(reciboClienteIdForm))?.nombre || ""
-        const { data: newRec } = await supabase.from("recibos").insert({
+        const payloadInsert = {
           numero,
           sucursal: suc,
           cliente_id: reciboClienteIdForm,
@@ -8844,48 +8962,61 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           observaciones: reciboObservaciones || null,
           estado: "borrador",
           fecha: new Date().toISOString().split("T")[0],
-        }).select().single()
-
-        if (newRec) {
-          if (reciboPagosForm.length > 0) {
-            await supabase.from("recibo_pagos").insert(reciboPagosForm.map(p => ({ ...p, id: undefined, recibo_id: newRec.id })))
-          }
-          const impsConAsig = reciboImputacionesForm.filter(i => i.asignacion > 0)
-          if (impsConAsig.length > 0) {
-            await supabase.from("recibo_imputaciones").insert(impsConAsig.map(i => ({ ...i, id: undefined, recibo_id: newRec.id })))
-          }
-          setCreandoRecibo(false)
-          await cargarDetalleRecibo(newRec.id)
         }
+
+        const newRec = await insertReciboCompat(payloadInsert)
+        if (!newRec) throw new Error("No se pudo crear el recibo en borrador")
+
+        if (reciboPagosForm.length > 0) {
+          await insertManyCompat("recibo_pagos", reciboPagosForm.map(({ id: _, ...p }) => ({ ...p, recibo_id: newRec.id })))
+        }
+        const impsConAsig = reciboImputacionesForm.filter(i => i.asignacion > 0)
+        if (impsConAsig.length > 0) {
+          await insertManyCompat("recibo_imputaciones", impsConAsig.map(({ id: _, ...i }) => ({ ...i, recibo_id: newRec.id })))
+        }
+        setCreandoRecibo(false)
+        await cargarDetalleRecibo(newRec.id)
       }
       await cargarRecibos()
-    } catch (err) { alert("Error al guardar: " + (err as Error).message) }
+    } catch (err) {
+      const msg = (err as Error).message || "Error desconocido"
+      console.error("[guardarRecibo] Error completo:", err)
+      console.error("[guardarRecibo] Mensaje:", msg)
+      alert("Error al guardar recibo: " + msg)
+    }
     finally { setReciboGuardando(false) }
   }
 
   const publicarRecibo = async () => {
-    if (!selectedRecibo) return
+    if (!selectedRecibo || reciboPublicando) return
     const { createClient } = await import("@/lib/supabase/client")
     const supabase = createClient()
+    setReciboPublicando(true)
 
-    // Validaciones
-    if (!selectedRecibo.cliente_id) { alert("El recibo debe tener un cliente."); return }
-    const pagos = reciboPagosForm
-    if (!pagos || pagos.length === 0) { alert("El recibo debe tener al menos un medio de pago."); return }
+    try {
 
-    // Validar tarjeta sin NV
-    if (pagos.some(p => p.es_tarjeta) && !selectedRecibo.nota_venta_id) {
-      alert("Para cobrar con tarjeta, el recibo debe estar vinculado a una factura donde el recargo ya esté calculado.")
-      return
-    }
+      // Validaciones
+      if (!selectedRecibo.cliente_id) { alert("El recibo debe tener un cliente."); return }
+      const pagos = reciboPagosForm
+      if (!pagos || pagos.length === 0) { alert("El recibo debe tener al menos un medio de pago."); return }
+      const cajaIdParaPublicar = (selectedRecibo as Record<string, unknown>).caja_id as string | undefined || reciboCajaId
+      const cajaNombreParaPublicar = (selectedRecibo as Record<string, unknown>).caja_nombre as string | undefined || reciboCajasDisponibles.find(c => c.id === cajaIdParaPublicar)?.nombre
+      if (!cajaIdParaPublicar) { alert("Seleccioná una caja antes de confirmar."); return }
 
-    // Extracto abierto
-    const { data: extracto } = await supabase.from("extractos_caja").select("id").eq("caja_id", selectedRecibo.caja_id).eq("estado", "abierto").single()
-    if (!extracto) { alert(`No hay extracto abierto para "${selectedRecibo.caja_nombre}". Abrí un extracto en Finanzas → Extractos de Caja.`); return }
+      // Validar tarjeta sin NV
+      if (pagos.some(p => p.es_tarjeta) && !selectedRecibo.nota_venta_id) {
+        alert("Para cobrar con tarjeta, el recibo debe estar vinculado a una factura donde el recargo ya esté calculado.")
+        return
+      }
+
+      // Extracto abierto
+      const { data: extracto } = await supabase.from("extractos_caja").select("id").eq("caja_id", cajaIdParaPublicar).eq("estado", "abierto").single()
+      if (!extracto) { alert(`No hay extracto abierto para "${cajaNombreParaPublicar || "la caja seleccionada"}". Abrí un extracto en Finanzas → Extractos de Caja.`); return }
 
     // Movimientos en caja
+    const isUUID = (v: unknown) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
     for (const pago of pagos) {
-      await supabase.from("movimientos_caja").insert({
+      const movPayload: Record<string, unknown> = {
         extracto_id: extracto.id,
         valor_id: pago.valor_id,
         valor_nombre: pago.valor_nombre,
@@ -8894,10 +9025,27 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         moneda: pago.moneda,
         concepto: `Recibo ${selectedRecibo.numero} - ${selectedRecibo.cliente_nombre}`,
         documento_origen_tipo: "recibo",
-        documento_origen_id: selectedRecibo.id,
         documento_origen_numero: selectedRecibo.numero,
         estado_movimiento: "confirmado",
-      })
+      }
+      // Solo enviar documento_origen_id si es UUID válido
+      if (isUUID(String(selectedRecibo.id))) {
+        movPayload.documento_origen_id = String(selectedRecibo.id)
+      }
+      let { error: movErr } = await supabase.from("movimientos_caja").insert(movPayload)
+      if (movErr) {
+        console.error("[publicarRecibo] Error movimiento_caja:", movErr.message)
+        // Si falla por columna inexistente, reintentar sin ella
+        if (movErr.message.includes("schema cache")) {
+          const col = movErr.message.match(/Could not find the '([^']+)' column/)?.[1]
+          if (col) delete movPayload[col]
+          else delete movPayload.estado_movimiento
+          const retry = await supabase.from("movimientos_caja").insert(movPayload)
+          if (retry.error) throw new Error("Error al crear movimiento en caja: " + retry.error.message)
+        } else {
+          throw new Error("Error al crear movimiento en caja: " + movErr.message)
+        }
+      }
       // Cupón si tarjeta
       if (pago.es_tarjeta) {
         const { data: cupon } = await supabase.from("cupones_tarjeta").insert({
@@ -8940,17 +9088,23 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const totalAsig = reciboImputacionesForm.reduce((s, i) => s + (i.asignacion || 0), 0)
     const noConciliado = Math.max(0, selectedRecibo.importe - totalAsig)
 
-    // Publicar
-    await supabase.from("recibos").update({
-      estado: "publicado",
-      importe_no_conciliado: noConciliado,
-      fecha_publicacion: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }).eq("id", selectedRecibo.id)
+      // Publicar
+      const { error: pubErr } = await supabase.from("recibos").update({
+        estado: "publicado",
+        importe_no_conciliado: noConciliado,
+        fecha_publicacion: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq("id", selectedRecibo.id)
+      if (pubErr) throw pubErr
 
-    await cargarDetalleRecibo(selectedRecibo.id)
-    await cargarRecibos()
-    alert("Recibo publicado correctamente.")
+      await cargarDetalleRecibo(selectedRecibo.id)
+      await cargarRecibos()
+      alert("Recibo publicado correctamente.")
+    } catch (err) {
+      alert("Error al confirmar recibo: " + (err as Error).message)
+    } finally {
+      setReciboPublicando(false)
+    }
   }
 
   const cancelarReciboPublicado = async () => {
@@ -8959,8 +9113,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const { createClient } = await import("@/lib/supabase/client")
     const supabase = createClient()
 
-    // Revertir movimientos caja
-    await supabase.from("movimientos_caja").update({ estado_movimiento: "cancelado" }).eq("documento_origen_tipo", "recibo").eq("documento_origen_id", selectedRecibo.id)
+    // Revertir movimientos caja (buscar por numero ya que id no es UUID)
+    await supabase.from("movimientos_caja").update({ estado_movimiento: "cancelado" }).eq("documento_origen_tipo", "recibo").eq("documento_origen_numero", selectedRecibo.numero)
 
     // Cancelar cupones
     for (const pago of reciboPagosForm) {
@@ -9068,8 +9222,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </div>}
           </div>
           <div className="flex gap-2">
-            {esBorrador && <button onClick={guardarRecibo} disabled={reciboGuardando} className="bg-indigo-900 text-white px-4 py-2 rounded text-sm hover:bg-indigo-800 disabled:opacity-50">{reciboGuardando ? "Guardando..." : "Guardar"}</button>}
-            {selectedRecibo?.estado === "borrador" && <button onClick={publicarRecibo} className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 flex items-center gap-1"><CheckCircle className="w-4 h-4" />Confirmar</button>}
+            {esBorrador && <button onClick={guardarRecibo} disabled={reciboGuardando || reciboPublicando} className="bg-indigo-900 text-white px-4 py-2 rounded text-sm hover:bg-indigo-800 disabled:opacity-50">{reciboGuardando ? "Guardando..." : "Guardar"}</button>}
+            {selectedRecibo?.estado === "borrador" && <button onClick={publicarRecibo} disabled={reciboGuardando || reciboPublicando} className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1"><CheckCircle className="w-4 h-4" />{reciboPublicando ? "Confirmando..." : "Confirmar"}</button>}
             {selectedRecibo?.estado === "publicado" && <button onClick={() => setShowCancelarReciboModal(true)} className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700">Cancelar Recibo</button>}
           </div>
         </div>
@@ -9135,7 +9289,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <div className="space-y-3">
                 {esBorrador && (
                   <div className="flex gap-2">
-                    <button onClick={() => { if (!reciboCajaId) { alert("Seleccioná una caja primero."); return } setShowAddPagoModal(true); setAddPagoValorId(""); setAddPagoImporte(0); setAddPagoTarjetaNombre(""); setAddPagoCuotas(1); setAddPagoNumeroCupon("") }} className="bg-indigo-900 text-white px-3 py-1.5 rounded text-sm hover:bg-indigo-800 flex items-center gap-1"><Plus className="w-4 h-4" />Añadir un elemento</button>
+                    <button onClick={async () => {
+                      if (!reciboCajaId) { alert("Seleccioná una caja primero."); return }
+                      await cargarValoresCaja(reciboCajaId)
+                      setShowAddPagoModal(true)
+                      setAddPagoValorId("")
+                      setAddPagoImporte(0)
+                      setAddPagoTarjetaNombre("")
+                      setAddPagoCuotas(1)
+                      setAddPagoNumeroCupon("")
+                    }} className="bg-indigo-900 text-white px-3 py-1.5 rounded text-sm hover:bg-indigo-800 flex items-center gap-1"><Plus className="w-4 h-4" />Añadir un elemento</button>
                   </div>
                 )}
                 {reciboPagosForm.length > 0 ? (

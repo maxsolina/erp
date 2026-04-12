@@ -77,10 +77,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const result = {
     ...data,
-    fallas_secundarias: (fallaSec ?? []).map(f => ({
-      falla_id: f.falla_id,
-      nombre: (f.taller_fallas as { nombre: string } | null)?.nombre ?? "",
-    })),
+    fallas_secundarias: (fallaSec ?? []).map(f => {
+      const falla = Array.isArray(f.taller_fallas) ? f.taller_fallas[0] : f.taller_fallas
+      return {
+        falla_id: f.falla_id,
+        nombre: (falla as { nombre?: string } | null)?.nombre ?? "",
+      }
+    }),
     repuestos: repuestos ?? [],
     controles: controles ?? [],
     historial: historial ?? [],

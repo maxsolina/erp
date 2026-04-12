@@ -21,9 +21,12 @@ export async function GET() {
     const secMap: Record<string, { categoria_id: string; nombre: string }[]> = {}
     for (const s of secs ?? []) {
       if (!secMap[s.tecnico_id]) secMap[s.tecnico_id] = []
+      const categoria = Array.isArray(s.taller_categorias_reparacion)
+        ? s.taller_categorias_reparacion[0]
+        : s.taller_categorias_reparacion
       secMap[s.tecnico_id].push({
         categoria_id: s.categoria_id,
-        nombre: (s.taller_categorias_reparacion as { nombre: string } | null)?.nombre ?? "",
+        nombre: (categoria as { nombre?: string } | null)?.nombre ?? "",
       })
     }
 

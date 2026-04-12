@@ -127,7 +127,13 @@ export async function fetchOrdenesPago(): Promise<any[]> {
   return res.json()
 }
 
-export async function guardarOrdenPago(payload: Record<string, any>, id?: number): Promise<any> {
+export async function fetchOrdenPagoDetalle(id: string): Promise<any> {
+  const res = await fetch(`/api/compras/ordenes-pago/${id}`, { cache: "no-store" })
+  if (!res.ok) throw new Error("Error al obtener detalle de orden de pago")
+  return res.json()
+}
+
+export async function guardarOrdenPago(payload: Record<string, any>, id?: string): Promise<any> {
   const url = id ? `/api/compras/ordenes-pago/${id}` : "/api/compras/ordenes-pago"
   const method = id ? "PUT" : "POST"
   const res = await fetch(url, {
@@ -138,6 +144,38 @@ export async function guardarOrdenPago(payload: Record<string, any>, id?: number
   if (!res.ok) {
     const err = await res.json()
     throw new Error(err.error || "Error al guardar orden de pago")
+  }
+  return res.json()
+}
+
+export async function eliminarOrdenPago(id: string): Promise<void> {
+  const res = await fetch(`/api/compras/ordenes-pago/${id}`, { method: "DELETE" })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.error || "Error al eliminar orden de pago")
+  }
+}
+
+export async function confirmarOrdenPagoAPI(id: string): Promise<any> {
+  const res = await fetch(`/api/compras/ordenes-pago/${id}/confirmar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.error || "Error al confirmar orden de pago")
+  }
+  return res.json()
+}
+
+export async function cancelarOrdenPagoAPI(id: string): Promise<any> {
+  const res = await fetch(`/api/compras/ordenes-pago/${id}/cancelar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.error || "Error al cancelar orden de pago")
   }
   return res.json()
 }

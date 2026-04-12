@@ -240,15 +240,71 @@ export interface FacturaCompra {
 }
 
 export interface OrdenPago {
-  id: number
+  id: string
   numero: string
   fecha: string
+  sucursal_id?: string
+  sucursal_nombre?: string
   proveedor_id: number
   proveedor_nombre: string
-  estado: "borrador" | "emitida" | "pagada"
-  facturas: number[]
-  monto: number
-  forma_pago: string
+  caja_id?: string
+  caja_nombre?: string
+  moneda: "ARS" | "USD" | "EUR"
+  tipo_cotizacion?: "oficial" | "blue" | "mep"
+  cotizacion?: number
+  importe: number
+  importe_ars?: number
+  importe_a_cuenta: number
+  importe_no_conciliado: number
+  concepto?: string
+  orden_compra_id?: number
+  orden_compra_numero?: string
+  estado: "borrador" | "publicado" | "cancelado"
+  periodo?: string
+  observaciones?: string
+  created_by?: string
+  created_at?: string
+  updated_at?: string
+  medios_pago?: OrdenPagoMedio[]
+  comprobantes?: OrdenPagoComprobante[]
+}
+
+export interface OrdenPagoMedio {
+  id?: string
+  op_id?: string
+  nombre?: string
+  forma_pago_id?: string
+  forma_pago_nombre?: string
+  tipo_operacion?: string
+  tipo_cotizacion?: "oficial" | "blue" | "mep"
+  cotizacion?: number
+  numero_operacion?: string
+  fecha_operacion?: string
+  importe: number
+  moneda: "ARS" | "USD" | "EUR"
+  importe_comp: number
+  moneda_comp?: "ARS" | "USD" | "EUR"
+  observaciones?: string
+}
+
+export interface OrdenPagoComprobante {
+  id?: string
+  op_id?: string
+  tipo: "debito" | "credito"
+  factura_id?: number
+  referencia: string
+  fecha?: string
+  vencimiento?: string
+  saldo_mon?: number
+  moneda_comp?: string
+  tipo_cotizacion?: string
+  cotizacion_original?: number
+  saldo_original: number
+  cotizacion?: number
+  importe_en_liquidacion?: number
+  saldo: number
+  total: number
+  importe: number
 }
 
 export interface Ticket {
@@ -336,7 +392,7 @@ interface ERPContextType {
   cancelarRecibo: (reciboId: number, motivo: string) => void
   confirmarRecepcion: (recepcionId: number) => void
   registrarFacturaCompra: (factura: Omit<FacturaCompra, "id">) => void
-  confirmarOrdenPago: (opId: number) => void
+  confirmarOrdenPago: (opId: string) => void
 }
 
 const ERPContext = createContext<ERPContextType | undefined>(undefined)
@@ -808,46 +864,10 @@ export function ERPProvider({ children }: { children: ReactNode }) {
     ))
   }
 
-  const confirmarOrdenPago = (opId: number) => {
+  const confirmarOrdenPago = (opId: string) => {
     setOrdenesPago(prev => prev.map(op => {
-      if (op.id === opId && op.estado !== "pagada") {
-        // Registrar en cuenta corriente
-        const movimiento: MovimientoCtaCte = {
-          id: movimientosCtaCte.length + 1,
-          fecha: new Date().toISOString(),
-          entidad_tipo: "proveedor",
-          entidad_id: op.proveedor_id,
-          tipo: "orden_pago",
-          documento_numero: op.numero,
-          concepto: `Orden de Pago ${op.numero}`,
-          debe: 0,
-          haber: op.monto,
-          saldo_parcial: 0,
-          usuario: currentUser?.nombre || "Sistema"
-        }
-        setMovimientosCtaCte(prev => [...prev, movimiento])
-
-        // Actualizar saldo del proveedor
-        setProveedores(prev => prev.map(p => 
-          p.id === op.proveedor_id 
-            ? { ...p, saldo: p.saldo - op.monto }
-            : p
-        ))
-
-        // Actualizar saldos de facturas vinculadas
-        setFacturasCompra(prev => prev.map(fac => {
-          if (op.facturas.includes(fac.id)) {
-            const nuevoSaldo = Math.max(0, fac.saldo - op.monto)
-            return { 
-              ...fac, 
-              saldo: nuevoSaldo,
-              estado: nuevoSaldo <= 0 ? "pagada" as const : fac.estado
-            }
-          }
-          return fac
-        }))
-
-        return { ...op, estado: "pagada" as const }
+      if (op.id === opId && op.estado === "borrador") {
+        return { ...op, estado: "publicado" as const }
       }
       return op
     }))
