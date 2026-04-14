@@ -12,6 +12,8 @@ import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Re
 import ProductoDropdown from "./producto-dropdown"
 import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
 import { tarjetasIniciales, gruposIniciales, recargosIniciales } from "./modulo-finanzas"
+import { ModalMedioPago } from "./modal-medio-pago"
+import type { MedioPagoResult } from "./modal-medio-pago"
 import type { Tarjeta as TarjetaFinanzas, GrupoTarjeta as GrupoTarjetaFinanzas, RecargoTarjeta as RecargoTarjetaFinanzas, RecargoTarjeta } from "./modulo-finanzas"
 
 // Types para Ventas
@@ -1239,11 +1241,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [reciboGuardando, setReciboGuardando] = useState(false)
   const [reciboPublicando, setReciboPublicando] = useState(false)
   const [showAddPagoModal, setShowAddPagoModal] = useState(false)
-  const [addPagoValorId, setAddPagoValorId] = useState<string>("")
-  const [addPagoImporte, setAddPagoImporte] = useState<number>(0)
-  const [addPagoTarjetaNombre, setAddPagoTarjetaNombre] = useState<string>("")
-  const [addPagoCuotas, setAddPagoCuotas] = useState<number>(1)
-  const [addPagoNumeroCupon, setAddPagoNumeroCupon] = useState<string>("")
   
   // Vendedores cargados desde Supabase
   const [vendedores, setVendedores] = useState<Vendedor[]>(mockVendedores)
@@ -3902,6 +3899,80 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           } catch (_) {}
         }
       } catch (_) {}
+
+      // 3. Crear Factura abierta vinculada a la NV
+      try {
+        const facRes = await fetch("/api/facturas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nota_venta_id: nvIdFinal,
+            nota_venta_numero: nvNumeroFinal,
+            cliente_id: cliente.id,
+            cliente_nombre: cliente.nombre,
+            vendedor_nombre: vendedorNombre,
+            sucursal: deposito,
+            fecha: fechaHoy,
+            estado: "abierta",
+            moneda,
+            termino_pago: terminoPagoNombre,
+            subtotal: subtotalValido,
+            descuento: 0,
+            impuestos: impuestosValido,
+            total: totalValido,
+            saldo: totalValido,
+            lineas: lineasValidas.map(l => ({
+              producto_id: l.producto_id,
+              producto_nombre: l.producto_nombre,
+              descripcion: l.descripcion ?? null,
+              cantidad: l.cantidad,
+              precio_unitario: l.precio_unitario ?? 0,
+              descuento: l.descuento ?? 0,
+              subtotal: Number(l.subtotal ?? 0),
+            })),
+          }),
+        })
+        if (facRes.ok) {
+          const facData = await facRes.json()
+          const newFactura: Factura = {
+            id: facData.id,
+            numero: facData.numero,
+            nota_venta_id: nvIdFinal,
+            nota_venta_numero: nvNumeroFinal,
+            cliente_id: cliente.id,
+            cliente_nombre: cliente.nombre,
+            cliente_documento: cliente.numero_documento ?? "",
+            estado: "abierta",
+            fecha: fechaHoy,
+            vendedor_nombre: vendedorNombre,
+            domicilio_facturacion: cliente.direccion ?? "",
+            moneda,
+            tipo_cotizacion: "blue",
+            cotizacion: 1150,
+            termino_pago: terminoPagoNombre,
+            subtotal: subtotalValido,
+            descuento: 0,
+            impuestos: impuestosValido,
+            total: totalValido,
+            saldo: totalValido,
+            sucursal: deposito,
+            lineas: lineasValidas.map(l => ({
+              producto_nombre: l.producto_nombre,
+              descripcion: l.descripcion ?? "",
+              cantidad: l.cantidad,
+              precio_unitario: l.precio_unitario ?? 0,
+              descuento: l.descuento ?? 0,
+              subtotal: Number(l.subtotal ?? 0),
+            })),
+            vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split("T")[0], total: totalValido }],
+            seguimiento: [],
+            medios_pago_detalle: [],
+          }
+          setFacturas(prev => [...prev, newFactura])
+        }
+      } catch (err) {
+        console.error("[handleCrearNVFinal] Error al crear factura:", err)
+      }
     }
 
     // Si estamos editando, actualizar; si no, agregar nueva
@@ -9165,11 +9236,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setReciboObservaciones("")
     setReciboTab("pagos")
     setShowAddPagoModal(false)
-    setAddPagoValorId("")
-    setAddPagoImporte(0)
-    setAddPagoTarjetaNombre("")
-    setAddPagoCuotas(1)
-    setAddPagoNumeroCupon("")
   }
 
   const seleccionRapida = () => {
@@ -9289,15 +9355,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <div className="space-y-3">
                 {esBorrador && (
                   <div className="flex gap-2">
-                    <button onClick={async () => {
+                    <button onClick={() => {
                       if (!reciboCajaId) { alert("Seleccioná una caja primero."); return }
-                      await cargarValoresCaja(reciboCajaId)
                       setShowAddPagoModal(true)
-                      setAddPagoValorId("")
-                      setAddPagoImporte(0)
-                      setAddPagoTarjetaNombre("")
-                      setAddPagoCuotas(1)
-                      setAddPagoNumeroCupon("")
                     }} className="bg-indigo-900 text-white px-3 py-1.5 rounded text-sm hover:bg-indigo-800 flex items-center gap-1"><Plus className="w-4 h-4" />Añadir un elemento</button>
                   </div>
                 )}
@@ -9372,79 +9432,36 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
         {/* Modal agregar pago */}
         {showAddPagoModal && (
-          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setShowAddPagoModal(false)}>
-            <div className="bg-white rounded-lg shadow-xl w-[480px] p-6" onClick={e => e.stopPropagation()}>
-              <h3 className="text-lg font-bold mb-4">Agregar Medio de Pago</h3>
-              <div className="space-y-3">
-                <div><label className="text-xs font-medium text-gray-500">Forma de Pago</label>
-                  <select value={addPagoValorId} onChange={e => setAddPagoValorId(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm">
-                    <option value="">Seleccionar...</option>
-                    {reciboValoresCaja.map(v => <option key={v.id} value={v.id}>{v.nombre} ({v.moneda})</option>)}
-                  </select>
-                </div>
-                <div><label className="text-xs font-medium text-gray-500">Importe</label><input type="number" value={addPagoImporte} onChange={e => setAddPagoImporte(Number(e.target.value))} className="w-full border rounded px-2 py-1.5 text-sm" /></div>
-                {(() => {
-                  const valorSel = reciboValoresCaja.find(v => v.id === addPagoValorId)
-                  if (valorSel?.tipo === "tarjeta") {
-                    return (
-                      <div className="space-y-3 p-3 bg-blue-50 rounded">
-                        <p className="text-xs text-blue-700 font-medium">Datos de tarjeta</p>
-                        <div><label className="text-xs text-gray-500">Tarjeta</label>
-                          <select value={addPagoTarjetaNombre} onChange={e => setAddPagoTarjetaNombre(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm">
-                            <option value="">Seleccionar...</option><option value="Visa">Visa</option><option value="Mastercard">Mastercard</option><option value="Cabal">Cabal</option><option value="Amex">Amex</option>
-                          </select>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div><label className="text-xs text-gray-500">Cuotas</label>
-                            <select value={addPagoCuotas} onChange={e => setAddPagoCuotas(Number(e.target.value))} className="w-full border rounded px-2 py-1.5 text-sm">
-                              {[1, 3, 6, 9, 12, 18, 24].map(n => <option key={n} value={n}>{n}</option>)}
-                            </select>
-                          </div>
-                          <div><label className="text-xs text-gray-500">N° Cupón</label><input value={addPagoNumeroCupon} onChange={e => setAddPagoNumeroCupon(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="Opcional" /></div>
-                        </div>
-                      </div>
-                    )
-                  }
-                  return null
-                })()}
-              </div>
-              <div className="flex justify-end gap-2 mt-4">
-                <button onClick={() => setShowAddPagoModal(false)} className="px-4 py-2 border rounded text-sm hover:bg-gray-50">Cancelar</button>
-                <button onClick={() => {
-                  const valorSel = reciboValoresCaja.find(v => v.id === addPagoValorId)
-                  if (!valorSel || addPagoImporte <= 0) { alert("Seleccioná un valor y un importe válido."); return }
-                  const esTarjeta = valorSel.tipo === "tarjeta"
-                  // Validar tarjeta sin NV
-                  if (esTarjeta && !reciboNvId && !selectedRecibo?.nota_venta_id) {
-                    alert("Para cobrar con tarjeta, el recibo debe estar vinculado a una factura donde el recargo ya esté calculado.")
-                    return
-                  }
-                  const nuevoPago: ReciboPago = {
-                    id: crypto.randomUUID(),
-                    recibo_id: selectedRecibo?.id || "",
-                    valor_id: valorSel.id,
-                    valor_nombre: valorSel.nombre,
-                    tipo_valor: valorSel.tipo,
-                    importe_comprobante: addPagoImporte,
-                    moneda_comprobante: valorSel.moneda,
-                    importe: addPagoImporte,
-                    moneda: valorSel.moneda,
-                    es_tarjeta: esTarjeta,
-                    tarjeta_nombre: esTarjeta ? addPagoTarjetaNombre : null,
-                    cantidad_cuotas: esTarjeta ? addPagoCuotas : 1,
-                    numero_cupon: esTarjeta ? addPagoNumeroCupon : null,
-                    recargo_porcentaje: 0,
-                    recargo_importe: 0,
-                    es_cheque: valorSel.tipo === "banco_cheques",
-                    cheque_id: null,
-                    cupon_tarjeta_id: null,
-                  }
-                  setReciboPagosForm(prev => [...prev, nuevoPago])
-                  setShowAddPagoModal(false)
-                }} className="bg-indigo-900 text-white px-4 py-2 rounded text-sm hover:bg-indigo-800">Agregar</button>
-              </div>
-            </div>
-          </div>
+          <ModalMedioPago
+            cajaId={reciboCajaId}
+            onGuardar={(result: MedioPagoResult, yNuevo: boolean) => {
+              const esTarjeta = result.valor_subtipo === "tarjeta"
+              const escheque = result.valor_subtipo === "cheque_tercero"
+              const nuevoPago: ReciboPago = {
+                id: crypto.randomUUID(),
+                recibo_id: selectedRecibo?.id || "",
+                valor_id: result.valor_id,
+                valor_nombre: result.valor_nombre,
+                tipo_valor: result.valor_tipo,
+                importe_comprobante: result.importe,
+                moneda_comprobante: result.moneda,
+                importe: result.importe,
+                moneda: result.moneda,
+                es_tarjeta: esTarjeta,
+                tarjeta_nombre: result.tarjeta_nombre || null,
+                cantidad_cuotas: result.cuotas || 1,
+                numero_cupon: result.numero_cupon || null,
+                recargo_porcentaje: 0,
+                recargo_importe: 0,
+                es_cheque: escheque,
+                cheque_id: null,
+                cupon_tarjeta_id: null,
+              }
+              setReciboPagosForm(prev => [...prev, nuevoPago])
+              if (!yNuevo) setShowAddPagoModal(false)
+            }}
+            onCerrar={() => setShowAddPagoModal(false)}
+          />
         )}
 
         {/* Modal cancelar recibo */}

@@ -11,6 +11,7 @@ import {
   ArrowDownUp, RefreshCw, Download, Eye, Filter
 } from "lucide-react"
 import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
+import { ModalMedioPago } from "./modal-medio-pago"
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -64,6 +65,7 @@ interface CajaValor {
   codigo: string
   nombre: string
   tipo: 'efectivo' | 'banco_cheques'
+  subtipo?: string | null
   moneda: string
   activo: boolean
 }
@@ -2225,6 +2227,7 @@ function TabValores({ cajaId, valores, onActualizar }: {
 
   const guardar = async () => {
     if (!form.codigo?.trim() || !form.nombre?.trim()) { setError("Código y nombre son obligatorios"); return }
+    if (form.tipo === 'banco_cheques' && !form.subtipo) { setError("El subtipo es obligatorio para Banco y cheques"); return }
     setGuardando(true)
     setError("")
     const supabase = createClient()
@@ -2238,6 +2241,7 @@ function TabValores({ cajaId, valores, onActualizar }: {
     await supabase.from('caja_valores').insert({
       caja_id: cajaId, codigo: form.codigo, nombre: form.nombre,
       tipo: form.tipo || 'efectivo', moneda: form.moneda || 'ARS',
+      subtipo: form.tipo === 'banco_cheques' ? (form.subtipo || null) : null,
     })
     setCreando(false)
     setForm({})
@@ -2273,7 +2277,7 @@ function TabValores({ cajaId, valores, onActualizar }: {
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Tipo</label>
-              <select value={form.tipo || "efectivo"} onChange={e => setForm(f => ({ ...f, tipo: e.target.value as CajaValor["tipo"] }))}
+              <select value={form.tipo || "efectivo"} onChange={e => setForm(f => ({ ...f, tipo: e.target.value as CajaValor["tipo"], subtipo: undefined }))}
                 className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                 <option value="efectivo">Efectivo</option>
                 <option value="banco_cheques">Banco y cheques</option>
@@ -2289,6 +2293,20 @@ function TabValores({ cajaId, valores, onActualizar }: {
               </select>
             </div>
           </div>
+          {form.tipo === 'banco_cheques' && (
+            <div className="mt-3">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Subtipo *</label>
+              <select value={form.subtipo || ""} onChange={e => setForm(f => ({ ...f, subtipo: e.target.value }))}
+                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                <option value="">Seleccionar subtipo...</option>
+                <option value="banco">Banco</option>
+                <option value="cheque_tercero">Cheque Tercero</option>
+                <option value="tarjeta">Tarjeta</option>
+                <option value="rendicion_gastos">Rendición de Gastos</option>
+                <option value="fondo_fijo">Fondo Fijo</option>
+              </select>
+            </div>
+          )}
           <div className="flex gap-2 mt-3 justify-end">
             <button onClick={() => { setCreando(false); setForm({}); setError("") }} className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">Cancelar</button>
             <button onClick={guardar} disabled={guardando} className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded hover:bg-indigo-800 disabled:bg-gray-300">
@@ -2314,9 +2332,16 @@ function TabValores({ cajaId, valores, onActualizar }: {
               <td className="py-2 px-3 font-mono">{v.codigo}</td>
               <td className="py-2 px-3 font-medium">{v.nombre}</td>
               <td className="py-2 px-3">
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${v.tipo === 'efectivo' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                  {v.tipo === 'efectivo' ? 'Efectivo' : 'Banco/Cheques'}
-                </span>
+                <div className="flex flex-col gap-0.5">
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${v.tipo === 'efectivo' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                    {v.tipo === 'efectivo' ? 'Efectivo' : 'Banco/Cheques'}
+                  </span>
+                  {v.subtipo && (
+                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-50 text-purple-700 w-fit">
+                      {({'banco': 'Banco', 'cheque_tercero': 'Cheque', 'tarjeta': 'Tarjeta', 'rendicion_gastos': 'Rendición', 'fondo_fijo': 'Fondo Fijo'} as Record<string,string>)[v.subtipo] || v.subtipo}
+                    </span>
+                  )}
+                </div>
               </td>
               <td className="py-2 px-3 font-mono">{v.moneda}</td>
               <td className="py-2 px-3 text-center">
@@ -2753,8 +2778,6 @@ function RegistrosCaja() {
   const [valores, setValores] = useState<Partial<RegistroCajaValor>[]>([])
   // Modal valor
   const [mostrarModalValor, setMostrarModalValor] = useState(false)
-  const [nuevoValorId, setNuevoValorId] = useState("")
-  const [nuevoValorImporte, setNuevoValorImporte] = useState("")
 
   const formatMonto = (m: number) => new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(m)
   const hoy = new Date().toISOString().split("T")[0]
@@ -2917,18 +2940,16 @@ function RegistrosCaja() {
 
   const removeComprobante = (idx: number) => setComprobantes(prev => prev.filter((_, i) => i !== idx))
 
-  const addValor = () => {
-    if (!nuevoValorId || !nuevoValorImporte) return
-    const val = valoresCaja.find(v => v.id === nuevoValorId)
-    if (!val) return
+  const addValorDesdModal = (result: import('./modal-medio-pago').MedioPagoResult, yNuevo: boolean) => {
     setValores(prev => [...prev, {
-      valor_id: val.id, valor_nombre: val.nombre,
-      importe_comprobante: parseFloat(nuevoValorImporte), moneda_comprobante: formMoneda,
-      importe: parseFloat(nuevoValorImporte), moneda: val.moneda,
+      valor_id: result.valor_id,
+      valor_nombre: result.valor_nombre,
+      importe_comprobante: result.importe,
+      moneda_comprobante: formMoneda,
+      importe: result.importe,
+      moneda: result.moneda,
     }])
-    setNuevoValorId("")
-    setNuevoValorImporte("")
-    setMostrarModalValor(false)
+    if (!yNuevo) setMostrarModalValor(false)
   }
 
   const removeValor = (idx: number) => setValores(prev => prev.filter((_, i) => i !== idx))
@@ -3205,31 +3226,11 @@ function RegistrosCaja() {
                 </button>
               )}
               {mostrarModalValor && (
-                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-                  <div className="bg-white rounded-lg shadow-2xl w-full max-w-md mx-4 p-6">
-                    <h3 className="text-lg font-bold text-indigo-900 mb-4">Agregar Valor</h3>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Forma de Pago</label>
-                        <select value={nuevoValorId} onChange={e => setNuevoValorId(e.target.value)}
-                          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-                          <option value="">Seleccionar...</option>
-                          {valoresCaja.map(v => <option key={v.id} value={v.id}>{v.nombre} ({v.moneda})</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Importe</label>
-                        <input type="number" step="0.01" value={nuevoValorImporte} onChange={e => setNuevoValorImporte(e.target.value)}
-                          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-                      </div>
-                    </div>
-                    <div className="flex justify-end gap-3 mt-6">
-                      <button onClick={() => setMostrarModalValor(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50">Cancelar</button>
-                      <button onClick={addValor} disabled={!nuevoValorId || !nuevoValorImporte}
-                        className="px-4 py-2 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 disabled:bg-gray-300">Agregar</button>
-                    </div>
-                  </div>
-                </div>
+                <ModalMedioPago
+                  cajaId={formCaja}
+                  onGuardar={addValorDesdModal}
+                  onCerrar={() => setMostrarModalValor(false)}
+                />
               )}
             </div>
           )}
@@ -3272,9 +3273,6 @@ function AjustesCaja() {
 
   // Modal agregar valor
   const [modalValor, setModalValor] = useState(false)
-  const [modalFP, setModalFP] = useState("")
-  const [modalTipoMov, setModalTipoMov] = useState<"entrada" | "salida">("salida")
-  const [modalImporte, setModalImporte] = useState("")
 
   const formatMonto = (m: number) => new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(m)
 
@@ -3345,25 +3343,11 @@ function AjustesCaja() {
   }
 
   const abrirModalValor = () => {
-    setModalFP("")
-    setModalTipoMov(defaultTipoMovByConcepto())
-    setModalImporte("")
     setModalValor(true)
   }
 
   const guardarValorLinea = () => {
-    if (!modalFP || !modalImporte) return
-    const vObj = valoresCaja.find(v => v.id === modalFP)
-    setFormValoresLineas(prev => [...prev, {
-      valor_id: modalFP,
-      valor_nombre: vObj ? `${vObj.nombre} (${vObj.moneda})` : modalFP,
-      tipo_movimiento: modalTipoMov,
-      importe: parseFloat(modalImporte),
-    }])
-    setModalValor(false)
-    setModalFP("")
-    setModalImporte("")
-    setModalTipoMov("salida")
+    // reemplazado por ModalMedioPago
   }
 
   const eliminarValorLinea = (idx: number) => {
@@ -3634,54 +3618,21 @@ function AjustesCaja() {
 
       {/* Modal Agregar Valor */}
       {modalValor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Agregar Valor</h3>
-              <button onClick={() => setModalValor(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Forma de Pago *</label>
-                <select value={modalFP} onChange={e => setModalFP(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-                  <option value="">Seleccionar...</option>
-                  {valoresCaja.map(v => <option key={v.id} value={v.id}>{v.nombre} ({v.moneda})</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de Movimiento de Caja *</label>
-                <div className="flex gap-2">
-                  {(["entrada", "salida"] as const).map(t => (
-                    <button key={t} onClick={() => setModalTipoMov(t)}
-                      className={`flex-1 px-4 py-2 text-sm rounded-md border transition-colors ${modalTipoMov === t
-                        ? (t === "entrada" ? "bg-green-600 text-white border-green-600" : "bg-red-600 text-white border-red-600")
-                        : "border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
-                      {t === "entrada" ? "Entrada" : "Salida"}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-gray-400 mt-1">
-                  {modalTipoMov === "entrada" ? "Suma al saldo de la caja" : "Resta al saldo de la caja"}
-                </p>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Importe *</label>
-                <input type="number" step="0.01" min="0" value={modalImporte} onChange={e => setModalImporte(e.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-              </div>
-            </div>
-            <div className="flex gap-2 mt-6">
-              <button onClick={guardarValorLinea} disabled={!modalFP || !modalImporte}
-                className="flex-1 bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed">
-                Guardar
-              </button>
-              <button onClick={() => setModalValor(false)} className="flex-1 border border-gray-300 px-4 py-2 rounded-md text-sm hover:bg-gray-50">
-                Descartar
-              </button>
-            </div>
-          </div>
-        </div>
+        <ModalMedioPago
+          cajaId={formCaja}
+          showTipoMovimiento={true}
+          defaultTipoMovimiento={defaultTipoMovByConcepto()}
+          onGuardar={(result, yNuevo) => {
+            setFormValoresLineas(prev => [...prev, {
+              valor_id: result.valor_id,
+              valor_nombre: `${result.valor_nombre} (${result.moneda})`,
+              tipo_movimiento: result.tipo_movimiento || "salida",
+              importe: result.importe,
+            }])
+            if (!yNuevo) setModalValor(false)
+          }}
+          onCerrar={() => setModalValor(false)}
+        />
       )}
     </div>
   )

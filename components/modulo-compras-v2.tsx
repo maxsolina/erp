@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from "react"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Settings, Lock, Unlock, FileBox, Ship, Plane, Pencil, ChevronLeft, ChevronRight as ChevronRightIcon } from "lucide-react"
 import BotonVolver from "./ui/boton-volver"
 import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
+import { ModalMedioPago } from "./modal-medio-pago"
 import {
   getCategoriaProveedores,
   createCategoriaProveedor,
@@ -6582,159 +6583,35 @@ export default function ModuloCompras() {
         {renderContent()}
       </main>
 
-      {/* ===== MODAL CREAR MEDIO DE PAGO OP ===== */}
-      {opModalMedioPago && (() => {
-        const MedioPagoModal = () => {
-          const [mpFormaPago, setMpFormaPago] = useState("")
-          const [mpFormaPagoId, setMpFormaPagoId] = useState("")
-          const [mpTipoOp, setMpTipoOp] = useState("")
-          const [mpTipoCot, setMpTipoCot] = useState<"oficial" | "blue" | "mep">("oficial")
-          const [mpCotizacion, setMpCotizacion] = useState(0)
-          const [mpNumOp, setMpNumOp] = useState("")
-          const [mpImporte, setMpImporte] = useState(0)
-          const [mpMoneda, setMpMoneda] = useState<"ARS" | "USD" | "EUR">(opForm.moneda ?? "ARS")
-          const [mpFechaOp, setMpFechaOp] = useState("")
-          const [mpObs, setMpObs] = useState("")
-          const [valoresCaja, setValoresCaja] = useState<{id: string; nombre: string; moneda: string; tipo: string}[]>([])
-
-          useEffect(() => {
-            if (!opForm.caja_id) return
-            const supabase = createSupabaseClient()
-            supabase.from("caja_valores").select("id, nombre, moneda, tipo").eq("caja_id", opForm.caja_id).eq("activo", true).order("nombre")
-              .then(({ data }) => { if (data) setValoresCaja(data) })
-          }, [opForm.caja_id])
-
-          const esMonedaExtranjera = mpMoneda !== "ARS"
-          const importeComp = esMonedaExtranjera && mpCotizacion > 0
-            ? mpImporte * mpCotizacion
-            : mpImporte
-
-          const guardarMedio = (yNuevo: boolean) => {
-            if (!mpFormaPago || mpImporte <= 0) return
-            const nombre = `${mpFormaPago} - ${opForm.caja_nombre || "Caja"} - ${mpMoneda} - ${mpMoneda} ${mpImporte.toFixed(2)}`
+      {/* ===== MODAL MEDIO DE PAGO OP ===== */}
+      {opModalMedioPago && (
+        <ModalMedioPago
+          cajaId={opForm.caja_id || ""}
+          onGuardar={(result, yNuevo) => {
             const nuevoMedio: OPMedioPago = {
-              forma_pago_id: mpFormaPagoId || undefined,
-              forma_pago_nombre: mpFormaPago,
-              nombre,
-              tipo_operacion: mpTipoOp || undefined,
-              tipo_cotizacion: esMonedaExtranjera ? mpTipoCot : undefined,
-              cotizacion: esMonedaExtranjera ? mpCotizacion : undefined,
-              numero_operacion: mpNumOp || undefined,
-              fecha_operacion: mpFechaOp || undefined,
-              importe: mpImporte,
-              moneda: mpMoneda,
-              importe_comp: opForm.moneda === mpMoneda ? mpImporte : importeComp,
+              forma_pago_id: result.valor_id,
+              forma_pago_nombre: result.valor_nombre,
+              nombre: `${result.valor_nombre} - ${result.moneda} ${result.importe.toFixed(2)}`,
+              tipo_operacion: result.tipo_operacion || result.valor_subtipo || undefined,
+              tipo_cotizacion: result.tipo_cotizacion,
+              cotizacion: result.cotizacion,
+              numero_operacion: result.numero_operacion || result.numero_cheque || undefined,
+              fecha_operacion: result.fecha_operacion || result.vencimiento_cheque || undefined,
+              importe: result.importe,
+              moneda: result.moneda as "ARS" | "USD" | "EUR",
+              importe_comp: result.importe_ars ?? result.importe,
               moneda_comp: opForm.moneda ?? "ARS",
-              observaciones: mpObs || undefined,
+              observaciones: result.observaciones,
             }
             const nuevosMedios = [...opMediosPago, nuevoMedio]
             setOpMediosPago(nuevosMedios)
             const t = calcOpTotales(nuevosMedios, opComprobantesDebito, opComprobantesCredito)
             setOpForm(prev => ({ ...prev, importe: t.totalMedios, importe_a_cuenta: t.aCuenta, importe_no_conciliado: t.noConciliado }))
-
-            if (yNuevo) {
-              setMpFormaPago(""); setMpFormaPagoId(""); setMpImporte(0); setMpNumOp(""); setMpObs("")
-              setMpTipoOp(""); setMpFechaOp("")
-            } else {
-              setOpModalMedioPago(false)
-            }
-          }
-
-          return (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-                <h3 className="text-lg font-bold text-gray-900 mb-4">Crear Medio de Pago</h3>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-medium text-gray-500">Forma de Pago *</label>
-                    <select value={mpFormaPagoId} onChange={e => {
-                      const sel = valoresCaja.find(v => v.id === e.target.value)
-                      setMpFormaPagoId(e.target.value)
-                      setMpFormaPago(sel?.nombre ?? "")
-                      if (sel?.moneda === "USD") setMpMoneda("USD")
-                      else if (sel?.moneda === "EUR") setMpMoneda("EUR")
-                      else setMpMoneda(opForm.moneda ?? "ARS")
-                    }} className="w-full border rounded px-2 py-1.5 text-sm">
-                      <option value="">{!opForm.caja_id ? "Seleccioná una caja primero" : valoresCaja.length === 0 ? "Sin valores para esta caja" : "Seleccionar..."}</option>
-                      {valoresCaja.map(v => <option key={v.id} value={v.id}>{v.nombre} ({v.moneda})</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500">Tipo de Operación</label>
-                    <input value={mpTipoOp} onChange={e => setMpTipoOp(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-medium text-gray-500">Moneda</label>
-                      <select value={mpMoneda} onChange={e => setMpMoneda(e.target.value as "ARS"|"USD"|"EUR")} className="w-full border rounded px-2 py-1.5 text-sm">
-                        <option value="ARS">ARS</option>
-                        <option value="USD">USD</option>
-                        <option value="EUR">EUR</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-500">Importe *</label>
-                      <input type="number" value={mpImporte || ""} onChange={e => setMpImporte(parseFloat(e.target.value) || 0)} className="w-full border rounded px-2 py-1.5 text-sm" min="0" step="0.01" />
-                    </div>
-                  </div>
-                  {esMonedaExtranjera && (
-                    <div className="grid grid-cols-3 gap-3">
-                      <div>
-                        <label className="text-xs font-medium text-gray-500">Tipo Cotización</label>
-                        <select value={mpTipoCot} onChange={e => setMpTipoCot(e.target.value as "oficial"|"blue"|"mep")} className="w-full border rounded px-2 py-1.5 text-sm">
-                          <option value="oficial">Oficial</option>
-                          <option value="blue">Blue</option>
-                          <option value="mep">MEP</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-500">Cotización</label>
-                        <input type="number" value={mpCotizacion || ""} onChange={e => setMpCotizacion(parseFloat(e.target.value) || 0)} className="w-full border rounded px-2 py-1.5 text-sm" step="0.0001" />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-500">Equivalente ARS</label>
-                        <p className="font-medium text-sm pt-1.5">{formatCurrency(importeComp)}</p>
-                      </div>
-                    </div>
-                  )}
-                  <div>
-                    <label className="text-xs font-medium text-gray-500">Nº Operación</label>
-                    <input value={mpNumOp} onChange={e => setMpNumOp(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="Nº transferencia, cheque, etc." />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500">Fecha de Operación</label>
-                    <input type="date" value={mpFechaOp} onChange={e => setMpFechaOp(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm" />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500">Observaciones</label>
-                    <textarea value={mpObs} onChange={e => setMpObs(e.target.value)} rows={2} className="w-full border rounded px-2 py-1.5 text-sm" />
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
-                  <button onClick={() => setOpModalMedioPago(false)} className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">
-                    Descartar
-                  </button>
-                  <button
-                    onClick={() => guardarMedio(true)}
-                    disabled={!mpFormaPago || mpImporte <= 0}
-                    className="px-4 py-2 border border-indigo-300 text-indigo-700 rounded-lg text-sm hover:bg-indigo-50 disabled:opacity-50"
-                  >
-                    Guardar y Nuevo
-                  </button>
-                  <button
-                    onClick={() => guardarMedio(false)}
-                    disabled={!mpFormaPago || mpImporte <= 0}
-                    className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50"
-                  >
-                    Guardar y Cerrar
-                  </button>
-                </div>
-              </div>
-            </div>
-          )
-        }
-        return <MedioPagoModal />
-      })()}
+            if (!yNuevo) setOpModalMedioPago(false)
+          }}
+          onCerrar={() => setOpModalMedioPago(false)}
+        />
+      )}
 
       {/* ===== MODAL WIZARD REGISTRO DE UNIDADES ===== */}
       {modalSerieOpen && modalSerieProducto && (() => {
