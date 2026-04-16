@@ -1217,6 +1217,8 @@ export default function ModuloCompras() {
   const [creandoCatProv, setCreandoCatProv] = useState(false)
   const [catProvTabActivo, setCatProvTabActivo] = useState<"listas_precios" | "grupos_descuentos" | "cuentas_perm" | "leyenda" | "grupos">("listas_precios")
   const [loadingCatProv, setLoadingCatProv] = useState(false)
+  const [catGuardando, setCatGuardando] = useState(false)
+  const [catError, setCatError] = useState<string | null>(null)
 
   useEffect(() => {
     setLoadingCatProv(true)
@@ -5520,7 +5522,7 @@ export default function ModuloCompras() {
           fecha_vencimiento: fcForm.fecha_vencimiento || null,
           proveedor_id: fcForm.proveedor_id,
           proveedor_nombre: fcForm.proveedor_nombre,
-          estado: "borrador",
+          estado: selectedFacturaCompra?.estado ?? "borrador",
           moneda: fcForm.moneda,
           tipo_cambio: fcForm.tipo_cambio,
           cotizacion: fcForm.cotizacion ?? null,
@@ -5606,6 +5608,29 @@ export default function ModuloCompras() {
                   className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800 disabled:opacity-50"
                 >
                   {fcPublicando ? "Publicando..." : "Publicar"}
+                </button>
+              )}
+              {f.estado === "pendiente" && (
+                <button
+                  onClick={async () => {
+                    if (!confirm("¿Cancelar la publicación? Se generará una reversión contable y la factura volverá a borrador.")) return
+                    setFcPublicando(true)
+                    setFcErrorPublicar(null)
+                    try {
+                      await cancelarFacturaCompra(f.id)
+                      const updated = { ...f, estado: "borrador" as const, asiento_id: null }
+                      setFacturasCompra(prev => prev.map(fc => fc.id === f.id ? updated : fc))
+                      setSelectedFacturaCompra(updated)
+                    } catch (e: any) {
+                      setFcErrorPublicar(e.message ?? "Error al cancelar")
+                    } finally {
+                      setFcPublicando(false)
+                    }
+                  }}
+                  disabled={fcPublicando}
+                  className="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 disabled:opacity-50"
+                >
+                  {fcPublicando ? "Cancelando..." : "Cancelar Publicación"}
                 </button>
               )}
               {f.estado === "borrador" && (
@@ -7170,6 +7195,8 @@ export default function ModuloCompras() {
 
     const handleGuardarCat = async () => {
       if (!cat.nombre.trim()) return
+      setCatGuardando(true)
+      setCatError(null)
       const payload = {
         nombre: cat.nombre,
         disponible_clientes: cat.disponible_clientes,
@@ -7227,8 +7254,10 @@ export default function ModuloCompras() {
         setCreandoCatProv(false)
         setNuevaCatProv(catProvFormVacio)
         setCatProvTabActivo("listas_precios")
-      } catch (e) {
-        console.error(e)
+      } catch (e: any) {
+        setCatError(e.message ?? "Error al guardar la categoría")
+      } finally {
+        setCatGuardando(false)
       }
     }
 
@@ -7240,7 +7269,8 @@ export default function ModuloCompras() {
     }
 
     const handleVerDetalle = (c: CategoriaProveedor) => {
-      handleEditar(c)
+      setSelectedCatProv(c)
+      setCreandoCatProv(false)
     }
 
     const handleEditar = (c: CategoriaProveedor) => {
@@ -7423,14 +7453,18 @@ export default function ModuloCompras() {
               </button>
               <button
                 onClick={handleGuardarCat}
-                disabled={!cat.nombre.trim()}
+                disabled={!cat.nombre.trim() || catGuardando}
                 className="flex items-center gap-2 px-4 py-2 text-sm bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="w-4 h-4" />
-                {selectedCatProv ? "Guardar Cambios" : "Crear Categoría"}
+                {catGuardando ? "Guardando..." : selectedCatProv ? "Guardar Cambios" : "Crear Categoría"}
               </button>
             </div>
           </div>
+
+          {catError && (
+            <div className="my-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{catError}</div>
+          )}
 
           <div className="bg-white rounded-lg border overflow-hidden">
             {/* Nombre */}

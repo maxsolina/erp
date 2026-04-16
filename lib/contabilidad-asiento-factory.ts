@@ -60,13 +60,19 @@ export async function generarAsientoFacturaVenta(
   if (factura.cliente_categoria_id) {
     const { data: cat } = await supabase
       .from("categorias_proveedor")
-      .select("cuenta_cobrar_id, contabilidad_plan_cuentas:cuenta_cobrar_id(id, codigo, nombre)")
+      .select("cuenta_cobrar_id")
       .eq("id", factura.cliente_categoria_id)
       .maybeSingle()
 
-    const cuentaCat = (cat as any)?.contabilidad_plan_cuentas as { id: string; codigo: string; nombre: string } | null
-    if (cuentaCat?.id) {
-      cDeudores = cuentaCat
+    if (cat?.cuenta_cobrar_id) {
+      const { data: cuentaRow } = await supabase
+        .from("contabilidad_plan_cuentas")
+        .select("id, codigo, nombre")
+        .eq("id", cat.cuenta_cobrar_id)
+        .maybeSingle()
+      if (cuentaRow?.id) {
+        cDeudores = { id: cuentaRow.id, codigo: cuentaRow.codigo, nombre: cuentaRow.nombre }
+      }
     }
   }
 
@@ -235,12 +241,13 @@ export async function generarAsientoFacturaCompra(
   }
 ): Promise<ResultadoAsiento> {
 
-  // 0. Idempotencia
+  // 0. Idempotencia — solo matchea asientos publicados; los cancelados/revertidos permiten re-creación
   const { data: existente } = await supabase
     .from("contabilidad_asientos")
     .select("id")
     .eq("comprobante_tipo", "factura_compra")
     .eq("referencia", factura.numero)
+    .eq("estado", "publicado")
     .maybeSingle()
 
   if (existente?.id) return { ok: true, asiento_id: existente.id }
@@ -276,13 +283,30 @@ export async function generarAsientoFacturaCompra(
   if (factura.proveedor_categoria_id) {
     const { data: cat } = await supabase
       .from("categorias_proveedor")
-      .select("cuenta_pagar_id, contabilidad_plan_cuentas:cuenta_pagar_id(id, codigo, nombre)")
+      .select("nombre, cuenta_pagar_id")
       .eq("id", factura.proveedor_categoria_id)
       .maybeSingle()
 
-    const cuentaCat = (cat as any)?.contabilidad_plan_cuentas as { id: string; codigo: string; nombre: string } | null
-    if (cuentaCat?.id) {
-      cAcreedores = cuentaCat
+    if (!cat?.cuenta_pagar_id) {
+      // La categoría existe pero no tiene cuenta a pagar configurada → bloquear
+      const nombreCat = cat?.nombre ?? `ID ${factura.proveedor_categoria_id}`
+      return {
+        ok: false,
+        error: `La categoría de proveedor "${nombreCat}" no tiene cuenta contable a pagar configurada. Configurela en Compras → Config → Categorías de Proveedores antes de publicar la factura.`,
+      }
+    }
+
+    // Buscar los datos de la cuenta explícitamente
+    const { data: cuentaRow } = await supabase
+      .from("contabilidad_plan_cuentas")
+      .select("id, codigo, nombre")
+      .eq("id", cat.cuenta_pagar_id)
+      .maybeSingle()
+
+    if (cuentaRow?.id) {
+      cAcreedores = { id: cuentaRow.id, codigo: cuentaRow.codigo, nombre: cuentaRow.nombre }
+    } else {
+      return { ok: false, error: `La cuenta contable configurada en la categoría "${cat.nombre}" no existe en el plan de cuentas.` }
     }
   }
 

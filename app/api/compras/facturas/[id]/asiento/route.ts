@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import {
   generarAsientoFacturaCompra,
@@ -10,7 +10,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   // Obtener la factura de compra
   const { data: factura, error: facErr } = await supabase
@@ -74,6 +74,9 @@ export async function POST(
     lineas_detalle,
   })
 
+  // Log de debug para diagnóstico
+  console.log("[asiento/route] proveedor_id:", factura.proveedor_id, "proveedor_categoria_id:", proveedor_categoria_id, "resultado:", resultado)
+
   if (!resultado.ok) {
     return NextResponse.json(
       { error: resultado.error },
@@ -84,7 +87,7 @@ export async function POST(
   // Marcar factura como publicada y guardar referencia al asiento
   await supabase
     .from("facturas_compra")
-    .update({ estado: "publicado", asiento_id: resultado.asiento_id })
+    .update({ estado: "pendiente", asiento_id: resultado.asiento_id })
     .eq("id", id)
 
   return NextResponse.json({ asiento_id: resultado.asiento_id })
@@ -95,7 +98,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   // Obtener la factura y su asiento
   const { data: factura, error: facErr } = await supabase
@@ -128,10 +131,10 @@ export async function DELETE(
     return NextResponse.json({ error: resultado.error }, { status: 422 })
   }
 
-  // Marcar factura como cancelada
+  // Revertir factura a borrador (limpia asiento_id para poder re-publicar)
   await supabase
     .from("facturas_compra")
-    .update({ estado: "cancelado" })
+    .update({ estado: "borrador", asiento_id: null })
     .eq("id", id)
 
   return NextResponse.json({ asiento_reversa_id: resultado.asiento_id })
