@@ -1303,7 +1303,7 @@ export default function ModuloCompras() {
     tipo_documento: "CUIT",
     numero_documento: "",
     posicion_fiscal: "Responsable Inscripto",
-    categoria_proveedor: "Proveedor Nacional",
+    categoria_proveedor: "",
     celular: "",
     email: "",
     calle_numero: "",
@@ -1958,7 +1958,7 @@ export default function ModuloCompras() {
                   tipo_documento: selectedProveedor.tipo_documento ?? "CUIT",
                   numero_documento: selectedProveedor.numero_documento ?? selectedProveedor.cuit ?? "",
                   posicion_fiscal: selectedProveedor.posicion_fiscal ?? "Responsable Inscripto",
-                  categoria_proveedor: selectedProveedor.categoria_proveedor ?? "Proveedor Nacional",
+                  categoria_proveedor: selectedProveedor.categoria_proveedor ?? "",
                   celular: selectedProveedor.celular ?? selectedProveedor.telefono ?? "",
                   email: selectedProveedor.email,
                   calle_numero: selectedProveedor.calle_numero ?? selectedProveedor.direccion ?? "",
@@ -2377,6 +2377,7 @@ export default function ModuloCompras() {
                   onChange={e => setP({ categoria_proveedor: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
+                  <option value="">-- Sin categoría --</option>
                   {CATEGORIAS_PROVEEDOR.map(c => (
                     <option key={c} value={c}>{c}</option>
                   ))}

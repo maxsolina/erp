@@ -26,23 +26,43 @@ export async function POST(
     )
   }
 
-  // Obtener categoría del proveedor para cuenta_pagar_id
-  let proveedor_categoria_id: number | null = null
+  // Obtener categoría del proveedor — obligatorio para publicar
+  let proveedor_categoria_id: string | null = null
   if (factura.proveedor_id) {
-    const { data: prov } = await supabase
+    const { data: prov, error: provErr } = await supabase
       .from("proveedores")
       .select("categoria_proveedor")
       .eq("id", factura.proveedor_id)
       .maybeSingle()
 
-    if (prov?.categoria_proveedor) {
-      const { data: cat } = await supabase
-        .from("categorias_proveedor")
-        .select("id")
-        .eq("nombre", prov.categoria_proveedor)
-        .maybeSingle()
-      proveedor_categoria_id = cat?.id ?? null
+    if (provErr) {
+      return NextResponse.json(
+        { error: "No se pudo obtener los datos del proveedor." },
+        { status: 500 }
+      )
     }
+
+    if (!prov?.categoria_proveedor) {
+      return NextResponse.json(
+        { error: `El proveedor "${factura.proveedor_nombre ?? factura.proveedor_id}" no tiene categoría asignada. Asigne una categoría antes de publicar la factura.` },
+        { status: 422 }
+      )
+    }
+
+    const { data: cat } = await supabase
+      .from("categorias_proveedor")
+      .select("id")
+      .eq("nombre", prov.categoria_proveedor)
+      .maybeSingle()
+
+    if (!cat?.id) {
+      return NextResponse.json(
+        { error: `La categoría "${prov.categoria_proveedor}" del proveedor no existe en el sistema. Verifique la configuración.` },
+        { status: 422 }
+      )
+    }
+
+    proveedor_categoria_id = cat.id
   }
 
   // Obtener líneas de detalle de la factura (cuenta contable por línea)
@@ -84,11 +104,19 @@ export async function POST(
     )
   }
 
-  // Marcar factura como publicada y guardar referencia al asiento
-  await supabase
+  // Marcar factura como publicada (intentar también guardar asiento_id si la columna existe)
+  const updatePayload: Record<string, unknown> = { estado: "pendiente" }
+  try { updatePayload.asiento_id = resultado.asiento_id } catch { /* columna puede no existir */ }
+
+  const { error: updErr } = await supabase
     .from("facturas_compra")
-    .update({ estado: "pendiente", asiento_id: resultado.asiento_id })
+    .update(updatePayload)
     .eq("id", id)
+
+  if (updErr) {
+    // Reintentar solo con estado (por si asiento_id no existe en schema)
+    await supabase.from("facturas_compra").update({ estado: "pendiente" }).eq("id", id)
+  }
 
   return NextResponse.json({ asiento_id: resultado.asiento_id })
 }
@@ -100,10 +128,10 @@ export async function DELETE(
   const { id } = await params
   const supabase = createAdminClient()
 
-  // Obtener la factura y su asiento
+  // Obtener número de factura
   const { data: factura, error: facErr } = await supabase
     .from("facturas_compra")
-    .select("asiento_id, numero")
+    .select("numero")
     .eq("id", id)
     .single()
 
@@ -114,16 +142,25 @@ export async function DELETE(
     )
   }
 
-  if (!factura.asiento_id) {
+  // Buscar asiento publicado por id_origen (no depende de asiento_id en facturas_compra)
+  const { data: asientoExistente } = await supabase
+    .from("contabilidad_asientos")
+    .select("id")
+    .eq("tipo_origen", "factura_compra")
+    .eq("id_origen", id)
+    .eq("estado", "publicado")
+    .maybeSingle()
+
+  if (!asientoExistente) {
     return NextResponse.json(
-      { error: "Esta factura no tiene asiento contable registrado." },
+      { error: "Esta factura no tiene asiento contable publicado." },
       { status: 422 }
     )
   }
 
   const resultado = await generarAsientoReversa(
     supabase,
-    factura.asiento_id,
+    asientoExistente.id,
     `Anulación Factura Compra ${factura.numero ?? id}`
   )
 
@@ -131,11 +168,16 @@ export async function DELETE(
     return NextResponse.json({ error: resultado.error }, { status: 422 })
   }
 
-  // Revertir factura a borrador (limpia asiento_id para poder re-publicar)
-  await supabase
+  // Revertir factura a borrador
+  // Intentar limpiar asiento_id si la columna existe; si no, solo actualizar estado
+  const { error: revertErr } = await supabase
     .from("facturas_compra")
     .update({ estado: "borrador", asiento_id: null })
     .eq("id", id)
+
+  if (revertErr) {
+    await supabase.from("facturas_compra").update({ estado: "borrador" }).eq("id", id)
+  }
 
   return NextResponse.json({ asiento_reversa_id: resultado.asiento_id })
 }

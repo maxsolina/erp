@@ -217,7 +217,7 @@ export async function generarAsientoFacturaCompra(
     fecha: string
     proveedor_id?: string | number | null
     proveedor_nombre?: string | null
-    proveedor_categoria_id?: number | null
+    proveedor_categoria_id?: string | number | null
     sucursal?: string | null
     subtotal: number
     impuestos: number
@@ -288,25 +288,24 @@ export async function generarAsientoFacturaCompra(
       .maybeSingle()
 
     if (!cat?.cuenta_pagar_id) {
-      // La categoría existe pero no tiene cuenta a pagar configurada → bloquear
       const nombreCat = cat?.nombre ?? `ID ${factura.proveedor_categoria_id}`
       return {
         ok: false,
-        error: `La categoría de proveedor "${nombreCat}" no tiene cuenta contable a pagar configurada. Configurela en Compras → Config → Categorías de Proveedores antes de publicar la factura.`,
+        error: `La categoría de proveedor "${nombreCat}" no tiene cuenta contable a pagar configurada. Configúrela en Compras → Config → Categorías de Proveedores antes de publicar.`,
       }
-    }
-
-    // Buscar los datos de la cuenta explícitamente
-    const { data: cuentaRow } = await supabase
-      .from("contabilidad_plan_cuentas")
-      .select("id, codigo, nombre")
-      .eq("id", cat.cuenta_pagar_id)
-      .maybeSingle()
-
-    if (cuentaRow?.id) {
-      cAcreedores = { id: cuentaRow.id, codigo: cuentaRow.codigo, nombre: cuentaRow.nombre }
     } else {
-      return { ok: false, error: `La cuenta contable configurada en la categoría "${cat.nombre}" no existe en el plan de cuentas.` }
+      // Buscar los datos de la cuenta explícitamente
+      const { data: cuentaRow } = await supabase
+        .from("contabilidad_plan_cuentas")
+        .select("id, codigo, nombre")
+        .eq("id", cat.cuenta_pagar_id)
+        .maybeSingle()
+
+      if (cuentaRow?.id) {
+        cAcreedores = { id: cuentaRow.id, codigo: cuentaRow.codigo, nombre: cuentaRow.nombre }
+      } else {
+        return { ok: false, error: `La cuenta contable configurada en la categoría "${cat.nombre}" no existe en el plan de cuentas.` }
+      }
     }
   }
 
