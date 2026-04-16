@@ -27,7 +27,45 @@ Toda nueva pantalla/listado/item de tipo tabla (ABM, listado operativo o configu
 ### Excepciones
 - Vistas especiales de conciliación o matching de doble panel pueden mantener UI específica, pero deben conservar el mismo lenguaje visual (tipografía, colores, tablas y botones).
 
-## Regla para nuevas acciones/código
+## Regla obligatoria: posición de botones en formularios
+
+Todo formulario de creación o edición (pantalla completa, panel o drawer) DEBE ubicar los botones de acción **en el encabezado, arriba a la derecha**, junto al título del formulario. Está prohibido colocar botones Guardar/Cancelar al pie o al final del contenido.
+
+### Patrón obligatorio de header con acciones
+
+```tsx
+<div className="flex items-center justify-between mb-6">
+  <div className="flex items-center gap-4">
+    <BotonVolver onClick={onCancelar} variant="minimal" texto="" />
+    <h1 className="text-2xl font-bold text-amber-900">Título del formulario</h1>
+  </div>
+  <div className="flex items-center gap-3">
+    <button
+      onClick={onCancelar}
+      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50"
+    >
+      Cancelar
+    </button>
+    <button
+      onClick={onGuardar}
+      disabled={guardando || !condicionHabilitado}
+      className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800 disabled:opacity-50 transition-colors"
+    >
+      {guardando ? "Guardando..." : "Guardar"}
+    </button>
+  </div>
+</div>
+```
+
+### Reglas derivadas
+- El `BotonVolver`/botón de retorno va siempre a la izquierda del título.
+- Los botones de acción van siempre a la derecha del header (nunca al pie del formulario).
+- El botón primario usa `bg-indigo-900 hover:bg-indigo-800 text-white`.
+- El botón secundario (Cancelar) usa `border border-gray-300 text-gray-700 hover:bg-gray-50`.
+- Gap entre botones: `gap-3`.
+- **Excepciones**: modales emergentes pequeños (confirmaciones de eliminación, etc.) pueden tener botones en el footer del modal.
+
+
 - Antes de crear nueva lógica, reutilizar funciones/componentes existentes del módulo.
 - Si existe patrón ya implementado en otro módulo, replicar ese patrón en lugar de crear uno nuevo.
 

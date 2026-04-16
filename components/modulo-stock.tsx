@@ -470,14 +470,31 @@ function FormNuevoDeposito({
 
   return (
     <div>
-      <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
-        <button onClick={onCancel} className="hover:text-amber-700">Depósitos</button>
-        <span>/</span>
-        <span className="font-medium text-gray-900">Nuevo Depósito</span>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <button onClick={onCancel} className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium">
+            <span className="text-gray-400">Depósitos /</span> Nuevo Depósito
+          </button>
+          <h2 className="text-2xl font-bold text-amber-900">Nuevo Depósito</h2>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleGuardar}
+            disabled={guardando}
+            className="px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 text-sm disabled:opacity-50"
+          >
+            {guardando ? "Guardando..." : "Guardar"}
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow-sm p-6">
-        <h2 className="text-2xl font-bold text-amber-900 mb-6">Nuevo Depósito</h2>
 
         {error && (
           <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
@@ -547,22 +564,6 @@ function FormNuevoDeposito({
               <input type="checkbox" checked={activo} onChange={e => setActivo(e.target.checked)} className="rounded border-gray-300" />
             </div>
           </div>
-        </div>
-
-        <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleGuardar}
-            disabled={guardando}
-            className="px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 text-sm disabled:opacity-50"
-          >
-            {guardando ? "Guardando..." : "Guardar"}
-          </button>
         </div>
       </div>
     </div>
@@ -2977,7 +2978,17 @@ export default function ModuloStock() {
           {/* Formulario de edición */}
           {editandoDeposito ? (
             <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-2xl font-bold text-amber-900 mb-6">Editar Depósito</h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-amber-900">Editar Depósito</h2>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setEditandoDeposito(false)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
+                    Cancelar
+                  </button>
+                  <button onClick={() => setEditandoDeposito(false)} className="px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 text-sm">
+                    Guardar
+                  </button>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-x-12 gap-y-4">
                 <div className="space-y-4">
                   <div className="flex items-center gap-4">
@@ -3012,17 +3023,8 @@ export default function ModuloStock() {
                   </div>
                 </div>
               </div>
-              <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
-                <button onClick={() => setEditandoDeposito(false)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
-                  Cancelar
-                </button>
-                <button onClick={() => setEditandoDeposito(false)} className="px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 text-sm">
-                  Guardar
-                </button>
-              </div>
             </div>
           ) : (
-          /* Ficha del depósito (solo lectura) */
           <div className="bg-white rounded-lg shadow-sm p-6">
             <h2 className="text-2xl font-bold text-amber-900 mb-6">{selectedDeposito.nombre}</h2>
             
@@ -3251,7 +3253,17 @@ export default function ModuloStock() {
           {/* Formulario de edición */}
           {editandoUbicacion ? (
             <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-2xl font-bold text-amber-900 mb-6">Editar Ubicación</h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-amber-900">Editar Ubicación</h2>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setEditandoUbicacion(false)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
+                    Cancelar
+                  </button>
+                  <button onClick={() => setEditandoUbicacion(false)} className="px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 text-sm">
+                    Guardar
+                  </button>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-x-12 gap-y-4">
                 <div className="space-y-4">
                   <div className="flex items-center gap-4">
@@ -3308,14 +3320,6 @@ export default function ModuloStock() {
                     <input type="checkbox" defaultChecked={selectedUbicacion.activa} className="rounded border-gray-300" />
                   </div>
                 </div>
-              </div>
-              <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
-                <button onClick={() => setEditandoUbicacion(false)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
-                  Cancelar
-                </button>
-                <button onClick={() => setEditandoUbicacion(false)} className="px-4 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 text-sm">
-                  Guardar
-                </button>
               </div>
             </div>
           ) : (

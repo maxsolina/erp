@@ -195,6 +195,29 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
     <form onSubmit={handleSubmit} className="flex flex-col h-full bg-gray-50">
       {/* Cabecera */}
       <div className="p-6 bg-white border-b border-gray-200">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-amber-900">
+            {inicial ? "Editar Producto" : "Nuevo Producto"}
+          </h2>
+          {!soloLectura && (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={onCancelar}
+                className="px-4 py-2 text-sm font-medium rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={guardando}
+                className="px-5 py-2 text-sm font-medium rounded-md bg-indigo-900 text-white hover:bg-indigo-800 transition-colors disabled:opacity-60"
+              >
+                {guardando ? "Guardando..." : "Confirmar"}
+              </button>
+            </div>
+          )}
+        </div>
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -402,26 +425,6 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
           </div>
         )}
       </div>
-
-      {/* Footer */}
-      {!soloLectura && (
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-white">
-          <button
-            type="button"
-            onClick={onCancelar}
-            className="px-4 py-2 text-sm font-medium rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            disabled={guardando}
-            className="px-5 py-2 text-sm font-medium rounded-md bg-indigo-900 text-white hover:bg-indigo-800 transition-colors disabled:opacity-60"
-          >
-            {guardando ? "Guardando..." : "Confirmar"}
-          </button>
-        </div>
-      )}
     </form>
   )
 }

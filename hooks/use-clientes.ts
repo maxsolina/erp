@@ -25,6 +25,7 @@ export interface ClienteDB {
   total_facturado: number
   activo: boolean
   notas: string | null
+  categoria_id: number | null
   created_at: string
   updated_at: string
 }

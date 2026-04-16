@@ -556,11 +556,19 @@ export default function ModuloTaller() {
 
     return (
       <div>
-        <div className="flex items-center gap-4 mb-6">
-          <button onClick={() => setView("ordenes")} className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium">
-            <ArrowLeft className="w-4 h-4" /> Volver a Órdenes
-          </button>
-          <h1 className="text-2xl font-bold text-amber-900">Nueva Orden de Trabajo</h1>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setView("ordenes")} className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium">
+              <ArrowLeft className="w-4 h-4" /> Volver a Órdenes
+            </button>
+            <h1 className="text-2xl font-bold text-amber-900">Nueva Orden de Trabajo</h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setView("ordenes")} className="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
+            <button onClick={handleCrearOT} disabled={loading} className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50">
+              {loading ? "Creando..." : "Crear Orden"}
+            </button>
+          </div>
         </div>
         <div className="bg-white rounded-lg shadow-sm p-6">
           <div className="grid grid-cols-2 gap-6">
@@ -675,13 +683,6 @@ export default function ModuloTaller() {
                 <textarea rows={3} value={formOT.descripcion as string ?? ""} onChange={e => setField("descripcion", e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" />
               </div>
             </div>
-          </div>
-
-          <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
-            <button onClick={() => setView("ordenes")} className="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
-            <button onClick={handleCrearOT} disabled={loading} className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50">
-              {loading ? "Creando..." : "Crear Orden"}
-            </button>
           </div>
         </div>
       </div>

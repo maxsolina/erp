@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useEffect, useCallback } from "react"
 import { useERP } from "@/contexts/erp-context"
 import { 
   BarChart3, 
@@ -90,32 +90,21 @@ const medidasDisponibles: Medida[] = [
   { id: "conteo", nombre: "Cantidad de Ventas", campo: "id", agregacion: "conteo" },
 ]
 
-// Datos mock de ventas
-const datosVentasMock: DatoVenta[] = [
-  { id: 1, fecha: "2026-03-01", mes: "2026 Mar", anio: 2026, sucursal: "Casa Central", vendedor: "Max Solina", cliente: "Juan Pérez", categoria_cliente: "Minorista", producto: "iPhone 15 Pro Max", categoria_producto: "Productos", subcategoria_producto: "Celulares", marca: "Apple", cantidad: 2, precio_unitario: 1850000, total: 3700000, descuento: 0, impuestos: 777000, costo: 2800000, margen: 900000 },
-  { id: 2, fecha: "2026-03-02", mes: "2026 Mar", anio: 2026, sucursal: "Casa Central", vendedor: "Ana García", cliente: "María López", categoria_cliente: "Mayorista", producto: "Samsung Galaxy S24", categoria_producto: "Productos", subcategoria_producto: "Celulares", marca: "Samsung", cantidad: 5, precio_unitario: 1500000, total: 7500000, descuento: 375000, impuestos: 1496250, costo: 5500000, margen: 2000000 },
-  { id: 3, fecha: "2026-03-03", mes: "2026 Mar", anio: 2026, sucursal: "Puerto Norte", vendedor: "Carlos Ruiz", cliente: "Tech Store", categoria_cliente: "Mayorista", producto: "AirPods Pro 2", categoria_producto: "Productos", subcategoria_producto: "Audio", marca: "Apple", cantidad: 10, precio_unitario: 450000, total: 4500000, descuento: 225000, impuestos: 897750, costo: 3200000, margen: 1300000 },
-  { id: 4, fecha: "2026-03-05", mes: "2026 Mar", anio: 2026, sucursal: "Casa Central", vendedor: "Max Solina", cliente: "Pedro Gómez", categoria_cliente: "Minorista", producto: "Funda iPhone Silicona", categoria_producto: "Repuestos", subcategoria_producto: "Accesorios", marca: "Apple", cantidad: 3, precio_unitario: 15000, total: 45000, descuento: 0, impuestos: 9450, costo: 27000, margen: 18000 },
-  { id: 5, fecha: "2026-03-06", mes: "2026 Mar", anio: 2026, sucursal: "Puerto Norte", vendedor: "Ana García", cliente: "Lucía Fernández", categoria_cliente: "Minorista", producto: "Cargador USB-C 20W", categoria_producto: "Repuestos", subcategoria_producto: "Cargadores", marca: "Apple", cantidad: 2, precio_unitario: 25000, total: 50000, descuento: 0, impuestos: 10500, costo: 30000, margen: 20000 },
-  { id: 6, fecha: "2026-03-07", mes: "2026 Mar", anio: 2026, sucursal: "Casilda", vendedor: "Roberto Díaz", cliente: "Celulares Express", categoria_cliente: "Mayorista", producto: "iPhone 12 Usado", categoria_producto: "Productos", subcategoria_producto: "Usados", marca: "Apple", cantidad: 8, precio_unitario: 450000, total: 3600000, descuento: 180000, impuestos: 718200, costo: 2400000, margen: 1200000 },
-  { id: 7, fecha: "2026-03-08", mes: "2026 Mar", anio: 2026, sucursal: "Casa Central", vendedor: "Max Solina", cliente: "Ana Martínez", categoria_cliente: "Minorista", producto: "Reparación Pantalla", categoria_producto: "Manos de Obra", subcategoria_producto: "Reparaciones", marca: "-", cantidad: 1, precio_unitario: 85000, total: 85000, descuento: 0, impuestos: 17850, costo: 25000, margen: 60000 },
-  { id: 8, fecha: "2026-03-10", mes: "2026 Mar", anio: 2026, sucursal: "Puerto Norte", vendedor: "Carlos Ruiz", cliente: "Diego Sánchez", categoria_cliente: "Minorista", producto: "Cambio Batería", categoria_producto: "Manos de Obra", subcategoria_producto: "Reparaciones", marca: "-", cantidad: 1, precio_unitario: 45000, total: 45000, descuento: 0, impuestos: 9450, costo: 12000, margen: 33000 },
-  { id: 9, fecha: "2026-03-11", mes: "2026 Mar", anio: 2026, sucursal: "Casa Central", vendedor: "Ana García", cliente: "Móviles del Centro", categoria_cliente: "Mayorista", producto: "Samsung Galaxy S24", categoria_producto: "Productos", subcategoria_producto: "Celulares", marca: "Samsung", cantidad: 3, precio_unitario: 1500000, total: 4500000, descuento: 135000, impuestos: 916650, costo: 3300000, margen: 1200000 },
-  { id: 10, fecha: "2026-03-12", mes: "2026 Mar", anio: 2026, sucursal: "Casilda", vendedor: "Roberto Díaz", cliente: "Laura Torres", categoria_cliente: "Minorista", producto: "iPhone 13 Usado", categoria_producto: "Productos", subcategoria_producto: "Usados", marca: "Apple", cantidad: 1, precio_unitario: 580000, total: 580000, descuento: 0, impuestos: 121800, costo: 400000, margen: 180000 },
-  { id: 11, fecha: "2026-02-15", mes: "2026 Feb", anio: 2026, sucursal: "Casa Central", vendedor: "Max Solina", cliente: "Juan Pérez", categoria_cliente: "Minorista", producto: "iPhone 15 Pro Max", categoria_producto: "Productos", subcategoria_producto: "Celulares", marca: "Apple", cantidad: 1, precio_unitario: 1850000, total: 1850000, descuento: 0, impuestos: 388500, costo: 1400000, margen: 450000 },
-  { id: 12, fecha: "2026-02-18", mes: "2026 Feb", anio: 2026, sucursal: "Puerto Norte", vendedor: "Carlos Ruiz", cliente: "Tech Store", categoria_cliente: "Mayorista", producto: "AirPods Pro 2", categoria_producto: "Productos", subcategoria_producto: "Audio", marca: "Apple", cantidad: 15, precio_unitario: 450000, total: 6750000, descuento: 337500, impuestos: 1346625, costo: 4800000, margen: 1950000 },
-  { id: 13, fecha: "2026-03-13", mes: "2026 Mar", anio: 2026, sucursal: "Casa Central", vendedor: "Max Solina", cliente: "Financiera Plus", categoria_cliente: "Corporativo", producto: "Seguro Equipo", categoria_producto: "Finanzas", subcategoria_producto: "Seguros", marca: "-", cantidad: 5, precio_unitario: 25000, total: 125000, descuento: 0, impuestos: 26250, costo: 0, margen: 125000 },
-  { id: 14, fecha: "2026-03-14", mes: "2026 Mar", anio: 2026, sucursal: "Puerto Norte", vendedor: "Ana García", cliente: "Empresa XYZ", categoria_cliente: "Corporativo", producto: "Plan Mantenimiento", categoria_producto: "Finanzas", subcategoria_producto: "Servicios", marca: "-", cantidad: 1, precio_unitario: 150000, total: 150000, descuento: 0, impuestos: 31500, costo: 50000, margen: 100000 },
-]
+// Los datos reales se cargan desde la API /api/informes/estadisticas-ventas
 
 export default function ModuloInformes() {
   const { sucursales } = useERP()
   const sucursalesDisponibles = sucursales.filter(s => s.activa).map(s => s.nombre)
+
+  // Datos reales desde la API
+  const [datosVenta, setDatosVenta] = useState<DatoVenta[]>([])
+  const [cargando, setCargando] = useState(false)
+
   // Estados del modal de filtros
   const [showFilterModal, setShowFilterModal] = useState(false)
   const [filterSucursales, setFilterSucursales] = useState<string[]>([])
-  const [filterFechaDesde, setFilterFechaDesde] = useState("2026-03-01")
-  const [filterFechaHasta, setFilterFechaHasta] = useState("2026-03-31")
+  const [filterFechaDesde, setFilterFechaDesde] = useState("2026-01-01")
+  const [filterFechaHasta, setFilterFechaHasta] = useState("2026-12-31")
   
   // Estados del cubo
   const [filasSeleccionadas, setFilasSeleccionadas] = useState<string[]>(["categoria_producto"])
@@ -151,14 +140,36 @@ export default function ModuloInformes() {
     return new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2 }).format(value)
   }
 
-  // Filtrar datos
+  // Cargar datos desde la API
+  const cargarDatos = useCallback(async () => {
+    setCargando(true)
+    try {
+      const params = new URLSearchParams({
+        fecha_desde: filterFechaDesde,
+        fecha_hasta: filterFechaHasta,
+      })
+      const res = await fetch(`/api/informes/estadisticas-ventas?${params}`)
+      if (res.ok) {
+        const data = await res.json()
+        setDatosVenta(Array.isArray(data) ? data : [])
+      }
+    } catch (err) {
+      console.error("Error cargando estadísticas de ventas:", err)
+    } finally {
+      setCargando(false)
+    }
+  }, [filterFechaDesde, filterFechaHasta])
+
+  useEffect(() => {
+    cargarDatos()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Filtrar datos: la fecha ya viene filtrada del servidor; solo aplicar filtro de sucursal en cliente
   const datosFiltrados = useMemo(() => {
-    return datosVentasMock.filter(d => {
-      const fechaOk = d.fecha >= filterFechaDesde && d.fecha <= filterFechaHasta
-      const sucursalOk = filterSucursales.length === 0 || filterSucursales.includes(d.sucursal)
-      return fechaOk && sucursalOk
-    })
-  }, [filterFechaDesde, filterFechaHasta, filterSucursales])
+    if (filterSucursales.length === 0) return datosVenta
+    return datosVenta.filter(d => filterSucursales.includes(d.sucursal))
+  }, [datosVenta, filterSucursales])
 
   // Calcular agregación
   const calcularAgregacion = (datos: DatoVenta[], medida: Medida): number => {
@@ -367,13 +378,19 @@ export default function ModuloInformes() {
             <span className="text-gray-400">Notas de Venta /</span>
             <span className="text-gray-400">Nuevo /</span>
             <span className="font-semibold text-gray-900">Estadística de Ventas</span>
+            {cargando && (
+              <span className="text-xs text-gray-400 animate-pulse ml-2">Cargando datos...</span>
+            )}
+            {!cargando && datosVenta.length > 0 && (
+              <span className="text-xs text-gray-400 ml-2">{datosVenta.length} líneas</span>
+            )}
           </div>
           <button
             onClick={() => setShowFilterModal(true)}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
           >
             <Filter className="w-4 h-4" />
-            Filtros
+            Filtros ({filterFechaDesde} → {filterFechaHasta})
           </button>
         </div>
 
@@ -1224,10 +1241,10 @@ export default function ModuloInformes() {
             </div>
             <div className="flex items-center gap-3 px-6 py-4 border-t bg-gray-50">
               <button
-                onClick={() => setShowFilterModal(false)}
+                onClick={() => { cargarDatos(); setShowFilterModal(false) }}
                 className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
               >
-                Aceptar
+                {cargando ? "Cargando..." : "Aceptar"}
               </button>
               <button
                 onClick={() => setShowFilterModal(false)}

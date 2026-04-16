@@ -10,6 +10,8 @@ export interface CategoriaProveedorDB {
   cuenta_pagar_defecto: string
   requiere_oc_para_facturar: boolean
   comprobantes_confidenciales: boolean
+  cuenta_cobrar_id: string | null   // UUID → contabilidad_plan_cuentas (para facturas de venta)
+  cuenta_pagar_id: string | null    // UUID → contabilidad_plan_cuentas (para facturas de compra)
   created_at: string
 }
 

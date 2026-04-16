@@ -117,6 +117,24 @@ export async function guardarFacturaCompra(payload: Record<string, any>, id?: nu
   return res.json()
 }
 
+export async function publicarFacturaCompra(id: number | string): Promise<{ asiento_id: string }> {
+  const res = await fetch(`/api/compras/facturas/${id}/asiento`, { method: "POST" })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || "Error al publicar factura de compra")
+  }
+  return res.json()
+}
+
+export async function cancelarFacturaCompra(id: number | string): Promise<{ asiento_reversa_id: string }> {
+  const res = await fetch(`/api/compras/facturas/${id}/asiento`, { method: "DELETE" })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || "Error al cancelar factura de compra")
+  }
+  return res.json()
+}
+
 // =====================================================
 // ÓRDENES DE PAGO
 // =====================================================

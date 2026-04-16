@@ -46,6 +46,26 @@ function FormSucursal({
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-5 space-y-4">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold text-gray-700">
+          {initial.codigo ? `Editar sucursal: ${initial.nombre}` : "Nueva Sucursal"}
+        </h3>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onCancelar}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => onGuardar(form)}
+            disabled={guardando}
+            className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50"
+          >
+            {guardando ? "Guardando..." : "Guardar"}
+          </button>
+        </div>
+      </div>
       {error && (
         <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</p>
       )}
@@ -109,21 +129,6 @@ function FormSucursal({
           />
           <label htmlFor="activa-check" className="text-sm text-gray-700">Activa</label>
         </div>
-      </div>
-      <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-        <button
-          onClick={onCancelar}
-          className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50"
-        >
-          Cancelar
-        </button>
-        <button
-          onClick={() => onGuardar(form)}
-          disabled={guardando}
-          className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50"
-        >
-          {guardando ? "Guardando..." : "Guardar"}
-        </button>
       </div>
     </div>
   )

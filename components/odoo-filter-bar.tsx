@@ -54,6 +54,9 @@ interface OdooFilterBarProps {
   // Info de resultados
   totalCount: number
   filteredCount: number
+
+  // Opcionales de UI
+  hideFavorites?: boolean
 }
 
 export default function OdooFilterBar({
@@ -71,7 +74,8 @@ export default function OdooFilterBar({
   onDeleteFilter,
   onApplyFilter,
   totalCount,
-  filteredCount
+  filteredCount,
+  hideFavorites = false
 }: OdooFilterBarProps) {
   const [showFilters, setShowFilters] = useState(false)
   const [showGroupBy, setShowGroupBy] = useState(false)
@@ -346,7 +350,7 @@ export default function OdooFilterBar({
           </div>
           
           {/* Dropdown Favoritos */}
-          <div className="relative" ref={favoritesRef}>
+          {!hideFavorites && <div className="relative" ref={favoritesRef}>
             <button
               onClick={() => { setShowFavorites(!showFavorites); setShowFilters(false); setShowGroupBy(false) }}
               className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
@@ -439,7 +443,7 @@ export default function OdooFilterBar({
                 </div>
               </div>
             )}
-          </div>
+          </div>}
           
           {/* Contador de resultados */}
           <div className="text-sm text-gray-500 flex-shrink-0">

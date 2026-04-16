@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useMemo } from "react"
+import { Search, X } from "lucide-react"
 
 const COTIZACION_DOLAR_MOCK = 1200
 
@@ -28,6 +29,8 @@ export default function ProductoDropdown({
   onSelect,
 }: ProductoDropdownProps) {
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalSearch, setModalSearch] = useState(productoSearchText ?? "")
 
   useEffect(() => {
     if (!anchorRef.current) return
@@ -39,15 +42,16 @@ export default function ProductoDropdown({
     })
   }, [anchorRef])
 
+  // Sincronizar búsqueda del modal con el texto del input
+  useEffect(() => { setModalSearch(productoSearchText ?? "") }, [productoSearchText])
+
   const clienteNV = clientes.find((c: any) => c.id === nvClienteId)
-  // Prioridad: lista seleccionada manualmente en la NV → lista del cliente → null
   const listaId = nvListaPreciosId ?? clienteNV?.lista_precios_id ?? null
 
   const versionesDeEstaLista = listaId
     ? versionesLista.filter((v: any) => v.lista_precios_id === listaId)
     : []
 
-  // Prioridad: activa → confirmada → cualquier otra con lineas → ultima de la lista
   const versionActiva =
     versionesDeEstaLista.find((v: any) =>
       (v.activa === true || v.estado === "activa" || v.estado === "Activa" || v.estado === "activo" || v.estado === "Activo") &&
@@ -69,11 +73,6 @@ export default function ProductoDropdown({
       )
     : productosConSerie
 
-  const productosFiltrados = productosDeLista.filter((p: any) =>
-    p.nombre.toLowerCase().includes((productoSearchText ?? "").toLowerCase()) ||
-    p.sku.toLowerCase().includes((productoSearchText ?? "").toLowerCase())
-  )
-
   const calcularPrecios = (p: any) => {
     const lineaLP = versionActiva?.lineas?.find((l: any) => l.producto_id === p.id)
     const iva: number = lineaLP?.iva ?? 21
@@ -91,16 +90,38 @@ export default function ProductoDropdown({
         return { precioUnitario: precioARS, moneda: "ARS" as const, precioUSD: parseFloat((precioARS / cotiz).toFixed(2)), precioARS, iva }
       }
     }
-    // Fallback: sin lista de precios, IVA 21% por defecto
     const precioARS = p.precio_venta ?? p.costo_manual ?? 0
     return { precioUnitario: precioARS, moneda: (p.moneda_costo === "USD" ? "USD" : "ARS") as "ARS" | "USD", precioUSD: parseFloat((precioARS / COTIZACION_DOLAR_MOCK).toFixed(2)), precioARS, iva: 21 }
   }
 
+  const formatPrice = (n: number) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(n)
+
+  const productosFiltradosModal = useMemo(() => {
+    const q = modalSearch.trim().toLowerCase()
+    if (!q) return productosDeLista
+    return productosDeLista.filter((p: any) =>
+      p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
+    )
+  }, [productosDeLista, modalSearch])
+
+  const productosFiltrados = useMemo(() => {
+    const q = (productoSearchText ?? "").toLowerCase()
+    if (!q) return productosDeLista
+    return productosDeLista.filter((p: any) =>
+      p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
+    )
+  }, [productosDeLista, productoSearchText])
+
+  const handleSelect = (p: any) => {
+    const precios = calcularPrecios(p)
+    onSelect(p, precios.precioUnitario, precios.moneda, precios.precioUSD, precios.precioARS, precios.iva)
+    setModalOpen(false)
+  }
+
   if (!pos) return null
 
-  // Calcula si hay espacio arriba o abajo
   const spaceBelow = window.innerHeight - (pos.top - window.scrollY)
-  const dropdownHeight = Math.min(192, productosFiltrados.length * 32 + 32)
+  const dropdownHeight = Math.min(192, productosFiltrados.slice(0, 5).length * 32 + 80)
   const showAbove = spaceBelow < dropdownHeight + 40
 
   const style: React.CSSProperties = {
@@ -113,34 +134,126 @@ export default function ProductoDropdown({
       : { top: pos.top - window.scrollY + (anchorRef.current?.offsetHeight ?? 32) }),
   }
 
+  const nombreLista = listaId
+    ? listasPrecios.find((l: any) => l.id === listaId)?.nombre ?? versionActiva?.lista_precios_nombre
+    : null
+
   return (
-    <div
-      style={style}
-      className="bg-white border border-gray-300 shadow-xl max-h-48 overflow-y-auto rounded"
-    >
-      {versionActiva && (
-        <div className="px-2 py-1 text-xs text-emerald-700 bg-emerald-50 border-b border-emerald-100 font-medium">
-          Lista: {listasPrecios.find((l: any) => l.id === listaId)?.nombre ?? versionActiva.lista_precios_nombre}
+    <>
+      {/* Dropdown inline — 5 resultados */}
+      <div style={style} className="bg-white border border-gray-300 shadow-xl rounded flex flex-col">
+        {versionActiva && (
+          <div className="px-2 py-1 text-xs text-emerald-700 bg-emerald-50 border-b border-emerald-100 font-medium shrink-0">
+            Lista: {nombreLista}
+          </div>
+        )}
+        {productosFiltrados.slice(0, 5).map((p: any) => (
+          <div key={p.id}
+            onMouseDown={e => { e.preventDefault(); handleSelect(p) }}
+            className="px-2 py-1.5 hover:bg-blue-600 hover:text-white cursor-pointer text-sm border-b border-gray-50 last:border-b-0">
+            <span className="font-medium">[{p.sku}]</span> {p.nombre}
+          </div>
+        ))}
+        {productosFiltrados.length === 0 && (
+          <div className="px-2 py-1.5 text-sm text-gray-500">
+            {productoSearchText ? "No se encontraron productos" : "Escriba para buscar un producto"}
+          </div>
+        )}
+        {/* Botón buscar más — siempre visible */}
+        <div role="button"
+          onMouseDown={e => { e.preventDefault(); e.stopPropagation(); requestAnimationFrame(() => setModalOpen(true)) }}
+          className="px-2 py-1.5 text-sm font-medium flex items-center gap-2 shrink-0 cursor-pointer rounded-b"
+          style={{ backgroundColor: '#eef2ff', color: '#3730a3', borderTop: '2px solid #c7d2fe' }}>
+          <Search className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            {productosFiltrados.length > 5
+              ? `Buscar más… (${productosFiltrados.length - 5} más)`
+              : "Buscar en todos los productos..."}
+          </span>
+        </div>
+      </div>
+
+      {/* Modal completo */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40"
+          onMouseDown={e => { if (e.target === e.currentTarget) setModalOpen(false) }}
+          onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b">
+              <div>
+                <h2 className="text-base font-semibold text-amber-900">Seleccionar producto</h2>
+                {nombreLista && <p className="text-xs text-emerald-600 mt-0.5">Lista: {nombreLista}</p>}
+              </div>
+              <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {/* Buscador */}
+            <div className="px-5 py-3 border-b">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input autoFocus type="text" value={modalSearch}
+                  onChange={e => setModalSearch(e.target.value)}
+                  placeholder="Buscar por nombre o SKU..."
+                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                {modalSearch && (
+                  <button onClick={() => setModalSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">{productosFiltradosModal.length} productos</p>
+            </div>
+            {/* Lista */}
+            <div className="flex-1 overflow-y-auto">
+              {productosFiltradosModal.length === 0 ? (
+                <div className="px-5 py-8 text-center text-sm text-gray-400">Sin resultados para "{modalSearch}"</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-gray-50 border-b">
+                    <tr>
+                      <th className="text-left px-5 py-2 text-xs font-semibold text-gray-500 uppercase">SKU</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Nombre</th>
+                      {versionActiva && <th className="text-right px-5 py-2 text-xs font-semibold text-gray-500 uppercase">Precio</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {productosFiltradosModal.map((p: any) => {
+                      const precios = calcularPrecios(p)
+                      return (
+                        <tr key={p.id}
+                          onClick={() => handleSelect(p)}
+                          className="border-b border-gray-50 hover:bg-indigo-50 cursor-pointer transition-colors">
+                          <td className="px-5 py-2.5 font-mono text-xs text-gray-500">{p.sku}</td>
+                          <td className="px-3 py-2.5 text-gray-800">{p.nombre}</td>
+                          {versionActiva && (
+                            <td className="px-5 py-2.5 text-right">
+                              <span className="font-medium text-gray-900">{formatPrice(precios.precioARS)}</span>
+                              {precios.moneda === "USD" && (
+                                <span className="ml-1 text-xs text-gray-400">USD {precios.precioUSD}</span>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            {/* Footer */}
+            <div className="px-5 py-3 border-t flex justify-end">
+              <button onClick={() => setModalOpen(false)}
+                className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+                Cancelar
+              </button>
+            </div>
+          </div>
         </div>
       )}
-      {productosFiltrados.map((p: any) => (
-        <div
-          key={p.id}
-            onMouseDown={(e) => {
-            e.preventDefault()
-            const precios = calcularPrecios(p)
-            onSelect(p, precios.precioUnitario, precios.moneda, precios.precioUSD, precios.precioARS, precios.iva)
-          }}
-          className="px-2 py-1.5 hover:bg-blue-600 hover:text-white cursor-pointer text-sm"
-        >
-          <span className="font-medium">[{p.sku}]</span> {p.nombre}
-        </div>
-      ))}
-      {productosFiltrados.length === 0 && (
-        <div className="px-2 py-1.5 text-sm text-gray-500">
-          {productoSearchText ? "No se encontraron productos" : "Escriba para buscar un producto"}
-        </div>
-      )}
-    </div>
+    </>
   )
 }
+
+

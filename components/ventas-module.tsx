@@ -7,6 +7,7 @@ import { crearCliente as apiCrearCliente, actualizarCliente as apiActualizarClie
 import type { ClienteDB } from "@/hooks/use-clientes"
 import { useERP } from "@/contexts/erp-context"
 import { fetchDepositos, fetchUbicaciones } from "@/lib/stock-actions"
+import { getCategoriaProveedores } from "@/lib/categorias-proveedor-actions"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, ArrowLeft, ArrowRightLeft, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Repeat, Smartphone, Battery, Camera, Monitor, Layers, Copy, Upload, History, Banknote } from "lucide-react"
  import BotonVolver from "./ui/boton-volver"
 import ProductoDropdown from "./producto-dropdown"
@@ -33,7 +34,8 @@ interface ClienteVenta {
   telefono: string
   celular: string
   email: string
-  categoria: "publico" | "mercadolibre" | "mayorista"
+  categoria_id: number | null
+  categoria_nombre?: string | null
   vendedor_id: number | null
   cobrador_id: number | null
   lista_precios_id: number
@@ -61,6 +63,9 @@ interface CategoriaCliente {
   lista_precios_defecto_id: number | null
   descripcion: string
   activa: boolean
+  cuenta_cobrar_id: string | null   // UUID → contabilidad_plan_cuentas
+  cuenta_cobrar_codigo?: string     // ej. '11030101'
+  cuenta_cobrar_nombre?: string     // ej. 'Deudores por Ventas'
   seguimiento?: SeguimientoEntry[]
 }
 
@@ -845,6 +850,85 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
   )
 }
 
+// ─── CuentaContableSelector ───────────────────────────────────────────────────
+// Busca cuentas en contabilidad_plan_cuentas y permite seleccionar una por código
+function CuentaContableSelector({ value, onChange }: { value: string; onChange: (id: string, codigo?: string, nombre?: string) => void }) {
+  const [query, setQuery] = React.useState("")
+  const [opciones, setOpciones] = React.useState<{ id: string; codigo: string; nombre: string }[]>([])
+  const [abierto, setAbierto] = React.useState(false)
+  const [seleccionada, setSeleccionada] = React.useState<{ id: string; codigo: string; nombre: string } | null>(null)
+
+  // Cargar la cuenta actual si viene de DB
+  React.useEffect(() => {
+    if (!value) { setSeleccionada(null); return }
+    fetch(`/api/contabilidad/cuentas?id=${value}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data?.data) setSeleccionada(data.data)
+      })
+      .catch(() => {})
+  }, [value])
+
+  React.useEffect(() => {
+    if (!abierto) { setOpciones([]); return }
+    const t = setTimeout(() => {
+      const qs = query.trim()
+      const url = qs.length > 0
+        ? `/api/contabilidad/cuentas?q=${encodeURIComponent(qs)}&limit=20`
+        : `/api/contabilidad/cuentas?q=&limit=20`
+      fetch(url)
+        .then(r => r.json())
+        .then(data => setOpciones(Array.isArray(data?.data) ? data.data : []))
+        .catch(() => {})
+    }, query.length > 0 ? 300 : 0)
+    return () => clearTimeout(t)
+  }, [query, abierto])
+
+  return (
+    <div className="relative">
+      <div
+        className="w-full px-3 py-2 border border-gray-300 rounded focus-within:ring-1 focus-within:ring-emerald-500 bg-white cursor-pointer flex items-center justify-between"
+        onClick={() => setAbierto(v => !v)}
+      >
+        <span className={seleccionada ? "text-gray-900 font-mono text-sm" : "text-gray-400 text-sm"}>
+          {seleccionada ? `${seleccionada.codigo} — ${seleccionada.nombre}` : "Buscar cuenta contable..."}
+        </span>
+        {seleccionada && (
+          <button type="button" className="text-gray-400 hover:text-red-500 ml-2"
+            onClick={(e) => { e.stopPropagation(); setSeleccionada(null); onChange("") }}>
+            <X className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+      {abierto && (
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded shadow-lg">
+          <input
+            autoFocus
+            type="text"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Código o nombre..."
+            className="w-full px-3 py-2 border-b border-gray-200 text-sm focus:outline-none"
+          />
+          <div className="max-h-48 overflow-y-auto">
+            {opciones.length === 0 && query.length >= 2 && (
+              <div className="px-3 py-2 text-sm text-gray-400">Sin resultados</div>
+            )}
+            {opciones.map(op => (
+              <div key={op.id}
+                className="px-3 py-2 text-sm hover:bg-emerald-50 cursor-pointer flex items-center gap-2"
+                onClick={() => { setSeleccionada(op); onChange(op.id, op.codigo, op.nombre); setAbierto(false); setQuery("") }}>
+                <span className="font-mono text-xs text-gray-500 w-20 shrink-0">{op.codigo}</span>
+                <span className="text-gray-800">{op.nombre}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── VentasListSection (wrapper reutilizable con OdooFilterBar) ───────────────
 function VentasListSection<T extends object>({
   title, subtitle, moduleName, data, searchFields, filterFields, actions, children, emptyMessage,
@@ -953,6 +1037,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     configuracion: true
   })
   
+  // Categorías de clientes — debe declararse antes del useMemo de clientes
+  const [categoriasCliente, setCategoriasCliente] = useState<CategoriaCliente[]>(mockCategoriasCliente)
+
   // Data states — clientes desde Supabase vía SWR
   const { clientes: clientesDB, isLoading: clientesLoading, mutate: mutateClientes } = useClientes()
   // Mapear ClienteDB → ClienteVenta para compatibilidad con el resto del módulo
@@ -975,7 +1062,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     telefono: c.telefono || "",
     celular: "",
     email: c.email || "",
-    categoria: "publico" as ClienteVenta["categoria"],
+    categoria_id: c.categoria_id ?? null,
+    categoria_nombre: categoriasCliente.find(cat => cat.id === c.categoria_id)?.nombre ?? null,
     vendedor_id: c.vendedor_id,
     cobrador_id: null,
     lista_precios_id: 1,
@@ -989,7 +1077,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     saldo_cuenta_corriente: c.saldo_cuenta_corriente,
     total_facturado: c.total_facturado,
     seguimiento: []
-  })), [clientesDB])
+  })), [clientesDB, categoriasCliente])
   const setClientes = useCallback((_updater: any) => {
     // Los cambios ahora se persisten via API y se refresca con mutateClientes
     mutateClientes()
@@ -997,7 +1085,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
   // Helper para construir ClienteVenta desde form
   const buildClienteFromForm = useCallback((formData: FormData, editingItem: ClienteVenta | null, formClienteCategoriaId: number | null, categoriasCliente: { id: number, nombre: string }[]): ClienteVenta => {
-    const catNombre = categoriasCliente.find(c => c.id === formClienteCategoriaId)?.nombre?.toLowerCase() as ClienteVenta["categoria"] | undefined
+    const catObj = categoriasCliente.find(c => c.id === formClienteCategoriaId)
     return {
       id: editingItem?.id || clientes.length + 1,
       codigo: editingItem?.codigo || `C0${15520 + clientes.length}`,
@@ -1014,7 +1102,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       telefono: formData.get("telefono") as string || "",
       celular: formData.get("celular") as string || "",
       email: formData.get("email") as string || "",
-      categoria: catNombre ?? (editingItem?.categoria ?? null),
+      categoria_id: formClienteCategoriaId ?? editingItem?.categoria_id ?? null,
+      categoria_nombre: catObj?.nombre ?? editingItem?.categoria_nombre ?? null,
       vendedor_id: parseInt(formData.get("vendedor_id") as string) || null,
       cobrador_id: null,
       lista_precios_id: parseInt(formData.get("lista_precios_id") as string) || 1,
@@ -1269,7 +1358,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }, [])
 
   // Estados para Categorías de Clientes
-  const [categoriasCliente, setCategoriasCliente] = useState<CategoriaCliente[]>(mockCategoriasCliente)
   const [selectedCategoria, setSelectedCategoria] = useState<CategoriaCliente | null>(null)
   const [editingCategoria, setEditingCategoria] = useState<CategoriaCliente | null>(null)
   const [creandoCategoria, setCreandoCategoria] = useState(false)
@@ -1493,6 +1581,26 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) setAjustes(data)
+      })
+      .catch(console.error)
+  }, [])
+
+  // Cargar categorías de cliente desde tabla categorias_cliente
+  useEffect(() => {
+    fetch("/api/categorias-cliente")
+      .then(r => r.json())
+      .then((rows: any[]) => {
+        const cats: CategoriaCliente[] = rows.map(r => ({
+          id: r.id,
+          nombre: r.nombre,
+          lista_precios_defecto_id: r.lista_precios_defecto_id ?? null,
+          descripcion: r.descripcion ?? "",
+          activa: r.activa ?? true,
+          cuenta_cobrar_id: r.cuenta_cobrar_id ?? null,
+          cuenta_cobrar_codigo: r.cuenta_cobrar_codigo ?? undefined,
+          cuenta_cobrar_nombre: r.cuenta_cobrar_nombre ?? undefined,
+        }))
+        if (cats.length > 0) setCategoriasCliente(cats)
       })
       .catch(console.error)
   }, [])
@@ -1905,6 +2013,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       borrador: "bg-gray-100 text-gray-700",
       abierta: "bg-blue-100 text-blue-700",
       conciliada: "bg-green-100 text-green-700",
+      cancelada: "bg-red-100 text-red-700",
       esperando_confirmacion: "bg-amber-100 text-amber-700",
       ejecucion_senia: "bg-amber-100 text-amber-700",
     }
@@ -1922,12 +2031,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   const getCategoriaColor = (categoria: string) => {
-  const colors: Record<string, string> = {
-  publico: "bg-gray-100 text-gray-700",
-  mercadolibre: "bg-yellow-100 text-yellow-700",
-  mayorista: "bg-purple-100 text-purple-700"
-  }
-  return colors[categoria?.toLowerCase()] || "bg-purple-100 text-purple-700"
+    const lower = categoria?.toLowerCase() ?? ""
+    if (lower.includes("mercado")) return "bg-yellow-100 text-yellow-700"
+    if (lower.includes("mayorista")) return "bg-purple-100 text-purple-700"
+    return "bg-gray-100 text-gray-700"
   }
 
   // Filtered data
@@ -1937,7 +2044,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         c.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
         c.codigo.toLowerCase().includes(searchQuery.toLowerCase()) ||
         c.email.toLowerCase().includes(searchQuery.toLowerCase())
-      const matchCategoria = categoriaFilter === "todos" || c.categoria === categoriaFilter
+      const matchCategoria = categoriaFilter === "todos" || String(c.categoria_id) === categoriaFilter
       return matchSearch && matchCategoria && c.activo
     })
   }, [clientes, searchQuery, categoriaFilter])
@@ -2458,20 +2565,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <OdooFilterBar
             moduleName="clientes"
             filterOptions={[
-              { field: "categoria", label: "Categoría", values: [
-                { value: "publico", label: "P������blico" },
-                { value: "mercadolibre", label: "MercadoLibre" },
-                { value: "mayorista", label: "Mayorista" },
-              ]},
+              { field: "categoria_id", label: "Categoría", values: categoriasCliente.map(c => ({ value: String(c.id), label: c.nombre })) },
             ]}
             groupByOptions={[
-              { id: "categoria", label: "Categoría", field: "categoria" },
+              { id: "categoria_id", label: "Categoría", field: "categoria_id" },
               { id: "ciudad", label: "Ciudad", field: "ciudad" },
             ]}
             activeFilters={activeFiltersClientes}
             activeGroupBy={activeGroupByClientes}
             searchTerm={searchQuery}
-            onFiltersChange={f => { setActiveFiltersClientes(f); setCategoriaFilter(f.find(x => x.field === "categoria")?.value ?? "todos") }}
+            onFiltersChange={f => { setActiveFiltersClientes(f); setCategoriaFilter(f.find(x => x.field === "categoria_id")?.value ?? "todos") }}
             onGroupByChange={setActiveGroupByClientes}
             onSearchChange={setSearchQuery}
             savedFilters={savedFiltersClientes}
@@ -2524,15 +2627,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <td className="py-3 px-4 text-sm text-gray-600">{cliente.ciudad}</td>
                   <td className="py-3 px-4">
                     {(() => {
-                      const catObj = categoriasCliente.find(c =>
-                        c.nombre.toLowerCase() === (cliente.categoria ?? "").toLowerCase() ||
-                        String(c.id) === String(cliente.categoria_id ?? "")
-                      )
-                      const label = catObj?.nombre ?? cliente.categoria ?? ""
+                      const label = cliente.categoria_nombre ?? ""
                       if (!label) return null
-                      const colorKey = label.toLowerCase()
                       return (
-                        <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getCategoriaColor(colorKey)}`}>
+                        <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getCategoriaColor(label)}`}>
                           {label}
                         </span>
                       )
@@ -2800,11 +2898,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <div className="flex-1">
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold text-amber-900">{selectedCliente.nombre}</h1>
-              {selectedCliente.categoria && (
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getCategoriaColor(selectedCliente.categoria)}`}>
-                  {selectedCliente.categoria === "publico" ? "Público"
-                    : selectedCliente.categoria === "mercadolibre" ? "MercadoLibre"
-                    : selectedCliente.categoria.charAt(0).toUpperCase() + selectedCliente.categoria.slice(1)}
+              {selectedCliente.categoria_nombre && (
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getCategoriaColor(selectedCliente.categoria_nombre)}`}>
+                  {selectedCliente.categoria_nombre}
                 </span>
               )}
             </div>
@@ -3932,8 +4028,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             })),
           }),
         })
+        if (!facRes.ok) {
+          const errText = await facRes.text()
+          console.error("[FACTURA] Error HTTP al crear factura:", facRes.status, errText)
+          alert(`❌ Error al crear factura (HTTP ${facRes.status}):\n\n${errText}`)
+        }
         if (facRes.ok) {
           const facData = await facRes.json()
+          console.log("[FACTURA] Respuesta completa:", JSON.stringify(facData))
+          if (facData._advertencia_contable) {
+            console.warn("[CONTABILIDAD] Factura creada sin asiento:", facData._advertencia_contable)
+            alert(`⚠️ Factura creada pero sin asiento contable:\n\n${facData._advertencia_contable}`)
+          } else {
+            console.log("[CONTABILIDAD] Asiento creado:", facData.asiento_id)
+          }
           const newFactura: Factura = {
             id: facData.id,
             numero: facData.numero,
@@ -4067,7 +4175,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </div>
                 <div>
                   <span className="text-gray-500">Categoría:</span>
-                  <span className="ml-2 font-medium capitalize">{selectedCliente?.categoria}</span>
+                  <span className="ml-2 font-medium capitalize">{selectedCliente?.categoria_nombre ?? "-"}</span>
                 </div>
                 <div>
                   <span className="text-gray-500">Pos. Fiscal:</span>
@@ -4593,7 +4701,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             {/* Categoría de Cliente y Lista de Precios */}
             {(() => {
               const clienteNV = clientes.find(c => c.id === nvClienteId)
-              const categoriaNV = clienteNV ? categoriasCliente.find(cat => cat.nombre.toLowerCase() === clienteNV.categoria.toLowerCase()) : null
               const listaNV = clienteNV ? listasPrecios.find(l => l.id === clienteNV.lista_precios_id) : null
               return (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
@@ -4603,7 +4710,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       <label className="block text-xs text-gray-500 mb-1">Categoría de Cliente</label>
                       {clienteNV ? (
                         <span className="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
-                          {categoriaNV?.nombre || clienteNV.categoria}
+                          {clienteNV.categoria_nombre || "Sin categoría"}
                         </span>
                       ) : (
                         <span className="text-xs text-gray-400 italic">Seleccione un cliente</span>
@@ -7604,7 +7711,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   // Función para crear factura (usada desde previsualización)
-  const handleCrearFacturaFinal = () => {
+  const handleCrearFacturaFinal = async () => {
     const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
     const subtotal = facturaLineas.reduce((sum, l) => sum + l.subtotal, 0)
     const totalRecargos = prevRecargosConfirmados?.totalRecargos || 0
@@ -7615,62 +7722,116 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       return
     }
 
-    const facturaNumero = `FAC-${String(facturas.length + 1).padStart(5, "0")}`
-    const facturaId = facturas.length + 1
     const fechaHoy = new Date().toISOString()
+    const sucursalNombre = sucursalActiva?.nombre ?? "Casa Central"
+    const vendedorNombre = vendedores[0]?.nombre || "Admin"
+    const terminoPago = mockTerminosPago.find(tp => tp.id === clienteSeleccionado.termino_pago_id)?.nombre || "Contado"
 
-    const newFactura: Factura = {
-      id: facturaId,
-      numero: facturaNumero,
-      nota_venta_id: 0,
-      nota_venta_numero: "-",
-      cliente_id: clienteSeleccionado.id,
-      cliente_nombre: clienteSeleccionado.nombre,
-      cliente_documento: `${clienteSeleccionado.tipo_documento} ${clienteSeleccionado.numero_documento}`,
-      estado: "abierta",
-      fecha: fechaHoy,
-      vendedor_nombre: vendedores[0]?.nombre || "Max Solina",
-      domicilio_facturacion: clienteSeleccionado.direccion,
-      moneda: "ARS",
-      tipo_cotizacion: "blue",
-      cotizacion: 1150,
-      termino_pago: mockTerminosPago.find(tp => tp.id === clienteSeleccionado.termino_pago_id)?.nombre || "Contado",
-      subtotal: subtotal,
-      descuento: 0,
-      impuestos: totalRecargos,
-      total: totalFinal,
-      saldo: totalFinal,
-      sucursal: "Puerto Norte",
-      lineas: facturaLineas,
-      vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: totalFinal }]
+    try {
+      const facRes = await fetch("/api/facturas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cliente_id: clienteSeleccionado.id,
+          cliente_nombre: clienteSeleccionado.nombre,
+          vendedor_nombre: vendedorNombre,
+          sucursal: sucursalNombre,
+          fecha: fechaHoy,
+          estado: "abierta",
+          moneda: "ARS",
+          termino_pago: terminoPago,
+          subtotal,
+          descuento: 0,
+          impuestos: totalRecargos,
+          total: totalFinal,
+          saldo: totalFinal,
+          lineas: facturaLineas.filter(l => l.producto_nombre.trim() !== "").map(l => ({
+            producto_id: l.producto_id ?? null,
+            producto_nombre: l.producto_nombre,
+            descripcion: l.descripcion ?? null,
+            cantidad: l.cantidad,
+            precio_unitario: l.precio_unitario ?? 0,
+            descuento: l.descuento ?? 0,
+            subtotal: Number(l.subtotal ?? 0),
+          })),
+        }),
+      })
+
+      if (!facRes.ok) {
+        const errText = await facRes.text()
+        console.error("[FACTURA] Error HTTP:", facRes.status, errText)
+        alert(`❌ Error al guardar factura: ${errText}`)
+        return
+      }
+
+      const facData = await facRes.json()
+      console.log("[FACTURA] Respuesta completa:", JSON.stringify(facData))
+      if (facData._advertencia_contable) {
+        console.warn("[CONTABILIDAD] Factura creada sin asiento:", facData._advertencia_contable)
+        alert(`⚠️ Factura creada pero sin asiento contable:\n\n${facData._advertencia_contable}`)
+      } else {
+        console.log("[CONTABILIDAD] Asiento creado:", facData.asiento_id)
+      }
+
+      const newFactura: Factura = {
+        id: facData.id,
+        numero: facData.numero,
+        nota_venta_id: 0,
+        nota_venta_numero: "-",
+        cliente_id: clienteSeleccionado.id,
+        cliente_nombre: clienteSeleccionado.nombre,
+        cliente_documento: `${clienteSeleccionado.tipo_documento} ${clienteSeleccionado.numero_documento}`,
+        estado: "abierta",
+        fecha: fechaHoy,
+        vendedor_nombre: vendedorNombre,
+        domicilio_facturacion: clienteSeleccionado.direccion,
+        moneda: "ARS",
+        tipo_cotizacion: "blue",
+        cotizacion: 1150,
+        termino_pago: terminoPago,
+        subtotal,
+        descuento: 0,
+        impuestos: totalRecargos,
+        total: totalFinal,
+        saldo: totalFinal,
+        sucursal: sucursalNombre,
+        lineas: facturaLineas,
+        vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: totalFinal }]
+      }
+      setFacturas(prev => [...prev, newFactura])
+
+      // Crear movimiento de débito
+      const saldoAnterior = clienteSeleccionado.saldo_cuenta_corriente
+      const nuevoMovimiento: MovimientoCuentaCorriente = {
+        id: movimientosCC.length + 1,
+        cliente_id: clienteSeleccionado.id,
+        fecha: fechaHoy,
+        tipo: "debito",
+        concepto: `Factura de venta`,
+        documento_tipo: "factura",
+        documento_numero: facData.numero,
+        documento_id: facData.id,
+        moneda: "ARS",
+        importe: totalFinal,
+        saldo_posterior: saldoAnterior + totalFinal
+      }
+      setMovimientosCC(prev => [...prev, nuevoMovimiento])
+
+      // Actualizar saldo del cliente
+      setClientes(prev => prev.map(c =>
+        c.id === clienteSeleccionado.id ? {
+          ...c,
+          saldo_cuenta_corriente: c.saldo_cuenta_corriente + totalFinal,
+          total_facturado: c.total_facturado + totalFinal
+        } : c
+      ))
+
+      setSelectedFactura(newFactura)
+    } catch (err) {
+      console.error("[handleCrearFacturaFinal] Error:", err)
+      alert(`❌ Error inesperado al crear factura: ${err}`)
+      return
     }
-    setFacturas(prev => [...prev, newFactura])
-
-    // Crear movimiento de debito por el total (subtotal + recargos)
-    const saldoAnterior = clienteSeleccionado.saldo_cuenta_corriente
-    const nuevoMovimiento: MovimientoCuentaCorriente = {
-      id: movimientosCC.length + 1,
-      cliente_id: clienteSeleccionado.id,
-      fecha: fechaHoy,
-      tipo: "debito",
-      concepto: `Factura de venta`,
-      documento_tipo: "factura",
-      documento_numero: facturaNumero,
-      documento_id: facturaId,
-      moneda: "ARS",
-      importe: totalFinal,
-      saldo_posterior: saldoAnterior + totalFinal
-    }
-    setMovimientosCC(prev => [...prev, nuevoMovimiento])
-
-    // Actualizar saldo del cliente
-    setClientes(prev => prev.map(c =>
-      c.id === clienteSeleccionado.id ? {
-        ...c,
-        saldo_cuenta_corriente: c.saldo_cuenta_corriente + totalFinal,
-        total_facturado: c.total_facturado + totalFinal
-      } : c
-    ))
 
     // Resetear estado de previsualización
     setPrevRecargosConfirmados(null)
@@ -7680,7 +7841,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setFacturaClienteId(null)
     setFacturaLineas([])
     setFacturaListaPreciosId(1)
-    setSelectedFactura(newFactura)
   }
 
   // Vista de previsualización de Factura
@@ -7727,6 +7887,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </button>
             <button 
               onClick={() => {
+                const subtotalPrev = facturaLineas.reduce((s, l) => s + l.subtotal, 0)
+                const totalRecPrev = prevRecargosConfirmados?.totalRecargos || 0
+                if ((subtotalPrev + totalRecPrev) <= 0) {
+                  setModalValidacionMsg("No se puede confirmar una factura con total $0.00. Revisá los precios de las líneas.")
+                  return
+                }
                 if (!prevEstadoPago.tieneLineas) {
                   setModalValidacionMsg("Debés ingresar al menos un medio de pago antes de confirmar la factura.")
                   return
@@ -8161,7 +8327,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     subtotal: l.subtotal
                   })))
                   setCreandoFactura(true)
-                  setFacturaPrevisualizando(true)
+                  setFacturaPrevisualizando(false)
                   setSelectedFactura(null)
                 }}
                 className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 flex items-center gap-1"
@@ -8598,15 +8764,40 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 Volver
               </button>
               <button 
-                onClick={() => {
+                onClick={async () => {
                   if (!cancelarFacturaMotivo || !cancelarFacturaDescripcion.trim()) {
                     alert("Debe completar el motivo y la descripción para cancelar la factura")
                     return
                   }
+
+                  // Llamar al endpoint que cancela la factura y genera asiento de reversión
+                  const res = await fetch(`/api/facturas/${selectedFactura.id}/cancelar`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      motivo: cancelarFacturaMotivo,
+                      descripcion: cancelarFacturaDescripcion.trim(),
+                    }),
+                  })
+
+                  if (!res.ok) {
+                    const err = await res.json()
+                    alert(`❌ Error al cancelar: ${err.error}`)
+                    return
+                  }
+
+                  const result = await res.json()
+                  if (result._advertencia) {
+                    console.warn("[CANCELAR FACTURA]", result._advertencia)
+                  }
+                  if (result.numero_reversion) {
+                    console.log("[CONTABILIDAD] Asiento de reversión:", result.numero_reversion)
+                  }
+
                   const fechaHoy = new Date().toISOString()
                   const clienteFactura = clientes.find(c => c.id === selectedFactura.cliente_id)
-                  
-                  // Revertir movimiento de cuenta corriente si la factura estaba abierta
+
+                  // Revertir movimiento de cuenta corriente
                   if (selectedFactura.estado === 'abierta' && clienteFactura) {
                     const saldoAnterior = clienteFactura.saldo_cuenta_corriente
                     const nuevoMovimiento: MovimientoCuentaCorriente = {
@@ -8623,8 +8814,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       saldo_posterior: saldoAnterior - selectedFactura.total
                     }
                     setMovimientosCC(prev => [...prev, nuevoMovimiento])
-                    
-                    // Actualizar saldo del cliente
                     setClientes(prev => prev.map(c =>
                       c.id === clienteFactura.id ? {
                         ...c,
@@ -8632,7 +8821,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       } : c
                     ))
                   }
-                  
+
                   const updatedFactura = {
                     ...selectedFactura,
                     estado: "cancelada" as const,
@@ -8642,7 +8831,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       {
                         id: (selectedFactura.seguimiento?.length || 0) + 1,
                         fecha: fechaHoy,
-                        usuario: "Max Solina",
+                        usuario: "Admin",
                         tipo: "cancelacion" as const,
                         descripcion: `Factura cancelada. Motivo: ${cancelarFacturaMotivo}. ${cancelarFacturaDescripcion.trim()}`
                       }
@@ -8656,6 +8845,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 }}
                 disabled={!cancelarFacturaMotivo || !cancelarFacturaDescripcion.trim()}
                 className="px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                onClickCapture={e => { (e.currentTarget as HTMLButtonElement).disabled = true }}
               >
                 Confirmar Cancelación
               </button>
@@ -8751,7 +8941,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <td className="py-3 px-4 text-sm text-blue-600">{factura.nota_venta_numero}</td>
                 <td className="py-3 px-4 text-center">
                   <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getEstadoFacturaColor(factura.estado)}`}>
-                    {factura.estado === "borrador" ? "Borrador" : factura.estado === "abierta" ? "Abierta" : factura.estado === "ejecucion_senia" ? "Ejecución Seña" : factura.estado === "esperando_confirmacion" ? "Esperando confirmación" : "Conciliada"}
+                    {factura.estado === "borrador" ? "Borrador" : factura.estado === "abierta" ? "Abierta" : factura.estado === "cancelada" ? "Cancelada" : factura.estado === "ejecucion_senia" ? "Ejecución Seña" : factura.estado === "esperando_confirmacion" ? "Esperando confirmación" : "Conciliada"}
                   </span>
                 </td>
                 <td className="py-3 px-4 text-center text-sm font-medium">{factura.moneda}</td>
@@ -9168,9 +9358,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       }).eq("id", selectedRecibo.id)
       if (pubErr) throw pubErr
 
+      // Generar asiento contable — si falla, revertir la publicación
+      const asientoRes = await fetch(`/api/recibos/${selectedRecibo.id}/asiento`, { method: "POST" })
+      const asientoData = await asientoRes.json()
+      if (!asientoData.ok) {
+        await supabase.from("recibos").update({ estado: "borrador" }).eq("id", selectedRecibo.id)
+        throw new Error(`Error al generar asiento contable: ${asientoData.error}`)
+      }
+
       await cargarDetalleRecibo(selectedRecibo.id)
       await cargarRecibos()
-      alert("Recibo publicado correctamente.")
     } catch (err) {
       alert("Error al confirmar recibo: " + (err as Error).message)
     } finally {
@@ -9213,11 +9410,17 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       motivo_cancelacion: cancelarReciboMotivo,
     }).eq("id", selectedRecibo.id)
 
+    // Generar asiento de reversa (no bloquea si no había asiento previo)
+    const reversaRes = await fetch(`/api/recibos/${selectedRecibo.id}/asiento`, { method: "DELETE" })
+    const reversaData = await reversaRes.json()
+    if (!reversaData.ok) {
+      console.warn("[cancelarRecibo] No se pudo generar reversa contable:", reversaData.error)
+    }
+
     setShowCancelarReciboModal(false)
     setCancelarReciboMotivo("")
     await cargarDetalleRecibo(selectedRecibo.id)
     await cargarRecibos()
-    alert("Recibo cancelado.")
   }
 
   const resetFormRecibo = () => {
@@ -11118,28 +11321,54 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const current = modoEdicionCategoria && editingCategoria ? editingCategoria : selectedCategoria
     const isEditing = modoEdicionCategoria
 
-    const guardar = () => {
+    const guardar = async () => {
       if (!editingCategoria || !editingCategoria.nombre.trim()) return
       const fecha = new Date().toISOString()
-      if (creandoCategoria) {
-        const nuevoId = Math.max(...categoriasCliente.map(c => c.id), 0) + 1
-        const nueva: CategoriaCliente = {
-          ...editingCategoria,
-          id: nuevoId,
-          seguimiento: [{ id: 1, fecha, usuario: "Max Solina", tipo: "creacion", descripcion: "Categoría creada" }]
+      try {
+        if (creandoCategoria) {
+          // Crear en DB
+          const res = await fetch("/api/categorias-cliente", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              nombre: editingCategoria.nombre,
+              descripcion: editingCategoria.descripcion,
+              disponible_clientes: true,
+              disponible_proveedores: false,
+              cuenta_cobrar_id: editingCategoria.cuenta_cobrar_id || null,
+            }),
+          })
+          const data = await res.json()
+          const nueva: CategoriaCliente = {
+            ...editingCategoria,
+            id: data.id ?? Math.max(...categoriasCliente.map(c => c.id), 0) + 1,
+            seguimiento: [{ id: 1, fecha, usuario: "Max Solina", tipo: "creacion", descripcion: "Categoría creada" }]
+          }
+          setCategoriasCliente(prev => [...prev, nueva])
+          setSelectedCategoria(nueva)
+        } else {
+          // Actualizar en DB
+          await fetch(`/api/categorias-cliente/${editingCategoria.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              nombre: editingCategoria.nombre,
+              descripcion: editingCategoria.descripcion,
+              cuenta_cobrar_id: editingCategoria.cuenta_cobrar_id || null,
+            }),
+          })
+          const actualizada = {
+            ...editingCategoria,
+            seguimiento: [
+              { id: (editingCategoria.seguimiento?.length || 0) + 1, fecha, usuario: "Max Solina", tipo: "cambio_campo" as const, campo: "Datos", valor_nuevo: "Categoría actualizada" },
+              ...(editingCategoria.seguimiento || [])
+            ]
+          }
+          setCategoriasCliente(prev => prev.map(c => c.id === editingCategoria.id ? actualizada : c))
+          setSelectedCategoria(actualizada)
         }
-        setCategoriasCliente(prev => [...prev, nueva])
-        setSelectedCategoria(nueva)
-      } else {
-        const actualizada = {
-          ...editingCategoria,
-          seguimiento: [
-            { id: (editingCategoria.seguimiento?.length || 0) + 1, fecha, usuario: "Max Solina", tipo: "cambio_campo" as const, campo: "Datos", valor_nuevo: "Categoría actualizada" },
-            ...(editingCategoria.seguimiento || [])
-          ]
-        }
-        setCategoriasCliente(prev => prev.map(c => c.id === editingCategoria.id ? actualizada : c))
-        setSelectedCategoria(actualizada)
+      } catch (err) {
+        console.error("Error al guardar categoría:", err)
       }
       setEditingCategoria(null)
       setCreandoCategoria(false)
@@ -11253,6 +11482,32 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   {current.activa ? "Activa" : "Inactiva"}
                 </span>
               )}
+            </div>
+          </div>
+
+          {/* Cuenta contable a cobrar por defecto */}
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded">
+            <h4 className="text-sm font-semibold text-amber-900 mb-3">Configuración Contable</h4>
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Cuenta a cobrar por defecto
+                </label>
+                {isEditing ? (
+                  <CuentaContableSelector
+                    value={current.cuenta_cobrar_id ?? ""}
+                    onChange={(id, codigo, nombre) => setEditingCategoria({ ...current, cuenta_cobrar_id: id || null, cuenta_cobrar_codigo: codigo, cuenta_cobrar_nombre: nombre })}
+                  />
+                ) : (
+                  <p className="text-gray-900 py-2 font-mono text-sm">
+                    {current.cuenta_cobrar_codigo
+                      ? `${current.cuenta_cobrar_codigo}${current.cuenta_cobrar_nombre ? ` – ${current.cuenta_cobrar_nombre}` : ""}`
+                      : current.cuenta_cobrar_id
+                      ? <span className="text-gray-500 text-xs">{current.cuenta_cobrar_id}</span>
+                      : <span className="text-gray-400">Sin asignar (usa mapeo global)</span>}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -12471,12 +12726,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Categor��a *</label>
-              <select name="categoria" defaultValue={editingItem?.categoria || "publico"}
+              <label className="block text-sm font-medium text-gray-700 mb-1">Categoría *</label>
+              <select
+                name="categoria_id"
+                defaultValue={editingItem?.categoria_id ?? ""}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                <option value="publico">Público General</option>
-                <option value="mercadolibre">MercadoLibre</option>
-                <option value="mayorista">Mayorista</option>
+                <option value="">Sin categoría</option>
+                {categoriasCliente.filter(c => c.activa).map(c => (
+                  <option key={c.id} value={c.id}>{c.nombre}</option>
+                ))}
               </select>
             </div>
             <div>

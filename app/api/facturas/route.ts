@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+import { generarAsientoFacturaVenta } from "@/lib/contabilidad-asiento-factory"
 
 function getSupabase() {
   return createClient(
@@ -91,6 +92,12 @@ export async function POST(req: Request) {
 
   if (facErr) return NextResponse.json({ error: facErr.message }, { status: 500 })
 
+  // Validar total > 0 (después de insertar para poder rollback limpio)
+  if ((total ?? 0) <= 0) {
+    await supabase.from("facturas").delete().eq("id", facData.id)
+    return NextResponse.json({ error: "No se puede crear una factura con total $0.00" }, { status: 422 })
+  }
+
   // Insertar líneas
   if (Array.isArray(lineas) && lineas.length > 0) {
     const lineasInsert = lineas.map((l: any) => ({
@@ -106,5 +113,30 @@ export async function POST(req: Request) {
     await supabase.from("facturas_lineas").insert(lineasInsert)
   }
 
-  return NextResponse.json({ ...facData, numero: facturaNumero })
+  // Generar asiento contable automático (atómico: si falla, se revierte la factura)
+  const asientoResult = await generarAsientoFacturaVenta(supabase, {
+    id: facData.id,
+    numero: facturaNumero,
+    fecha: (fecha ?? new Date().toISOString()).split("T")[0],
+    cliente_id: cliente_id ?? null,
+    cliente_nombre: cliente_nombre ?? null,
+    sucursal: sucursal ?? null,
+    subtotal: subtotal ?? 0,
+    impuestos,
+    total: total ?? 0,
+    moneda,
+  })
+
+  if (!asientoResult.ok) {
+    // La factura queda guardada pero sin asiento — se registra para revisión
+    console.error(`[CONTABILIDAD] Factura ${facturaNumero} creada sin asiento: ${asientoResult.error}`)
+    return NextResponse.json({
+      ...facData,
+      numero: facturaNumero,
+      asiento_id: null,
+      _advertencia_contable: asientoResult.error,
+    })
+  }
+
+  return NextResponse.json({ ...facData, numero: facturaNumero, asiento_id: asientoResult.asiento_id })
 }

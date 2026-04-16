@@ -68,6 +68,8 @@ interface CajaValor {
   subtipo?: string | null
   moneda: string
   activo: boolean
+  cuenta_contable_id?: string | null  // DEBE (débito en cobros)
+  cuenta_haber_id?: string | null     // HABER predeterminado
 }
 
 interface CajaUsuario {
@@ -2122,11 +2124,12 @@ function SeccionExtractosCaja() {
 
 // ─── Configuración de Cajas ──────────────────────────────────────────────────
 
-function FormularioCaja({ caja, onGuardar, onCancelar, guardando }: {
+function FormularioCaja({ caja, onGuardar, guardando, triggerSubmit, onError }: {
   caja: Caja | null
   onGuardar: (datos: Partial<Caja>) => void
-  onCancelar: () => void
   guardando: boolean
+  triggerSubmit?: number
+  onError?: (msg: string) => void
 }) {
   const { sucursales } = useERP()
   const [form, setForm] = useState<Partial<Caja>>(caja || {
@@ -2145,12 +2148,16 @@ function FormularioCaja({ caja, onGuardar, onCancelar, guardando }: {
     return ""
   }
 
-  const handleGuardar = () => {
+  const handleGuardar = React.useCallback(() => {
     const err = validar()
-    if (err) { setError(err); return }
+    if (err) { setError(err); onError?.(err); return }
     setError("")
     onGuardar(form)
-  }
+  }, [form])
+
+  React.useEffect(() => {
+    if (triggerSubmit) handleGuardar()
+  }, [triggerSubmit])
 
   return (
     <div className="bg-white rounded-lg shadow-sm p-6">
@@ -2206,48 +2213,317 @@ function FormularioCaja({ caja, onGuardar, onCancelar, guardando }: {
           </label>
         </div>
       </div>
-      <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
-        <button onClick={onCancelar} className="px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50">Cancelar</button>
-        <button onClick={handleGuardar} disabled={guardando}
-          className="px-4 py-2 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 disabled:bg-gray-300">
-          {guardando ? "Guardando..." : "Guardar"}
-        </button>
+    </div>
+  )
+}
+
+// ─── SelectorCuenta (búsqueda typeahead contra /api/contabilidad/cuentas) ─────
+function SelectorCuenta({ value, onChange, placeholder = "Buscar cuenta..." }: {
+  value: string
+  onChange: (id: string) => void
+  placeholder?: string
+}) {
+  const [query, setQuery] = React.useState("")
+  const [opciones, setOpciones] = React.useState<{ id: string; codigo: string; nombre: string }[]>([])
+  const [abierto, setAbierto] = React.useState(false)
+  const [sel, setSel] = React.useState<{ id: string; codigo: string; nombre: string } | null>(null)
+
+  React.useEffect(() => {
+    if (!value) { setSel(null); return }
+    fetch(`/api/contabilidad/cuentas?id=${value}`)
+      .then(r => r.json()).then(d => { if (d?.data) setSel(d.data) }).catch(() => {})
+  }, [value])
+
+  React.useEffect(() => {
+    if (!abierto) { setOpciones([]); return }
+    const t = setTimeout(() => {
+      fetch(`/api/contabilidad/cuentas?q=${encodeURIComponent(query.trim())}&limit=20`)
+        .then(r => r.json()).then(d => setOpciones(Array.isArray(d?.data) ? d.data : [])).catch(() => {})
+    }, query.length > 0 ? 300 : 0)
+    return () => clearTimeout(t)
+  }, [query, abierto])
+
+  return (
+    <div className="relative">
+      <div className="w-full px-3 py-2 border border-gray-300 rounded focus-within:ring-1 focus-within:ring-indigo-500 bg-white cursor-pointer flex items-center justify-between"
+        onClick={() => setAbierto(v => !v)}>
+        <span className={sel ? "text-gray-900 font-mono text-sm" : "text-gray-400 text-sm"}>
+          {sel ? `${sel.codigo} — ${sel.nombre}` : placeholder}
+        </span>
+        {sel && (
+          <button type="button" className="text-gray-400 hover:text-red-500 ml-2"
+            onClick={e => { e.stopPropagation(); setSel(null); onChange("") }}>
+            <X className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+      {abierto && (
+        <div className="absolute z-[60] w-full mt-1 bg-white border border-gray-200 rounded shadow-lg">
+          <input autoFocus type="text" value={query} onChange={e => setQuery(e.target.value)}
+            placeholder="Código o nombre..."
+            className="w-full px-3 py-2 border-b border-gray-200 text-sm focus:outline-none" />
+          <div className="max-h-48 overflow-y-auto">
+            {opciones.length === 0 && <div className="px-3 py-2 text-sm text-gray-400">Sin resultados</div>}
+            {opciones.map(op => (
+              <div key={op.id}
+                className="px-3 py-2 text-sm hover:bg-indigo-50 cursor-pointer flex items-center gap-2"
+                onClick={() => { setSel(op); onChange(op.id); setAbierto(false); setQuery("") }}>
+                <span className="font-mono text-xs text-gray-500 w-20 shrink-0">{op.codigo}</span>
+                <span className="text-gray-800">{op.nombre}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── CuentaDisplay (muestra código+nombre a partir de un UUID) ──────────────
+function CuentaDisplay({ id }: { id: string }) {
+  const [cuenta, setCuenta] = useState<{ codigo: string; nombre: string } | null>(null)
+  useEffect(() => {
+    fetch(`/api/contabilidad/cuentas?id=${id}`)
+      .then(r => r.json()).then(d => setCuenta(d?.data ?? null)).catch(() => {})
+  }, [id])
+  if (!cuenta) return <p className="text-gray-400 text-sm">Cargando...</p>
+  return (
+    <p className="font-mono text-sm text-gray-900">
+      <span className="font-bold">{cuenta.codigo}</span>
+      <span className="text-gray-500 ml-2">– {cuenta.nombre}</span>
+    </p>
+  )
+}
+
+const SUBTIPO_LABELS_VALOR: Record<string, string> = {
+  banco: 'Banco', cheque_tercero: 'Cheque Tercero', tarjeta: 'Tarjeta',
+  rendicion_gastos: 'Rendición de Gastos', fondo_fijo: 'Fondo Fijo'
+}
+
+// ─── ModalDetalleValor (pantalla completa en modal, con edición inline) ──────
+function ModalDetalleValor({ valor, cajaId, onClose, onActualizar }: {
+  valor: CajaValor
+  cajaId?: string
+  onClose: () => void
+  onActualizar: () => void
+}) {
+  const esNuevo = valor.id === ''
+  const [modoEdicion, setModoEdicion] = useState(esNuevo)
+  const [form, setForm] = useState<CajaValor>({ ...valor })
+  const [guardando, setGuardando] = useState(false)
+  const [errorGuardar, setErrorGuardar] = useState("")
+
+  const guardar = async () => {
+    if (!form.codigo?.trim() || !form.nombre?.trim()) { setErrorGuardar("Código y nombre son obligatorios"); return }
+    if (form.tipo === 'banco_cheques' && !form.subtipo) { setErrorGuardar("El subtipo es obligatorio para Banco y cheques"); return }
+    setErrorGuardar("")
+    setGuardando(true)
+    const supabase = createClient()
+    if (esNuevo) {
+      const { count } = await supabase
+        .from('caja_valores')
+        .select('*', { count: 'exact', head: true })
+        .eq('codigo', form.codigo)
+      if (count && count > 0) { setErrorGuardar("El código ya existe"); setGuardando(false); return }
+      await supabase.from('caja_valores').insert({
+        caja_id: cajaId,
+        nombre: form.nombre,
+        codigo: form.codigo,
+        tipo: form.tipo,
+        subtipo: form.tipo === 'banco_cheques' ? (form.subtipo || null) : null,
+        moneda: form.moneda,
+        activo: form.activo,
+        cuenta_contable_id: form.cuenta_contable_id || null,
+        cuenta_haber_id: form.cuenta_haber_id || null,
+      })
+    } else {
+      await supabase.from('caja_valores').update({
+        nombre: form.nombre,
+        codigo: form.codigo,
+        tipo: form.tipo,
+        subtipo: form.tipo === 'banco_cheques' ? (form.subtipo || null) : null,
+        moneda: form.moneda,
+        activo: form.activo,
+        cuenta_contable_id: form.cuenta_contable_id || null,
+        cuenta_haber_id: form.cuenta_haber_id || null,
+      }).eq('id', form.id)
+    }
+    setGuardando(false)
+    setModoEdicion(false)
+    onActualizar()
+  }
+
+  const v = modoEdicion ? form : valor
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col overflow-hidden"
+        onClick={e => e.stopPropagation()}>
+
+        {/* Barra de acciones — Odoo style */}
+        <div className="flex items-center gap-2 px-5 py-2.5 border-b bg-gray-50 flex-shrink-0">
+          {modoEdicion ? (
+            <>
+              <button onClick={guardar} disabled={guardando}
+                className="flex items-center gap-1.5 bg-indigo-900 text-white px-4 py-1.5 rounded text-sm font-medium hover:bg-indigo-800 disabled:opacity-50">
+                {guardando ? "Guardando..." : "Guardar"}
+              </button>
+              <button onClick={() => { if (esNuevo) { onClose() } else { setForm({ ...valor }); setModoEdicion(false); setErrorGuardar("") } }}
+                className="px-4 py-1.5 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-100">
+                Descartar
+              </button>
+              {errorGuardar && <span className="text-xs text-red-600 ml-2">{errorGuardar}</span>}
+            </>
+          ) : (
+            <button onClick={() => setModoEdicion(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50">
+              <Edit className="w-3.5 h-3.5" /> Editar
+            </button>
+          )}
+          <button onClick={onClose} className="ml-auto p-1.5 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Nombre / título */}
+        <div className="px-6 py-4 border-b flex-shrink-0">
+          {modoEdicion ? (
+            <input value={form.nombre}
+              onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+              placeholder="Nombre del valor..."
+              className="text-2xl font-bold text-gray-900 border-b-2 border-indigo-500 outline-none w-full bg-transparent pb-0.5" />
+          ) : (
+            <h2 className="text-2xl font-bold text-gray-900">{valor.nombre || 'Nuevo Valor'}</h2>
+          )}
+        </div>
+
+        {/* Cuerpo scrollable */}
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          <div className="grid grid-cols-2 gap-x-12 gap-y-6">
+
+            {/* ── Columna izquierda ── */}
+            <div className="space-y-5">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Código</p>
+                {modoEdicion ? (
+                  <input value={form.codigo} onChange={e => setForm(f => ({ ...f, codigo: e.target.value }))}
+                    className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm font-mono focus:ring-1 focus:ring-indigo-500 focus:outline-none" />
+                ) : (
+                  <p className="font-mono font-semibold text-gray-900">{valor.codigo}</p>
+                )}
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Tipo</p>
+                {modoEdicion ? (
+                  <select value={form.tipo}
+                    onChange={e => setForm(f => ({ ...f, tipo: e.target.value as CajaValor["tipo"], subtipo: undefined }))}
+                    className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none">
+                    <option value="efectivo">Efectivo</option>
+                    <option value="banco_cheques">Banco y cheques</option>
+                  </select>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 rounded text-xs font-semibold ${valor.tipo === 'efectivo' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                      {valor.tipo === 'efectivo' ? 'Efectivo' : 'Banco / Cheques'}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {(modoEdicion ? form.tipo === 'banco_cheques' : !!valor.subtipo) && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Subtipo</p>
+                  {modoEdicion ? (
+                    <select value={form.subtipo || ""}
+                      onChange={e => setForm(f => ({ ...f, subtipo: e.target.value || null }))}
+                      className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none">
+                      <option value="">Sin subtipo</option>
+                      <option value="banco">Banco</option>
+                      <option value="cheque_tercero">Cheque Tercero</option>
+                      <option value="tarjeta">Tarjeta</option>
+                      <option value="rendicion_gastos">Rendición de Gastos</option>
+                      <option value="fondo_fijo">Fondo Fijo</option>
+                    </select>
+                  ) : (
+                    <p className="text-gray-900">{valor.subtipo ? (SUBTIPO_LABELS_VALOR[valor.subtipo] || valor.subtipo) : '—'}</p>
+                  )}
+                </div>
+              )}
+
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Activo</p>
+                {modoEdicion ? (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={form.activo}
+                      onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))} className="rounded" />
+                    <span className="text-sm">{form.activo ? 'Activo' : 'Inactivo'}</span>
+                  </label>
+                ) : (
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${valor.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    {valor.activo ? 'Activo' : 'Inactivo'}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* ── Columna derecha ── */}
+            <div className="space-y-5">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Cuenta de débito predeterminada</p>
+                {modoEdicion ? (
+                  <SelectorCuenta
+                    value={form.cuenta_contable_id || ""}
+                    onChange={id => setForm(f => ({ ...f, cuenta_contable_id: id || null }))}
+                    placeholder="Buscar cuenta de débito..."
+                  />
+                ) : (
+                  valor.cuenta_contable_id
+                    ? <CuentaDisplay id={valor.cuenta_contable_id} />
+                    : <p className="text-gray-400 text-sm">—</p>
+                )}
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Cuenta de haber predeterminada</p>
+                {modoEdicion ? (
+                  <SelectorCuenta
+                    value={form.cuenta_haber_id || ""}
+                    onChange={id => setForm(f => ({ ...f, cuenta_haber_id: id || null }))}
+                    placeholder="Buscar cuenta de haber..."
+                  />
+                ) : (
+                  valor.cuenta_haber_id
+                    ? <CuentaDisplay id={valor.cuenta_haber_id} />
+                    : <p className="text-gray-400 text-sm">—</p>
+                )}
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Moneda</p>
+                {modoEdicion ? (
+                  <select value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}
+                    className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none">
+                    <option value="ARS">ARS</option>
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                  </select>
+                ) : (
+                  <p className="font-mono text-gray-900">{valor.moneda}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
 
-function TabValores({ cajaId, valores, onActualizar }: {
-  cajaId: string; valores: CajaValor[]; onActualizar: () => void
+function TabValores({ cajaId, valores, onActualizar, modoEdicion }: {
+  cajaId: string; valores: CajaValor[]; onActualizar: () => void; modoEdicion: boolean
 }) {
-  const [creando, setCreando] = useState(false)
-  const [form, setForm] = useState<Partial<CajaValor>>({})
-  const [error, setError] = useState("")
-  const [guardando, setGuardando] = useState(false)
-
-  const guardar = async () => {
-    if (!form.codigo?.trim() || !form.nombre?.trim()) { setError("Código y nombre son obligatorios"); return }
-    if (form.tipo === 'banco_cheques' && !form.subtipo) { setError("El subtipo es obligatorio para Banco y cheques"); return }
-    setGuardando(true)
-    setError("")
-    const supabase = createClient()
-
-    const { count } = await supabase
-      .from('caja_valores')
-      .select('*', { count: 'exact', head: true })
-      .eq('codigo', form.codigo)
-    if (count && count > 0) { setError("El código ya existe"); setGuardando(false); return }
-
-    await supabase.from('caja_valores').insert({
-      caja_id: cajaId, codigo: form.codigo, nombre: form.nombre,
-      tipo: form.tipo || 'efectivo', moneda: form.moneda || 'ARS',
-      subtipo: form.tipo === 'banco_cheques' ? (form.subtipo || null) : null,
-    })
-    setCreando(false)
-    setForm({})
-    setGuardando(false)
-    onActualizar()
-  }
+  const [valorModal, setValorModal] = useState<CajaValor | null>(null)
 
   const desactivar = async (id: string) => {
     const supabase = createClient()
@@ -2257,64 +2533,6 @@ function TabValores({ cajaId, valores, onActualizar }: {
 
   return (
     <div>
-      {error && (
-        <div className="mb-3 flex items-center gap-2 bg-red-50 border border-red-200 rounded-md p-2 text-red-700 text-sm">
-          <AlertCircle className="w-4 h-4" /> {error}
-        </div>
-      )}
-      {creando && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-4">
-          <div className="grid grid-cols-4 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Código</label>
-              <input value={form.codigo || ""} onChange={e => setForm(f => ({ ...f, codigo: e.target.value }))}
-                placeholder="EFE-CF" className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Nombre</label>
-              <input value={form.nombre || ""} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
-                placeholder="Efectivo - CF" className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Tipo</label>
-              <select value={form.tipo || "efectivo"} onChange={e => setForm(f => ({ ...f, tipo: e.target.value as CajaValor["tipo"], subtipo: undefined }))}
-                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-                <option value="efectivo">Efectivo</option>
-                <option value="banco_cheques">Banco y cheques</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Moneda</label>
-              <select value={form.moneda || "ARS"} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}
-                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-                <option value="ARS">ARS</option>
-                <option value="USD">USD</option>
-                <option value="EUR">EUR</option>
-              </select>
-            </div>
-          </div>
-          {form.tipo === 'banco_cheques' && (
-            <div className="mt-3">
-              <label className="block text-xs font-medium text-gray-700 mb-1">Subtipo *</label>
-              <select value={form.subtipo || ""} onChange={e => setForm(f => ({ ...f, subtipo: e.target.value }))}
-                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-                <option value="">Seleccionar subtipo...</option>
-                <option value="banco">Banco</option>
-                <option value="cheque_tercero">Cheque Tercero</option>
-                <option value="tarjeta">Tarjeta</option>
-                <option value="rendicion_gastos">Rendición de Gastos</option>
-                <option value="fondo_fijo">Fondo Fijo</option>
-              </select>
-            </div>
-          )}
-          <div className="flex gap-2 mt-3 justify-end">
-            <button onClick={() => { setCreando(false); setForm({}); setError("") }} className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">Cancelar</button>
-            <button onClick={guardar} disabled={guardando} className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded hover:bg-indigo-800 disabled:bg-gray-300">
-              {guardando ? "Guardando..." : "Guardar"}
-            </button>
-          </div>
-        </div>
-      )}
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
@@ -2328,7 +2546,8 @@ function TabValores({ cajaId, valores, onActualizar }: {
         </thead>
         <tbody>
           {valores.map(v => (
-            <tr key={v.id} className="border-b border-gray-100">
+            <tr key={v.id} className="border-b border-gray-100 hover:bg-indigo-50 cursor-pointer"
+              onClick={() => setValorModal(v)}>
               <td className="py-2 px-3 font-mono">{v.codigo}</td>
               <td className="py-2 px-3 font-medium">{v.nombre}</td>
               <td className="py-2 px-3">
@@ -2349,8 +2568,8 @@ function TabValores({ cajaId, valores, onActualizar }: {
                   {v.activo ? 'Sí' : 'No'}
                 </span>
               </td>
-              <td className="py-2 px-3">
-                {v.activo && (
+              <td className="py-2 px-3" onClick={e => e.stopPropagation()}>
+                {v.activo && modoEdicion && (
                   <button onClick={() => desactivar(v.id)} className="p-1 text-gray-400 hover:text-red-600" title="Desactivar">
                     <X className="w-4 h-4" />
                   </button>
@@ -2361,35 +2580,64 @@ function TabValores({ cajaId, valores, onActualizar }: {
         </tbody>
       </table>
       {valores.length === 0 && <p className="text-sm text-gray-500 text-center py-6">Sin valores configurados</p>}
-      {!creando && (
-        <button onClick={() => { setCreando(true); setForm({ tipo: 'efectivo', moneda: 'ARS' }) }}
+      {modoEdicion && (
+        <button onClick={() => setValorModal({ id: '', caja_id: cajaId, nombre: '', codigo: '', tipo: 'efectivo', moneda: 'ARS', activo: true, subtipo: null })}
           className="mt-3 flex items-center gap-1 text-sm text-indigo-700 hover:text-indigo-900">
           <Plus className="w-4 h-4" /> Agregar valor
         </button>
+      )}
+
+      {valorModal && (
+        <ModalDetalleValor
+          valor={valorModal}
+          cajaId={cajaId}
+          onClose={() => setValorModal(null)}
+          onActualizar={() => { setValorModal(null); onActualizar() }}
+        />
       )}
     </div>
   )
 }
 
-function TabBancosPermitidos({ cajaId, bancos, onActualizar }: {
-  cajaId: string; bancos: CajaBancoPermitido[]; onActualizar: () => void
+function TabBancosPermitidos({ cajaId, bancos, onActualizar, modoEdicion }: {
+  cajaId: string; bancos: CajaBancoPermitido[]; onActualizar: () => void; modoEdicion: boolean
 }) {
-  const [creando, setCreando] = useState(false)
-  const [form, setForm] = useState<Partial<CajaBancoPermitido>>({})
-  const [guardando, setGuardando] = useState(false)
+  const [agregando, setAgregando] = useState(false)
+  const [valoresDisponibles, setValoresDisponibles] = useState<CajaValor[]>([])
+  const [cargandoValores, setCargandoValores] = useState(false)
+  const [guardando, setGuardando] = useState<string | null>(null)
 
-  const guardar = async () => {
-    if (!form.banco_nombre?.trim()) return
-    setGuardando(true)
+  useEffect(() => {
+    if (!agregando) return
+    setCargandoValores(true)
+    const supabase = createClient()
+    supabase
+      .from('caja_valores')
+      .select('*')
+      .eq('caja_id', cajaId)
+      .eq('tipo', 'banco_cheques')
+      .neq('subtipo', 'tarjeta')
+      .eq('activo', true)
+      .order('codigo')
+      .then(({ data }) => {
+        const codigosYa = new Set(bancos.map(b => b.codigo))
+        setValoresDisponibles((data as CajaValor[] ?? []).filter(v => !codigosYa.has(v.codigo)))
+        setCargandoValores(false)
+      })
+  }, [agregando])
+
+  const agregar = async (v: CajaValor) => {
+    setGuardando(v.id)
     const supabase = createClient()
     await supabase.from('caja_bancos_permitidos').insert({
-      caja_id: cajaId, banco_nombre: form.banco_nombre,
-      codigo: form.codigo || '', tipo: form.tipo || 'banco_cheques',
-      moneda: form.moneda || 'ARS',
+      caja_id: cajaId,
+      banco_nombre: v.nombre,
+      codigo: v.codigo,
+      tipo: v.tipo,
+      moneda: v.moneda,
     })
-    setCreando(false)
-    setForm({})
-    setGuardando(false)
+    setGuardando(null)
+    setAgregando(false)
     onActualizar()
   }
 
@@ -2401,41 +2649,41 @@ function TabBancosPermitidos({ cajaId, bancos, onActualizar }: {
 
   return (
     <div>
-      {creando && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-4">
-          <div className="grid grid-cols-4 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Banco</label>
-              <input value={form.banco_nombre || ""} onChange={e => setForm(f => ({ ...f, banco_nombre: e.target.value }))}
-                placeholder="Banco Macro" className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Código</label>
-              <input value={form.codigo || ""} onChange={e => setForm(f => ({ ...f, codigo: e.target.value }))}
-                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Tipo</label>
-              <select value={form.tipo || "banco_cheques"} onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))}
-                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-                <option value="banco_cheques">Banco y cheques</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Moneda</label>
-              <select value={form.moneda || "ARS"} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}
-                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-                <option value="ARS">ARS</option>
-                <option value="USD">USD</option>
-              </select>
-            </div>
-          </div>
-          <div className="flex gap-2 mt-3 justify-end">
-            <button onClick={() => { setCreando(false); setForm({}) }} className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">Cancelar</button>
-            <button onClick={guardar} disabled={guardando} className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded hover:bg-indigo-800 disabled:bg-gray-300">
-              {guardando ? "Guardando..." : "Guardar"}
+      {agregando && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-medium text-indigo-900">Seleccionar diario bancario</p>
+            <button onClick={() => setAgregando(false)} className="p-1 text-gray-400 hover:text-gray-600">
+              <X className="w-4 h-4" />
             </button>
           </div>
+          {cargandoValores ? (
+            <p className="text-sm text-gray-500 py-2">Cargando...</p>
+          ) : valoresDisponibles.length === 0 ? (
+            <p className="text-sm text-gray-500 py-2">No hay diarios bancarios disponibles para agregar.</p>
+          ) : (
+            <div className="space-y-1">
+              {valoresDisponibles.map(v => (
+                <button
+                  key={v.id}
+                  disabled={guardando === v.id}
+                  onClick={() => agregar(v)}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded bg-white border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 text-left transition-colors disabled:opacity-50"
+                >
+                  <span className="flex items-center gap-3">
+                    <span className="font-mono text-xs text-gray-500">{v.codigo}</span>
+                    <span className="text-sm font-medium text-gray-900">{v.nombre}</span>
+                    {v.subtipo && (
+                      <span className="px-1.5 py-0.5 rounded text-xs bg-purple-50 text-purple-700">
+                        {SUBTIPO_LABELS_VALOR[v.subtipo] || v.subtipo}
+                      </span>
+                    )}
+                  </span>
+                  <span className="font-mono text-xs text-gray-400">{v.moneda}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
       <table className="w-full text-sm">
@@ -2443,7 +2691,6 @@ function TabBancosPermitidos({ cajaId, bancos, onActualizar }: {
           <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
             <th className="text-left py-2 px-3">Código</th>
             <th className="text-left py-2 px-3">Nombre</th>
-            <th className="text-left py-2 px-3">Tipo</th>
             <th className="text-left py-2 px-3">Moneda</th>
             <th className="py-2 px-3"></th>
           </tr>
@@ -2453,18 +2700,19 @@ function TabBancosPermitidos({ cajaId, bancos, onActualizar }: {
             <tr key={b.id} className="border-b border-gray-100">
               <td className="py-2 px-3 font-mono">{b.codigo}</td>
               <td className="py-2 px-3 font-medium">{b.banco_nombre}</td>
-              <td className="py-2 px-3 text-gray-600">{b.tipo}</td>
               <td className="py-2 px-3 font-mono">{b.moneda}</td>
               <td className="py-2 px-3">
-                <button onClick={() => eliminar(b.id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                {modoEdicion && (
+                  <button onClick={() => eliminar(b.id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                )}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      {bancos.length === 0 && <p className="text-sm text-gray-500 text-center py-6">Sin bancos habilitados</p>}
-      {!creando && (
-        <button onClick={() => setCreando(true)}
+      {bancos.length === 0 && !agregando && <p className="text-sm text-gray-500 text-center py-6">Sin bancos habilitados</p>}
+      {!agregando && modoEdicion && (
+        <button onClick={() => setAgregando(true)}
           className="mt-3 flex items-center gap-1 text-sm text-indigo-700 hover:text-indigo-900">
           <Plus className="w-4 h-4" /> Agregar banco
         </button>
@@ -2473,8 +2721,8 @@ function TabBancosPermitidos({ cajaId, bancos, onActualizar }: {
   )
 }
 
-function TabUsuarios({ cajaId, usuarios, soloTransferencias, onActualizar }: {
-  cajaId: string; usuarios: CajaUsuario[]; soloTransferencias: boolean; onActualizar: () => void
+function TabUsuarios({ cajaId, usuarios, soloTransferencias, onActualizar, modoEdicion }: {
+  cajaId: string; usuarios: CajaUsuario[]; soloTransferencias: boolean; onActualizar: () => void; modoEdicion: boolean
 }) {
   const [creando, setCreando] = useState(false)
   const [form, setForm] = useState<Partial<CajaUsuario>>({})
@@ -2579,7 +2827,7 @@ function TabUsuarios({ cajaId, usuarios, soloTransferencias, onActualizar }: {
         </tbody>
       </table>
       {filtrados.length === 0 && <p className="text-sm text-gray-500 text-center py-6">Sin usuarios asignados</p>}
-      {!creando && (
+      {!creando && modoEdicion && (
         <button onClick={() => setCreando(true)}
           className="mt-3 flex items-center gap-1 text-sm text-indigo-700 hover:text-indigo-900">
           <Plus className="w-4 h-4" /> Agregar usuario
@@ -2596,6 +2844,8 @@ function ConfigCajas() {
   const [cajaSeleccionada, setCajaSeleccionada] = useState<Caja | null>(null)
   const [tabActiva, setTabActiva] = useState<"valores" | "bancos" | "usuarios" | "transferencias">("valores")
   const [guardando, setGuardando] = useState(false)
+  const [modoEdicion, setModoEdicion] = useState(false)
+  const [triggerSave, setTriggerSave] = useState(0)
 
   const cargarCajas = async () => {
     setLoading(true)
@@ -2624,6 +2874,7 @@ function ConfigCajas() {
       bancos_permitidos: bancosRes.data || [],
     })
     setVista("detalle")
+    setModoEdicion(false)
     setTabActiva("valores")
   }
 
@@ -2634,12 +2885,17 @@ function ConfigCajas() {
       await supabase.from('cajas')
         .update({ ...datos, updated_at: new Date().toISOString() })
         .eq('id', cajaSeleccionada.id)
+      await cargarCajas()
+      // Recargar detalle y volver a vista solo lectura
+      const { data } = await supabase.from('cajas').select('*').eq('id', cajaSeleccionada.id).single()
+      if (data) await cargarDetalleCaja(data)
+      setModoEdicion(false)
     } else {
       await supabase.from('cajas').insert(datos)
+      await cargarCajas()
+      setVista("lista")
     }
-    await cargarCajas()
     setGuardando(false)
-    setVista("lista")
   }
 
   const toggleActivoCaja = async (caja: Caja) => {
@@ -2656,7 +2912,7 @@ function ConfigCajas() {
             <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Configuración</p>
             <h1 className="text-2xl font-bold text-amber-900">Cajas</h1>
           </div>
-          <button onClick={() => { setCajaSeleccionada(null); setVista("detalle") }}
+          <button onClick={() => { setCajaSeleccionada(null); setModoEdicion(true); setVista("detalle") }}
             className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2">
             <Plus className="w-4 h-4" /> Nueva Caja
           </button>
@@ -2706,22 +2962,83 @@ function ConfigCajas() {
 
   return (
     <div>
-      <div className="flex items-center gap-4 mb-6">
-        <button onClick={() => setVista("lista")}
-          className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium">
-          ← Cajas
-        </button>
-        <h1 className="text-2xl font-bold text-amber-900">
-          {cajaSeleccionada ? cajaSeleccionada.nombre : "Nueva Caja"}
-        </h1>
-        {cajaSeleccionada && (
-          <span className={`ml-auto px-3 py-1 rounded-full text-xs font-semibold ${cajaSeleccionada.activo ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-            {cajaSeleccionada.activo ? "Activa" : "Inactiva"}
-          </span>
+      <div className="flex items-center gap-3 mb-6 bg-white border-b border-gray-200 py-3 px-4 -mx-6">
+        {modoEdicion ? (
+          <>
+            <button onClick={() => setTriggerSave(n => n + 1)} disabled={guardando}
+              className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-1.5 rounded hover:bg-indigo-800 text-sm font-medium disabled:opacity-50">
+              {guardando ? "Guardando..." : "Guardar"}
+            </button>
+            <button onClick={() => cajaSeleccionada ? setModoEdicion(false) : setVista("lista")}
+              className="flex items-center gap-2 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
+              Descartar
+            </button>
+          </>
+        ) : (
+          <>
+            <button onClick={() => setVista("lista")}
+              className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium">
+              ← Cajas
+            </button>
+            <h1 className="text-xl font-bold text-amber-900">
+              {cajaSeleccionada ? cajaSeleccionada.nombre : "Nueva Caja"}
+            </h1>
+            {cajaSeleccionada && (
+              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${cajaSeleccionada.activo ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                {cajaSeleccionada.activo ? "Activa" : "Inactiva"}
+              </span>
+            )}
+            <button onClick={() => setModoEdicion(true)}
+              className="ml-auto flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+              Editar
+            </button>
+          </>
         )}
       </div>
 
-      <FormularioCaja caja={cajaSeleccionada} onGuardar={guardarCaja} onCancelar={() => setVista("lista")} guardando={guardando} />
+      {(!cajaSeleccionada || modoEdicion) ? (
+        <FormularioCaja
+          caja={cajaSeleccionada}
+          onGuardar={guardarCaja}
+          guardando={guardando}
+          triggerSubmit={triggerSave}
+        />
+      ) : (
+        <div className="bg-white rounded-lg shadow-sm p-6">
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Nombre</p>
+                <p className="font-semibold text-gray-900">{cajaSeleccionada.nombre}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Código</p>
+                <p className="font-mono text-gray-900">{cajaSeleccionada.codigo || <span className="text-gray-400">—</span>}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Sucursal</p>
+                <p className="text-gray-900">{cajaSeleccionada.sucursal}</p>
+              </div>
+            </div>
+            <div className="space-y-2 pt-1">
+              {[
+                { label: "Cierre de caja diario obligatorio", value: cajaSeleccionada.cierre_diario_obligatorio },
+                { label: "No valida cierre los Sábados", value: cajaSeleccionada.no_valida_cierre_sabados },
+                { label: "No valida cierre los Domingos", value: cajaSeleccionada.no_valida_cierre_domingos },
+                { label: "No valida cierre los Feriados", value: cajaSeleccionada.no_valida_cierre_feriados },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex items-center gap-3 p-3 rounded-md border border-gray-200">
+                  <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${value ? 'bg-indigo-900 border-indigo-900' : 'border-gray-300 bg-white'}`}>
+                    {value && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                  </span>
+                  <span className="text-sm text-gray-700">{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {cajaSeleccionada && (
         <div className="mt-6 bg-white rounded-lg shadow-sm">
@@ -2740,10 +3057,10 @@ function ConfigCajas() {
             ))}
           </div>
           <div className="p-4">
-            {tabActiva === "valores" && <TabValores cajaId={cajaSeleccionada.id} valores={cajaSeleccionada.valores || []} onActualizar={() => cargarDetalleCaja(cajaSeleccionada)} />}
-            {tabActiva === "bancos" && <TabBancosPermitidos cajaId={cajaSeleccionada.id} bancos={cajaSeleccionada.bancos_permitidos || []} onActualizar={() => cargarDetalleCaja(cajaSeleccionada)} />}
-            {tabActiva === "usuarios" && <TabUsuarios cajaId={cajaSeleccionada.id} usuarios={cajaSeleccionada.usuarios || []} soloTransferencias={false} onActualizar={() => cargarDetalleCaja(cajaSeleccionada)} />}
-            {tabActiva === "transferencias" && <TabUsuarios cajaId={cajaSeleccionada.id} usuarios={cajaSeleccionada.usuarios || []} soloTransferencias={true} onActualizar={() => cargarDetalleCaja(cajaSeleccionada)} />}
+            {tabActiva === "valores" && <TabValores cajaId={cajaSeleccionada.id} valores={cajaSeleccionada.valores || []} onActualizar={() => cargarDetalleCaja(cajaSeleccionada)} modoEdicion={modoEdicion} />}
+            {tabActiva === "bancos" && <TabBancosPermitidos cajaId={cajaSeleccionada.id} bancos={cajaSeleccionada.bancos_permitidos || []} onActualizar={() => cargarDetalleCaja(cajaSeleccionada)} modoEdicion={modoEdicion} />}
+            {tabActiva === "usuarios" && <TabUsuarios cajaId={cajaSeleccionada.id} usuarios={cajaSeleccionada.usuarios || []} soloTransferencias={false} onActualizar={() => cargarDetalleCaja(cajaSeleccionada)} modoEdicion={modoEdicion} />}
+            {tabActiva === "transferencias" && <TabUsuarios cajaId={cajaSeleccionada.id} usuarios={cajaSeleccionada.usuarios || []} soloTransferencias={true} onActualizar={() => cargarDetalleCaja(cajaSeleccionada)} modoEdicion={modoEdicion} />}
           </div>
         </div>
       )}

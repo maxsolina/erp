@@ -1,6 +1,7 @@
 ﻿"use client"
 
 import React, { useState, useEffect, useMemo } from "react"
+import ReactDOM from "react-dom"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Settings, Lock, Unlock, FileBox, Ship, Plane, Pencil, ChevronLeft, ChevronRight as ChevronRightIcon } from "lucide-react"
 import BotonVolver from "./ui/boton-volver"
 import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
@@ -35,6 +36,8 @@ import {
   guardarNotaCreditoCompra,
   fetchNotasDebitoCompra,
   guardarNotaDebitoCompra,
+  publicarFacturaCompra,
+  cancelarFacturaCompra,
 } from "@/lib/compras-actions"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 
@@ -163,9 +166,13 @@ interface CategoriaProveedor {
   tipo_control: "Ninguno" | "Por Avisos" | "Por Bloqueo"
   cuenta_cobrar_defecto: string
   cuenta_pagar_defecto: string
+  cuenta_pagar_id: string | null       // UUID → contabilidad_plan_cuentas (por defecto)
+  cuenta_pagar_codigo?: string
+  cuenta_pagar_nombre?: string
   requiere_oc_para_facturar: boolean
   comprobantes_confidenciales: boolean
   listas_precios: ListaPrecioPermitida[]
+  cuentas_permitidas: { id: string; codigo: string; nombre: string }[]  // pivot categorias_proveedor_cuentas
 }
 
 interface ContactoProveedor {
@@ -219,6 +226,8 @@ interface Proveedor {
   moneda_defecto: "ARS" | "USD" | "EUR"
   // Tab Contabilidad
   cuenta_gastos_defecto: string
+  cuenta_gastos_defecto_codigo: string
+  cuenta_gastos_defecto_nombre: string
   cuenta_analitica: string
   tipo_cotizacion_defecto: string
   // Tab Observaciones
@@ -335,10 +344,26 @@ interface Recepcion {
   orden_compra_numero?: string
 }
 
+interface FacturaCompraLinea {
+  id?: string
+  cuenta_contable_id: string | null
+  cuenta_codigo: string
+  cuenta_nombre: string
+  descripcion: string
+  cantidad: number
+  precio_unitario: number
+  descuento_pct: number
+  alicuota_iva: number
+  subtotal: number
+  iva: number
+  total_linea: number
+  orden: number
+}
+
 interface FacturaCompra {
   id: number
   numero: string
-  tipo: "A" | "B" | "C" | "E"
+  tipo: "A" | "B" | "C" | "E" | "NC-A" | "NC-B" | "NC-C" | "Ticket" | "Recibo"
   fecha: string
   fecha_vencimiento: string
   proveedor_id: number
@@ -346,22 +371,18 @@ interface FacturaCompra {
   estado: "borrador" | "pendiente" | "pagada_parcial" | "pagada" | "cancelada"
   orden_compra_id?: number
   recepcion_id?: number
-  moneda: "ARS" | "USD"
+  moneda: "ARS" | "USD" | "EUR"
   tipo_cambio: number
+  cotizacion?: number
+  tipo_cotizacion?: string
+  sucursal?: string
   subtotal: number
   impuestos: number
   total: number
   saldo: number
   legajo_id?: number
   despacho_simple_id?: number
-  lineas: {
-    producto_id?: number
-    producto_nombre: string
-    cantidad: number
-    precio_unitario: number
-    subtotal: number
-    cuenta_contable?: string
-  }[]
+  lineas: FacturaCompraLinea[]
   seguimiento?: SeguimientoEntry[]
 }
 
@@ -657,6 +678,464 @@ function ComprasListSection<T extends object>({
   )
 }
 
+// ─── ModalCuentaContable ──────────────────────────────────────────────────────
+const GRUPOS_CUENTA: Record<string, string> = {
+  "1": "Activo",
+  "2": "Pasivo",
+  "3": "Patrimonio Neto",
+  "4": "Resultado – Ingresos",
+  "5": "Costo de Ventas",
+  "6": "Gastos",
+  "7": "Otros Ingresos",
+  "8": "Otros Egresos",
+  "9": "Cuentas de Orden",
+}
+
+function ModalCuentaContable({
+  onSelect,
+  onClose,
+  cuentasPermitidas,
+}: {
+  onSelect: (c: { id: string; codigo: string; nombre: string }) => void
+  onClose: () => void
+  cuentasPermitidas?: { id: string; codigo: string; nombre: string }[]
+}) {
+  type Cuenta = { id: string; codigo: string; nombre: string }
+  const tieneRestriccion = (cuentasPermitidas?.length ?? 0) > 0
+  const [todas, setTodas] = React.useState<Cuenta[]>([])
+  const [busqueda, setBusqueda] = React.useState("")
+  const [activeFilters, setActiveFilters] = React.useState<FilterOption[]>([])
+  const [activeGroupBy, setActiveGroupBy] = React.useState<GroupByOption[]>([])
+  const [savedFilters, setSavedFilters] = React.useState<SavedFilter[]>([])
+
+  React.useEffect(() => {
+    if (tieneRestriccion) { setTodas(cuentasPermitidas!); return }
+    fetch("/api/contabilidad/cuentas?q=&limit=500")
+      .then(r => r.json())
+      .then(d => setTodas(Array.isArray(d?.data) ? d.data : []))
+      .catch(() => {})
+  }, [tieneRestriccion])
+
+  const filtradas = React.useMemo(() => {
+    let result = todas
+    const q = busqueda.trim().toLowerCase()
+    if (q) result = result.filter(c => c.codigo.toLowerCase().includes(q) || c.nombre.toLowerCase().includes(q))
+    // Aplicar filtros activos (por prefijo de código)
+    for (const f of activeFilters) {
+      if (f.field === "prefijo") result = result.filter(c => c.codigo.startsWith(f.value))
+    }
+    return result
+  }, [todas, busqueda, activeFilters])
+
+  // Agrupar por tipo (primer dígito)
+  const agrupadoPorTipo = activeGroupBy.some(g => g.field === "tipo")
+  const grupos = React.useMemo(() => {
+    if (!agrupadoPorTipo) return null
+    const map: Record<string, Cuenta[]> = {}
+    for (const c of filtradas) {
+      const k = c.codigo[0] ?? "?"
+      if (!map[k]) map[k] = []
+      map[k].push(c)
+    }
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
+  }, [filtradas, agrupadoPorTipo])
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }} onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <h2 className="text-base font-semibold text-amber-900">Seleccionar cuenta contable</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+        </div>
+
+        {/* OdooFilterBar */}
+        <div className="border-b">
+          <OdooFilterBar
+            moduleName="cuentas-contables-selector"
+            filterOptions={[
+              {
+                field: "prefijo", label: "Tipo de cuenta",
+                values: Object.entries(GRUPOS_CUENTA).map(([v, l]) => ({ value: v, label: `${v} — ${l}` })),
+              },
+            ]}
+            groupByOptions={[
+              { id: "tipo", label: "Tipo de cuenta", field: "tipo" },
+            ]}
+            activeFilters={activeFilters}
+            activeGroupBy={activeGroupBy}
+            searchTerm={busqueda}
+            onFiltersChange={setActiveFilters}
+            onGroupByChange={setActiveGroupBy}
+            onSearchChange={setBusqueda}
+            savedFilters={savedFilters}
+            onSaveFilter={f => setSavedFilters(prev => [...prev, { ...f, id: Date.now().toString(), createdBy: "usuario" }])}
+            onDeleteFilter={id => setSavedFilters(prev => prev.filter(f => f.id !== id))}
+            onApplyFilter={f => { setActiveFilters(f.filters); setActiveGroupBy(f.groupBy) }}
+            totalCount={todas.length}
+            filteredCount={filtradas.length}
+            hideFavorites
+          />
+        </div>
+
+        {/* Lista */}
+        <div className="flex-1 overflow-y-auto">
+          {filtradas.length === 0 && (
+            <div className="px-5 py-8 text-center text-sm text-gray-400">
+              {busqueda || activeFilters.length > 0 ? "Sin resultados para los filtros aplicados" : "Cargando cuentas..."}
+            </div>
+          )}
+
+          {grupos ? (
+            grupos.map(([prefijo, cuentas]) => (
+              <div key={prefijo}>
+                <div className="px-5 py-2 bg-gray-50 border-b border-t text-xs font-semibold text-gray-500 uppercase sticky top-0">
+                  {prefijo} — {GRUPOS_CUENTA[prefijo] ?? `Grupo ${prefijo}`}
+                  <span className="ml-2 font-normal text-gray-400">({cuentas.length})</span>
+                </div>
+                {cuentas.map(c => (
+                  <button key={c.id} type="button"
+                    onClick={() => { onSelect(c); onClose() }}
+                    className="w-full text-left px-5 py-2.5 hover:bg-indigo-50 border-b border-gray-50 flex items-center gap-3 transition-colors">
+                    <span className="font-mono text-xs text-gray-500 w-20 shrink-0">{c.codigo}</span>
+                    <span className="text-sm text-gray-800">{c.nombre}</span>
+                  </button>
+                ))}
+              </div>
+            ))
+          ) : (
+            filtradas.map(c => (
+              <button key={c.id} type="button"
+                onClick={() => { onSelect(c); onClose() }}
+                className="w-full text-left px-5 py-2.5 hover:bg-indigo-50 border-b border-gray-50 flex items-center gap-3 transition-colors">
+                <span className="font-mono text-xs text-gray-500 w-20 shrink-0">{c.codigo}</span>
+                <span className="text-sm text-gray-800">{c.nombre}</span>
+              </button>
+            ))
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── ProveedorSelector ────────────────────────────────────────────────────────
+function ProveedorSelector({
+  value, onChange, proveedores, placeholder = "Seleccionar proveedor...",
+}: {
+  value: number | undefined | null
+  onChange: (id: number | undefined, nombre: string, moneda?: string) => void
+  proveedores: any[]
+  placeholder?: string
+}) {
+  const [query, setQuery] = useState("")
+  const [abierto, setAbierto] = useState(false)
+  const [modalAbierto, setModalAbierto] = useState(false)
+  const [modalSearch, setModalSearch] = useState("")
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 240 })
+  const refTrigger = React.useRef<HTMLButtonElement>(null)
+
+  const proveedorActual = proveedores.find(p => p.id === value)
+
+  const normalizar = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+
+  const filtrar = (q: string) =>
+    proveedores.filter(p => {
+      if (!q.trim()) return true
+      const n = normalizar(q)
+      return normalizar(p.nombre ?? "").includes(n) || normalizar(p.razon_social ?? "").includes(n) || (p.cuit ?? "").includes(q)
+    })
+
+  const opciones = filtrar(query).slice(0, 5)
+  const opcionesModal = filtrar(modalSearch)
+
+  const abrirDropdown = () => {
+    if (!refTrigger.current) return
+    const r = refTrigger.current.getBoundingClientRect()
+    setDropdownPos({ top: r.bottom + window.scrollY, left: r.left + window.scrollX, width: r.width })
+    setAbierto(true)
+  }
+
+  const seleccionar = (p: any) => {
+    onChange(p.id, p.nombre || p.razon_social || "", p.moneda_habitual)
+    setQuery("")
+    setAbierto(false)
+    setModalAbierto(false)
+  }
+
+  const limpiar = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onChange(undefined, "")
+  }
+
+  React.useEffect(() => {
+    if (!abierto) return
+    const handler = (e: MouseEvent) => {
+      const dd = document.getElementById("prov-selector-dropdown")
+      if (dd && dd.contains(e.target as Node)) return
+      if (refTrigger.current && refTrigger.current.contains(e.target as Node)) return
+      setAbierto(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [abierto])
+
+  const dropdown = (
+    <div id="prov-selector-dropdown" style={{ position: "absolute", top: dropdownPos.top, left: dropdownPos.left, minWidth: Math.min(dropdownPos.width, 300), maxWidth: 440, zIndex: 9999 }}
+      className="bg-white border border-gray-200 shadow-xl rounded-lg flex flex-col overflow-hidden">
+      <div className="p-2 border-b">
+        <input autoFocus type="text" value={query} onChange={e => setQuery(e.target.value)}
+          placeholder="Buscar proveedor..."
+          className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+      </div>
+      {opciones.map(p => (
+        <div key={p.id} onMouseDown={e => { e.preventDefault(); seleccionar(p) }}
+          className="px-3 py-2 text-sm hover:bg-indigo-50 cursor-pointer border-b border-gray-50 last:border-b-0">
+          <span className="font-medium">{p.nombre || p.razon_social}</span>
+          {p.cuit && <span className="ml-2 text-xs text-gray-400">{p.cuit}</span>}
+        </div>
+      ))}
+      {opciones.length === 0 && (
+        <div className="px-3 py-2 text-sm text-gray-400">Sin resultados</div>
+      )}
+      <div role="button"
+        onMouseDown={e => { e.preventDefault(); e.stopPropagation(); requestAnimationFrame(() => { setModalAbierto(true); setModalSearch(query); setAbierto(false) }) }}
+        className="px-3 py-2 text-sm font-medium flex items-center gap-2 cursor-pointer"
+        style={{ backgroundColor: "#eef2ff", color: "#3730a3", borderTop: "2px solid #c7d2fe" }}>
+        <Search className="w-3.5 h-3.5 shrink-0" />
+        <span>{filtrar(query).length > 5 ? `Buscar más… (${filtrar(query).length - 5} más)` : "Buscar en todos los proveedores..."}</span>
+      </div>
+    </div>
+  )
+
+  return (
+    <>
+      <button ref={refTrigger} type="button" onClick={abrirDropdown}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-left flex items-center justify-between hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+        <span className={proveedorActual ? "text-gray-900" : "text-gray-400"}>
+          {proveedorActual ? (proveedorActual.nombre || proveedorActual.razon_social) : placeholder}
+        </span>
+        <span className="flex items-center gap-1">
+          {proveedorActual && (
+            <span onMouseDown={e => { e.preventDefault(); limpiar(e) }} className="text-gray-300 hover:text-gray-500 cursor-pointer">
+              <X className="w-3.5 h-3.5" />
+            </span>
+          )}
+          <ChevronDown className="w-4 h-4 text-gray-400" />
+        </span>
+      </button>
+      {abierto && typeof document !== "undefined" && ReactDOM.createPortal(dropdown, document.body)}
+
+      {/* Modal búsqueda completa */}
+      {modalAbierto && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40"
+          onMouseDown={e => { if (e.target === e.currentTarget) setModalAbierto(false) }}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[75vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b">
+              <h2 className="text-base font-semibold text-amber-900">Seleccionar proveedor</h2>
+              <button onClick={() => setModalAbierto(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="px-5 py-3 border-b">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input autoFocus type="text" value={modalSearch} onChange={e => setModalSearch(e.target.value)}
+                  placeholder="Buscar por nombre, razón social o CUIT..."
+                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                {modalSearch && <button onClick={() => setModalSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X className="w-3.5 h-3.5" /></button>}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">{opcionesModal.length} proveedores</p>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {opcionesModal.length === 0 ? (
+                <div className="px-5 py-8 text-center text-sm text-gray-400">Sin resultados para "{modalSearch}"</div>
+              ) : opcionesModal.map(p => (
+                <div key={p.id} onClick={() => seleccionar(p)}
+                  className="px-5 py-2.5 border-b border-gray-50 hover:bg-indigo-50 cursor-pointer flex items-center justify-between">
+                  <div>
+                    <span className="font-medium text-sm text-gray-900">{p.nombre || p.razon_social}</span>
+                    {p.categoria_proveedor && <span className="ml-2 text-xs text-gray-400">{p.categoria_proveedor}</span>}
+                  </div>
+                  {p.cuit && <span className="text-xs text-gray-400">{p.cuit}</span>}
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-3 border-t flex justify-end">
+              <button onClick={() => setModalAbierto(false)} className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ─── CuentaContableSelector ───────────────────────────────────────────────────
+function CuentaContableSelector({
+  value, onChange, cuentasPermitidas,
+}: {
+  value: string
+  onChange: (id: string, codigo?: string, nombre?: string) => void
+  cuentasPermitidas?: { id: string; codigo: string; nombre: string }[]
+}) {
+  const tieneRestriccion = (cuentasPermitidas?.length ?? 0) > 0
+  const [query, setQuery] = React.useState("")
+  const [opciones, setOpciones] = React.useState<{ id: string; codigo: string; nombre: string }[]>([])
+  const [abierto, setAbierto] = React.useState(false)
+  const [modalAbierto, setModalAbierto] = React.useState(false)
+  const [seleccionada, setSeleccionada] = React.useState<{ id: string; codigo: string; nombre: string } | null>(null)
+  const [dropdownPos, setDropdownPos] = React.useState({ top: 0, left: 0, width: 0 })
+  const refTrigger = React.useRef<HTMLDivElement>(null)
+
+  // Resolver cuenta seleccionada desde id
+  React.useEffect(() => {
+    if (!value) { setSeleccionada(null); return }
+    if (tieneRestriccion) {
+      setSeleccionada(cuentasPermitidas!.find(c => c.id === value) ?? null)
+      return
+    }
+    fetch(`/api/contabilidad/cuentas?id=${value}`)
+      .then(r => r.json())
+      .then(data => { if (data?.data) setSeleccionada(data.data) })
+      .catch(() => {})
+  }, [value, tieneRestriccion])
+
+  // Calcular posición del dropdown relativa al viewport
+  const abrirDropdown = () => {
+    if (refTrigger.current) {
+      const rect = refTrigger.current.getBoundingClientRect()
+      setDropdownPos({ top: rect.bottom + window.scrollY + 4, left: rect.left + window.scrollX, width: rect.width })
+    }
+    setAbierto(v => !v)
+  }
+
+  // Cerrar al hacer click fuera
+  React.useEffect(() => {
+    if (!abierto) return
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node
+      const dropdown = document.getElementById("cuenta-selector-dropdown")
+      if (refTrigger.current && !refTrigger.current.contains(target) && !dropdown?.contains(target)) {
+        setAbierto(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [abierto])
+
+  // Cargar 5 sugerencias al abrir o cambiar query
+  React.useEffect(() => {
+    if (!abierto) { setOpciones([]); return }
+    if (tieneRestriccion) {
+      const q = query.trim().toLowerCase()
+      const filtradas = q
+        ? cuentasPermitidas!.filter(c => c.codigo.includes(q) || c.nombre.toLowerCase().includes(q))
+        : cuentasPermitidas!
+      setOpciones(filtradas.slice(0, 5))
+      return
+    }
+    const delay = query.trim().length > 0 ? 300 : 0
+    const t = setTimeout(() => {
+      const qs = query.trim()
+      const url = qs.length > 0
+        ? `/api/contabilidad/cuentas?q=${encodeURIComponent(qs)}&limit=5`
+        : `/api/contabilidad/cuentas?q=&limit=5`
+      fetch(url)
+        .then(r => r.json())
+        .then(data => setOpciones(Array.isArray(data?.data) ? data.data : []))
+        .catch(() => {})
+    }, delay)
+    return () => clearTimeout(t)
+  }, [query, abierto, tieneRestriccion])
+
+  const seleccionar = (op: { id: string; codigo: string; nombre: string }) => {
+    setSeleccionada(op)
+    onChange(op.id, op.codigo, op.nombre)
+    setAbierto(false)
+    setQuery("")
+  }
+
+  const dropdown = abierto ? (
+    <div
+      id="cuenta-selector-dropdown"
+      style={{ position: "absolute", top: dropdownPos.top, left: dropdownPos.left, minWidth: Math.min(dropdownPos.width, 360), maxWidth: 480, zIndex: 9999 }}
+      className="bg-white border border-gray-200 rounded-lg shadow-xl flex flex-col"
+    >
+      <input
+        autoFocus
+        type="text"
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        placeholder="Código o nombre..."
+        className="w-full px-3 py-2 border-b border-gray-200 text-sm focus:outline-none rounded-t-lg"
+      />
+      {opciones.map(op => (
+        <div key={op.id}
+          className="px-3 py-2 text-sm hover:bg-indigo-50 cursor-pointer flex items-center gap-2 border-b border-gray-50 transition-colors"
+          onMouseDown={e => { e.preventDefault(); seleccionar(op) }}>
+          <span className="font-mono text-xs text-gray-500 w-20 shrink-0">{op.codigo}</span>
+          <span className="text-gray-800">{op.nombre}</span>
+        </div>
+      ))}
+      {opciones.length === 0 && query.trim() && (
+        <div className="px-3 py-2 text-sm text-gray-400 italic">Sin resultados</div>
+      )}
+      {/* Botón buscar más — siempre visible */}
+      <div
+        role="button"
+        onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setAbierto(false); requestAnimationFrame(() => setModalAbierto(true)) }}
+        className="px-3 py-2 text-sm font-medium flex items-center gap-2 rounded-b-lg cursor-pointer"
+        style={{ backgroundColor: '#eef2ff', color: '#3730a3', borderTop: '2px solid #c7d2fe' }}
+      >
+        <Search className="w-3.5 h-3.5 shrink-0" />
+        <span>Buscar en todas las cuentas...</span>
+      </div>
+    </div>
+  ) : null
+
+  return (
+    <>
+      <div ref={refTrigger} className="flex-1">
+        {/* Trigger */}
+        <div
+          className="w-full px-3 py-2 border border-gray-300 rounded focus-within:ring-1 focus-within:ring-indigo-400 bg-white cursor-pointer flex items-center justify-between text-sm"
+          onClick={abrirDropdown}
+        >
+          <span className={seleccionada ? "text-gray-900 font-mono text-xs" : "text-gray-400 text-sm"}>
+            {seleccionada ? `${seleccionada.codigo} — ${seleccionada.nombre}` : "Buscar cuenta contable..."}
+          </span>
+          {seleccionada ? (
+            <button type="button" className="text-gray-400 hover:text-red-500 ml-2"
+              onClick={e => { e.stopPropagation(); setSeleccionada(null); onChange("") }}>
+              <X className="w-3 h-3" />
+            </button>
+          ) : (
+            <ChevronDown className="w-4 h-4 text-gray-400" />
+          )}
+        </div>
+      </div>
+
+      {/* Dropdown renderizado en body via portal */}
+      {typeof document !== "undefined" && abierto && ReactDOM.createPortal(dropdown, document.body)}
+
+      {/* Modal completo */}
+      {modalAbierto && (
+        <ModalCuentaContable
+          cuentasPermitidas={cuentasPermitidas}
+          onSelect={seleccionar}
+          onClose={() => setModalAbierto(false)}
+        />
+      )}
+    </>
+  )
+}
+
 export default function ModuloCompras() {
   // Estado global persistente
   const {
@@ -742,7 +1221,35 @@ export default function ModuloCompras() {
   useEffect(() => {
     setLoadingCatProv(true)
     getCategoriaProveedores()
-      .then(rows => {
+      .then(async rows => {
+        const supabase = createSupabaseClient()
+        // Cargar nombres de cuenta_pagar_id para cada categoría
+        const ids = [...new Set(rows.map(r => r.cuenta_pagar_id).filter(Boolean))]
+        const cuentasMap: Record<string, { codigo: string; nombre: string }> = {}
+        if (ids.length > 0) {
+          const { data: cuentas } = await supabase
+            .from("contabilidad_plan_cuentas")
+            .select("id, codigo, nombre")
+            .in("id", ids as string[])
+          for (const c of cuentas ?? []) {
+            cuentasMap[c.id] = { codigo: c.codigo, nombre: c.nombre }
+          }
+        }
+        // Cargar cuentas permitidas (pivot categorias_proveedor_cuentas)
+        const catIds = rows.map(r => r.id)
+        const cuentasPermitidasMap: Record<number, { id: string; codigo: string; nombre: string }[]> = {}
+        if (catIds.length > 0) {
+          const { data: pivot } = await supabase
+            .from("categorias_proveedor_cuentas")
+            .select("categoria_id, cuenta_id, contabilidad_plan_cuentas(id, codigo, nombre)")
+            .in("categoria_id", catIds)
+          for (const row of pivot ?? []) {
+            const c = (row as any).contabilidad_plan_cuentas
+            if (!c) continue
+            if (!cuentasPermitidasMap[row.categoria_id]) cuentasPermitidasMap[row.categoria_id] = []
+            cuentasPermitidasMap[row.categoria_id].push({ id: c.id, codigo: c.codigo, nombre: c.nombre })
+          }
+        }
         setCategoriasProveedor(rows.map(r => ({
           id: r.id,
           nombre: r.nombre,
@@ -751,9 +1258,13 @@ export default function ModuloCompras() {
           tipo_control: r.tipo_control as CategoriaProveedor["tipo_control"],
           cuenta_cobrar_defecto: r.cuenta_cobrar_defecto,
           cuenta_pagar_defecto: r.cuenta_pagar_defecto,
+          cuenta_pagar_id: r.cuenta_pagar_id ?? null,
+          cuenta_pagar_codigo: r.cuenta_pagar_id ? cuentasMap[r.cuenta_pagar_id]?.codigo : undefined,
+          cuenta_pagar_nombre: r.cuenta_pagar_id ? cuentasMap[r.cuenta_pagar_id]?.nombre : undefined,
           requiere_oc_para_facturar: r.requiere_oc_para_facturar,
           comprobantes_confidenciales: r.comprobantes_confidenciales,
           listas_precios: [],
+          cuentas_permitidas: cuentasPermitidasMap[r.id] ?? [],
         })))
       })
       .catch(console.error)
@@ -767,9 +1278,13 @@ export default function ModuloCompras() {
     tipo_control: "Ninguno",
     cuenta_cobrar_defecto: "",
     cuenta_pagar_defecto: "",
+    cuenta_pagar_id: null,
+    cuenta_pagar_codigo: undefined,
+    cuenta_pagar_nombre: undefined,
     requiere_oc_para_facturar: false,
     comprobantes_confidenciales: false,
     listas_precios: [],
+    cuentas_permitidas: [],
   }
   const [nuevaCatProv, setNuevaCatProv] = useState<Omit<CategoriaProveedor, "id">>(catProvFormVacio)
 
@@ -778,8 +1293,6 @@ export default function ModuloCompras() {
 
   const SUCURSALES_LISTA = sucursales.map(s => s.nombre)
   const MONEDAS_LISTA: Array<"ARS" | "USD" | "EUR"> = ["ARS", "USD", "EUR"]
-  const CUENTAS_GASTOS = ["5.1.1 - Compras Mercadería", "5.1.2 - Gastos Importación", "5.2.1 - Servicios", "5.2.2 - Flete y Aduanas"]
-  const TIPOS_COTIZACION = ["Dólar Oficial", "Dólar MEP", "Dólar Blue"]
 
   const proveedorFormVacio: Omit<Proveedor, "id" | "codigo" | "saldo"> = {
     nombre: "",
@@ -815,6 +1328,8 @@ export default function ModuloCompras() {
     sucursal_origen: "",
     moneda_defecto: "ARS",
     cuenta_gastos_defecto: "",
+    cuenta_gastos_defecto_codigo: "",
+    cuenta_gastos_defecto_nombre: "",
     cuenta_analitica: "",
     tipo_cotizacion_defecto: "",
     observaciones: "",
@@ -965,6 +1480,45 @@ export default function ModuloCompras() {
   // Facturas de Compra
   const [selectedFacturaCompra, setSelectedFacturaCompra] = useState<FacturaCompra | null>(null)
   const [creandoFacturaCompra, setCreandoFacturaCompra] = useState(false)
+  const [fcBusqueda, setFcBusqueda] = useState("")
+  const [fcErrorPublicar, setFcErrorPublicar] = useState<string | null>(null)
+  const [fcPublicando, setFcPublicando] = useState(false)
+  const [fcLineas, setFcLineas] = useState<FacturaCompraLinea[]>([])
+  const [fcImpuestos, setFcImpuestos] = useState<{ nombre: string; redondeo: number; importe: number }[]>([])
+  const fcLineaVacia = (): FacturaCompraLinea => ({
+    cuenta_contable_id: null,
+    cuenta_codigo: "",
+    cuenta_nombre: "",
+    descripcion: "",
+    cantidad: 1,
+    precio_unitario: 0,
+    descuento_pct: 0,
+    alicuota_iva: 0,
+    subtotal: 0,
+    iva: 0,
+    total_linea: 0,
+    orden: 0,
+  })
+  const facturaFormVacio: Omit<FacturaCompra, "id" | "lineas" | "seguimiento"> = {
+    numero: "",
+    tipo: "A",
+    fecha: new Date().toISOString().split("T")[0],
+    fecha_vencimiento: "",
+    proveedor_id: 0,
+    proveedor_nombre: "",
+    estado: "borrador",
+    moneda: "ARS",
+    tipo_cambio: 1,
+    cotizacion: undefined,
+    tipo_cotizacion: undefined,
+    sucursal: "",
+    subtotal: 0,
+    impuestos: 0,
+    total: 0,
+    saldo: 0,
+  }
+  const [fcForm, setFcForm] = useState<Omit<FacturaCompra, "id" | "lineas" | "seguimiento">>(facturaFormVacio)
+  const setFc = (patch: Partial<typeof fcForm>) => setFcForm(prev => ({ ...prev, ...patch }))
 
   // Notas de Crédito de Compra
   const [notasCreditoCompra, setNotasCreditoCompra] = useState<NotaCreditoCompra[]>([])
@@ -1396,11 +1950,11 @@ export default function ModuloCompras() {
               onClick={() => {
                 if (!selectedProveedor) return
                 setNuevoProveedor({
-                  nombre: selectedProveedor.nombre,
+                  nombre: selectedProveedor.nombre ?? selectedProveedor.razon_social ?? "",
                   nombre_fantasia: selectedProveedor.nombre_fantasia ?? "",
-                  razon_social: selectedProveedor.razon_social,
-                  tipo_documento: selectedProveedor.tipo_documento,
-                  numero_documento: selectedProveedor.numero_documento,
+                  razon_social: selectedProveedor.razon_social ?? selectedProveedor.nombre ?? "",
+                  tipo_documento: selectedProveedor.tipo_documento ?? "CUIT",
+                  numero_documento: selectedProveedor.numero_documento ?? selectedProveedor.cuit ?? "",
                   posicion_fiscal: selectedProveedor.posicion_fiscal ?? "Responsable Inscripto",
                   categoria_proveedor: selectedProveedor.categoria_proveedor ?? "Proveedor Nacional",
                   celular: selectedProveedor.celular ?? selectedProveedor.telefono ?? "",
@@ -1429,6 +1983,8 @@ export default function ModuloCompras() {
                   sucursal_origen: selectedProveedor.sucursal_origen ?? "",
                   moneda_defecto: selectedProveedor.moneda_defecto ?? selectedProveedor.moneda_habitual,
                   cuenta_gastos_defecto: selectedProveedor.cuenta_gastos_defecto ?? "",
+                  cuenta_gastos_defecto_codigo: selectedProveedor.cuenta_gastos_defecto_codigo ?? "",
+                  cuenta_gastos_defecto_nombre: selectedProveedor.cuenta_gastos_defecto_nombre ?? "",
                   cuenta_analitica: selectedProveedor.cuenta_analitica ?? "",
                   tipo_cotizacion_defecto: selectedProveedor.tipo_cotizacion_defecto ?? "",
                   observaciones: selectedProveedor.observaciones ?? "",
@@ -1620,8 +2176,8 @@ export default function ModuloCompras() {
     const setP = (patch: Partial<typeof prov>) => setNuevoProveedor(prev => ({ ...prev, ...patch }))
 
     const handleGuardar = async () => {
-      if (!prov.nombre.trim()) return
-      if (prov.tipo_documento !== "Sin documento" && !prov.numero_documento.trim()) return
+      if (!(prov.nombre ?? "").trim()) return
+      if (prov.tipo_documento !== "Sin documento" && !(prov.numero_documento ?? "").trim()) return
 
       const payload = {
         razon_social: prov.nombre,
@@ -1629,14 +2185,29 @@ export default function ModuloCompras() {
         cuit: prov.numero_documento || null,
         categoria: prov.categoria || "privado",
         tipo: prov.tipo || "nacional",
+        posicion_fiscal: prov.posicion_fiscal || null,
+        categoria_proveedor: prov.categoria_proveedor || null,
         email: prov.email || null,
+        celular: prov.celular || null,
         telefono: prov.telefono || null,
-        direccion: prov.direccion || null,
+        direccion: prov.calle_numero || prov.direccion || null,
+        calle_numero: prov.calle_numero || null,
         ciudad: prov.ciudad || null,
+        provincia: prov.provincia || null,
         pais: prov.pais || "Argentina",
+        codigo_postal: prov.codigo_postal || null,
         condicion_pago: prov.condicion_pago || null,
         moneda_habitual: prov.moneda_habitual || "ARS",
+        moneda_defecto: prov.moneda_defecto || prov.moneda_habitual || "ARS",
         estado: prov.activo ? "activo" : "inactivo",
+        confidencial: prov.confidencial ?? false,
+        sucursal_origen: prov.sucursal_origen || null,
+        observaciones: prov.observaciones || null,
+        cuenta_gastos_defecto: prov.cuenta_gastos_defecto || null,
+        cuenta_gastos_defecto_codigo: prov.cuenta_gastos_defecto_codigo || null,
+        cuenta_gastos_defecto_nombre: prov.cuenta_gastos_defecto_nombre || null,
+        cuenta_analitica: prov.cuenta_analitica || null,
+        tipo_cotizacion_defecto: prov.tipo_cotizacion_defecto || null,
       }
 
       try {
@@ -1688,15 +2259,33 @@ export default function ModuloCompras() {
     return (
       <div className="max-w-5xl mx-auto">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <BotonVolver onClick={handleCancelar} variant="minimal" texto="" />
-          <div>
-            <h1 className="text-2xl font-bold text-amber-900">
-              {modoEdicion ? `Editando: ${selectedProveedor?.nombre}` : "Nuevo Proveedor"}
-            </h1>
-            <p className="text-sm text-gray-500">
-              {modoEdicion ? selectedProveedor?.codigo : "Complete los datos del nuevo proveedor"}
-            </p>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <BotonVolver onClick={handleCancelar} variant="minimal" texto="" />
+            <div>
+              <h1 className="text-2xl font-bold text-amber-900">
+                {modoEdicion ? `Editando: ${selectedProveedor?.nombre}` : "Nuevo Proveedor"}
+              </h1>
+              <p className="text-sm text-gray-500">
+                {modoEdicion ? selectedProveedor?.codigo : "Complete los datos del nuevo proveedor"}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleCancelar}
+              className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleGuardar}
+              disabled={!(prov.nombre ?? "").trim() || (prov.tipo_documento !== "Sin documento" && !(prov.numero_documento ?? "").trim())}
+              className="flex items-center gap-2 px-4 py-2 text-sm bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Save className="w-4 h-4" />
+              {modoEdicion ? "Guardar Cambios" : "Crear Proveedor"}
+            </button>
           </div>
         </div>
 
@@ -2101,14 +2690,10 @@ export default function ModuloCompras() {
               <div className="space-y-4 max-w-lg">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta de Gastos por Defecto</label>
-                  <select
+                  <CuentaContableSelector
                     value={prov.cuenta_gastos_defecto}
-                    onChange={e => setP({ cuenta_gastos_defecto: e.target.value })}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">— Sin asignar —</option>
-                    {CUENTAS_GASTOS.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                    onChange={(id, codigo, nombre) => setP({ cuenta_gastos_defecto: id, cuenta_gastos_defecto_codigo: codigo ?? "", cuenta_gastos_defecto_nombre: nombre ?? "" })}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta Analítica para Compras</label>
@@ -2128,7 +2713,9 @@ export default function ModuloCompras() {
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">— Sin asignar —</option>
-                    {TIPOS_COTIZACION.map(t => <option key={t} value={t}>{t}</option>)}
+                    <option value="oficial">Dólar Oficial</option>
+                    <option value="blue">Dólar Blue</option>
+                    <option value="mep">Dólar MEP</option>
                   </select>
                   {prov.moneda_defecto === "ARS" && (
                     <p className="text-xs text-gray-400 mt-1">Relevante principalmente cuando la moneda es distinta de ARS.</p>
@@ -2155,23 +2742,6 @@ export default function ModuloCompras() {
           </div>
         </div>
 
-        {/* Acciones */}
-        <div className="flex items-center justify-end gap-3 mt-4">
-          <button
-            onClick={handleCancelar}
-            className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleGuardar}
-            disabled={!prov.nombre.trim() || (prov.tipo_documento !== "Sin documento" && !prov.numero_documento.trim())}
-            className="flex items-center gap-2 px-4 py-2 text-sm bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Save className="w-4 h-4" />
-            {modoEdicion ? "Guardar Cambios" : "Crear Proveedor"}
-          </button>
-        </div>
       </div>
     )
   }
@@ -3008,18 +3578,14 @@ export default function ModuloCompras() {
               </div>
               <div>
                 <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Proveedor <span className="text-red-500">*</span></label>
-                <select
-                  value={oc.proveedor_id || ""}
-                  onChange={e => {
-                    const p = proveedores.find(p => p.id === Number(e.target.value))
-                    if (p) setNuevaOC(prev => ({ ...prev, proveedor_id: p.id, proveedor_nombre: p.nombre, moneda: p.moneda_habitual }))
+                <ProveedorSelector
+                  value={oc.proveedor_id ?? null}
+                  onChange={(id, nombre, moneda) => {
+                    if (id) setNuevaOC(prev => ({ ...prev, proveedor_id: id, proveedor_nombre: nombre, moneda: moneda ?? prev.moneda }))
                     else setNuevaOC(prev => ({ ...prev, proveedor_id: undefined, proveedor_nombre: "" }))
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white"
-                >
-                  <option value="">Seleccionar proveedor...</option>
-                  {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre || p.razon_social || `Proveedor #${p.id}`}</option>)}
-                </select>
+                  proveedores={proveedores}
+                />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Termino de Pago</label>
@@ -4828,8 +5394,581 @@ export default function ModuloCompras() {
   // RENDER FACTURAS DE COMPRA
   // =====================================================
   const renderFacturasCompra = () => {
-    const facturasMock: { id: number; numero: string; fecha: string; proveedor: string; recepcion: string; subtotal: number; iva: number; total: number; estado: string }[] = []
+    const facturasFiltradas = facturasCompra.filter(f => {
+      const q = fcBusqueda.toLowerCase()
+      if (!q) return true
+      return (
+        f.numero?.toLowerCase().includes(q) ||
+        f.proveedor_nombre?.toLowerCase().includes(q)
+      )
+    })
 
+    const handleNuevaFac = async () => {
+      setSelectedFacturaCompra(null)
+      // Generar número correlativo automático
+      let numeroAuto = ""
+      try {
+        const res = await fetch("/api/compras/facturas/numero-siguiente")
+        if (res.ok) {
+          const json = await res.json()
+          numeroAuto = json.numero ?? ""
+        }
+      } catch {}
+      setFcForm({ ...facturaFormVacio, numero: numeroAuto })
+      setFcLineas([fcLineaVacia()])
+      setFcImpuestos([])
+      setFcErrorPublicar(null)
+      setCreandoFacturaCompra(true)
+    }
+
+    // Calcular totales desde líneas (sin IVA en línea — IVA va en sección separada)
+    const calcularTotalesLineas = (lineas: FacturaCompraLinea[], _tipo?: string) => {
+      let subtotal = 0
+      for (const l of lineas) {
+        subtotal += l.cantidad * l.precio_unitario * (1 - l.descuento_pct / 100)
+      }
+      return { subtotal }
+    }
+
+    const actualizarLinea = (idx: number, patch: Partial<FacturaCompraLinea>) => {
+      setFcLineas(prev => {
+        const nueva = prev.map((l, i) => {
+          if (i !== idx) return l
+          const merged = { ...l, ...patch }
+          merged.subtotal = merged.cantidad * merged.precio_unitario * (1 - merged.descuento_pct / 100)
+          merged.iva = 0
+          merged.total_linea = merged.subtotal
+          return merged
+        })
+        const tots = calcularTotalesLineas(nueva)
+        const ivaSum = fcImpuestos.reduce((s, t) => s + t.importe, 0)
+        setFcForm(prev2 => ({ ...prev2, subtotal: tots.subtotal, impuestos: ivaSum, total: tots.subtotal + ivaSum, saldo: tots.subtotal + ivaSum }))
+        return nueva
+      })
+    }
+
+    const getCuentaDefectoCategoria = (proveedorId: number) => {
+      const prov = proveedores.find(p => p.id === proveedorId)
+      if (!prov?.categoria_proveedor) return null
+      const cat = categoriasProveedor.find(c => c.nombre === prov.categoria_proveedor)
+      if (!cat?.cuenta_pagar_id) return null
+      return { cuenta_contable_id: cat.cuenta_pagar_id, cuenta_codigo: cat.cuenta_pagar_codigo ?? "", cuenta_nombre: cat.cuenta_pagar_nombre ?? "" }
+    }
+
+    const agregarLinea = () => {
+      const cuentaDefecto = getCuentaDefectoCategoria(fcForm.proveedor_id) ?? {}
+      setFcLineas(prev => [...prev, { ...fcLineaVacia(), orden: prev.length, ...cuentaDefecto }])
+    }
+    const eliminarLinea = (idx: number) => {
+      setFcLineas(prev => {
+        const nueva = prev.filter((_, i) => i !== idx)
+        const tots = calcularTotalesLineas(nueva)
+        const ivaSum = fcImpuestos.reduce((s, t) => s + t.importe, 0)
+        setFcForm(prev2 => ({ ...prev2, subtotal: tots.subtotal, impuestos: ivaSum, total: tots.subtotal + ivaSum, saldo: tots.subtotal + ivaSum }))
+        return nueva
+      })
+    }
+
+    const actualizarImpuesto = (idx: number, patch: Partial<{ nombre: string; redondeo: number; importe: number }>) => {
+      setFcImpuestos(prev => {
+        const nueva = prev.map((t, i) => i === idx ? { ...t, ...patch } : t)
+        const ivaSum = nueva.reduce((s, t) => s + t.importe, 0)
+        const sub = fcLineas.reduce((s, l) => s + l.cantidad * l.precio_unitario * (1 - l.descuento_pct / 100), 0)
+        setFcForm(prev2 => ({ ...prev2, impuestos: ivaSum, total: sub + ivaSum, saldo: sub + ivaSum }))
+        return nueva
+      })
+    }
+    const agregarImpuesto = () => setFcImpuestos(prev => [...prev, { nombre: "", redondeo: 0, importe: 0 }])
+    const eliminarImpuesto = (idx: number) => {
+      setFcImpuestos(prev => {
+        const nueva = prev.filter((_, i) => i !== idx)
+        const ivaSum = nueva.reduce((s, t) => s + t.importe, 0)
+        const sub = fcLineas.reduce((s, l) => s + l.cantidad * l.precio_unitario * (1 - l.descuento_pct / 100), 0)
+        setFcForm(prev2 => ({ ...prev2, impuestos: ivaSum, total: sub + ivaSum, saldo: sub + ivaSum }))
+        return nueva
+      })
+    }
+
+    const importarLineasDesdeOC = () => {
+      if (!fcForm.orden_compra_id) return
+      const oc = ordenesCompra.find(o => o.id === fcForm.orden_compra_id)
+      if (!oc) return
+      const lineasOC: FacturaCompraLinea[] = (oc.items ?? []).map((item: any, idx: number) => ({
+        ...fcLineaVacia(),
+        descripcion: item.descripcion ?? item.producto_nombre ?? "",
+        cantidad: item.cantidad ?? 1,
+        precio_unitario: item.precio_unitario ?? 0,
+        subtotal: (item.cantidad ?? 1) * (item.precio_unitario ?? 0),
+        orden: idx,
+      }))
+      if (lineasOC.length === 0) return
+      setFcLineas(lineasOC)
+      const tots = calcularTotalesLineas(lineasOC)
+      const ivaSum = fcImpuestos.reduce((s, t) => s + t.importe, 0)
+      setFcForm(prev => ({ ...prev, subtotal: tots.subtotal, impuestos: ivaSum, total: tots.subtotal + ivaSum, saldo: tots.subtotal + ivaSum }))
+    }
+
+    const handleGuardarFac = async () => {
+      if (!fcForm.proveedor_id) return
+      try {
+        const sub = fcLineas.reduce((s, l) => s + l.subtotal, 0)
+        const ivaSum = fcImpuestos.reduce((s, t) => s + t.importe, 0)
+        const payload = {
+          numero: fcForm.numero,
+          tipo: fcForm.tipo,
+          fecha: fcForm.fecha,
+          fecha_vencimiento: fcForm.fecha_vencimiento || null,
+          proveedor_id: fcForm.proveedor_id,
+          proveedor_nombre: fcForm.proveedor_nombre,
+          estado: "borrador",
+          moneda: fcForm.moneda,
+          tipo_cambio: fcForm.tipo_cambio,
+          cotizacion: fcForm.cotizacion ?? null,
+          tipo_cotizacion: fcForm.tipo_cotizacion ?? null,
+          sucursal: fcForm.sucursal ?? null,
+          subtotal: sub,
+          impuestos: ivaSum,
+          total: sub + ivaSum,
+          saldo: sub + ivaSum,
+          orden_compra_id: fcForm.orden_compra_id ?? null,
+          lineas: fcLineas.map((l, i) => ({ ...l, orden: i })),
+        }
+        if (selectedFacturaCompra) {
+          const updated = await guardarFacturaCompra(payload, selectedFacturaCompra.id)
+          const merged = { ...selectedFacturaCompra, ...updated, lineas: fcLineas }
+          setFacturasCompra(prev => prev.map(f => f.id === selectedFacturaCompra.id ? merged : f))
+          setCreandoFacturaCompra(false)
+          setSelectedFacturaCompra(merged)
+        } else {
+          const created = await guardarFacturaCompra(payload)
+          const mergedNew = { ...created, lineas: fcLineas }
+          setFacturasCompra(prev => [...prev, mergedNew])
+          setCreandoFacturaCompra(false)
+          setSelectedFacturaCompra(mergedNew)
+        }
+      } catch (e: any) {
+        setFcErrorPublicar(e.message ?? "Error al guardar")
+      }
+    }
+
+    const handlePublicarFac = async (fac: FacturaCompra) => {
+      setFcPublicando(true)
+      setFcErrorPublicar(null)
+      try {
+        await publicarFacturaCompra(fac.id)
+        setFacturasCompra(prev => prev.map(f => f.id === fac.id ? { ...f, estado: "pendiente" } : f))
+        setSelectedFacturaCompra(prev => prev ? { ...prev, estado: "pendiente" } : prev)
+      } catch (e: any) {
+        setFcErrorPublicar(e.message ?? "Error al publicar")
+      } finally {
+        setFcPublicando(false)
+      }
+    }
+
+    const estadoColor: Record<string, string> = {
+      borrador:      "bg-gray-100 text-gray-600",
+      pendiente:     "bg-amber-100 text-amber-700",
+      pagada_parcial:"bg-blue-100 text-blue-700",
+      pagada:        "bg-green-100 text-green-700",
+      cancelada:     "bg-red-100 text-red-700",
+    }
+    const estadoLabel: Record<string, string> = {
+      borrador:      "Borrador",
+      pendiente:     "Pendiente",
+      pagada_parcial:"Pago Parcial",
+      pagada:        "Pagada",
+      cancelada:     "Cancelada",
+    }
+
+    // ── Vista detalle ──
+    if (selectedFacturaCompra && !creandoFacturaCompra) {
+      const f = selectedFacturaCompra
+      return (
+        <div>
+          <div className="text-sm text-gray-500 mb-4 flex items-center gap-2">
+            <button onClick={() => setSelectedFacturaCompra(null)} className="hover:text-blue-600">Facturas de Compra</button>
+            <span>/</span>
+            <span className="text-gray-900">{f.numero}</span>
+          </div>
+          <div className="flex items-start justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <BotonVolver onClick={() => setSelectedFacturaCompra(null)} variant="minimal" texto="" />
+              <div>
+                <h1 className="text-2xl font-bold text-amber-900">Factura {f.tipo} — {f.numero}</h1>
+                <p className="text-sm text-gray-500">{f.proveedor_nombre} · {formatDate(f.fecha)}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {f.estado === "borrador" && (
+                <button
+                  onClick={() => handlePublicarFac(f)}
+                  disabled={fcPublicando}
+                  className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800 disabled:opacity-50"
+                >
+                  {fcPublicando ? "Publicando..." : "Publicar"}
+                </button>
+              )}
+              {f.estado === "borrador" && (
+                <button
+                  onClick={() => {
+                    setFcForm({
+                      numero: f.numero, tipo: f.tipo, fecha: f.fecha,
+                      fecha_vencimiento: f.fecha_vencimiento ?? "",
+                      proveedor_id: f.proveedor_id, proveedor_nombre: f.proveedor_nombre,
+                      estado: f.estado, moneda: f.moneda, tipo_cambio: f.tipo_cambio,
+                      cotizacion: f.cotizacion, tipo_cotizacion: f.tipo_cotizacion,
+                      sucursal: f.sucursal,
+                      subtotal: f.subtotal, impuestos: f.impuestos, total: f.total, saldo: f.saldo,
+                      orden_compra_id: f.orden_compra_id,
+                    })
+                    setFcLineas(f.lineas && f.lineas.length > 0 ? f.lineas : [fcLineaVacia()])
+                    setCreandoFacturaCompra(true)
+                  }}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-1"
+                >
+                  <Edit className="w-4 h-4" /> Editar
+                </button>
+              )}
+              <span className={`px-3 py-1.5 rounded-full text-sm font-semibold ${estadoColor[f.estado] ?? "bg-gray-100 text-gray-600"}`}>
+                {estadoLabel[f.estado] ?? f.estado}
+              </span>
+            </div>
+          </div>
+
+          {fcErrorPublicar && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{fcErrorPublicar}</div>
+          )}
+
+          <div className="grid grid-cols-3 gap-6">
+            <div className="col-span-2 space-y-4">
+              <div className="bg-white rounded-lg border p-6">
+                <h3 className="font-semibold text-gray-900 mb-4">Datos del Comprobante</h3>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div><span className="text-gray-500">Proveedor:</span><span className="ml-2 font-medium">{f.proveedor_nombre}</span></div>
+                  <div><span className="text-gray-500">Tipo:</span><span className="ml-2 font-medium">Factura {f.tipo}</span></div>
+                  <div><span className="text-gray-500">Número:</span><span className="ml-2 font-medium">{f.numero}</span></div>
+                  <div><span className="text-gray-500">Fecha:</span><span className="ml-2 font-medium">{formatDate(f.fecha)}</span></div>
+                  {f.fecha_vencimiento && <div><span className="text-gray-500">Vencimiento:</span><span className="ml-2 font-medium">{formatDate(f.fecha_vencimiento)}</span></div>}
+                  <div><span className="text-gray-500">Moneda:</span><span className="ml-2 font-medium">{f.moneda}</span></div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg border p-6">
+                <h3 className="font-semibold text-gray-900 mb-4">Importes</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span className="font-medium">{formatCurrency(f.subtotal, f.moneda)}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">IVA</span><span className="font-medium">{formatCurrency(f.impuestos, f.moneda)}</span></div>
+                  <div className="flex justify-between border-t pt-2"><span className="font-semibold">Total</span><span className="font-bold text-lg">{formatCurrency(f.total, f.moneda)}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">Saldo</span><span className={`font-medium ${f.saldo > 0 ? "text-red-600" : "text-green-600"}`}>{formatCurrency(f.saldo, f.moneda)}</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-white rounded-lg border p-6">
+                <h3 className="font-semibold text-gray-900 mb-4">Referencias</h3>
+                <div className="space-y-2 text-sm">
+                  {f.orden_compra_id && <div><span className="text-gray-500">OC:</span><span className="ml-2 font-medium text-blue-600">#{f.orden_compra_id}</span></div>}
+                  {f.recepcion_id && <div><span className="text-gray-500">Recepción:</span><span className="ml-2 font-medium text-blue-600">#{f.recepcion_id}</span></div>}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // ── Vista formulario ──
+    if (creandoFacturaCompra) {
+      const f = fcForm
+      const tots = calcularTotalesLineas(fcLineas)
+      // Cuentas permitidas según la categoría del proveedor seleccionado
+      const provSeleccionado = proveedores.find(p => p.id === f.proveedor_id)
+      const catProvSeleccionada = provSeleccionado?.categoria_proveedor
+        ? categoriasProveedor.find(c => c.nombre === provSeleccionado.categoria_proveedor)
+        : null
+      // Prioridad: cuentas_permitidas de la categoría → cuenta_gastos_defecto del proveedor → cuenta_pagar_id de la categoría → sin restricción
+      const cuentasPermitidasFac: { id: string; codigo: string; nombre: string }[] =
+        (catProvSeleccionada?.cuentas_permitidas?.length ?? 0) > 0
+          ? catProvSeleccionada!.cuentas_permitidas
+          : provSeleccionado?.cuenta_gastos_defecto
+            ? [{ id: provSeleccionado.cuenta_gastos_defecto, codigo: provSeleccionado.cuenta_gastos_defecto_codigo ?? "", nombre: provSeleccionado.cuenta_gastos_defecto_nombre ?? "" }]
+            : catProvSeleccionada?.cuenta_pagar_id
+              ? [{ id: catProvSeleccionada.cuenta_pagar_id, codigo: catProvSeleccionada.cuenta_pagar_codigo ?? "", nombre: catProvSeleccionada.cuenta_pagar_nombre ?? "" }]
+              : []
+
+      return (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-4">
+              <BotonVolver onClick={() => { setCreandoFacturaCompra(false); setSelectedFacturaCompra(null) }} variant="minimal" texto="" />
+              <h1 className="text-xl font-bold text-amber-900">
+                {selectedFacturaCompra ? `Editando Factura ${selectedFacturaCompra.numero}` : "Nueva Factura de Compra"}
+              </h1>
+            </div>
+            <div className="flex items-center gap-3">
+              {fcErrorPublicar && <p className="text-sm text-red-600">{fcErrorPublicar}</p>}
+              <button onClick={() => { setCreandoFacturaCompra(false); setSelectedFacturaCompra(null) }}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-100 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={handleGuardarFac}
+                disabled={!fcForm.proveedor_id}
+                className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800 disabled:opacity-40 transition-colors">
+                Guardar borrador
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg border overflow-hidden">
+
+            {/* ── Encabezado ── */}
+            <div className="px-6 py-2 bg-gray-50 border-b">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Datos del comprobante</span>
+            </div>
+            <div className="px-6 pt-5 pb-4 border-b grid grid-cols-3 gap-5">
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Proveedor <span className="text-red-500">*</span></label>
+                <ProveedorSelector
+                  value={f.proveedor_id ?? null}
+                  onChange={(id, nombre) => {
+                    const prov = id ? proveedores.find(p => p.id === id) : null
+                    setFc({ proveedor_id: id ?? 0, proveedor_nombre: nombre })
+                    if (prov?.categoria_proveedor) {
+                      const cat = categoriasProveedor.find(c => c.nombre === prov.categoria_proveedor)
+                      if (cat?.cuenta_pagar_id) {
+                        setFcLineas(prev => prev.map(l => ({
+                          ...l,
+                          cuenta_contable_id: cat.cuenta_pagar_id!,
+                          cuenta_codigo: cat.cuenta_pagar_codigo ?? "",
+                          cuenta_nombre: cat.cuenta_pagar_nombre ?? "",
+                        })))
+                      }
+                    }
+                  }}
+                  proveedores={proveedores}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Número</label>
+                <input type="text" value={f.numero} readOnly
+                  className="w-full border rounded px-3 py-2 text-sm bg-gray-100 text-gray-500 cursor-default" />
+              </div>
+            </div>
+            <div className="px-6 pt-4 pb-4 border-b grid grid-cols-3 gap-5">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Fecha <span className="text-red-500">*</span></label>
+                <input type="date" value={f.fecha} onChange={e => setFc({ fecha: e.target.value })}
+                  className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Vencimiento</label>
+                <input type="date" value={f.fecha_vencimiento ?? ""} onChange={e => setFc({ fecha_vencimiento: e.target.value })}
+                  className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Moneda</label>
+                <select value={f.moneda} onChange={e => setFc({ moneda: e.target.value as "ARS"|"USD"|"EUR" })}
+                  className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="ARS">ARS $</option>
+                  <option value="USD">USD u$s</option>
+                  <option value="EUR">EUR €</option>
+                </select>
+              </div>
+            </div>
+            {f.moneda !== "ARS" && (
+              <div className="px-6 pt-4 pb-4 border-b grid grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Cotización ({f.moneda} → ARS)</label>
+                  <input type="number" min="0" step="0.01" value={f.cotizacion ?? ""}
+                    onChange={e => setFc({ cotizacion: Number(e.target.value) })}
+                    placeholder="Ej: 1200.00"
+                    className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de cotización</label>
+                  <select value={f.tipo_cotizacion ?? ""} onChange={e => setFc({ tipo_cotizacion: e.target.value })}
+                    className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="">Seleccionar...</option>
+                    <option value="Oficial">Oficial</option>
+                    <option value="Blue">Blue</option>
+                    <option value="CCL">CCL</option>
+                    <option value="MEP">MEP</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Orden de Compra */}
+            <div className="px-6 pt-4 pb-4 border-b flex items-end gap-4">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Orden de Compra vinculada <span className="font-normal text-gray-400">(opcional)</span>
+                </label>
+                <select value={f.orden_compra_id ?? ""} onChange={e => setFc({ orden_compra_id: e.target.value ? Number(e.target.value) : undefined })}
+                  className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="">Sin OC vinculada</option>
+                  {ordenesCompra.filter(oc => !f.proveedor_id || oc.proveedor_id === f.proveedor_id)
+                    .map(oc => <option key={oc.id} value={oc.id}>{oc.numero} — {oc.proveedor_nombre}</option>)}
+                </select>
+              </div>
+              {f.orden_compra_id && (
+                <button onClick={importarLineasDesdeOC}
+                  className="px-3 py-2 text-sm border border-indigo-300 text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors whitespace-nowrap">
+                  Importar líneas desde OC
+                </button>
+              )}
+            </div>
+
+            {/* ── Grilla de líneas ── */}
+            <div className="px-6 py-2 bg-gray-50 border-b">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Líneas</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase w-56">Cuenta Contable</th>
+                    <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Descripción</th>
+                    <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase w-20">Cant.</th>
+                    <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase w-28">Precio</th>
+                    <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase w-20">Dto. %</th>
+                    <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase w-28">Importe</th>
+                    <th className="py-2 px-3 w-8"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {fcLineas.map((linea, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50">
+                      <td className="py-2 px-3">
+                        <CuentaContableSelector
+                          value={linea.cuenta_contable_id ?? ""}
+                          cuentasPermitidas={cuentasPermitidasFac.length > 0 ? cuentasPermitidasFac : undefined}
+                          onChange={(id, codigo, nombre) => actualizarLinea(idx, { cuenta_contable_id: id || null, cuenta_codigo: codigo ?? "", cuenta_nombre: nombre ?? "" })}
+                        />
+                        {linea.cuenta_codigo && (
+                          <div className="text-xs text-gray-400 mt-0.5">{linea.cuenta_codigo} — {linea.cuenta_nombre}</div>
+                        )}
+                      </td>
+                      <td className="py-2 px-3">
+                        <input type="text" value={linea.descripcion}
+                          onChange={e => actualizarLinea(idx, { descripcion: e.target.value })}
+                          placeholder="Detalle del ítem"
+                          className="w-full border-0 border-b border-gray-200 px-0 py-1 text-sm focus:outline-none focus:border-indigo-400 bg-transparent" />
+                      </td>
+                      <td className="py-2 px-3">
+                        <input type="number" min="0.001" step="0.001" value={linea.cantidad}
+                          onChange={e => actualizarLinea(idx, { cantidad: Number(e.target.value) })}
+                          className="w-20 text-right border-0 border-b border-gray-200 px-0 py-1 text-sm focus:outline-none focus:border-indigo-400 bg-transparent" />
+                      </td>
+                      <td className="py-2 px-3">
+                        <input type="number" min="0" step="0.01" value={linea.precio_unitario}
+                          onChange={e => actualizarLinea(idx, { precio_unitario: Number(e.target.value) })}
+                          className="w-28 text-right border-0 border-b border-gray-200 px-0 py-1 text-sm focus:outline-none focus:border-indigo-400 bg-transparent" />
+                      </td>
+                      <td className="py-2 px-3">
+                        <input type="number" min="0" max="100" step="0.01" value={linea.descuento_pct}
+                          onChange={e => actualizarLinea(idx, { descuento_pct: Number(e.target.value) })}
+                          className="w-20 text-right border-0 border-b border-gray-200 px-0 py-1 text-sm focus:outline-none focus:border-indigo-400 bg-transparent" />
+                      </td>
+                      <td className="py-2 px-3 text-right font-medium text-gray-800">
+                        {formatCurrency(linea.subtotal, f.moneda)}
+                      </td>
+                      <td className="py-2 px-3">
+                        <button onClick={() => eliminarLinea(idx)} className="text-gray-300 hover:text-red-500 transition-colors">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-6 py-3 border-t border-dashed border-gray-200">
+              <button onClick={agregarLinea}
+                className="flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-800 transition-colors">
+                <Plus className="w-4 h-4" /> Añadir un elemento
+              </button>
+            </div>
+
+            {/* ── Impuestos + Totales ── */}
+            <div className="border-t flex">
+              {/* Sección impuestos (izquierda) */}
+              <div className="flex-1 border-r">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="text-left py-2 px-4 text-xs font-semibold text-gray-500 uppercase">Impuesto</th>
+                      <th className="text-right py-2 px-4 text-xs font-semibold text-gray-500 uppercase w-28">Redondeo</th>
+                      <th className="text-right py-2 px-4 text-xs font-semibold text-gray-500 uppercase w-32">Importe</th>
+                      <th className="py-2 px-3 w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {fcImpuestos.map((imp, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="py-2 px-4">
+                          <input type="text" value={imp.nombre}
+                            onChange={e => actualizarImpuesto(idx, { nombre: e.target.value })}
+                            placeholder="Ej: IVA 21%, Percepción IIBB..."
+                            className="w-full border-0 border-b border-gray-200 px-0 py-1 text-sm focus:outline-none focus:border-indigo-400 bg-transparent" />
+                        </td>
+                        <td className="py-2 px-4">
+                          <input type="number" step="0.01" value={imp.redondeo}
+                            onChange={e => actualizarImpuesto(idx, { redondeo: Number(e.target.value) })}
+                            className="w-28 text-right border-0 border-b border-gray-200 px-0 py-1 text-sm focus:outline-none focus:border-indigo-400 bg-transparent" />
+                        </td>
+                        <td className="py-2 px-4">
+                          <input type="number" step="0.01" value={imp.importe}
+                            onChange={e => actualizarImpuesto(idx, { importe: Number(e.target.value) })}
+                            className="w-32 text-right border-0 border-b border-gray-200 px-0 py-1 text-sm focus:outline-none focus:border-indigo-400 bg-transparent font-medium" />
+                        </td>
+                        <td className="py-2 px-3">
+                          <button onClick={() => eliminarImpuesto(idx)} className="text-gray-300 hover:text-red-500 transition-colors">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="px-4 py-3 border-t border-dashed border-gray-200">
+                  <button onClick={agregarImpuesto}
+                    className="flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-800 transition-colors">
+                    <Plus className="w-4 h-4" /> Añadir un impuesto
+                  </button>
+                </div>
+              </div>
+
+              {/* Totales (derecha) */}
+              <div className="w-72 px-6 py-5 space-y-2 text-sm self-start">
+                <div className="flex justify-between text-gray-600">
+                  <span>Subtotal:</span>
+                  <span className="font-medium">{formatCurrency(tots.subtotal, f.moneda)}</span>
+                </div>
+                <div className="flex justify-between text-gray-600">
+                  <span>Impuestos:</span>
+                  <span className="font-medium">{formatCurrency(fcImpuestos.reduce((s, t) => s + t.importe, 0), f.moneda)}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2 text-base font-bold text-gray-900">
+                  <span>Total:</span>
+                  <span>{formatCurrency(tots.subtotal + fcImpuestos.reduce((s, t) => s + t.importe, 0), f.moneda)}</span>
+                </div>
+                {f.moneda !== "ARS" && f.cotizacion && (
+                  <div className="flex justify-between text-gray-400 text-xs pt-1 border-t">
+                    <span>Saldo:</span>
+                    <span>{formatCurrency(tots.subtotal + fcImpuestos.reduce((s, t) => s + t.importe, 0), f.moneda)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )
+    }
+
+    // ── Vista lista ──
     return (
       <div>
         <div className="flex items-center justify-between mb-6">
@@ -4837,7 +5976,10 @@ export default function ModuloCompras() {
             <h1 className="text-2xl font-bold text-amber-900">Facturas de Compra</h1>
             <p className="text-gray-500 mt-1">Gestione las facturas de proveedores</p>
           </div>
-          <button className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800">
+          <button
+            onClick={handleNuevaFac}
+            className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded-lg hover:bg-indigo-800"
+          >
             <Plus className="w-4 h-4" /> Nueva Factura
           </button>
         </div>
@@ -4845,20 +5987,20 @@ export default function ModuloCompras() {
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
             <p className="text-sm text-gray-500">Total Facturas</p>
-            <p className="text-2xl font-bold text-gray-900">{facturasMock.length}</p>
+            <p className="text-2xl font-bold text-gray-900">{facturasCompra.length}</p>
           </div>
           <div className="bg-white rounded-lg border p-4">
             <p className="text-sm text-gray-500">Pendientes</p>
-            <p className="text-2xl font-bold text-amber-600">{facturasMock.filter(f => f.estado === 'pendiente').length}</p>
+            <p className="text-2xl font-bold text-amber-600">{facturasCompra.filter(f => f.estado === 'pendiente').length}</p>
           </div>
           <div className="bg-white rounded-lg border p-4">
-            <p className="text-sm text-gray-500">Vencidas</p>
-            <p className="text-2xl font-bold text-red-600">{facturasMock.filter(f => f.estado === 'vencida').length}</p>
+            <p className="text-sm text-gray-500">Borradores</p>
+            <p className="text-2xl font-bold text-gray-500">{facturasCompra.filter(f => f.estado === 'borrador').length}</p>
           </div>
           <div className="bg-white rounded-lg border p-4">
             <p className="text-sm text-gray-500">Total Adeudado</p>
             <p className="text-2xl font-bold text-red-600">
-              {formatCurrency(facturasMock.filter(f => f.estado !== 'pagada').reduce((s, f) => s + f.total, 0))}
+              {formatCurrency(facturasCompra.filter(f => f.estado !== 'pagada' && f.estado !== 'cancelada').reduce((s, f) => s + (f.saldo ?? 0), 0))}
             </p>
           </div>
         </div>
@@ -4868,59 +6010,59 @@ export default function ModuloCompras() {
             moduleName="facturas-compra"
             filterOptions={[
               { field: "estado", label: "Estado", values: [
-                { value: "pendiente", label: "Pendiente" },
-                { value: "pagada", label: "Pagada" },
-                { value: "vencida", label: "Vencida" },
+                { value: "borrador",       label: "Borrador" },
+                { value: "pendiente",      label: "Pendiente" },
+                { value: "pagada_parcial", label: "Pago Parcial" },
+                { value: "pagada",         label: "Pagada" },
+                { value: "cancelada",      label: "Cancelada" },
               ]},
             ]}
             groupByOptions={[
-              { id: "estado", label: "Estado", field: "estado" },
-              { id: "proveedor", label: "Proveedor", field: "proveedor" },
+              { id: "estado",    label: "Estado",    field: "estado" },
+              { id: "proveedor", label: "Proveedor", field: "proveedor_nombre" },
             ]}
             activeFilters={activeFiltersFC}
             activeGroupBy={activeGroupByFC}
-            searchTerm=""
+            searchTerm={fcBusqueda}
             onFiltersChange={setActiveFiltersFC}
             onGroupByChange={setActiveGroupByFC}
-            onSearchChange={() => {}}
+            onSearchChange={setFcBusqueda}
             savedFilters={savedFiltersFC}
-            {...makeSavedFilterHandlersC(setSavedFiltersFC, setActiveFiltersFC, setActiveGroupByFC, () => {})}
-            totalCount={facturasMock.length}
-            filteredCount={facturasMock.length}
+            {...makeSavedFilterHandlersC(setSavedFiltersFC, setActiveFiltersFC, setActiveGroupByFC, setFcBusqueda)}
+            totalCount={facturasCompra.length}
+            filteredCount={facturasFiltradas.length}
           />
         </div>
 
         <div className="bg-white rounded-lg border overflow-hidden">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr className="text-xs text-gray-500 uppercase">
-                <th className="text-left py-3 px-4">Número</th>
-                <th className="text-left py-3 px-4">Fecha</th>
-                <th className="text-left py-3 px-4">Proveedor</th>
-                <th className="text-left py-3 px-4">Recepción</th>
-                <th className="text-right py-3 px-4">Subtotal</th>
-                <th className="text-right py-3 px-4">IVA</th>
-                <th className="text-right py-3 px-4">Total</th>
-                <th className="text-center py-3 px-4">Estado</th>
+            <thead className="border-b bg-gray-50">
+              <tr>
+                {["Número", "Fecha", "Proveedor", "Subtotal", "IVA", "Total", "Saldo", "Estado"].map(h => (
+                  <th key={h} className={`py-3 px-4 text-xs font-semibold text-gray-600 uppercase ${h === "Número" || h === "Fecha" || h === "Proveedor" ? "text-left" : "text-right"} ${h === "Estado" ? "text-center" : ""}`}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {facturasMock.map(fac => (
-                <tr key={fac.id} className="border-b hover:bg-gray-50 cursor-pointer">
-                  <td className="py-3 px-4 font-medium text-emerald-700">{fac.numero}</td>
-                  <td className="py-3 px-4 text-sm">{new Date(fac.fecha).toLocaleDateString('es-AR')}</td>
-                  <td className="py-3 px-4 text-sm">{fac.proveedor}</td>
-                  <td className="py-3 px-4 text-sm text-blue-600">{fac.recepcion}</td>
-                  <td className="py-3 px-4 text-sm text-right">{formatCurrency(fac.subtotal)}</td>
-                  <td className="py-3 px-4 text-sm text-right">{formatCurrency(fac.iva)}</td>
-                  <td className="py-3 px-4 text-sm text-right font-semibold">{formatCurrency(fac.total)}</td>
+              {facturasFiltradas.length === 0 && (
+                <tr><td colSpan={8} className="py-12 text-center text-gray-400">No hay facturas de compra registradas</td></tr>
+              )}
+              {facturasFiltradas.map(fac => (
+                <tr
+                  key={fac.id}
+                  className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                  onClick={() => { setSelectedFacturaCompra(fac); setCreandoFacturaCompra(false); setFcErrorPublicar(null) }}
+                >
+                  <td className="py-3 px-4 font-medium text-emerald-700">Fac {fac.tipo} {fac.numero}</td>
+                  <td className="py-3 px-4 text-sm">{formatDate(fac.fecha)}</td>
+                  <td className="py-3 px-4 text-sm">{fac.proveedor_nombre}</td>
+                  <td className="py-3 px-4 text-sm text-right">{formatCurrency(fac.subtotal, fac.moneda)}</td>
+                  <td className="py-3 px-4 text-sm text-right">{formatCurrency(fac.impuestos, fac.moneda)}</td>
+                  <td className="py-3 px-4 text-sm text-right font-semibold">{formatCurrency(fac.total, fac.moneda)}</td>
+                  <td className="py-3 px-4 text-sm text-right">{formatCurrency(fac.saldo ?? 0, fac.moneda)}</td>
                   <td className="py-3 px-4 text-center">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      fac.estado === 'pagada' ? 'bg-green-100 text-green-700' : 
-                      fac.estado === 'vencida' ? 'bg-red-100 text-red-700' :
-                      'bg-amber-100 text-amber-700'
-                    }`}>
-                      {fac.estado.charAt(0).toUpperCase() + fac.estado.slice(1)}
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${estadoColor[fac.estado] ?? "bg-gray-100 text-gray-500"}`}>
+                      {estadoLabel[fac.estado] ?? fac.estado}
                     </span>
                   </td>
                 </tr>
@@ -5363,24 +6505,16 @@ export default function ModuloCompras() {
               <div>
                 <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Proveedor</label>
                 {editable ? (
-                  <select
-                    value={opForm.proveedor_id ?? ""}
-                    onChange={e => {
-                      const prov = proveedores.find(p => p.id === Number(e.target.value))
-                      setOpForm(prev => ({
-                        ...prev,
-                        proveedor_id: prov ? prov.id : undefined,
-                        proveedor_nombre: prov ? (prov.nombre || prov.razon_social || "") : "",
-                      }))
-                      if (prov) {
-                        setOpOCsProveedor(ordenesCompra.filter(oc => oc.proveedor_id === prov.id).map(oc => ({ id: oc.id, numero: oc.numero })))
+                  <ProveedorSelector
+                    value={opForm.proveedor_id ?? null}
+                    onChange={(id, nombre) => {
+                      setOpForm(prev => ({ ...prev, proveedor_id: id, proveedor_nombre: nombre }))
+                      if (id) {
+                        setOpOCsProveedor(ordenesCompra.filter(oc => oc.proveedor_id === id).map(oc => ({ id: oc.id, numero: oc.numero })))
                       }
                     }}
-                    className="w-full border rounded px-2 py-1.5 text-sm"
-                  >
-                    <option value="">Seleccionar proveedor...</option>
-                    {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre || p.razon_social}</option>)}
-                  </select>
+                    proveedores={proveedores}
+                  />
                 ) : <p className="font-medium text-sm">{opForm.proveedor_nombre || "-"}</p>}
               </div>
               <div>
@@ -6033,7 +7167,6 @@ export default function ModuloCompras() {
     const setCat = (patch: Partial<typeof cat>) => setNuevaCatProv(prev => ({ ...prev, ...patch }))
 
     const CUENTAS_COBRAR = ["1.1.1 - Clientes", "1.1.2 - Documentos a Cobrar", "1.1.3 - Cheques en Cartera"]
-    const CUENTAS_PAGAR = ["2.1.1 - Proveedores", "2.1.2 - Documentos a Pagar", "2.1.3 - Anticipo Proveedores"]
 
     const handleGuardarCat = async () => {
       if (!cat.nombre.trim()) return
@@ -6044,20 +7177,29 @@ export default function ModuloCompras() {
         tipo_control: cat.tipo_control,
         cuenta_cobrar_defecto: cat.cuenta_cobrar_defecto,
         cuenta_pagar_defecto: cat.cuenta_pagar_defecto,
+        cuenta_pagar_id: cat.cuenta_pagar_id ?? null,
         requiere_oc_para_facturar: cat.requiere_oc_para_facturar,
         comprobantes_confidenciales: cat.comprobantes_confidenciales,
       }
       try {
+        const supabase = createSupabaseClient()
+        let catId: number
         if (selectedCatProv) {
           const updated = await updateCategoriaProveedor(selectedCatProv.id, payload)
+          catId = selectedCatProv.id
           setCategoriasProveedor(prev => prev.map(c =>
             c.id === selectedCatProv.id
-              ? { ...c, ...updated, tipo_control: updated.tipo_control as CategoriaProveedor["tipo_control"], listas_precios: c.listas_precios }
+              ? { ...c, ...updated, tipo_control: updated.tipo_control as CategoriaProveedor["tipo_control"], listas_precios: c.listas_precios,
+                  cuenta_pagar_id: updated.cuenta_pagar_id ?? null,
+                  cuenta_pagar_codigo: cat.cuenta_pagar_codigo,
+                  cuenta_pagar_nombre: cat.cuenta_pagar_nombre,
+                  cuentas_permitidas: cat.cuentas_permitidas }
               : c
           ))
           setSelectedCatProv(null)
         } else {
           const created = await createCategoriaProveedor(payload)
+          catId = created.id
           setCategoriasProveedor(prev => [...prev, {
             id: created.id,
             nombre: created.nombre,
@@ -6066,10 +7208,21 @@ export default function ModuloCompras() {
             tipo_control: created.tipo_control as CategoriaProveedor["tipo_control"],
             cuenta_cobrar_defecto: created.cuenta_cobrar_defecto,
             cuenta_pagar_defecto: created.cuenta_pagar_defecto,
+            cuenta_pagar_id: created.cuenta_pagar_id ?? null,
+            cuenta_pagar_codigo: cat.cuenta_pagar_codigo,
+            cuenta_pagar_nombre: cat.cuenta_pagar_nombre,
             requiere_oc_para_facturar: created.requiere_oc_para_facturar,
             comprobantes_confidenciales: created.comprobantes_confidenciales,
             listas_precios: [],
+            cuentas_permitidas: cat.cuentas_permitidas,
           }])
+        }
+        // Sincronizar cuentas_permitidas al pivot categorias_proveedor_cuentas
+        await supabase.from("categorias_proveedor_cuentas").delete().eq("categoria_id", catId)
+        if (cat.cuentas_permitidas.length > 0) {
+          await supabase.from("categorias_proveedor_cuentas").insert(
+            cat.cuentas_permitidas.map(cp => ({ categoria_id: catId, cuenta_id: cp.id }))
+          )
         }
         setCreandoCatProv(false)
         setNuevaCatProv(catProvFormVacio)
@@ -6087,8 +7240,7 @@ export default function ModuloCompras() {
     }
 
     const handleVerDetalle = (c: CategoriaProveedor) => {
-      setSelectedCatProv(c)
-      setCreandoCatProv(false)
+      handleEditar(c)
     }
 
     const handleEditar = (c: CategoriaProveedor) => {
@@ -6099,9 +7251,13 @@ export default function ModuloCompras() {
         tipo_control: c.tipo_control,
         cuenta_cobrar_defecto: c.cuenta_cobrar_defecto,
         cuenta_pagar_defecto: c.cuenta_pagar_defecto,
+        cuenta_pagar_id: c.cuenta_pagar_id,
+        cuenta_pagar_codigo: c.cuenta_pagar_codigo,
+        cuenta_pagar_nombre: c.cuenta_pagar_nombre,
         requiere_oc_para_facturar: c.requiere_oc_para_facturar,
         comprobantes_confidenciales: c.comprobantes_confidenciales,
         listas_precios: c.listas_precios,
+        cuentas_permitidas: c.cuentas_permitidas ?? [],
       })
       setSelectedCatProv(c)
       setCatProvTabActivo("listas_precios")
@@ -6195,7 +7351,7 @@ export default function ModuloCompras() {
                 </div>
               </div>
 
-              {(c.cuenta_cobrar_defecto || c.cuenta_pagar_defecto) && (
+              {(c.cuenta_cobrar_defecto || c.cuenta_pagar_defecto || c.cuenta_pagar_id) && (
                 <div className="bg-white rounded-lg border p-6">
                   <h3 className="font-semibold text-gray-900 mb-4">Cuentas Contables</h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
@@ -6205,12 +7361,19 @@ export default function ModuloCompras() {
                         <span className="ml-2 font-medium">{c.cuenta_cobrar_defecto}</span>
                       </div>
                     )}
-                    {c.cuenta_pagar_defecto && (
+                    {c.cuenta_pagar_id ? (
+                      <div>
+                        <span className="text-gray-500">Cuenta a pagar (contable):</span>
+                        <span className="ml-2 font-mono font-medium text-xs">
+                          {c.cuenta_pagar_codigo ? `${c.cuenta_pagar_codigo} — ${c.cuenta_pagar_nombre}` : c.cuenta_pagar_id}
+                        </span>
+                      </div>
+                    ) : c.cuenta_pagar_defecto ? (
                       <div>
                         <span className="text-gray-500">Cuenta a pagar por defecto:</span>
                         <span className="ml-2 font-medium">{c.cuenta_pagar_defecto}</span>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               )}
@@ -6237,13 +7400,36 @@ export default function ModuloCompras() {
 
     // Vista formulario
     if (creandoCatProv) {
+      const cancelar = () => { setCreandoCatProv(false); setSelectedCatProv(null); setNuevaCatProv(catProvFormVacio) }
       return (
-        <div className="max-w-5xl mx-auto">
-          <div className="flex items-center gap-4 mb-4">
-            <BotonVolver onClick={() => { setCreandoCatProv(false); setSelectedCatProv(null); setNuevaCatProv(catProvFormVacio) }} variant="minimal" texto="" />
-            <h1 className="text-xl font-bold text-amber-900">
-              {selectedCatProv ? `Editando: ${selectedCatProv.nombre}` : "Nueva Categoría de Proveedor"}
-            </h1>
+        <div className="w-full">
+          {/* Breadcrumb */}
+          <div className="text-sm text-gray-500 mb-4 flex items-center gap-2">
+            <button onClick={cancelar} className="hover:text-blue-600">Categorías de Proveedores</button>
+            <span>/</span>
+            <span className="text-gray-900">{selectedCatProv ? selectedCatProv.nombre : "Nueva"}</span>
+          </div>
+          {/* Header con botones arriba a la derecha */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <BotonVolver onClick={cancelar} variant="minimal" texto="" />
+              <h1 className="text-2xl font-bold text-amber-900">
+                {selectedCatProv ? `Editando: ${selectedCatProv.nombre}` : "Nueva Categoría de Proveedor"}
+              </h1>
+            </div>
+            <div className="flex items-center gap-3">
+              <button onClick={cancelar} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button
+                onClick={handleGuardarCat}
+                disabled={!cat.nombre.trim()}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className="w-4 h-4" />
+                {selectedCatProv ? "Guardar Cambios" : "Crear Categoría"}
+              </button>
+            </div>
           </div>
 
           <div className="bg-white rounded-lg border overflow-hidden">
@@ -6260,93 +7446,29 @@ export default function ModuloCompras() {
             </div>
 
             {/* Fila de controles */}
-            <div className="grid grid-cols-2 gap-x-12 px-6 py-5 border-b">
-              {/* Columna izquierda */}
-              <div className="space-y-3">
-                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={cat.disponible_clientes}
-                    onChange={e => setCat({ disponible_clientes: e.target.checked })}
-                    className="w-4 h-4 rounded border-gray-300 text-blue-600 accent-blue-600"
-                  />
-                  Disponible para clientes
-                </label>
-                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={cat.disponible_proveedores}
-                    onChange={e => setCat({ disponible_proveedores: e.target.checked })}
-                    className="w-4 h-4 rounded border-gray-300 text-blue-600 accent-blue-600"
-                  />
-                  Disponible para proveedores
-                </label>
-                <div className="flex items-center gap-3 pt-1">
-                  <span className="text-sm text-gray-700 whitespace-nowrap">Tipo de Control</span>
-                  <select
-                    value={cat.tipo_control}
-                    onChange={e => setCat({ tipo_control: e.target.value as CategoriaProveedor["tipo_control"] })}
-                    className="flex-1 border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="Ninguno">Ninguno</option>
-                    <option value="Por Avisos">Por Avisos</option>
-                    <option value="Por Bloqueo">Por Bloqueo</option>
-                  </select>
-                </div>
+            <div className="flex items-center gap-6 px-6 py-5 border-b">
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-700 whitespace-nowrap w-52">Cuenta a pagar (contable)</span>
+                <CuentaContableSelector
+                  value={cat.cuenta_pagar_id ?? ""}
+                  onChange={(id, codigo, nombre) => setCat({ cuenta_pagar_id: id || null, cuenta_pagar_codigo: codigo, cuenta_pagar_nombre: nombre })}
+                />
               </div>
-
-              {/* Columna derecha */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-gray-700 whitespace-nowrap w-52">Cuenta a cobrar por defecto</span>
-                  <select
-                    value={cat.cuenta_cobrar_defecto}
-                    onChange={e => setCat({ cuenta_cobrar_defecto: e.target.value })}
-                    className="flex-1 border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value=""></option>
-                    {CUENTAS_COBRAR.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-gray-700 whitespace-nowrap w-52">Cuenta a pagar por defecto</span>
-                  <select
-                    value={cat.cuenta_pagar_defecto}
-                    onChange={e => setCat({ cuenta_pagar_defecto: e.target.value })}
-                    className="flex-1 border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value=""></option>
-                    {CUENTAS_PAGAR.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={cat.requiere_oc_para_facturar}
-                    onChange={e => setCat({ requiere_oc_para_facturar: e.target.checked })}
-                    className="w-4 h-4 rounded border-gray-300"
-                  />
-                  Requiere Orden de Compra para Facturar
-                </label>
-                <label className="flex items-center gap-2 text-sm font-medium text-gray-800 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={cat.comprobantes_confidenciales}
-                    onChange={e => setCat({ comprobantes_confidenciales: e.target.checked })}
-                    className="w-4 h-4 rounded border-gray-300"
-                  />
-                  Comprobantes confidenciales
-                </label>
-              </div>
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={cat.comprobantes_confidenciales}
+                  onChange={e => setCat({ comprobantes_confidenciales: e.target.checked })}
+                  className="w-4 h-4 rounded border-gray-300"
+                />
+                Comprobantes confidenciales
+              </label>
             </div>
 
             {/* Tabs */}
             <div className="flex border-b px-6 pt-2">
               {[
-                { id: "listas_precios", label: "Listas de Precios Permitidas" },
-                { id: "grupos_descuentos", label: "Grupos de Descuentos Permitidos" },
                 { id: "cuentas_perm", label: "Cuentas Permitidas para Proveedores" },
-                { id: "leyenda", label: "Leyenda para Impresión de Presupuestos" },
                 { id: "grupos", label: "Grupos" },
               ].map(tab => (
                 <button
@@ -6364,82 +7486,60 @@ export default function ModuloCompras() {
             </div>
 
             <div className="px-6 py-4">
-              {catProvTabActivo === "listas_precios" && (
+              {catProvTabActivo !== "cuentas_perm" && (
+                <p className="text-sm text-gray-400 py-4 text-center">Sin elementos configurados.</p>
+              )}
+              {catProvTabActivo === "cuentas_perm" && (
                 <div>
-                  <p className="text-xs text-gray-500 mb-3">Si no se selecciona ninguna se permitirán todas las Listas de Precios</p>
-                  <table className="w-full text-sm">
+                  <p className="text-xs text-gray-500 mb-3">
+                    Si configura cuentas aquí, el selector de la factura de compra mostrará <strong>solo estas cuentas</strong> al cargar un proveedor de esta categoría.
+                    Si la lista está vacía, se muestran todas las cuentas del plan.
+                  </p>
+                  <table className="w-full text-sm mb-2">
                     <thead>
                       <tr className="bg-gray-50 border-b text-xs text-gray-600 uppercase">
-                        <th className="text-left py-2 px-3">Nombre lista de precios</th>
-                        <th className="text-left py-2 px-3">Tipo de lista de precios</th>
-                        <th className="text-left py-2 px-3">Moneda</th>
-                        <th className="py-2 px-3 w-8">
-                          <Trash2 className="w-3.5 h-3.5 text-gray-400" />
-                        </th>
+                        <th className="text-left py-2 px-3">Código</th>
+                        <th className="text-left py-2 px-3">Nombre</th>
+                        <th className="py-2 px-3 w-8"><Trash2 className="w-3.5 h-3.5 text-gray-400" /></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {cat.listas_precios.map(lp => (
-                        <tr key={lp.id} className="border-b">
+                      {cat.cuentas_permitidas.map((cp, idx) => (
+                        <tr key={cp.id} className="border-b">
+                          <td className="py-1.5 px-3 font-mono text-xs text-gray-600">{cp.codigo}</td>
+                          <td className="py-1.5 px-3 text-gray-800">{cp.nombre}</td>
                           <td className="py-1.5 px-3">
-                            <input type="text" value={lp.nombre} onChange={e => updateListaPrecio(lp.id, { nombre: e.target.value })}
-                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Nombre" />
-                          </td>
-                          <td className="py-1.5 px-3">
-                            <input type="text" value={lp.tipo} onChange={e => updateListaPrecio(lp.id, { tipo: e.target.value })}
-                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Tipo" />
-                          </td>
-                          <td className="py-1.5 px-3">
-                            <select value={lp.moneda} onChange={e => updateListaPrecio(lp.id, { moneda: e.target.value as "ARS" | "USD" | "EUR" })}
-                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
-                              <option value="ARS">ARS</option>
-                              <option value="USD">USD</option>
-                              <option value="EUR">EUR</option>
-                            </select>
-                          </td>
-                          <td className="py-1.5 px-3">
-                            <button onClick={() => removeListaPrecio(lp.id)} className="text-red-400 hover:text-red-600">
+                            <button
+                              onClick={() => setNuevaCatProv(prev => ({ ...prev, cuentas_permitidas: prev.cuentas_permitidas.filter((_, i) => i !== idx) }))}
+                              className="text-red-400 hover:text-red-600">
                               <X className="w-4 h-4" />
                             </button>
                           </td>
                         </tr>
                       ))}
+                      {cat.cuentas_permitidas.length === 0 && (
+                        <tr><td colSpan={3} className="py-3 text-center text-gray-400 text-xs">Sin cuentas configuradas — se mostrarán todas las cuentas del plan.</td></tr>
+                      )}
                     </tbody>
                   </table>
-                  <button onClick={addListaPrecio} className="mt-2 text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1">
-                    <Plus className="w-3.5 h-3.5" /> Añadir un elemento
-                  </button>
+                  <div className="mt-2">
+                    <CuentaContableSelector
+                      value=""
+                      onChange={(id, codigo, nombre) => {
+                        if (!id || cat.cuentas_permitidas.some(c => c.id === id)) return
+                        setNuevaCatProv(prev => ({
+                          ...prev,
+                          cuentas_permitidas: [...prev.cuentas_permitidas, { id, codigo: codigo ?? "", nombre: nombre ?? "" }],
+                        }))
+                      }}
+                    />
+                    <p className="text-xs text-gray-400 mt-1">Buscar y seleccionar una cuenta para agregarla a la lista.</p>
+                  </div>
                 </div>
-              )}
-              {catProvTabActivo !== "listas_precios" && (
-                <p className="text-sm text-gray-400 py-4 text-center">Sin elementos configurados.</p>
               )}
             </div>
           </div>
 
-          {/* Acciones */}
-          <div className="flex justify-end gap-3 mt-4">
-            <button
-              onClick={() => {
-                setCreandoCatProv(false)
-                setNuevaCatProv(catProvFormVacio)
-                // Si estábamos editando, volver a la ficha; si era nueva, volver al listado
-                if (!selectedCatProv) setSelectedCatProv(null)
-                else setCreandoCatProv(false)
-              }}
-              className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleGuardarCat}
-              disabled={!cat.nombre.trim()}
-              className="flex items-center gap-2 px-4 py-2 text-sm bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Save className="w-4 h-4" />
-              {selectedCatProv ? "Guardar Cambios" : "Crear Categoría"}
-            </button>
-          </div>
         </div>
       )
     }
