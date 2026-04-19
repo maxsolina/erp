@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { generarAsientoRemito } from "@/lib/contabilidad-asiento-factory"
 
 function getSupabase() {
   return createClient(
@@ -235,5 +236,43 @@ export async function POST(
     return NextResponse.json({ ok: false, errores, movimientos_registrados: movimientos.length }, { status: 207 })
   }
 
-  return NextResponse.json({ ok: true, movimientos_registrados: movimientos.length })
+  // ── 5. Generar asiento contable CMV (transacción atómica) ──────────────────
+  // Si falla el asiento, revertir el estado del remito a "pendiente"
+  const lineasParaAsiento = lineas.map((l: any) => ({
+    producto_id: l.producto_id,
+    cantidad: Number(l.cantidad),
+  }))
+
+  const resultadoAsiento = await generarAsientoRemito(supabase, {
+    id: remitoId,
+    numero: remito_numero ?? remitoId,
+    fecha: new Date().toISOString(),
+    cliente_nombre: null,
+    sucursal: deposito_nombre ?? null,
+    lineas: lineasParaAsiento,
+  })
+
+  if (!resultadoAsiento.ok) {
+    // Rollback: volver remito a "pendiente"
+    await supabase
+      .from("remitos")
+      .update({ estado: "pendiente", updated_at: new Date().toISOString() })
+      .eq("id", remitoId)
+    return NextResponse.json(
+      { error: `Fallo al generar asiento CMV (remito revertido a pendiente): ${resultadoAsiento.error}` },
+      { status: 500 }
+    )
+  }
+
+  // ── 6. Vincular asiento al remito ───────────────────────────────────────────
+  await supabase
+    .from("remitos")
+    .update({ asiento_id: resultadoAsiento.asiento_id })
+    .eq("id", remitoId)
+
+  return NextResponse.json({
+    ok: true,
+    movimientos_registrados: movimientos.length,
+    asiento_id: resultadoAsiento.asiento_id,
+  })
 }

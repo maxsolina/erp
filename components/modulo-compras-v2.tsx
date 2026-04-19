@@ -38,6 +38,7 @@ import {
   guardarNotaDebitoCompra,
   publicarFacturaCompra,
   cancelarFacturaCompra,
+  fetchAsientoFacturaCompra,
 } from "@/lib/compras-actions"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 
@@ -225,6 +226,7 @@ interface Proveedor {
   sucursal_origen: string
   moneda_defecto: "ARS" | "USD" | "EUR"
   // Tab Contabilidad
+  aplica_circuito_compras: boolean
   cuenta_gastos_defecto: string
   cuenta_gastos_defecto_codigo: string
   cuenta_gastos_defecto_nombre: string
@@ -249,6 +251,7 @@ interface OrdenCompraLinea {
   requiere_bateria?: boolean
   requiere_outlet?: boolean
   requiere_observaciones?: boolean
+  nac?: boolean
 }
 
 interface OrdenCompra {
@@ -282,6 +285,9 @@ interface OrdenCompra {
     motivo: string
   }
   seguimiento?: SeguimientoEntry[]
+  // Circuito de compras
+  factura_circuito_id?: number | null
+  recepcion_circuito_id?: number | null
 }
 
 interface UnidadSerie {
@@ -308,6 +314,7 @@ interface RecepcionLinea {
   precio_unitario: number
   estado_linea: "pendiente" | "recibido" | "recibido_parcial"
   unidades_serie?: UnidadSerie[]
+  nac?: boolean
 }
 
 interface Recepcion {
@@ -342,6 +349,7 @@ interface Recepcion {
   // backward compat para legajo
   orden_compra_id?: number
   orden_compra_numero?: string
+  asiento_id?: string | null
 }
 
 interface FacturaCompraLinea {
@@ -382,6 +390,8 @@ interface FacturaCompra {
   saldo: number
   legajo_id?: number
   despacho_simple_id?: number
+  asiento_id?: string | null
+  es_automatica?: boolean
   lineas: FacturaCompraLinea[]
   seguimiento?: SeguimientoEntry[]
 }
@@ -1136,7 +1146,15 @@ function CuentaContableSelector({
   )
 }
 
-export default function ModuloCompras() {
+interface ModuloComprasProps {
+  initialRecepcionNumero?: string | null
+  onNavigationHandled?: () => void
+}
+
+export default function ModuloCompras({
+  initialRecepcionNumero,
+  onNavigationHandled,
+}: ModuloComprasProps = {}) {
   // Estado global persistente
   const {
     proveedores,
@@ -1202,6 +1220,17 @@ export default function ModuloCompras() {
   const [activeView, setActiveView] = useState("proveedores")
   const [expandedSections, setExpandedSections] = useState<string[]>(["proveedores", "compras", "comprobantes", "pagos", "configuracion", "cfg_categorias"])
 
+  // Navegación externa: ir a una recepción por número
+  useEffect(() => {
+    if (!initialRecepcionNumero || recepciones.length === 0) return
+    const rec = recepciones.find(r => r.numero === initialRecepcionNumero)
+    if (rec) {
+      setActiveView("recepciones")
+      setSelectedRecepcion(rec)
+      onNavigationHandled?.()
+    }
+  }, [initialRecepcionNumero, recepciones])
+
   // Proveedores — estado local de UI (no de datos)
   const [selectedProveedor, setSelectedProveedor] = useState<Proveedor | null>(null)
   const [creandoProveedor, setCreandoProveedor] = useState(false)
@@ -1219,6 +1248,10 @@ export default function ModuloCompras() {
   const [loadingCatProv, setLoadingCatProv] = useState(false)
   const [catGuardando, setCatGuardando] = useState(false)
   const [catError, setCatError] = useState<string | null>(null)
+  const [provGuardando, setProvGuardando] = useState(false)
+  const [provErrorGuardando, setProvErrorGuardando] = useState<string | null>(null)
+  const [provGuardadoOk, setProvGuardadoOk] = useState(false)
+  const [cuentaPtTransito, setCuentaPtTransito] = useState<{ id: string; codigo: string; nombre: string } | null>(null)
 
   useEffect(() => {
     setLoadingCatProv(true)
@@ -1252,6 +1285,9 @@ export default function ModuloCompras() {
             cuentasPermitidasMap[row.categoria_id].push({ id: c.id, codigo: c.codigo, nombre: c.nombre })
           }
         }
+        // Cargar cuenta PT en Tránsito para el circuito de compras
+        const { data: ptRow } = await supabase.from("contabilidad_plan_cuentas").select("id, codigo, nombre").eq("codigo", "11050301").maybeSingle()
+        if (ptRow) setCuentaPtTransito({ id: ptRow.id, codigo: ptRow.codigo, nombre: ptRow.nombre })
         setCategoriasProveedor(rows.map(r => ({
           id: r.id,
           nombre: r.nombre,
@@ -1265,6 +1301,7 @@ export default function ModuloCompras() {
           cuenta_pagar_nombre: r.cuenta_pagar_id ? cuentasMap[r.cuenta_pagar_id]?.nombre : undefined,
           requiere_oc_para_facturar: r.requiere_oc_para_facturar,
           comprobantes_confidenciales: r.comprobantes_confidenciales,
+          aplica_circuito_compras: r.aplica_circuito_compras ?? false,
           listas_precios: [],
           cuentas_permitidas: cuentasPermitidasMap[r.id] ?? [],
         })))
@@ -1329,6 +1366,7 @@ export default function ModuloCompras() {
     contactos: [],
     sucursal_origen: "",
     moneda_defecto: "ARS",
+    aplica_circuito_compras: false,
     cuenta_gastos_defecto: "",
     cuenta_gastos_defecto_codigo: "",
     cuenta_gastos_defecto_nombre: "",
@@ -1351,6 +1389,8 @@ export default function ModuloCompras() {
   // UI state OC — cancelación
   const [ocModalCancelacionOpen, setOcModalCancelacionOpen] = useState(false)
   const [ocCancelacionMotivo, setOcCancelacionMotivo] = useState("")
+  const [confirmandoOC, setConfirmandoOC] = useState(false)
+  const [confirmandoRec, setConfirmandoRec] = useState(false)
   // UI state OC — depósitos y ubicaciones desde Supabase
   const [depositosOC, setDepositosOC] = useState<{ id: number; nombre: string; codigo: string }[]>([])
   const [ubicacionesOC, setUbicacionesOC] = useState<{ id: number; nombre: string; codigo: string }[]>([])
@@ -1450,6 +1490,13 @@ export default function ModuloCompras() {
   const [recepcionBusqueda, setRecepcionBusqueda] = useState("")
   // Cantidades editadas en la ficha (producto_id → cantidad recibida)
   const [recepcionCantidades, setRecepcionCantidades] = useState<Record<number, number>>({})
+  // Modo edición de la ficha de recepción (false = solo lectura)
+  const [recepcionModoEdicion, setRecepcionModoEdicion] = useState(false)
+
+  // Resetear modo edición cuando se cambia de recepción
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setRecepcionModoEdicion(false) }, [selectedRecepcion?.id])
+
   // Modal de N° serie
   const [modalSerieOpen, setModalSerieOpen] = useState(false)
   const [modalSerieProducto, setModalSerieProducto] = useState<RecepcionLinea | null>(null)
@@ -1485,6 +1532,12 @@ export default function ModuloCompras() {
   const [fcBusqueda, setFcBusqueda] = useState("")
   const [fcErrorPublicar, setFcErrorPublicar] = useState<string | null>(null)
   const [fcPublicando, setFcPublicando] = useState(false)
+  const [fcDetalleTab, setFcDetalleTab] = useState<"info" | "detalles">("info")
+  type FcAsientoItem = { id: string; numero: string | null; fecha: string; concepto: string | null; estado: string; referencia: string | null; lineas: { id: string; cuenta_codigo: string; cuenta_nombre: string; debe: number; haber: number; descripcion: string | null }[] }
+  const [fcAsientos, setFcAsientos] = useState<FcAsientoItem[]>([])
+  const [fcAsientoCargando, setFcAsientoCargando] = useState(false)
+  const [fcAsientoModalOpen, setFcAsientoModalOpen] = useState(false)
+  const [fcAsientoModalItem, setFcAsientoModalItem] = useState<FcAsientoItem | null>(null)
   const [fcLineas, setFcLineas] = useState<FacturaCompraLinea[]>([])
   const [fcImpuestos, setFcImpuestos] = useState<{ nombre: string; redondeo: number; importe: number }[]>([])
   const fcLineaVacia = (): FacturaCompraLinea => ({
@@ -1984,6 +2037,7 @@ export default function ModuloCompras() {
                   contactos: selectedProveedor.contactos ?? [],
                   sucursal_origen: selectedProveedor.sucursal_origen ?? "",
                   moneda_defecto: selectedProveedor.moneda_defecto ?? selectedProveedor.moneda_habitual,
+                  aplica_circuito_compras: (selectedProveedor as any).aplica_circuito_compras ?? false,
                   cuenta_gastos_defecto: selectedProveedor.cuenta_gastos_defecto ?? "",
                   cuenta_gastos_defecto_codigo: selectedProveedor.cuenta_gastos_defecto_codigo ?? "",
                   cuenta_gastos_defecto_nombre: selectedProveedor.cuenta_gastos_defecto_nombre ?? "",
@@ -1991,7 +2045,6 @@ export default function ModuloCompras() {
                   tipo_cotizacion_defecto: selectedProveedor.tipo_cotizacion_defecto ?? "",
                   observaciones: selectedProveedor.observaciones ?? "",
                 })
-                setProveedorTabActivo("contactos")
                 setEditandoProveedor(true)
               }}
               className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 flex items-center gap-1"
@@ -2008,111 +2061,110 @@ export default function ModuloCompras() {
           </div>
         </div>
 
-        {/* Content */}
+        {/* Tabs + Content */}
         <div className="grid grid-cols-3 gap-6">
-          {/* Info principal */}
-          <div className="col-span-2 space-y-6">
-            <div className="bg-white rounded-lg border p-6">
-              <h3 className="font-semibold text-gray-900 mb-4">Información General</h3>
+          <div className="col-span-2">
+            <div className="bg-white rounded-lg border overflow-hidden">
+              <div className="flex border-b">
+                {(["contactos", "ventas_compras", "contabilidad", "observaciones"] as const).map(tab => {
+                  const labels: Record<string, string> = { contactos: "Contactos", ventas_compras: "Ventas & Compras", contabilidad: "Contabilidad", observaciones: "Observaciones" }
+                  return (
+                    <button
+                      key={tab}
+                      onClick={() => setProveedorTabActivo(tab)}
+                      className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                        proveedorTabActivo === tab
+                          ? "border-blue-600 text-blue-600"
+                          : "border-transparent text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      {labels[tab]}
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="p-6">
+
+            {/* Tab: Contactos */}
+            {proveedorTabActivo === "contactos" && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div><span className="text-gray-500">Razón Social:</span><span className="ml-2 font-medium">{selectedProveedor.razon_social || selectedProveedor.nombre}</span></div>
+                  <div><span className="text-gray-500">Nombre Fantasía:</span><span className="ml-2 font-medium">{selectedProveedor.nombre_fantasia || "—"}</span></div>
+                  <div><span className="text-gray-500">Tipo Documento:</span><span className="ml-2 font-medium">{selectedProveedor.tipo_documento || "—"}</span></div>
+                  <div><span className="text-gray-500">N° Documento:</span><span className="ml-2 font-medium">{selectedProveedor.numero_documento || selectedProveedor.cuit || "—"}</span></div>
+                  <div><span className="text-gray-500">Dirección:</span><span className="ml-2 font-medium">{selectedProveedor.calle_numero || selectedProveedor.direccion || "—"}</span></div>
+                  <div><span className="text-gray-500">Ciudad:</span><span className="ml-2 font-medium">{[selectedProveedor.ciudad, selectedProveedor.provincia].filter(Boolean).join(", ") || "—"}</span></div>
+                  <div><span className="text-gray-500">País:</span><span className="ml-2 font-medium">{selectedProveedor.pais || "Argentina"}</span></div>
+                  <div><span className="text-gray-500">Código Postal:</span><span className="ml-2 font-medium">{selectedProveedor.codigo_postal || "—"}</span></div>
+                  <div><span className="text-gray-500">Teléfono:</span><span className="ml-2 font-medium">{selectedProveedor.telefono || selectedProveedor.celular || "—"}</span></div>
+                  <div><span className="text-gray-500">Email:</span><span className="ml-2 font-medium text-blue-600">{selectedProveedor.email || "—"}</span></div>
+                  <div><span className="text-gray-500">Web:</span><span className="ml-2 font-medium text-blue-600">{selectedProveedor.web || "—"}</span></div>
+                  <div><span className="text-gray-500">Posición Fiscal:</span><span className="ml-2 font-medium">{selectedProveedor.posicion_fiscal || "—"}</span></div>
+                </div>
+                {(selectedProveedor.contactos ?? []).length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 mb-2">Contactos adicionales</p>
+                    <table className="w-full text-sm">
+                      <thead><tr className="border-b text-xs text-gray-500 uppercase">
+                        <th className="text-left py-2 px-2">Nombre</th>
+                        <th className="text-left py-2 px-2">Sector</th>
+                        <th className="text-left py-2 px-2">Teléfono</th>
+                        <th className="text-left py-2 px-2">Email</th>
+                      </tr></thead>
+                      <tbody>
+                        {(selectedProveedor.contactos ?? []).map((c: any) => (
+                          <tr key={c.id} className="border-b">
+                            <td className="py-2 px-2 font-medium">{c.nombre}</td>
+                            <td className="py-2 px-2 text-gray-500">{c.sector || "—"}</td>
+                            <td className="py-2 px-2">{c.telefono || "—"}</td>
+                            <td className="py-2 px-2 text-blue-600">{c.email || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab: Ventas & Compras */}
+            {proveedorTabActivo === "ventas_compras" && (
               <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-500">Razón Social:</span>
-                  <span className="ml-2 font-medium">{selectedProveedor.razon_social}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Documento:</span>
-                  <span className="ml-2 font-medium">{selectedProveedor.tipo_documento}: {selectedProveedor.numero_documento}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Dirección:</span>
-                  <span className="ml-2 font-medium">{selectedProveedor.direccion}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Ciudad:</span>
-                  <span className="ml-2 font-medium">{selectedProveedor.ciudad}, {selectedProveedor.provincia}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Teléfono:</span>
-                  <span className="ml-2 font-medium">{selectedProveedor.telefono}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Email:</span>
-                  <span className="ml-2 font-medium text-blue-600">{selectedProveedor.email}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Web:</span>
-                  <span className="ml-2 font-medium text-blue-600">{selectedProveedor.web}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Condición de Pago:</span>
-                  <span className="ml-2 font-medium">{selectedProveedor.condicion_pago}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Moneda Habitual:</span>
-                  <span className="ml-2 font-medium">{selectedProveedor.moneda_habitual}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Categoría:</span>
-                  <span className={`ml-2 font-medium ${selectedProveedor.categoria === 'privado' ? 'text-red-600' : 'text-green-600'}`}>
-                    {selectedProveedor.categoria === 'privado' ? 'Privado' : 'Público'}
+                <div><span className="text-gray-500">Condición de Pago:</span><span className="ml-2 font-medium">{selectedProveedor.condicion_pago || "—"}</span></div>
+                <div><span className="text-gray-500">Moneda Habitual:</span><span className="ml-2 font-medium">{selectedProveedor.moneda_habitual || "ARS"}</span></div>
+                <div><span className="text-gray-500">Moneda por Defecto:</span><span className="ml-2 font-medium">{selectedProveedor.moneda_defecto || "—"}</span></div>
+                <div><span className="text-gray-500">Tipo Cotización:</span><span className="ml-2 font-medium">{selectedProveedor.tipo_cotizacion_defecto || "—"}</span></div>
+                <div><span className="text-gray-500">Categoría:</span><span className="ml-2 font-medium">{selectedProveedor.categoria_proveedor || "—"}</span></div>
+                <div><span className="text-gray-500">Tipo:</span><span className="ml-2 font-medium capitalize">{selectedProveedor.tipo}</span></div>
+                <div><span className="text-gray-500">Sucursal Origen:</span><span className="ml-2 font-medium">{selectedProveedor.sucursal_origen || "—"}</span></div>
+                <div><span className="text-gray-500">Confidencial:</span><span className={`ml-2 font-medium ${selectedProveedor.confidencial ? "text-red-600" : "text-gray-900"}`}>{selectedProveedor.confidencial ? "Sí" : "No"}</span></div>
+              </div>
+            )}
+
+            {/* Tab: Contabilidad */}
+            {proveedorTabActivo === "contabilidad" && (
+              <div className="space-y-4 text-sm">
+                <div className="flex items-center gap-3">
+                  <span className={`w-4 h-4 rounded border flex items-center justify-center ${(selectedProveedor as any).aplica_circuito_compras ? "bg-indigo-900 border-indigo-900" : "border-gray-300"}`}>
+                    {(selectedProveedor as any).aplica_circuito_compras && <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="currentColor"><path d="M2 6l3 3 5-5"/></svg>}
                   </span>
+                  <span className="font-medium">Aplica Circuito de Compras</span>
                 </div>
+                {!(selectedProveedor as any).aplica_circuito_compras && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div><span className="text-gray-500">Cuenta Gastos por Defecto:</span><span className="ml-2 font-medium">{selectedProveedor.cuenta_gastos_defecto_codigo ? `${selectedProveedor.cuenta_gastos_defecto_codigo} — ${selectedProveedor.cuenta_gastos_defecto_nombre}` : "—"}</span></div>
+                    <div><span className="text-gray-500">Cuenta Analítica:</span><span className="ml-2 font-medium">{selectedProveedor.cuenta_analitica || "—"}</span></div>
+                  </div>
+                )}
               </div>
-            </div>
+            )}
 
-            <div className="bg-white rounded-lg border p-6">
-              <h3 className="font-semibold text-gray-900 mb-4">Contacto</h3>
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-500">Nombre:</span>
-                  <span className="ml-2 font-medium">{selectedProveedor.contacto_nombre}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Teléfono:</span>
-                  <span className="ml-2 font-medium">{selectedProveedor.contacto_telefono}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Email:</span>
-                  <span className="ml-2 font-medium text-blue-600">{selectedProveedor.contacto_email}</span>
-                </div>
+            {/* Tab: Observaciones */}
+            {proveedorTabActivo === "observaciones" && (
+              <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedProveedor.observaciones || <span className="text-gray-400">Sin observaciones</span>}</p>
+            )}
               </div>
-            </div>
-
-            {/* Últimos Movimientos */}
-            <div className="bg-white rounded-lg border p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-gray-900">Últimos Movimientos</h3>
-                <button 
-                  onClick={() => setActiveView("cta_cte_proveedores")}
-                  className="text-sm text-blue-600 hover:text-blue-700"
-                >
-                  Ver cuenta corriente completa
-                </button>
-              </div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-xs text-gray-500 uppercase">
-                    <th className="text-left py-2">Fecha</th>
-                    <th className="text-left py-2">Tipo</th>
-                    <th className="text-left py-2">Número</th>
-                    <th className="text-right py-2">Debe</th>
-                    <th className="text-right py-2">Haber</th>
-                    <th className="text-right py-2">Saldo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {movimientos.slice(0, 5).map(mov => (
-                    <tr key={mov.id} className="border-b">
-                      <td className="py-2">{formatDate(mov.fecha)}</td>
-                      <td className="py-2 capitalize">{mov.tipo.replace('_', ' ')}</td>
-                      <td className="py-2 text-blue-600">{mov.numero}</td>
-                      <td className="py-2 text-right">{mov.debe > 0 ? formatCurrency(mov.debe) : '-'}</td>
-                      <td className="py-2 text-right">{mov.haber > 0 ? formatCurrency(mov.haber) : '-'}</td>
-                      <td className="py-2 text-right font-medium">{formatCurrency(mov.saldo)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
           </div>
 
@@ -2140,33 +2192,20 @@ export default function ModuloCompras() {
               </div>
             </div>
 
-            <div className="bg-white rounded-lg border p-6">
-              <h3 className="font-semibold text-gray-900 mb-4">Acciones Rápidas</h3>
-              <div className="space-y-2">
-                <button 
-                  onClick={() => {
-                    setCreandoOC(true)
-                    setSelectedProveedor(null)
-                    setActiveView("ordenes_compra")
-                  }}
-                  className="w-full px-3 py-2 text-sm text-left border rounded-lg hover:bg-gray-50 flex items-center gap-2"
-                >
-                  <FileText className="w-4 h-4 text-blue-600" />
-                  Nueva Orden de Compra
-                </button>
-                <button 
-                  onClick={() => {
-                    setCreandoOP(true)
-                    setSelectedProveedor(null)
-                    setActiveView("ordenes_pago")
-                  }}
-                  className="w-full px-3 py-2 text-sm text-left border rounded-lg hover:bg-gray-50 flex items-center gap-2"
-                >
-                  <DollarSign className="w-4 h-4 text-green-600" />
-                  Nueva Orden de Pago
-                </button>
+            {/* Últimos Movimientos */}
+            {movimientos.length > 0 && (
+              <div className="bg-white rounded-lg border p-4">
+                <h3 className="font-semibold text-gray-900 mb-3 text-sm">Últimos Movimientos</h3>
+                <div className="space-y-2">
+                  {movimientos.slice(0, 5).map(mov => (
+                    <div key={mov.id} className="flex justify-between text-xs border-b pb-1">
+                      <span className="text-gray-500">{formatDate(mov.fecha)} · {mov.tipo.replace('_', ' ')}</span>
+                      <span className="font-medium">{formatCurrency(mov.saldo)}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
@@ -2180,6 +2219,10 @@ export default function ModuloCompras() {
     const handleGuardar = async () => {
       if (!(prov.nombre ?? "").trim()) return
       if (prov.tipo_documento !== "Sin documento" && !(prov.numero_documento ?? "").trim()) return
+
+      setProvGuardando(true)
+      setProvErrorGuardando(null)
+      setProvGuardadoOk(false)
 
       const payload = {
         razon_social: prov.nombre,
@@ -2205,6 +2248,7 @@ export default function ModuloCompras() {
         confidencial: prov.confidencial ?? false,
         sucursal_origen: prov.sucursal_origen || null,
         observaciones: prov.observaciones || null,
+        aplica_circuito_compras: prov.aplica_circuito_compras ?? false,
         cuenta_gastos_defecto: prov.cuenta_gastos_defecto || null,
         cuenta_gastos_defecto_codigo: prov.cuenta_gastos_defecto_codigo || null,
         cuenta_gastos_defecto_nombre: prov.cuenta_gastos_defecto_nombre || null,
@@ -2229,6 +2273,9 @@ export default function ModuloCompras() {
         }
       } catch (err: any) {
         console.error("[v0] Error al guardar proveedor:", err.message)
+        setProvErrorGuardando(err.message ?? "Error al guardar")
+      } finally {
+        setProvGuardando(false)
       }
     }
 
@@ -2259,7 +2306,7 @@ export default function ModuloCompras() {
     }
 
     return (
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-full">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
@@ -2274,19 +2321,27 @@ export default function ModuloCompras() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {provGuardadoOk && (
+              <span className="text-sm text-green-700 font-medium">✓ Guardado correctamente</span>
+            )}
+            {provErrorGuardando && (
+              <span className="text-sm text-red-600 font-medium max-w-xs truncate" title={provErrorGuardando}>
+                Error: {provErrorGuardando}
+              </span>
+            )}
             <button
               onClick={handleCancelar}
               className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50"
             >
-              Cancelar
+              {modoEdicion ? "Volver" : "Cancelar"}
             </button>
             <button
               onClick={handleGuardar}
-              disabled={!(prov.nombre ?? "").trim() || (prov.tipo_documento !== "Sin documento" && !(prov.numero_documento ?? "").trim())}
+              disabled={provGuardando || !(prov.nombre ?? "").trim() || (prov.tipo_documento !== "Sin documento" && !(prov.numero_documento ?? "").trim())}
               className="flex items-center gap-2 px-4 py-2 text-sm bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Save className="w-4 h-4" />
-              {modoEdicion ? "Guardar Cambios" : "Crear Proveedor"}
+              {provGuardando ? "Guardando..." : modoEdicion ? "Guardar Cambios" : "Crear Proveedor"}
             </button>
           </div>
         </div>
@@ -2691,13 +2746,29 @@ export default function ModuloCompras() {
             {/* TAB: CONTABILIDAD */}
             {proveedorTabActivo === "contabilidad" && (
               <div className="space-y-4 max-w-lg">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta de Gastos por Defecto</label>
-                  <CuentaContableSelector
-                    value={prov.cuenta_gastos_defecto}
-                    onChange={(id, codigo, nombre) => setP({ cuenta_gastos_defecto: id, cuenta_gastos_defecto_codigo: codigo ?? "", cuenta_gastos_defecto_nombre: nombre ?? "" })}
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={prov.aplica_circuito_compras}
+                    onChange={e => setP({ aplica_circuito_compras: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300"
                   />
-                </div>
+                  Aplica circuito de compras
+                </label>
+                {prov.aplica_circuito_compras && (
+                  <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+                    Las facturas de este proveedor solo podrán imputar a la cuenta <strong>PT en Tránsito (11050301)</strong>.
+                  </div>
+                )}
+                {!prov.aplica_circuito_compras && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta de Gastos por Defecto</label>
+                    <CuentaContableSelector
+                      value={prov.cuenta_gastos_defecto}
+                      onChange={(id, codigo, nombre) => setP({ cuenta_gastos_defecto: id, cuenta_gastos_defecto_codigo: codigo ?? "", cuenta_gastos_defecto_nombre: nombre ?? "" })}
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta Analítica para Compras</label>
                   <input
@@ -2956,8 +3027,79 @@ export default function ModuloCompras() {
   }
 
   const confirmarOC = async (oc: OrdenCompra) => {
+    if (confirmandoOC) return
+    setConfirmandoOC(true)
+    try {
     const ahora = new Date().toISOString()
     const esInmediato = oc.metodo_compra === 'inmediato'
+
+    // Verificar si el proveedor aplica circuito de compras
+    const provOC = proveedores.find(p => p.id === oc.proveedor_id)
+    const aplicaCircuito = (provOC as any)?.aplica_circuito_compras === true
+
+    if (aplicaCircuito) {
+      // ── Circuito de compras: endpoint atómico ──
+      try {
+        const res = await fetch(`/api/compras/ordenes-compra/${oc.id}/confirmar`, { method: "POST" })
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error ?? "Error al confirmar OC con circuito")
+
+        const { oc: ocActualizada, factura, recepcion } = json
+
+        // Actualizar OC en estado local
+        const ocConfirmada: OrdenCompra = {
+          ...oc,
+          ...ocActualizada,
+          lineas: oc.lineas,
+          factura_circuito_id: factura?.id ?? null,
+          recepcion_circuito_id: recepcion?.id ?? null,
+        }
+        setOrdenesCompra(prev => prev.map(o => o.id === oc.id ? ocConfirmada : o))
+        setSelectedOC(ocConfirmada)
+
+        // Agregar factura al listado local
+        if (factura) {
+          setFacturasCompra(prev => [{ ...factura, lineas: [] }, ...prev])
+        }
+
+        // Agregar recepción al listado local
+        if (recepcion) {
+          const nuevaRec: Recepcion = {
+            ...recepcion,
+            documento_origen_tipo: "oc",
+            documento_origen_id: oc.id,
+            documento_origen_ref: oc.numero,
+            sucursal: oc.sucursal ?? "",
+            deposito_destino: oc.deposito_destino ?? "",
+            deposito_destino_id: (oc as any).deposito_destino_id ?? null,
+            ubicacion: (oc as any).ubicacion ?? "",
+            lineas: (oc.lineas ?? []).map(l => ({
+              producto_id: l.producto_id,
+              producto_nombre: l.producto_nombre,
+              producto_sku: l.producto_sku ?? "",
+              cantidad_pedida: l.cantidad,
+              cantidad_recibida: 0,
+              precio_unitario: l.precio_unitario,
+              estado_linea: "pendiente" as const,
+              udm: l.udm ?? "un",
+              tiene_serie: l.tiene_serie ?? false,
+              requiere_color: l.requiere_color ?? false,
+              requiere_bateria: l.requiere_bateria ?? false,
+              requiere_outlet: l.requiere_outlet ?? false,
+              requiere_observaciones: l.requiere_observaciones ?? false,
+              nac: l.nac ?? false,
+            })),
+          }
+          setRecepciones(prev => [...prev, nuevaRec])
+        }
+      } catch (err: any) {
+        console.error("[circuito] Error al confirmar OC:", err.message)
+        alert("Error al confirmar OC: " + err.message)
+      }
+      return
+    }
+
+    // ── Flujo estándar (sin circuito) ──
 
     const recPayload = {
       fecha:                   ahora,
@@ -2989,6 +3131,7 @@ export default function ModuloCompras() {
         requiere_bateria:       l.requiere_bateria        ?? false,
         requiere_outlet:        l.requiere_outlet         ?? false,
         requiere_observaciones: l.requiere_observaciones  ?? false,
+        nac:                    l.nac                     ?? false,
       })),
       total: esInmediato ? oc.total : 0,
     }
@@ -3023,6 +3166,7 @@ export default function ModuloCompras() {
           requiere_bateria:       l.requiere_bateria       ?? false,
           requiere_outlet:        l.requiere_outlet        ?? false,
           requiere_observaciones: l.requiere_observaciones ?? false,
+          nac:                    l.nac                    ?? false,
         })),
       }
       const ocConfirmada: OrdenCompra = { ...oc, ...ocActualizada, lineas: oc.lineas }
@@ -3032,6 +3176,9 @@ export default function ModuloCompras() {
     } catch (err: any) {
       console.error("[v0] Error al confirmar OC:", err.message)
       alert("Error al confirmar OC: " + err.message)
+    }
+    } finally {
+      setConfirmandoOC(false)
     }
   }
 
@@ -3057,8 +3204,18 @@ export default function ModuloCompras() {
 
     const recsVinculadas = recepciones.filter(r => r.documento_origen_id === oc.id)
     const facturasVinculadas = facturasCompra.filter(f => f.orden_compra_id === oc.id)
-        const totalRecibido = (oc.lineas ?? []).reduce((s, l) => s + (l.cantidad_recibida ?? 0), 0)
-        const totalPedido = (oc.lineas ?? []).reduce((s, l) => s + (l.cantidad ?? 0), 0)
+    const totalRecibido = (oc.lineas ?? []).reduce((s, l) => s + (l.cantidad_recibida ?? 0), 0)
+    const totalPedido = (oc.lineas ?? []).reduce((s, l) => s + (l.cantidad ?? 0), 0)
+
+    // Circuito de compras
+    const provOC = proveedores.find(p => p.id === oc.proveedor_id)
+    const esCircuito = (provOC as any)?.aplica_circuito_compras === true
+    const facturaCircuito = oc.factura_circuito_id
+      ? facturasCompra.find(f => f.id === oc.factura_circuito_id)
+      : facturasVinculadas.find(f => f.es_automatica)
+    const recepcionCircuito = oc.recepcion_circuito_id
+      ? recepciones.find(r => r.id === oc.recepcion_circuito_id)
+      : recsVinculadas.find(r => r.estado === 'esperando_recepcion')
 
     const tabs = [
       { key: "productos",     label: "Productos",                           count: (oc.lineas ?? []).length },
@@ -3090,10 +3247,11 @@ export default function ModuloCompras() {
               <>
                 <button
                   onClick={() => confirmarOC(oc)}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800"
+                  disabled={confirmandoOC}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <CheckCircle className="w-4 h-4" />
-                  Confirmar
+                  {confirmandoOC ? "Confirmando..." : "Confirmar"}
                 </button>
                 <button
                   onClick={() => setOcModalCancelacionOpen(true)}
@@ -3145,6 +3303,16 @@ export default function ModuloCompras() {
                 className="px-3 py-1.5 border border-red-200 text-red-500 rounded-lg text-xs hover:bg-red-50"
               >
                 Cancelar OC
+              </button>
+            )}
+            {/* Circuito: factura vinculada */}
+            {esCircuito && oc.estado !== 'borrador' && facturaCircuito && (
+              <button
+                onClick={() => { setSelectedFacturaCompra(facturaCircuito); setActiveView("facturas_compra") }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 hover:bg-blue-100"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Factura {facturaCircuito.numero} · {facturaCircuito.estado}
               </button>
             )}
             <span className={`px-3 py-1.5 rounded-full text-sm font-semibold ${estadoColor[oc.estado] || 'bg-gray-100 text-gray-700'}`}>
@@ -3415,7 +3583,9 @@ export default function ModuloCompras() {
                     <div className="text-sm text-red-700">
                       {recsVinculadas.some(r => r.estado === 'recibida')
                         ? 'Existe una recepción confirmada vinculada. Cancela primero la recepción para poder cancelar la OC.'
-                        : 'Esta acción cancelará también las recepciones en estado "Esperando recepci��n" vinculadas.'}
+                        : esCircuito && (facturaCircuito || recepcionCircuito)
+                        ? `Esta OC tiene un circuito de compras activo${facturaCircuito ? ` con Factura ${facturaCircuito.numero}` : ''}${recepcionCircuito ? ` y Recepción ${recepcionCircuito.numero}` : ''}. Al cancelar se cancelarán ambos comprobantes y se generará asiento de reversa para la factura.`
+                        : 'Esta acción cancelará también las recepciones en estado "Esperando recepción" vinculadas.'}
                     </div>
                   </div>
                 )}
@@ -3486,11 +3656,15 @@ export default function ModuloCompras() {
         alert("Debe seleccionar un Depósito Destino. Las recepciones generadas desde esta OC necesitan saber a qué depósito ingresar el stock.")
         return
       }
+      if (!oc.ubicacion_destino) {
+        alert("Debe seleccionar una Ubicación Destino. Las recepciones generadas desde esta OC necesitan saber en qué ubicación ingresar el stock.")
+        return
+      }
       if ((oc.lineas ?? []).length === 0) {
         alert("Debe agregar al menos una línea de producto.")
         return
       }
-      const lineaSinProducto = (oc.lineas ?? []).findIndex(l => !l.producto_nombre || !l.producto_id || String(l.producto_id).length > 10)
+      const lineaSinProducto = (oc.lineas ?? []).findIndex(l => !l.producto_nombre || !l.producto_id)
       if (lineaSinProducto !== -1) {
         alert(`La línea ${lineaSinProducto + 1} no tiene un producto seleccionado. Buscá y seleccioná un producto del listado.`)
         return
@@ -3605,18 +3779,6 @@ export default function ModuloCompras() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Tipo de Compra</label>
-                <select
-                  value={oc.tipo_compra || "nacional"}
-                  onChange={e => setNuevaOC(prev => ({ ...prev, tipo_compra: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="nacional">Compra Nacional</option>
-                  <option value="importacion">Importacion</option>
-                  <option value="reposicion">Reposicion</option>
-                </select>
-              </div>
-              <div>
                 <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Metodo de Compra <span className="text-red-500">*</span></label>
                 <select
                   value={oc.metodo_compra}
@@ -3668,7 +3830,7 @@ export default function ModuloCompras() {
               </div>
               <div>
                 <label className={`block text-xs uppercase tracking-wide mb-1 ${oc.deposito_destino ? "text-gray-500" : "text-gray-300"}`}>
-                  Ubicacion Destino
+                  Ubicacion Destino <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={(oc as any).ubicacion_destino_id || ""}
@@ -3722,6 +3884,7 @@ export default function ModuloCompras() {
           <table className="w-full text-sm">
             <thead className="border-b bg-gray-50">
               <tr className="text-xs text-gray-500 uppercase tracking-wider">
+                <th className="text-center py-2.5 px-2 w-14" title="No Actualiza Costo contable">NAC</th>
                 <th className="text-left py-2.5 px-4">Producto</th>
                 <th className="text-left py-2.5 px-4">Descripcion</th>
                 <th className="text-right py-2.5 px-4 w-24">Cantidad</th>
@@ -3733,13 +3896,27 @@ export default function ModuloCompras() {
             <tbody className="divide-y divide-gray-100">
               {(oc.lineas ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-sm text-gray-400">
+                  <td colSpan={7} className="py-8 text-center text-sm text-gray-400">
                     No hay productos. Agregue una linea para comenzar.
                   </td>
                 </tr>
               )}
               {(oc.lineas ?? []).map((linea, idx) => (
                 <tr key={idx} className="hover:bg-gray-50">
+                  <td className="py-2 px-2 text-center">
+                    <label title="No Actualiza Costo contable">
+                      <input
+                        type="checkbox"
+                        checked={linea.nac ?? false}
+                        onChange={e => {
+                          const updated = [...oc.lineas]
+                          updated[idx] = { ...updated[idx], nac: e.target.checked }
+                          setNuevaOC(prev => ({ ...prev, lineas: updated }))
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 accent-indigo-900"
+                      />
+                    </label>
+                  </td>
                   <td className="py-2 px-4">
                     <div className="relative">
                       <input
@@ -3765,10 +3942,18 @@ export default function ModuloCompras() {
                             setOcProductoOpciones(prev => ({ ...prev, [idx]: [] }))
                           }
                         }}
-                        onFocus={() => {
-                          if ((ocProductoSearch[idx] ?? linea.producto_nombre).length > 0 && (ocProductoOpciones[idx] ?? []).length > 0) {
+                        onFocus={async () => {
+                          const currentSearch = ocProductoSearch[idx] ?? linea.producto_nombre
+                          if ((ocProductoOpciones[idx] ?? []).length > 0) {
                             setOcProductoDropdownAbierto(prev => ({ ...prev, [idx]: true }))
+                            return
                           }
+                          // Cargar primeros productos si no hay búsqueda
+                          try {
+                            const res = await fetchProductos({ busqueda: currentSearch || "", activo: true })
+                            setOcProductoOpciones(prev => ({ ...prev, [idx]: res }))
+                            setOcProductoDropdownAbierto(prev => ({ ...prev, [idx]: true }))
+                          } catch {}
                         }}
                         onBlur={() => {
                           setTimeout(() => {
@@ -3879,7 +4064,7 @@ export default function ModuloCompras() {
             </tbody>
             <tfoot className="border-t bg-gray-50">
               <tr>
-                <td colSpan={3} className="py-3 px-4">
+                <td colSpan={4} className="py-3 px-4">
                   <button
                     onClick={() => setNuevaOC(prev => ({
                       ...prev,
@@ -3891,7 +4076,8 @@ export default function ModuloCompras() {
                         cantidad_recibida: 0,
                         precio_unitario: 0,
                         descuento: 0,
-                        subtotal: 0
+                        subtotal: 0,
+                        nac: false
                       }]
                     }))}
                     className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
@@ -4559,6 +4745,9 @@ export default function ModuloCompras() {
   // =====================================================
   const handleConfirmarRecepcion = async (): Promise<void> => {
     if (!selectedRecepcion) return
+    if (confirmandoRec) return
+    setConfirmandoRec(true)
+    try {
     const rec = selectedRecepcion
 
     // Validar depósito destino obligatorio
@@ -4680,6 +4869,7 @@ export default function ModuloCompras() {
           requiere_bateria:       l.requiere_bateria ?? false,
           requiere_outlet:        l.requiere_outlet ?? false,
           requiere_observaciones: l.requiere_observaciones ?? false,
+          nac:                    l.nac ?? false,
         })),
         total: lineasActualizadas.reduce((s, l) => s + l.cantidad_recibida * (l.precio_unitario ?? 0), 0),
       }, rec.id)
@@ -4737,6 +4927,7 @@ export default function ModuloCompras() {
             requiere_bateria:       l.requiere_bateria ?? false,
             requiere_outlet:        l.requiere_outlet ?? false,
             requiere_observaciones: l.requiere_observaciones ?? false,
+            nac:                    l.nac ?? false,
           })),
           total: 0,
         })
@@ -4833,9 +5024,49 @@ export default function ModuloCompras() {
       }).catch((err: any) => console.error("[stock] Error obteniendo ubicaciones:", err))
     }).catch((err: any) => console.error("[stock] Error obteniendo depósitos:", err))
 
+    // Asiento contable del circuito de compras (si aplica)
+    // Siempre se llama al endpoint cuando hay una OC vinculada; el backend valida aplica_circuito_compras
+    if (rec.orden_compra_id || rec.documento_origen_tipo === 'oc') {
+      try {
+        const asientoRes = await fetch(`/api/compras/recepciones/${rec.id}/asiento-circuito`, { method: "POST" })
+        const asientoJson = await asientoRes.json()
+        if (asientoRes.ok && asientoJson.asiento_id) {
+          const withAsiento = { ...recActualizada, asiento_id: asientoJson.asiento_id }
+          setSelectedRecepcion(withAsiento)
+          setRecepciones(prev => prev.map(r => r.id === rec.id ? withAsiento : r))
+        } else if (!asientoJson.skip && !asientoRes.ok) {
+          console.error("[circuito] Error asiento recepción:", asientoJson.error)
+          alert(`Advertencia: la recepción se confirmó pero no se pudo generar el asiento contable.\n${asientoJson.error ?? "Error desconocido"}`)
+        }
+      } catch (err: any) {
+        console.error("[circuito] Error generando asiento recepción:", err.message)
+        alert(`Advertencia: la recepción se confirmó pero no se pudo contactar el servidor para el asiento contable.\n${err.message}`)
+      }
+    }
+
+    // Actualizar costo_contable (sistema último costo)
+    // Las recepciones de toma de equipo no actualizan el costo; el flag NAC por línea lo maneja el backend
+    if (rec.documento_origen_tipo !== 'toma_equipo') {
+      fetch(`/api/compras/recepciones/${rec.id}/actualizar-costos`, { method: "POST" })
+        .then(r => r.json())
+        .then(json => {
+          if (json.skip) {
+            console.log("[costos] Salteado:", json.reason)
+          } else if (json.ok) {
+            console.log(`[costos] Actualizados ${json.actualizados?.length ?? 0} productos:`, json.actualizados)
+          } else {
+            console.error("[costos] Error actualizando costo_contable:", json.error, json)
+          }
+        })
+        .catch(err => console.error("[costos] Error actualizando costo_contable:", err.message))
+    }
+
     // Limpiar estado temporal
     setSeriesConfirmadas({})
     setRecepcionCantidades({})
+    } finally {
+      setConfirmandoRec(false)
+    }
   }
 
   // =====================================================
@@ -5029,7 +5260,8 @@ export default function ModuloCompras() {
   const renderFichaRecepcion = () => {
     if (!selectedRecepcion) return null
     const rec = selectedRecepcion
-    const editable = ["borrador", "esperando_recepcion"].includes(rec.estado ?? "")
+    const canEdit = ["borrador", "esperando_recepcion"].includes(rec.estado ?? "")
+    const editable = canEdit && recepcionModoEdicion
 
     const estadoColor: Record<string, string> = {
       borrador:             'bg-gray-100 text-gray-600',
@@ -5143,14 +5375,32 @@ export default function ModuloCompras() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {editable && (
+            {canEdit && !editable && (
               <button
-                onClick={handleConfirmarRecepcion}
+                onClick={() => setRecepcionModoEdicion(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800"
               >
-                <CheckCircle className="w-4 h-4" />
-                Confirmar Recepción
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                Editar
               </button>
+            )}
+            {editable && (
+              <>
+                <button
+                  onClick={() => setRecepcionModoEdicion(false)}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleConfirmarRecepcion}
+                  disabled={confirmandoRec}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  {confirmandoRec ? "Procesando..." : "Confirmar Recepción"}
+                </button>
+              </>
             )}
             {rec.estado === 'recibida' && (
               <button
@@ -5586,19 +5836,125 @@ export default function ModuloCompras() {
     // ── Vista detalle ──
     if (selectedFacturaCompra && !creandoFacturaCompra) {
       const f = selectedFacturaCompra
+
+      const handleCambiarTabDetalle = async (tab: "info" | "detalles") => {
+        setFcDetalleTab(tab)
+        if (tab === "detalles" && fcAsientos.length === 0 && !fcAsientoCargando) {
+          setFcAsientoCargando(true)
+          try {
+            const { asientos } = await fetchAsientoFacturaCompra(f.id)
+            setFcAsientos(asientos)
+          } catch {
+            setFcAsientos([])
+          } finally {
+            setFcAsientoCargando(false)
+          }
+        }
+      }
+
       return (
         <div>
+          {/* Modal popup asiento */}
+          {fcAsientoModalOpen && fcAsientoModalItem && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden">
+                <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50">
+                  <div>
+                    <h2 className="text-base font-bold text-gray-900">
+                      Asiento {fcAsientoModalItem.numero ?? "S/N"}
+                    </h2>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {formatDate(fcAsientoModalItem.fecha)}
+                      {fcAsientoModalItem.concepto ? ` · ${fcAsientoModalItem.concepto}` : ""}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => { setFcAsientoModalOpen(false); setFcAsientoModalItem(null) }}
+                    className="text-gray-400 hover:text-gray-700 p-1 rounded"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="px-6 py-4 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-xs font-semibold text-gray-500 uppercase">
+                        <th className="text-left py-2 pr-4">Cuenta</th>
+                        <th className="text-left py-2 pr-4">Descripción</th>
+                        <th className="text-right py-2 pr-4">Debe</th>
+                        <th className="text-right py-2">Haber</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {fcAsientoModalItem.lineas.map((linea, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="py-2 pr-4 font-mono text-xs text-gray-800 whitespace-nowrap">
+                            <span className="font-semibold">{linea.cuenta_codigo}</span>
+                            <span className="text-gray-500 ml-1">— {linea.cuenta_nombre}</span>
+                          </td>
+                          <td className="py-2 pr-4 text-xs text-gray-500">{linea.descripcion ?? "—"}</td>
+                          <td className="py-2 pr-4 text-right font-medium text-gray-800">
+                            {linea.debe > 0 ? formatCurrency(linea.debe) : "—"}
+                          </td>
+                          <td className="py-2 text-right font-medium text-gray-800">
+                            {linea.haber > 0 ? formatCurrency(linea.haber) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t font-semibold text-sm">
+                        <td colSpan={2} className="py-2 text-gray-600">Total</td>
+                        <td className="py-2 pr-4 text-right">
+                          {formatCurrency(fcAsientoModalItem.lineas.reduce((s, l) => s + l.debe, 0))}
+                        </td>
+                        <td className="py-2 text-right">
+                          {formatCurrency(fcAsientoModalItem.lineas.reduce((s, l) => s + l.haber, 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <div className="px-6 py-3 border-t bg-gray-50 flex justify-end">
+                  <button
+                    onClick={() => { setFcAsientoModalOpen(false); setFcAsientoModalItem(null) }}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-100"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="text-sm text-gray-500 mb-4 flex items-center gap-2">
-            <button onClick={() => setSelectedFacturaCompra(null)} className="hover:text-blue-600">Facturas de Compra</button>
+            <button onClick={() => { setSelectedFacturaCompra(null); setFcDetalleTab("info"); setFcAsientos([]) }} className="hover:text-blue-600">Facturas de Compra</button>
             <span>/</span>
             <span className="text-gray-900">{f.numero}</span>
           </div>
-          <div className="flex items-start justify-between mb-6">
+          <div className="flex items-start justify-between mb-4">
             <div className="flex items-center gap-4">
-              <BotonVolver onClick={() => setSelectedFacturaCompra(null)} variant="minimal" texto="" />
+              <BotonVolver onClick={() => { setSelectedFacturaCompra(null); setFcDetalleTab("info"); setFcAsientos([]) }} variant="minimal" texto="" />
               <div>
-                <h1 className="text-2xl font-bold text-amber-900">Factura {f.tipo} — {f.numero}</h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-bold text-amber-900">Factura {f.tipo} — {f.numero}</h1>
+                  {f.es_automatica && (
+                    <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs rounded-full font-medium">Circuito de Compras</span>
+                  )}
+                </div>
                 <p className="text-sm text-gray-500">{f.proveedor_nombre} · {formatDate(f.fecha)}</p>
+                {f.es_automatica && f.orden_compra_id && (() => {
+                  const ocVinc = ordenesCompra.find(o => o.id === f.orden_compra_id)
+                  if (!ocVinc) return null
+                  return (
+                    <button
+                      onClick={() => { setSelectedOC(ocVinc); setActiveView("ordenes_compra") }}
+                      className="text-xs text-indigo-600 hover:underline mt-0.5"
+                    >
+                      Generada automáticamente por OC {ocVinc.numero}
+                    </button>
+                  )
+                })()}
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -5614,14 +5970,15 @@ export default function ModuloCompras() {
               {f.estado === "pendiente" && (
                 <button
                   onClick={async () => {
-                    if (!confirm("¿Cancelar la publicación? Se generará una reversión contable y la factura volverá a borrador.")) return
+                    if (!confirm("¿Cancelar la factura? Se generará un asiento de reversión y la factura quedará cancelada.")) return
                     setFcPublicando(true)
                     setFcErrorPublicar(null)
                     try {
                       await cancelarFacturaCompra(f.id)
-                      const updated = { ...f, estado: "borrador" as const, asiento_id: null }
+                      const updated = { ...f, estado: "cancelada" as const }
                       setFacturasCompra(prev => prev.map(fc => fc.id === f.id ? updated : fc))
                       setSelectedFacturaCompra(updated)
+                      setFcAsientos([])
                     } catch (e: any) {
                       setFcErrorPublicar(e.message ?? "Error al cancelar")
                     } finally {
@@ -5631,7 +5988,7 @@ export default function ModuloCompras() {
                   disabled={fcPublicando}
                   className="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 disabled:opacity-50"
                 >
-                  {fcPublicando ? "Cancelando..." : "Cancelar Publicación"}
+                  {fcPublicando ? "Cancelando..." : "Cancelar Factura"}
                 </button>
               )}
               {f.estado === "borrador" && (
@@ -5665,41 +6022,122 @@ export default function ModuloCompras() {
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{fcErrorPublicar}</div>
           )}
 
-          <div className="grid grid-cols-3 gap-6">
-            <div className="col-span-2 space-y-4">
-              <div className="bg-white rounded-lg border p-6">
-                <h3 className="font-semibold text-gray-900 mb-4">Datos del Comprobante</h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div><span className="text-gray-500">Proveedor:</span><span className="ml-2 font-medium">{f.proveedor_nombre}</span></div>
-                  <div><span className="text-gray-500">Tipo:</span><span className="ml-2 font-medium">Factura {f.tipo}</span></div>
-                  <div><span className="text-gray-500">Número:</span><span className="ml-2 font-medium">{f.numero}</span></div>
-                  <div><span className="text-gray-500">Fecha:</span><span className="ml-2 font-medium">{formatDate(f.fecha)}</span></div>
-                  {f.fecha_vencimiento && <div><span className="text-gray-500">Vencimiento:</span><span className="ml-2 font-medium">{formatDate(f.fecha_vencimiento)}</span></div>}
-                  <div><span className="text-gray-500">Moneda:</span><span className="ml-2 font-medium">{f.moneda}</span></div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg border p-6">
-                <h3 className="font-semibold text-gray-900 mb-4">Importes</h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span className="font-medium">{formatCurrency(f.subtotal, f.moneda)}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-500">IVA</span><span className="font-medium">{formatCurrency(f.impuestos, f.moneda)}</span></div>
-                  <div className="flex justify-between border-t pt-2"><span className="font-semibold">Total</span><span className="font-bold text-lg">{formatCurrency(f.total, f.moneda)}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-500">Saldo</span><span className={`font-medium ${f.saldo > 0 ? "text-red-600" : "text-green-600"}`}>{formatCurrency(f.saldo, f.moneda)}</span></div>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="bg-white rounded-lg border p-6">
-                <h3 className="font-semibold text-gray-900 mb-4">Referencias</h3>
-                <div className="space-y-2 text-sm">
-                  {f.orden_compra_id && <div><span className="text-gray-500">OC:</span><span className="ml-2 font-medium text-blue-600">#{f.orden_compra_id}</span></div>}
-                  {f.recepcion_id && <div><span className="text-gray-500">Recepción:</span><span className="ml-2 font-medium text-blue-600">#{f.recepcion_id}</span></div>}
-                </div>
-              </div>
+          {/* Tabs estilo Odoo */}
+          <div className="border-b mb-6">
+            <div className="flex gap-1">
+              {(["info", "detalles"] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => handleCambiarTabDetalle(tab)}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    fcDetalleTab === tab
+                      ? "border-indigo-600 text-indigo-700"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  }`}
+                >
+                  {tab === "info" ? "Información" : "Detalles"}
+                </button>
+              ))}
             </div>
           </div>
+
+          {/* Tab: Información */}
+          {fcDetalleTab === "info" && (
+            <div className="grid grid-cols-3 gap-6">
+              <div className="col-span-2 space-y-4">
+                <div className="bg-white rounded-lg border p-6">
+                  <h3 className="font-semibold text-gray-900 mb-4">Datos del Comprobante</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div><span className="text-gray-500">Proveedor:</span><span className="ml-2 font-medium">{f.proveedor_nombre}</span></div>
+                    <div><span className="text-gray-500">Tipo:</span><span className="ml-2 font-medium">Factura {f.tipo}</span></div>
+                    <div><span className="text-gray-500">Número:</span><span className="ml-2 font-medium">{f.numero}</span></div>
+                    <div><span className="text-gray-500">Fecha:</span><span className="ml-2 font-medium">{formatDate(f.fecha)}</span></div>
+                    {f.fecha_vencimiento && <div><span className="text-gray-500">Vencimiento:</span><span className="ml-2 font-medium">{formatDate(f.fecha_vencimiento)}</span></div>}
+                    <div><span className="text-gray-500">Moneda:</span><span className="ml-2 font-medium">{f.moneda}</span></div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg border p-6">
+                  <h3 className="font-semibold text-gray-900 mb-4">Importes</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span className="font-medium">{formatCurrency(f.subtotal, f.moneda)}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">IVA</span><span className="font-medium">{formatCurrency(f.impuestos, f.moneda)}</span></div>
+                    <div className="flex justify-between border-t pt-2"><span className="font-semibold">Total</span><span className="font-bold text-lg">{formatCurrency(f.total, f.moneda)}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">Saldo</span><span className={`font-medium ${f.saldo > 0 ? "text-red-600" : "text-green-600"}`}>{formatCurrency(f.saldo, f.moneda)}</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="bg-white rounded-lg border p-6">
+                  <h3 className="font-semibold text-gray-900 mb-4">Referencias</h3>
+                  <div className="space-y-2 text-sm">
+                    {f.orden_compra_id && <div><span className="text-gray-500">OC:</span><span className="ml-2 font-medium text-blue-600">#{f.orden_compra_id}</span></div>}
+                    {f.recepcion_id && <div><span className="text-gray-500">Recepción:</span><span className="ml-2 font-medium text-blue-600">#{f.recepcion_id}</span></div>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Tab: Detalles (Asientos contables) */}
+          {fcDetalleTab === "detalles" && (
+            <div>
+              {fcAsientoCargando ? (
+                <div className="flex items-center justify-center py-12 text-gray-400 text-sm">
+                  Cargando asientos contables...
+                </div>
+              ) : fcAsientos.length === 0 ? (
+                <div className="bg-white rounded-lg border p-8 text-center">
+                  <p className="text-gray-400 text-sm">
+                    {f.estado === "borrador"
+                      ? "Esta factura aún no tiene asiento contable. Publícala para generarlo."
+                      : "No se encontró asiento contable para esta factura."}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {fcAsientos.map((asiento) => (
+                    <div key={asiento.id} className="bg-white rounded-lg border overflow-hidden">
+                      <div className="px-5 py-3 bg-gray-50 border-b flex items-center justify-between">
+                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Asiento Contable</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          asiento.estado === "publicado" ? "bg-green-100 text-green-700" :
+                          asiento.estado === "cancelado" ? "bg-red-100 text-red-700" :
+                          "bg-gray-100 text-gray-600"
+                        }`}>
+                          {asiento.estado === "publicado" ? "Publicado" : asiento.estado === "cancelado" ? "Cancelado" : asiento.estado}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => { setFcAsientoModalItem(asiento); setFcAsientoModalOpen(true) }}
+                        className="w-full flex items-center justify-between px-5 py-4 hover:bg-indigo-50 transition-colors group text-left"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 group-hover:bg-indigo-200 transition-colors">
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-indigo-900 group-hover:text-indigo-700">
+                              {asiento.numero ?? "Asiento S/N"}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {formatDate(asiento.fecha)}
+                              {asiento.concepto ? ` · ${asiento.concepto}` : ""}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-gray-400 group-hover:text-indigo-600">
+                          <span>{asiento.lineas.length} líneas</span>
+                          <ChevronRight className="w-4 h-4" />
+                        </div>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )
     }
@@ -5713,9 +6151,11 @@ export default function ModuloCompras() {
       const catProvSeleccionada = provSeleccionado?.categoria_proveedor
         ? categoriasProveedor.find(c => c.nombre === provSeleccionado.categoria_proveedor)
         : null
-      // Prioridad: cuentas_permitidas de la categoría → cuenta_gastos_defecto del proveedor → cuenta_pagar_id de la categoría → sin restricción
+      // Prioridad: circuito de compras (proveedor) → cuentas_permitidas de la categoría → cuenta_gastos_defecto del proveedor → cuenta_pagar_id de la categoría → sin restricción
       const cuentasPermitidasFac: { id: string; codigo: string; nombre: string }[] =
-        (catProvSeleccionada?.cuentas_permitidas?.length ?? 0) > 0
+        ((provSeleccionado as any)?.aplica_circuito_compras && cuentaPtTransito)
+          ? [cuentaPtTransito]
+          : (catProvSeleccionada?.cuentas_permitidas?.length ?? 0) > 0
           ? catProvSeleccionada!.cuentas_permitidas
           : provSeleccionado?.cuenta_gastos_defecto
             ? [{ id: provSeleccionado.cuenta_gastos_defecto, codigo: provSeleccionado.cuenta_gastos_defecto_codigo ?? "", nombre: provSeleccionado.cuenta_gastos_defecto_nombre ?? "" }]

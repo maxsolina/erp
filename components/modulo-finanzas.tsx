@@ -4734,8 +4734,9 @@ function TransferenciasCaja() {
   }
 
   const confirmarTransferencia = async () => {
-    if (!seleccion) return
-
+    if (!seleccion || guardando) return
+    setGuardando(true)
+    try {
     // 1. Verificar extracto abierto en caja origen
     const { data: extractoOrigen } = await supabase
       .from("extractos_caja").select("id")
@@ -4794,6 +4795,7 @@ function TransferenciasCaja() {
 
     await cargarLista()
     await cargarDetalle(seleccion.id)
+    } finally { setGuardando(false) }
   }
 
   const recibirTransferencia = async () => {
@@ -4947,9 +4949,9 @@ function TransferenciasCaja() {
             </button>
           )}
           {seleccion?.estado === "borrador" && (
-            <button onClick={confirmarTransferencia}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
-              <Check className="w-4 h-4 inline mr-1" /> Confirmar
+            <button onClick={confirmarTransferencia} disabled={guardando}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed">
+              <Check className="w-4 h-4 inline mr-1" /> {guardando ? "Procesando..." : "Confirmar"}
             </button>
           )}
           {seleccion?.estado === "pendiente" && (
@@ -5258,7 +5260,9 @@ function Depositos() {
   }
 
   const confirmarDeposito = async () => {
-    if (!seleccion) return
+    if (!seleccion || guardando) return
+    setGuardando(true)
+    try {
     const { data: extracto } = await supabase.from("extractos_caja").select("id").eq("caja_id", seleccion.caja_egreso_id).eq("estado", "abierto").single()
     if (!extracto) { alert(`No hay extracto abierto para "${seleccion.caja_egreso_nombre}".`); return }
     // Cargar valores
@@ -5284,6 +5288,7 @@ function Depositos() {
     })
     await supabase.from("depositos_bancarios").update({ estado: "publicado" }).eq("id", seleccion.id)
     await cargarLista(); await cargarDetalle(seleccion.id)
+    } finally { setGuardando(false) }
   }
 
   const valoresDisp = valoresCaja.filter(v => v.caja_id === formCajaEgreso)
@@ -5357,7 +5362,7 @@ function Depositos() {
             <button onClick={guardar} disabled={guardando} className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50">{guardando ? "Guardando..." : "Guardar"}</button>
           )}
           {seleccion?.estado === "borrador" && (
-            <button onClick={confirmarDeposito} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"><Check className="w-4 h-4 inline mr-1" /> Confirmar</button>
+            <button onClick={confirmarDeposito} disabled={guardando} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"><Check className="w-4 h-4 inline mr-1" /> {guardando ? "Procesando..." : "Confirmar"}</button>
           )}
         </div>
       </div>
@@ -5549,7 +5554,9 @@ function Extracciones() {
   }
 
   const confirmarExtraccion = async () => {
-    if (!seleccion) return
+    if (!seleccion || guardando) return
+    setGuardando(true)
+    try {
     const { data: extracto } = await supabase.from("extractos_caja").select("id").eq("caja_id", seleccion.caja_ingreso_id).eq("estado", "abierto").single()
     if (!extracto) { alert(`No hay extracto abierto para "${seleccion.caja_ingreso_nombre}".`); return }
     // Validar valor compatible
@@ -5577,6 +5584,7 @@ function Extracciones() {
     })
     await supabase.from("extracciones").update({ estado: "publicado" }).eq("id", seleccion.id)
     await cargarLista(); await cargarDetalle(seleccion.id)
+    } finally { setGuardando(false) }
   }
 
   const valoresDisp = valoresCaja.filter(v => v.caja_id === formCajaIngreso)
@@ -5649,7 +5657,7 @@ function Extracciones() {
             <button onClick={guardar} disabled={guardando} className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50">{guardando ? "Guardando..." : "Guardar"}</button>
           )}
           {seleccion?.estado === "borrador" && (
-            <button onClick={confirmarExtraccion} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"><Check className="w-4 h-4 inline mr-1" /> Confirmar</button>
+            <button onClick={confirmarExtraccion} disabled={guardando} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"><Check className="w-4 h-4 inline mr-1" /> {guardando ? "Procesando..." : "Confirmar"}</button>
           )}
         </div>
       </div>
@@ -5842,7 +5850,9 @@ function TransferenciasBancarias() {
   }
 
   const confirmarTransferenciaBancaria = async () => {
-    if (!seleccion) return
+    if (!seleccion || guardando) return
+    setGuardando(true)
+    try {
     if (seleccion.desde_cuenta_id === seleccion.hasta_cuenta_id) {
       alert("La cuenta origen y destino no pueden ser la misma."); return
     }
@@ -5870,6 +5880,7 @@ function TransferenciasBancarias() {
     })
     await supabase.from("transferencias_bancarias").update({ estado: "publicado" }).eq("id", seleccion.id)
     await cargarLista(); await cargarDetalle(seleccion.id)
+    } finally { setGuardando(false) }
   }
 
   const cuentasDestino = cuentasBancarias.filter(c => c.id !== formDesde)
@@ -5941,7 +5952,7 @@ function TransferenciasBancarias() {
             <button onClick={guardar} disabled={guardando} className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50">{guardando ? "Guardando..." : "Guardar"}</button>
           )}
           {seleccion?.estado === "borrador" && (
-            <button onClick={confirmarTransferenciaBancaria} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"><Check className="w-4 h-4 inline mr-1" /> Confirmar</button>
+            <button onClick={confirmarTransferenciaBancaria} disabled={guardando} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"><Check className="w-4 h-4 inline mr-1" /> {guardando ? "Procesando..." : "Confirmar"}</button>
           )}
         </div>
       </div>
@@ -6148,7 +6159,9 @@ function ConversionMonedas() {
   }
 
   const confirmarConversion = async () => {
-    if (!seleccion) return
+    if (!seleccion || guardando) return
+    setGuardando(true)
+    try {
     const { data: extracto } = await supabase.from("extractos_caja").select("id").eq("caja_id", seleccion.caja_id).eq("estado", "abierto").single()
     if (!extracto) { alert(`No hay extracto abierto para "${seleccion.caja_nombre}".`); return }
     const validacion = await verificarValorEnCaja(supabase, seleccion.caja_id, seleccion.moneda_destino, "efectivo")
@@ -6182,6 +6195,7 @@ function ConversionMonedas() {
     }
     await supabase.from("conversiones_moneda").update({ estado: "publicado" }).eq("id", seleccion.id)
     await cargarLista(); await cargarDetalle(seleccion.id)
+    } finally { setGuardando(false) }
   }
 
   const listaFiltrada = lista.filter(d => {
@@ -6254,7 +6268,7 @@ function ConversionMonedas() {
             <button onClick={guardar} disabled={guardando} className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50">{guardando ? "Guardando..." : "Guardar"}</button>
           )}
           {seleccion?.estado === "borrador" && (
-            <button onClick={confirmarConversion} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"><Check className="w-4 h-4 inline mr-1" /> Confirmar</button>
+            <button onClick={confirmarConversion} disabled={guardando} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"><Check className="w-4 h-4 inline mr-1" /> {guardando ? "Procesando..." : "Confirmar"}</button>
           )}
         </div>
       </div>
@@ -6564,7 +6578,9 @@ function Prestamos() {
   }
 
   const confirmarPrestamo = async () => {
-    if (!seleccion || seleccion.estado !== "borrador") return
+    if (!seleccion || seleccion.estado !== "borrador" || guardando) return
+    setGuardando(true)
+    try {
     if (!seleccion.fecha_primera_cuota) { alert("Definí la fecha de primera cuota antes de confirmar"); return }
     // 1. Generar cuotas
     const cuotasGen = generarCuotas(seleccion)
@@ -6595,6 +6611,7 @@ function Prestamos() {
       capital_pendiente: seleccion.capital, updated_at: new Date().toISOString(),
     }).eq("id", seleccion.id)
     await cargarLista(); await cargarDetalle(seleccion.id)
+    } finally { setGuardando(false) }
   }
 
   const pagarCuota = async (cuota: PrestamoCuota) => {
@@ -6681,7 +6698,7 @@ function Prestamos() {
                 <div><h3 className="text-lg font-bold">{modoCrear ? "Nuevo Préstamo" : seleccion?.numero}</h3>{seleccion && badgeEstado(seleccion.estado)}</div>
                 <div className="flex gap-2">
                   {(modoCrear || seleccion?.estado === "borrador") && <button onClick={guardar} disabled={guardando} className="px-3 py-1.5 bg-indigo-900 text-white rounded text-sm hover:bg-indigo-800 disabled:opacity-50 flex items-center gap-1"><Check className="h-4 w-4" />{guardando ? "Guardando..." : "Guardar"}</button>}
-                  {seleccion?.estado === "borrador" && <button onClick={confirmarPrestamo} className="px-3 py-1.5 border rounded text-sm hover:bg-gray-50 flex items-center gap-1"><FileCheck className="h-4 w-4" />Confirmar</button>}
+                  {seleccion?.estado === "borrador" && <button onClick={confirmarPrestamo} disabled={guardando} className="px-3 py-1.5 border rounded text-sm hover:bg-gray-50 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"><FileCheck className="h-4 w-4" />{guardando ? "Procesando..." : "Confirmar"}</button>}
                 </div>
               </div>
               {/* Cabecera dos columnas */}
@@ -7657,6 +7674,7 @@ function ConciliacionTarjetas() {
   const [modoEdicion, setModoEdicion] = useState(false)
   const [cupones, setCupones] = useState<(CuponTarjeta & {conciliado?:boolean; rechazado?:boolean})[]>([])
   const [cargos, setCargos] = useState<ConciliacionTarjetaCargo[]>([])
+  const [guardando, setGuardando] = useState(false)
   const [cuponesRechazados, setCuponesRechazados] = useState<CuponTarjeta[]>([])
   const [tabActivo, setTabActivo] = useState<'filtros'|'cupones'|'rechazados'|'cargos'|'observaciones'>('cupones')
   const [busqueda, setBusqueda] = useState("")
@@ -7772,7 +7790,9 @@ function ConciliacionTarjetas() {
   }
 
   const confirmarConciliacion = async () => {
-    if (!detalle) return
+    if (!detalle || guardando) return
+    setGuardando(true)
+    try {
     const impConc = cupones.filter(c=>c.conciliado).reduce((a,c)=>a+c.importe,0)
     const impCargos = cargos.reduce((a,c)=>a+c.total,0)
     const impRech = cupones.filter(c=>c.rechazado).reduce((a,c)=>a+c.importe,0)
@@ -7780,6 +7800,7 @@ function ConciliacionTarjetas() {
     const updated = { ...detalle, importe_conciliado: impConc, importe_cargos: impCargos, importe_total: impConc - impCargos, importe_cupones_rechazados: impRech, estado: 'confirmado' as const }
     setDetalle(updated); setForm(updated)
     cargarLista()
+    } finally { setGuardando(false) }
   }
 
   // Detalle view
@@ -7796,7 +7817,7 @@ function ConciliacionTarjetas() {
               <>
                 <button onClick={conciliarTodos} className="px-3 py-1.5 border rounded text-sm hover:bg-gray-50 flex items-center gap-1"><Check className="w-4 h-4"/>Conciliar Todos</button>
                 <button onClick={desconciliarTodos} className="px-3 py-1.5 border rounded text-sm hover:bg-gray-50 flex items-center gap-1"><X className="w-4 h-4"/>Desconciliar Todos</button>
-                <button onClick={confirmarConciliacion} className="px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700 flex items-center gap-1"><Lock className="w-4 h-4"/>Confirmar</button>
+                <button onClick={confirmarConciliacion} disabled={guardando} className="px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"><Lock className="w-4 h-4"/>{guardando ? "Procesando..." : "Confirmar"}</button>
               </>
             )}
             {!modoEdicion && detalle.estado==='borrador' && <button onClick={()=>setModoEdicion(true)} className="px-3 py-1.5 border rounded text-sm hover:bg-gray-50 flex items-center gap-1"><Edit className="w-4 h-4"/>Editar</button>}

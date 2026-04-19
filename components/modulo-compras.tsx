@@ -672,6 +672,8 @@ export default function ModuloCompras() {
   // Órdenes de Compra
   const [selectedOC, setSelectedOC] = useState<OrdenCompra | null>(null)
   const [creandoOC, setCreandoOC] = useState(false)
+  const [confirmandoOC, setConfirmandoOC] = useState(false)
+  const [confirmandoRec, setConfirmandoRec] = useState(false)
   // UI state OC — listado
   const [ocFiltroEstado, setOcFiltroEstado] = useState<"todos" | "borrador" | "confirmada" | "cancelada">("todos")
   const [ocFiltroMetodo, setOcFiltroMetodo] = useState<"todos" | "estandar" | "inmediato">("todos")
@@ -2189,6 +2191,8 @@ export default function ModuloCompras() {
   }
 
   const confirmarOC = async (oc: OrdenCompra) => {
+    if (confirmandoOC) return
+    setConfirmandoOC(true)
     const ahora = new Date().toISOString()
     const esInmediato = oc.metodo_compra === 'inmediato'
     const nuevoNumRec = Math.max(...recepciones.map(r => r.id ?? 0), 0) + 1
@@ -2232,6 +2236,8 @@ export default function ModuloCompras() {
     } catch (err: any) {
       console.error("[v0] Error al confirmar OC:", err.message)
       alert("Error al confirmar OC: " + err.message)
+    } finally {
+      setConfirmandoOC(false)
     }
   }
 
@@ -2290,10 +2296,11 @@ export default function ModuloCompras() {
               <>
                 <button
                   onClick={() => confirmarOC(oc)}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                  disabled={confirmandoOC}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <CheckCircle className="w-4 h-4" />
-                  Confirmar
+                  {confirmandoOC ? "Confirmando..." : "Confirmar"}
                 </button>
                 <button
                   onClick={() => setOcModalCancelacionOpen(true)}
@@ -3723,6 +3730,9 @@ export default function ModuloCompras() {
   // =====================================================
   const handleConfirmarRecepcion = async (): Promise<void> => {
     if (!selectedRecepcion) return
+    if (confirmandoRec) return
+    setConfirmandoRec(true)
+    try {
     const rec = selectedRecepcion
 
     // Validación: cantidades > 0
@@ -3887,6 +3897,9 @@ export default function ModuloCompras() {
     // Limpiar estado temporal
     setSeriesConfirmadas({})
     setRecepcionCantidades({})
+    } finally {
+      setConfirmandoRec(false)
+    }
   }
 
   // =====================================================
@@ -4175,10 +4188,11 @@ export default function ModuloCompras() {
             {editable && (
               <button
                 onClick={handleConfirmarRecepcion}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700"
+                disabled={confirmandoRec}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <CheckCircle className="w-4 h-4" />
-                Confirmar Recepción
+                {confirmandoRec ? "Procesando..." : "Confirmar Recepción"}
               </button>
             )}
             {rec.estado === 'recibida' && (

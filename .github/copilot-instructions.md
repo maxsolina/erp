@@ -134,6 +134,25 @@ Todo formulario de creación o edición (pantalla completa, panel o drawer) DEBE
   - introduce mocks donde se requieren datos reales,
   - o no garantiza idempotencia en procesos automáticos/masivos.
 
+## Regla obligatoria: prohibición de datos mock/hardcodeados
+
+**Está terminantemente prohibido crear, usar o retornar datos mock, datos de prueba hardcodeados o arrays estáticos que simulen respuestas de base de datos.**
+
+### Aplica a
+- Funciones de server actions (`lib/*.ts`, `app/api/**`)
+- Hooks y contextos (`hooks/`, `contexts/`)
+- Componentes que rendericen datos de entidades del sistema
+
+### Reglas
+- Todo dato debe provenir de la base de datos real (Supabase), respetando las tablas y esquemas existentes.
+- Si una tabla o columna necesaria no existe, se debe crear un script SQL versionado en `scripts/` **antes** de consumirla en el código.
+- Está prohibido retornar `[]`, objetos hardcodeados o valores ficticios como sustituto de una consulta real, incluso de forma temporal.
+- Si los datos no existen en la DB, el estado correcto es mostrar un estado vacío real (lista vacía desde Supabase), no inventar datos.
+- Seed data para testing o desarrollo debe ir en scripts SQL versionados (`scripts/`), nunca en el código del frontend o backend.
+
+### Consecuencia directa
+- Un cambio que introduce mocks o datos hardcodeados **no cumple la Definition of Done** y debe ser rechazado.
+
 ## Regla de checklist por Pull Request (obligatoria)
 - Todo PR debe completar la plantilla `/.github/pull_request_template.md`.
 - Si una sección "si aplica" no corresponde, se debe marcar explícitamente como "No aplica" en la descripción del PR.

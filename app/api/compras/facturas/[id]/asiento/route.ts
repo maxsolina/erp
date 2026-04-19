@@ -142,12 +142,12 @@ export async function DELETE(
     )
   }
 
-  // Buscar asiento publicado por id_origen (no depende de asiento_id en facturas_compra)
+  // Buscar asiento publicado por comprobante_tipo + referencia (número de factura)
   const { data: asientoExistente } = await supabase
     .from("contabilidad_asientos")
     .select("id")
-    .eq("tipo_origen", "factura_compra")
-    .eq("id_origen", id)
+    .eq("comprobante_tipo", "factura_compra")
+    .eq("referencia", factura.numero)
     .eq("estado", "publicado")
     .maybeSingle()
 
@@ -168,15 +168,14 @@ export async function DELETE(
     return NextResponse.json({ error: resultado.error }, { status: 422 })
   }
 
-  // Revertir factura a borrador
-  // Intentar limpiar asiento_id si la columna existe; si no, solo actualizar estado
+  // Marcar factura como cancelada
   const { error: revertErr } = await supabase
     .from("facturas_compra")
-    .update({ estado: "borrador", asiento_id: null })
+    .update({ estado: "cancelada" })
     .eq("id", id)
 
   if (revertErr) {
-    await supabase.from("facturas_compra").update({ estado: "borrador" }).eq("id", id)
+    await supabase.from("facturas_compra").update({ estado: "cancelada" }).eq("id", id)
   }
 
   return NextResponse.json({ asiento_reversa_id: resultado.asiento_id })

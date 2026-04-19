@@ -1,5 +1,6 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { generarAsientoNCTomaEquipo } from "@/lib/contabilidad-asiento-factory"
 
 // GET — listar todas las tomas
 export async function GET() {
@@ -15,6 +16,7 @@ export async function GET() {
 // POST — crear nueva toma + ajuste_cliente + recepcion_toma
 export async function POST(req: Request) {
   const supabase = await createClient()
+  const adminClient = createAdminClient()
   const body = await req.json()
 
   const {
@@ -70,14 +72,15 @@ export async function POST(req: Request) {
       .then(() => {}) // ignorar error si columna no existe todavía
   }
 
-  // 3. Insertar ajuste de cliente (nota de crédito)
-  const { error: ajusteErr } = await supabase
+  // 3. Insertar ajuste de cliente (nota de crédito) — es_automatica = true
+  const { data: ajusteInsertado, error: ajusteErr } = await supabase
     .from("ajustes_clientes")
     .insert({
       numero: notaCreditoNumero,
       cliente_id,
       cliente_nombre,
       concepto: `Toma de equipo: ${modelo_equipo}`,
+      motivo: `Toma de equipo: ${modelo_equipo}`,
       moneda: "ARS",
       categoria: "Equipos en parte de pago",
       lineas: [{
@@ -86,16 +89,45 @@ export async function POST(req: Request) {
         fecha_vencimiento: new Date().toISOString(),
       }],
       total: precio_final,
-      saldo_disponible: precio_final,
-      estado: "publicado",
+      estado: "activo",
       toma_equipo_id: toma.id,
+      es_automatica: true,
       nota_venta_numero: null,
       sucursal_id: sucursal_id ?? null,
     })
+    .select("id")
+    .single()
 
   if (ajusteErr) console.error("[tomas-equipo] ajuste error:", ajusteErr.message)
 
-  // 4. Insertar recepción de toma en borrador
+  // 4. Generar asiento contable de la NC
+  let asientoNcError: string | null = null
+  if (!ajusteErr && ajusteInsertado) {
+    const sucursalNombre = sucursal_id
+      ? (await supabase.from("sucursales").select("nombre").eq("id", sucursal_id).maybeSingle()).data?.nombre ?? null
+      : null
+    const asientoNC = await generarAsientoNCTomaEquipo(adminClient, {
+      id: ajusteInsertado.id,
+      numero: notaCreditoNumero,
+      fecha: new Date().toISOString().split("T")[0],
+      cliente_nombre,
+      sucursal: sucursalNombre,
+      total: precio_final,
+    })
+    if (asientoNC.ok) {
+      await adminClient
+        .from("ajustes_clientes")
+        .update({ asiento_id: asientoNC.asiento_id })
+        .eq("id", ajusteInsertado.id)
+    } else {
+      asientoNcError = asientoNC.error ?? "Error desconocido al generar asiento NC"
+      console.error("[tomas-equipo] asiento NC error:", asientoNcError)
+    }
+  } else if (ajusteErr) {
+    asientoNcError = `Ajuste no creado: ${ajusteErr.message}`
+  }
+
+  // 5. Insertar recepción de toma en borrador
   const { error: recepErr } = await supabase
     .from("recepciones_toma")
     .insert({
@@ -117,5 +149,6 @@ export async function POST(req: Request) {
     numero,
     recepcion_numero: recepcionNumero,
     nota_credito_numero: notaCreditoNumero,
+    ...(asientoNcError ? { _asiento_nc_error: asientoNcError } : {}),
   })
 }

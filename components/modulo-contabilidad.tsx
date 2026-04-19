@@ -111,6 +111,7 @@ interface Asiento {
   estado: "no_asentado" | "publicado" | "cancelado"
   es_manual: boolean
   a_revisar: boolean
+  created_at?: string
   lineas?: LineaAsiento[]
 }
 
@@ -1778,7 +1779,14 @@ function LibroMayorView() {
     const asientos: Asiento[] = await fetch(`/api/contabilidad/asientos?${params}&sin_cancelados=false`).then(r => r.json())
     const resultado: any[] = []
     let saldo = 0
-    for (const a of (Array.isArray(asientos) ? asientos : []).sort((x, y) => x.fecha.localeCompare(y.fecha))) {
+    const ordenados = (Array.isArray(asientos) ? asientos : []).sort((x, y) => {
+      const byFecha = x.fecha.localeCompare(y.fecha)
+      if (byFecha !== 0) return byFecha
+      const byCreated = (x.created_at ?? "").localeCompare(y.created_at ?? "")
+      if (byCreated !== 0) return byCreated
+      return String(x.id).localeCompare(String(y.id))
+    })
+    for (const a of ordenados) {
       for (const l of (a.lineas ?? [])) {
         if (l.cuenta_id === filtros.cuenta_id) {
           saldo += Number(l.debe) - Number(l.haber)
@@ -1834,7 +1842,7 @@ function LibroMayorView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {lineas.map((l, idx) => (
+                  {[...lineas].reverse().map((l, idx) => (
                     <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="px-3 py-2 text-gray-500">{fmtDate(l.asiento.fecha)}</td>
                       <td className="px-3 py-2 font-mono text-xs">{l.asiento.numero ?? "—"}</td>

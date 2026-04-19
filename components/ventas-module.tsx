@@ -255,6 +255,7 @@ interface Remito {
   bultos: number
   valor_declarado: number
   control_factura: "facturado" | "pendiente"
+  asiento_id?: string | null
   lineas?: RemitoLinea[]
   seguimiento?: SeguimientoEntry[]
 }
@@ -418,13 +419,15 @@ interface AjusteCliente {
   numero: string
   cliente_id: number
   cliente_nombre: string
-  estado: "borrador" | "publicado" | "cancelado"
+  estado: "borrador" | "activo" | "cancelado"
   fecha: string
   concepto: string
   moneda: "ARS" | "USD"
   nota_venta_numero: string | null
   sucursal: string
   categoria: string | null
+  toma_equipo_id: number | null
+  es_automatica: boolean | null
   lineas: {
     descripcion: string
     fecha_vencimiento: string
@@ -1259,6 +1262,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [creandoCliente, setCreandoCliente] = useState(false)
   const [editandoCliente, setEditandoCliente] = useState(false)
   const [creandoNV, setCreandoNV] = useState(false)
+  const [guardandoNV, setGuardandoNV] = useState(false)
   const [editingNVId, setEditingNVId] = useState<number | null>(null)
   const [creandoOE, setCreandoOE] = useState(false)
   const [creandoFactura, setCreandoFactura] = useState(false)
@@ -1459,6 +1463,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [tomaEquipoPrecioFinal, setTomaEquipoPrecioFinal] = useState(0)
   const [tomaEquipoComponentes, setTomaEquipoComponentes] = useState<{id: number; nombre: string; estado: string; descuento: number}[]>([])
   const [tomaEquipoCreando, setTomaEquipoCreando] = useState(false)
+  const [guardandoToma, setGuardandoToma] = useState(false)
   const [tomasEquipo, setTomasEquipo] = useState<{
     id: number
     numero: string
@@ -1617,6 +1622,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [ncDetallePopup, setNcDetallePopup] = useState<AjusteCliente | null>(null)
   const [recDetallePopup, setRecDetallePopup] = useState<any | null>(null)
   const [selectedAjuste, setSelectedAjuste] = useState<AjusteCliente | null>(null)
+  const [showCancelarTEModal, setShowCancelarTEModal] = useState(false)
+  const [cancelandoTE, setCancelandoTE] = useState(false)
   
   // Filters (legacy — kept for compatibility with filtered derived state)
   const [estadoFilter, setEstadoFilter] = useState<string>("todos")
@@ -3743,6 +3750,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
   // Función para crear NV (usada desde previsualización)
   const handleCrearNVFinal = async (tipoVenta: "inmediata" | "pedido") => {
+    if (guardandoNV) return
     const cliente = clientes.find(c => c.id === nvClienteId)
     const lineasValidas = nvLineas.filter(l => l.producto_id > 0 && l.producto_nombre.trim() !== "")
     
@@ -3772,6 +3780,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const vendedorNombre = vendedores[0]?.nombre || "Max Solina"
     const terminoPagoId = cliente.termino_pago_id || 1
     const terminoPagoNombre = mockTerminosPago.find(tp => tp.id === terminoPagoId)?.nombre || "Contado Efectivo"
+    setGuardandoNV(true)
+    try {
     const depositoSeleccionado = depositos.find(d => d.id === nvDepositoId)
     const deposito = depositoSeleccionado?.nombre || "Sin depósito"
     const moneda: "ARS" | "USD" = "ARS"
@@ -3971,7 +3981,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
           // ── Descontar stock inmediatamente al confirmar el remito ──
           try {
-            await fetch(`/api/remitos/${remData.id}/confirmar`, {
+            const confirmarRes = await fetch(`/api/remitos/${remData.id}/confirmar`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -3992,6 +4002,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 })),
               }),
             })
+            // Actualizar state local con estado entregado y asiento_id del resultado
+            if (confirmarRes.ok) {
+              const confirmarData = await confirmarRes.json()
+              setRemitos(prev => prev.map(r =>
+                r.id === remData.id
+                  ? { ...r, estado: "entregado" as const, asiento_id: confirmarData.asiento_id ?? null }
+                  : r
+              ))
+            }
           } catch (_) {}
         }
       } catch (_) {}
@@ -4101,6 +4120,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setNvUbicacionId(defaultUbic?.id ?? 0)
     setEditingNVId(null)
     setSelectedNV(newNV)
+    } finally {
+      setGuardandoNV(false)
+    }
   }
 
   // Vista de previsualización de NV
@@ -4145,15 +4167,17 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </button>
             <button 
               onClick={() => handleCrearNVFinal("pedido")}
-              className="px-3 py-1.5 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700 flex items-center gap-1"
+              disabled={guardandoNV}
+              className="px-3 py-1.5 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Save className="w-4 h-4" /> Guardar Pedido
+              <Save className="w-4 h-4" /> {guardandoNV ? "Procesando..." : "Guardar Pedido"}
             </button>
             <button 
               onClick={() => handleCrearNVFinal("inmediata")}
-              className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 flex items-center gap-1"
+              disabled={guardandoNV}
+              className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <CheckCircle className="w-4 h-4" /> Confirmar Venta
+              <CheckCircle className="w-4 h-4" /> {guardandoNV ? "Procesando..." : "Confirmar Venta"}
             </button>
           </div>
         </div>
@@ -5480,6 +5504,28 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     return Math.round(total * 0.7) // 30% menos para 4+ daños
   }
 
+  const handleCancelarTE = async () => {
+    if (!selectedToma) return
+    setCancelandoTE(true)
+    try {
+      const res = await fetch(`/api/tomas-equipo/${selectedToma.id}/cancelar`, { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.error ?? "Error al cancelar la toma")
+        return
+      }
+      // Recargar lista y cerrar ficha
+      const updated = await fetch("/api/tomas-equipo")
+      if (updated.ok) setTomasEquipo(await updated.json())
+      setSelectedToma(null)
+      setShowCancelarTEModal(false)
+    } catch (e) {
+      alert("Error de red al cancelar la toma")
+    } finally {
+      setCancelandoTE(false)
+    }
+  }
+
   const renderFichaTomaEquipo = () => {
     if (!selectedToma) return null
     const fechaObj = new Date(selectedToma.fecha)
@@ -5504,10 +5550,19 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               {operacionEnCurso ? 'Operación en curso' : 'Operación finalizada'}
             </span>
             <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-              selectedToma.estado === 'confirmado' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+              selectedToma.estado === 'confirmado' ? 'bg-green-100 text-green-700' :
+              selectedToma.estado === 'cancelado' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
             }`}>
               {selectedToma.estado.charAt(0).toUpperCase() + selectedToma.estado.slice(1)}
             </span>
+            {selectedToma.estado !== 'cancelado' && (
+              <button
+                onClick={() => setShowCancelarTEModal(true)}
+                className="px-3 py-1.5 border border-red-300 text-red-600 text-sm rounded-lg hover:bg-red-50 transition-colors"
+              >
+                Cancelar toma
+              </button>
+            )}
           </div>
         </div>
 
@@ -5653,6 +5708,39 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             )}
           </div>
         </div>
+
+        {/* Modal confirmación cancelación TE */}
+        {showCancelarTEModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowCancelarTEModal(false)}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6" onClick={e => e.stopPropagation()}>
+              <h2 className="text-lg font-bold text-gray-900 mb-2">Cancelar Toma de Equipo</h2>
+              {selectedToma.estado_recepcion === 'recibido' ? (
+                <p className="text-sm text-gray-600 mb-4">
+                  El equipo <strong>{selectedToma.modelo_equipo}</strong> ya fue recibido físicamente. Al cancelar se revertirán <strong>la Nota de Crédito y la Recepción</strong>, generando los asientos de reversa correspondientes.
+                </p>
+              ) : (
+                <p className="text-sm text-gray-600 mb-4">
+                  Se cancelarán la Nota de Crédito y la Recepción pendiente asociadas a esta toma, y se generará la reversa contable de la NC.
+                </p>
+              )}
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setShowCancelarTEModal(false)}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50"
+                >
+                  No cancelar
+                </button>
+                <button
+                  onClick={handleCancelarTE}
+                  disabled={cancelandoTE}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+                >
+                  {cancelandoTE ? "Cancelando..." : "Confirmar cancelación"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -5678,7 +5766,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     }
 
     const handleConfirmar = async () => {
-      if (!clienteSeleccionado || !modeloSeleccionado) return
+      if (!clienteSeleccionado || !modeloSeleccionado || guardandoToma) return
+      setGuardandoToma(true)
 
       const ahora = new Date().toISOString()
       const precioFinal = tomaEquipoPrecioFinal || precioSugerido
@@ -5714,6 +5803,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           numero = data.numero
           recepcionNumero = data.recepcion_numero
           notaCreditoNumero = data.nota_credito_numero
+          if (data._asiento_nc_error) {
+            console.warn("[tomas-equipo] asiento NC no generado:", data._asiento_nc_error)
+            alert(`⚠️ Toma registrada, pero el asiento contable de la NC no se generó:\n${data._asiento_nc_error}`)
+          }
         }
       } catch (err) {
         console.error("[tomas-equipo] error al persistir:", err)
@@ -5800,6 +5893,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       // Abrir la ficha de la toma recién creada en lugar de volver al listado
       resetForm()
       setSelectedToma(nuevaToma)
+      setGuardandoToma(false)
     }
 
     return (
@@ -6134,9 +6228,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </button>
                 <button
                   onClick={handleConfirmar}
-                  className="px-6 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 flex items-center gap-2"
+                  disabled={guardandoToma}
+                  className="px-6 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <CheckCircle className="w-4 h-4" /> Confirmar Operación
+                  <CheckCircle className="w-4 h-4" /> {guardandoToma ? "Procesando..." : "Confirmar Operación"}
                 </button>
               </div>
             </div>
@@ -7557,6 +7652,23 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <div><span className="text-gray-500">Factura:</span> <span className="font-medium text-emerald-700">{selectedRemito.factura_numero || "-"}</span></div>
                 <div><span className="text-gray-500">Deposito:</span> <span className="font-medium">{selectedRemito.deposito}</span></div>
                 <div><span className="text-gray-500">Sucursal:</span> <span className="font-medium">{selectedRemito.sucursal}</span></div>
+                <div className="col-span-2">
+                  <span className="text-gray-500">Asiento CMV:</span>{" "}
+                  {selectedRemito.asiento_id ? (
+                    <button
+                      onClick={() => {
+                        setActiveView("contabilidad")
+                        setSelectedRemito(null)
+                      }}
+                      className="font-medium text-indigo-700 hover:underline"
+                      title={selectedRemito.asiento_id}
+                    >
+                      Ver asiento →
+                    </button>
+                  ) : (
+                    <span className="text-gray-400">Sin asiento generado</span>
+                  )}
+                </div>
               </div>
             </div>
             <div className="space-y-4">
@@ -8426,7 +8538,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     setReciboClienteIdForm(selectedFactura.cliente_id)
                     setReciboFacturaIdForm(selectedFactura.id)
                     setReciboMontoForm(selectedFactura.saldo)
-                    setReciboPagosForm([{ forma_pago: "Efectivo", importe: selectedFactura.saldo, moneda: "ARS" }])
+                    // No precargar pagos vacíos: el usuario los agregará desde el modal con valor_id correcto
+                    setReciboPagosForm([])
                     setCreandoRecibo(true)
                     setReciboPrevisualizando(false)
                     setSelectedFactura(null)
@@ -10460,8 +10573,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <p className="text-sm text-gray-500 mt-0.5">{new Date(ncDetallePopup.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
               </div>
               <div className="flex items-center gap-3">
-                <span className={`text-xs font-semibold px-2 py-1 rounded-full ${ncDetallePopup.estado === 'publicado' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                  {ncDetallePopup.estado === 'publicado' ? 'Publicada' : 'Borrador'}
+                <span className={`text-xs font-semibold px-2 py-1 rounded-full ${ncDetallePopup.estado === 'activo' ? 'bg-green-100 text-green-700' : ncDetallePopup.estado === 'cancelado' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
+                  {ncDetallePopup.estado === 'activo' ? 'Activa' : ncDetallePopup.estado === 'cancelado' ? 'Cancelada' : 'Borrador'}
                 </span>
                 <button onClick={() => setNcDetallePopup(null)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600">
                   <X className="w-4 h-4" />
@@ -10663,8 +10776,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <td className="py-3 px-4 text-sm text-gray-600">{formatDate(ajuste.fecha)}</td>
                 <td className="py-3 px-4 text-sm text-gray-600">{ajuste.concepto}</td>
                 <td className="py-3 px-4 text-center">
-                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${ajuste.estado === "publicado" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"}`}>
-                    {ajuste.estado === "publicado" ? "Publicado" : "Borrador"}
+                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${ajuste.estado === "activo" ? "bg-green-100 text-green-700" : ajuste.estado === "cancelado" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-700"}`}>
+                    {ajuste.estado === "activo" ? "Activo" : ajuste.estado === "cancelado" ? "Cancelado" : "Borrador"}
                   </span>
                 </td>
                 <td className="py-3 px-4 text-center text-sm font-medium">{ajuste.moneda}</td>
@@ -10716,9 +10829,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </div>
           </div>
           <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-            ajuste.estado === "publicado" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+            ajuste.estado === "activo" ? "bg-green-100 text-green-700" : ajuste.estado === "cancelado" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-600"
           }`}>
-            {ajuste.estado === "publicado" ? "Publicada" : "Borrador"}
+            {ajuste.estado === "activo" ? "Activa" : ajuste.estado === "cancelado" ? "Cancelada" : "Borrador"}
           </span>
         </div>
 

@@ -1,8 +1,8 @@
 "use client"
 
-import React, { useState, useMemo, useEffect, useCallback } from "react"
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import { createClient } from "@supabase/supabase-js"
-import { Plus, Edit2, Package, CheckCircle, XCircle, ChevronLeft } from "lucide-react"
+import { Plus, Edit2, Package, CheckCircle, XCircle, ChevronLeft, History, X } from "lucide-react"
 import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
 
 // ─── Supabase ─────────────────────────────────────────────────────────────────
@@ -160,6 +160,8 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
   const [tab, setTab] = useState<"info" | "inventario" | "abastecimientos" | "ventas" | "contabilidad" | "observaciones">("info")
   const [errores, setErrores] = useState<Record<string, string>>({})
   const [guardando, setGuardando] = useState(false)
+  const [modalHistorialCampo, setModalHistorialCampo] = useState<"manual" | "contable" | null>(null)
+  const costoManualOriginalRef = useRef(inicial?.costo_manual ?? 0)
 
   function set<K extends keyof FormProducto>(key: K, value: FormProducto[K]) {
     setForm(prev => ({ ...prev, [key]: value }))
@@ -179,7 +181,24 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
     e.preventDefault()
     if (soloLectura || !validar()) return
     setGuardando(true)
-    try { await onGuardar(form) } finally { setGuardando(false) }
+    try {
+      let formToSave = { ...form }
+      if (form.costo_manual !== costoManualOriginalRef.current) {
+        const nuevaEntrada: HistorialCosto = {
+          fecha: new Date().toISOString(),
+          valor_anterior: costoManualOriginalRef.current,
+          valor_nuevo: form.costo_manual,
+          moneda: form.moneda_costo,
+          usuario: "usuario",
+          origen: "manual",
+        }
+        formToSave = {
+          ...formToSave,
+          historial_costos: [...(formToSave.historial_costos ?? []), nuevaEntrada],
+        }
+      }
+      await onGuardar(formToSave)
+    } finally { setGuardando(false) }
   }
 
   const TABS = [
@@ -334,8 +353,15 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
             <h3 className="text-sm font-semibold text-gray-900 mb-4">Costos</h3>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <Label>Costo manual</Label>
-                <Input type="number" min={0} value={form.costo_manual} onChange={e => set("costo_manual", Number(e.target.value))} disabled={soloLectura} />
+                <button
+                  type="button"
+                  onClick={() => setModalHistorialCampo("contable")}
+                  className="flex items-center gap-1 text-xs font-medium text-gray-500 mb-1 hover:text-indigo-700 transition-colors group"
+                >
+                  Costo contable
+                  <History className="w-3 h-3 text-gray-400 group-hover:text-indigo-700 transition-colors" />
+                </button>
+                <Input type="number" min={0} value={form.costo_contable} disabled />
               </div>
               <div>
                 <Label>Moneda</Label>
@@ -344,8 +370,15 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
                 </Sel>
               </div>
               <div>
-                <Label>Costo contable</Label>
-                <Input type="number" min={0} value={form.costo_contable} onChange={e => set("costo_contable", Number(e.target.value))} disabled={soloLectura} />
+                <button
+                  type="button"
+                  onClick={() => setModalHistorialCampo("manual")}
+                  className="flex items-center gap-1 text-xs font-medium text-gray-500 mb-1 hover:text-indigo-700 transition-colors group"
+                >
+                  Costo manual
+                  <History className="w-3 h-3 text-gray-400 group-hover:text-indigo-700 transition-colors" />
+                </button>
+                <Input type="number" min={0} value={form.costo_manual} onChange={e => set("costo_manual", Number(e.target.value))} disabled={soloLectura} />
               </div>
             </div>
           </div>
@@ -425,6 +458,103 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
           </div>
         )}
       </div>
+
+      {/* Modal historial de costos */}
+      {modalHistorialCampo && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={() => setModalHistorialCampo(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-4xl flex flex-col max-h-[85vh]"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 text-indigo-700" />
+                <h3 className="text-base font-semibold text-gray-900">
+                  Historial de {modalHistorialCampo === "contable" ? "Costo Contable" : "Costo Manual"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalHistorialCampo(null)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {(() => {
+                const entries = (form.historial_costos ?? []).filter(e =>
+                  modalHistorialCampo === "contable" ? e.origen === "recepcion" : e.origen === "manual"
+                )
+                if (entries.length === 0) {
+                  return (
+                    <div className="flex flex-col items-center justify-center py-16 gap-2">
+                      <History className="w-10 h-10 text-gray-200" />
+                      <p className="text-sm text-gray-400">Sin cambios registrados</p>
+                    </div>
+                  )
+                }
+                return (
+                  <table className="w-full text-sm">
+                    <thead className="border-b bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="text-left py-3 px-6 text-xs font-semibold text-gray-600 uppercase">Fecha</th>
+                        <th className="text-right py-3 px-6 text-xs font-semibold text-gray-600 uppercase">Anterior</th>
+                        <th className="text-right py-3 px-6 text-xs font-semibold text-gray-600 uppercase">Nuevo</th>
+                        <th className="text-left py-3 px-6 text-xs font-semibold text-gray-600 uppercase">Moneda</th>
+                        <th className="text-left py-3 px-6 text-xs font-semibold text-gray-600 uppercase">Usuario</th>
+                        <th className="text-left py-3 px-6 text-xs font-semibold text-gray-600 uppercase">Referencia</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...entries].reverse().map((e, i) => (
+                        <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="px-6 py-4 text-gray-600 whitespace-nowrap">
+                            {new Date(e.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                            <span className="ml-2 text-xs text-gray-400">
+                              {new Date(e.fecha).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right text-gray-500 tabular-nums">
+                            {e.valor_anterior.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-6 py-4 text-right font-semibold text-gray-900 tabular-nums">
+                            {e.valor_nuevo.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-6 py-4 text-gray-600">{e.moneda}</td>
+                          <td className="px-6 py-4 text-gray-600">{e.usuario}</td>
+                          <td className="px-6 py-4">
+                            {e.referencia ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setModalHistorialCampo(null)
+                                  window.dispatchEvent(
+                                    new CustomEvent("erp:navegar-recepcion", { detail: { numero: e.referencia } })
+                                  )
+                                }}
+                                className="inline-flex items-center gap-1 text-xs font-medium text-indigo-700 hover:text-indigo-900 hover:underline transition-colors"
+                              >
+                                {e.referencia}
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                              </button>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   )
 }

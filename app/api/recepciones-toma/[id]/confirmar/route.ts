@@ -1,8 +1,10 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { generarAsientoRecepcionTomaEquipo } from "@/lib/contabilidad-asiento-factory"
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
+  const adminClient = createAdminClient()
   const { id } = await params
   const tomaId = parseInt(id)
   const body = await req.json()
@@ -36,7 +38,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // Obtener la toma para el producto_id y nombre del equipo
   const { data: toma } = await supabase
     .from("tomas_equipo")
-    .select("producto_id, modelo_equipo")
+    .select("producto_id, modelo_equipo, precio_final, cliente_nombre")
     .eq("id", tomaId)
     .single()
 
@@ -117,6 +119,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           usuario: "Admin",
         })
     }
+  }
+
+  // Generar asiento contable de la recepción TE
+  const sucursalNombre = recepcion.sucursal_id
+    ? (await supabase.from("sucursales").select("nombre").eq("id", recepcion.sucursal_id).maybeSingle()).data?.nombre ?? null
+    : null
+  const asientoRep = await generarAsientoRecepcionTomaEquipo(adminClient, {
+    id: recepcion.id,
+    numero: recepcion.numero,
+    fecha: new Date().toISOString().split("T")[0],
+    cliente_nombre: toma?.cliente_nombre ?? null,
+    sucursal: sucursalNombre,
+    total: toma?.precio_final ?? 0,
+  })
+  if (asientoRep.ok) {
+    await supabase
+      .from("recepciones_toma")
+      .update({ asiento_id: asientoRep.asiento_id } as any)
+      .eq("id", recepcion.id)
+  } else {
+    console.error("[confirmar-recepcion-te] asiento error:", asientoRep.error)
   }
 
   return NextResponse.json({ ok: true, recepcion_numero: recepcion.numero, imei, color, bateria_pct, outlet, ubicacion_id })

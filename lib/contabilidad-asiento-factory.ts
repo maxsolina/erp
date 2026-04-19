@@ -516,6 +516,23 @@ export async function generarAsientoRecibo(
     }
   }
 
+  // 1c. Para pagos sin valor_id pero con valor_nombre, intentar resolver por nombre dentro de la caja
+  const pagosOrfanos = pagos.filter(p => !p.valor_id && p.valor_nombre)
+  if (pagosOrfanos.length > 0) {
+    const nombres = [...new Set(pagosOrfanos.map(p => p.valor_nombre).filter(Boolean))]
+    if (nombres.length > 0) {
+      const { data: valoresPorNombre } = await supabase
+        .from("caja_valores")
+        .select("id, nombre, cuenta_contable_id, contabilidad_plan_cuentas:cuenta_contable_id(id, codigo, nombre)")
+        .eq("caja_id", recibo.caja_id)
+        .in("nombre", nombres)
+      for (const v of valoresPorNombre ?? []) {
+        // Guardar con clave "nombre:" para los pagos sin valor_id
+        cuentasPorValor[`nombre:${v.nombre}`] = (v as any).contabilidad_plan_cuentas ?? null
+      }
+    }
+  }
+
   // 2. Cuenta deudores (HABER) — desde mapeo global factura_venta.deudores
   const { data: mapeo } = await supabase
     .from("contabilidad_mapeo_cuentas")
@@ -558,16 +575,32 @@ export async function generarAsientoRecibo(
 
   const lineas: Linea[] = []
   let orden = 0
+  let importeValidoPagos = 0
 
   for (const pago of pagos) {
-    const cPago = pago.valor_id ? (cuentasPorValor[pago.valor_id] ?? null) : null
+    // Resolver cuenta: primero por valor_id, luego por nombre, luego saltar
+    let cPago: { id: string; codigo: string; nombre: string } | null = null
+    if (pago.valor_id) {
+      cPago = cuentasPorValor[pago.valor_id] ?? null
+    } else if (pago.valor_nombre) {
+      cPago = cuentasPorValor[`nombre:${pago.valor_nombre}`] ?? null
+    }
 
     if (!cPago?.id) {
-      return {
-        ok: false,
-        error: `El valor de pago "${pago.valor_nombre}" no tiene cuenta contable asignada. Ejecute 017_add_cuenta_contable_caja_valores.sql y asigne la cuenta en Configuración → Cajas.`,
+      // Si el pago tiene importe pero no tiene cuenta → error descriptivo
+      // Si el pago no tiene valor_id ni valor_nombre válidos → dato corrupto, se ignora
+      const nombreMostrar = pago.valor_nombre && pago.valor_nombre !== "null" ? pago.valor_nombre : null
+      if (nombreMostrar) {
+        return {
+          ok: false,
+          error: `El valor de pago "${nombreMostrar}" no tiene cuenta contable asignada. Ejecute 017_add_cuenta_contable_caja_valores.sql y asigne la cuenta en Configuración → Cajas.`,
+        }
       }
+      // Pago sin valor_id ni valor_nombre: dato inválido, se ignora del asiento
+      continue
     }
+
+    importeValidoPagos += pago.importe
 
     lineas.push({
       cuenta_id: cPago.id,
@@ -580,13 +613,19 @@ export async function generarAsientoRecibo(
     })
   }
 
-  // HABER: Deudores por Ventas = total del recibo
+  if (lineas.length === 0) {
+    return { ok: false, error: "El recibo no tiene ningún medio de pago con cuenta contable asignable." }
+  }
+
+  // HABER: Deudores por Ventas — usar el total de pagos válidos para mantener partida doble
+  // (puede diferir de recibo.importe si había pagos sin valor_id que se ignoraron)
+  const haberDeudores = importeValidoPagos > 0 ? importeValidoPagos : recibo.importe
   lineas.push({
     cuenta_id: cDeudores.id,
     cuenta_codigo: cDeudores.codigo,
     cuenta_nombre: cDeudores.nombre,
     debe: 0,
-    haber: recibo.importe,
+    haber: haberDeudores,
     descripcion: recibo.cliente_nombre ?? null,
     orden: orden,
   })
@@ -634,6 +673,242 @@ export async function generarAsientoRecibo(
   if (lineasErr) {
     await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
     return { ok: false, error: `Error en líneas del asiento de recibo: ${lineasErr.message}` }
+  }
+
+  return { ok: true, asiento_id: asiento.id }
+}
+
+// ─── Factura de Compra — Circuito (PT en Tránsito / Proveedores) ─────────────
+// Genera el asiento contable para una factura creada automáticamente por el
+// circuito de compras. El DEBE va siempre a PT en Tránsito en lugar de las
+// cuentas de gasto, porque la mercadería aún no ingresó físicamente.
+//
+//   DEBE    11050301  PT en Tránsito        [subtotal neto]
+//   DEBE    11040101  IVA Crédito Fiscal     [iva, si aplica]
+//   HABER   21010101  Proveedores            [total con IVA]  (ARS)
+//   HABER   21010102  Proveedores del Ext.   [total con IVA]  (USD/EUR)
+export async function generarAsientoFacturaCircuito(
+  supabase: SupabaseClient,
+  factura: {
+    id: number | string
+    numero: string
+    fecha: string
+    proveedor_nombre?: string | null
+    sucursal?: string | null
+    subtotal: number
+    impuestos: number
+    total: number
+    moneda?: string
+  }
+): Promise<ResultadoAsiento> {
+  // Idempotencia
+  const { data: existente } = await supabase
+    .from("contabilidad_asientos")
+    .select("id")
+    .eq("comprobante_tipo", "factura_compra")
+    .eq("referencia", factura.numero)
+    .eq("estado", "publicado")
+    .maybeSingle()
+  if (existente?.id) return { ok: true, asiento_id: existente.id }
+
+  // 1. Obtener diario CMP del mapeo (reutilizamos el mapeo de factura_compra)
+  const { data: mapeo } = await supabase
+    .from("contabilidad_mapeo_cuentas")
+    .select("subtipo, diario_id")
+    .eq("tipo_origen", "factura_compra")
+    .eq("activo", true)
+  const pm = Object.fromEntries((mapeo ?? []).map((r: any) => [r.subtipo, r]))
+  const diario_id: string | undefined = pm["acreedores"]?.diario_id ?? pm["compras"]?.diario_id
+  if (!diario_id) return { ok: false, error: "Sin diario configurado para factura_compra." }
+
+  // 2. Buscar cuentas por código (verificar existencia)
+  const codigos = ["11050301", "11040101", factura.moneda === "USD" || factura.moneda === "EUR" ? "21010102" : "21010101"]
+  const { data: cuentas, error: cErr } = await supabase
+    .from("contabilidad_plan_cuentas")
+    .select("id, codigo, nombre")
+    .in("codigo", codigos)
+  if (cErr) return { ok: false, error: `Error al buscar cuentas: ${cErr.message}` }
+
+  const byCode = Object.fromEntries((cuentas ?? []).map((c: any) => [c.codigo, c]))
+  const cPtTransito = byCode["11050301"]
+  const cIvaCF      = byCode["11040101"]
+  const cProvCod    = factura.moneda === "USD" || factura.moneda === "EUR" ? "21010102" : "21010101"
+  const cProv       = byCode[cProvCod]
+
+  if (!cPtTransito) return { ok: false, error: "Cuenta 11050301 (PT en Tránsito) no encontrada en el plan de cuentas." }
+  if (!cProv)       return { ok: false, error: `Cuenta ${cProvCod} (Proveedores) no encontrada en el plan de cuentas.` }
+
+  // 3. Período contable
+  const { data: periodo_id } = await supabase
+    .rpc("contabilidad_periodo_para_fecha", { p_fecha: factura.fecha.split("T")[0] })
+
+  // 4. Sucursal
+  let sucursal_id: number | null = null
+  if (factura.sucursal) {
+    const { data: suc } = await supabase.from("sucursales").select("id").eq("nombre", factura.sucursal).maybeSingle()
+    sucursal_id = suc?.id ?? null
+  }
+
+  // 5. Construir líneas
+  const fechaDate = factura.fecha.split("T")[0]
+  type Linea = { cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string; debe: number; haber: number; descripcion: string | null; orden: number }
+  const lineas: Linea[] = []
+
+  const tieneIVA = factura.impuestos > 0.009 && cIvaCF != null
+  lineas.push({
+    cuenta_id: cPtTransito.id, cuenta_codigo: cPtTransito.codigo, cuenta_nombre: cPtTransito.nombre,
+    debe: tieneIVA ? factura.subtotal : factura.total, haber: 0,
+    descripcion: factura.numero, orden: 0,
+  })
+  if (tieneIVA) {
+    lineas.push({
+      cuenta_id: cIvaCF.id, cuenta_codigo: cIvaCF.codigo, cuenta_nombre: cIvaCF.nombre,
+      debe: factura.impuestos, haber: 0, descripcion: factura.numero, orden: 1,
+    })
+  }
+  lineas.push({
+    cuenta_id: cProv.id, cuenta_codigo: cProv.codigo, cuenta_nombre: cProv.nombre,
+    debe: 0, haber: factura.total, descripcion: factura.proveedor_nombre ?? null, orden: lineas.length,
+  })
+
+  // 6. Validar partida doble
+  const sumaDebe  = lineas.reduce((s, l) => s + l.debe, 0)
+  const sumaHaber = lineas.reduce((s, l) => s + l.haber, 0)
+  if (Math.abs(sumaDebe - sumaHaber) > 0.01) {
+    return { ok: false, error: `Partida doble inválida: DEBE=${sumaDebe.toFixed(2)} HABER=${sumaHaber.toFixed(2)}` }
+  }
+
+  // 7. Número correlativo
+  const { data: numero } = await supabase.rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario_id, p_fecha: fechaDate })
+
+  // 8. Insertar asiento
+  const { data: asiento, error: asientoErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null, diario_id, periodo_id: periodo_id ?? null, fecha: fechaDate,
+      sucursal_id, concepto: `Factura Compra Circuito ${factura.numero}`,
+      referencia: factura.numero, comprobante_tipo: "factura_compra",
+      moneda_original: factura.moneda ?? "ARS", es_manual: false, estado: "publicado",
+    })
+    .select("id").single()
+  if (asientoErr) return { ok: false, error: `Error al crear asiento: ${asientoErr.message}` }
+
+  // 9. Insertar líneas
+  const { error: lineasErr } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineas.map(l => ({ ...l, asiento_id: asiento.id })))
+  if (lineasErr) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
+    return { ok: false, error: `Error en líneas del asiento: ${lineasErr.message}` }
+  }
+
+  return { ok: true, asiento_id: asiento.id }
+}
+
+// ─── Recepción Circuito (Productos Terminados / PT en Tránsito) ───────────────
+// Genera el asiento contable al confirmar una recepción del circuito de compras.
+//
+//   DEBE    11050101  Productos Terminados   [costo recibido]
+//   HABER   11050301  PT en Tránsito         [costo recibido]
+//
+// Si 11050101 no existe, hace fallback a 11050102 (Mercadería de Reventa).
+export async function generarAsientoRecepcionCircuito(
+  supabase: SupabaseClient,
+  recepcion: {
+    id: number | string
+    numero: string
+    fecha: string
+    proveedor_nombre?: string | null
+    sucursal?: string | null
+    total: number   // importe total recibido (suma de cant_recibida * precio)
+  }
+): Promise<ResultadoAsiento> {
+  // Idempotencia
+  const { data: existente } = await supabase
+    .from("contabilidad_asientos")
+    .select("id")
+    .eq("comprobante_tipo", "recepcion_circuito")
+    .eq("referencia", recepcion.numero)
+    .eq("estado", "publicado")
+    .maybeSingle()
+  if (existente?.id) return { ok: true, asiento_id: existente.id }
+
+  if (recepcion.total <= 0) return { ok: false, error: "El total de la recepción debe ser mayor a 0." }
+
+  // 1. Buscar diario STK desde mapeo (si no existe, retornar error descriptivo)
+  const { data: mapeoStk } = await supabase
+    .from("contabilidad_mapeo_cuentas")
+    .select("diario_id")
+    .eq("tipo_origen", "recepcion_circuito")
+    .eq("activo", true)
+    .limit(1)
+    .maybeSingle()
+
+  // Fallback: buscar diario por código "STK"
+  let diario_id: string | undefined = mapeoStk?.diario_id
+  if (!diario_id) {
+    const { data: diarioStk } = await supabase
+      .from("contabilidad_diarios")
+      .select("id")
+      .eq("codigo", "STK")
+      .maybeSingle()
+    diario_id = diarioStk?.id
+  }
+  if (!diario_id) return { ok: false, error: "Sin diario STK (Stock) configurado. Verifique los diarios contables." }
+
+  // 2. Buscar cuentas por código
+  const { data: cuentas } = await supabase
+    .from("contabilidad_plan_cuentas")
+    .select("id, codigo, nombre")
+    .in("codigo", ["11050101", "11050102", "11050301"])
+  const byCode = Object.fromEntries((cuentas ?? []).map((c: any) => [c.codigo, c]))
+
+  const cPtTransito = byCode["11050301"]
+  const cPT         = byCode["11050101"] ?? byCode["11050102"]  // fallback Mercadería de Reventa
+
+  if (!cPtTransito) return { ok: false, error: "Cuenta 11050301 (PT en Tránsito) no encontrada en el plan de cuentas." }
+  if (!cPT)         return { ok: false, error: "Cuentas 11050101 / 11050102 (Productos Terminados) no encontradas en el plan de cuentas." }
+
+  // 3. Período contable
+  const { data: periodo_id } = await supabase
+    .rpc("contabilidad_periodo_para_fecha", { p_fecha: recepcion.fecha.split("T")[0] })
+
+  // 4. Sucursal
+  let sucursal_id: number | null = null
+  if (recepcion.sucursal) {
+    const { data: suc } = await supabase.from("sucursales").select("id").eq("nombre", recepcion.sucursal).maybeSingle()
+    sucursal_id = suc?.id ?? null
+  }
+
+  // 5. Construir líneas
+  const fechaDate = recepcion.fecha.split("T")[0]
+  const lineas = [
+    { cuenta_id: cPT.id, cuenta_codigo: cPT.codigo, cuenta_nombre: cPT.nombre, debe: recepcion.total, haber: 0, descripcion: recepcion.numero, orden: 0 },
+    { cuenta_id: cPtTransito.id, cuenta_codigo: cPtTransito.codigo, cuenta_nombre: cPtTransito.nombre, debe: 0, haber: recepcion.total, descripcion: recepcion.proveedor_nombre ?? null, orden: 1 },
+  ]
+
+  // 6. Número correlativo
+  const { data: numero } = await supabase.rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario_id, p_fecha: fechaDate })
+
+  // 7. Insertar asiento
+  const { data: asiento, error: asientoErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null, diario_id, periodo_id: periodo_id ?? null, fecha: fechaDate,
+      sucursal_id, concepto: `Según Recepción ${recepcion.numero} de ${recepcion.proveedor_nombre ?? ""}`,
+      referencia: recepcion.numero, comprobante_tipo: "recepcion_circuito",
+      moneda_original: "ARS", es_manual: false, estado: "publicado",
+    })
+    .select("id").single()
+  if (asientoErr) return { ok: false, error: `Error al crear asiento: ${asientoErr.message}` }
+
+  // 8. Insertar líneas
+  const { error: lineasErr } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineas.map(l => ({ ...l, asiento_id: asiento.id })))
+  if (lineasErr) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
+    return { ok: false, error: `Error en líneas del asiento: ${lineasErr.message}` }
   }
 
   return { ok: true, asiento_id: asiento.id }
@@ -717,11 +992,358 @@ export async function generarAsientoReversa(
     return { ok: false, error: `Error en líneas de reversa: ${lineasErr.message}` }
   }
 
-  // 6. Marcar asiento original como revertido
+  // 6. Vincular reversa al asiento original (el original queda publicado, la reversa lo neutraliza)
   await supabase
     .from("contabilidad_asientos")
-    .update({ asiento_reversion_id: reversa.id, estado: "cancelado" })
+    .update({ asiento_reversion_id: reversa.id })
     .eq("id", asiento_origen_id)
 
   return { ok: true, asiento_id: reversa.id }
 }
+
+// ─── Remito de Venta — CMV ────────────────────────────────────────────────────
+// Genera el asiento de Costo de Mercadería Vendida al confirmar un remito:
+//
+//   DEBE    42010101  CMV Productos Terminados    [costo total]
+//   HABER   11050101  Productos Terminados        [costo total]
+//
+// Diario: STK (Stock ARS). El costo se obtiene de costo_contable del producto.
+export async function generarAsientoRemito(
+  supabase: SupabaseClient,
+  remito: {
+    id: string
+    numero: string
+    fecha: string
+    cliente_nombre?: string | null
+    sucursal?: string | null
+    /** Líneas del remito con producto_id y cantidad remitida */
+    lineas: { producto_id: number | string; cantidad: number }[]
+  }
+): Promise<ResultadoAsiento> {
+  // 0. Idempotencia: si ya existe asiento publicado para este remito, no duplicar
+  const { data: existente } = await supabase
+    .from("contabilidad_asientos")
+    .select("id")
+    .eq("comprobante_tipo", "remito")
+    .eq("referencia", remito.numero)
+    .eq("estado", "publicado")
+    .maybeSingle()
+  if (existente?.id) return { ok: true, asiento_id: existente.id }
+
+  if (!remito.lineas || remito.lineas.length === 0) {
+    return { ok: false, error: "El remito no tiene líneas para calcular el CMV." }
+  }
+
+  // 1. Mapeo de cuentas — tipo remito_venta (ejecutar 037_seed_mapeo_remito_venta.sql)
+  const { data: mapeo, error: mapeoErr } = await supabase
+    .from("contabilidad_mapeo_cuentas")
+    .select(`
+      subtipo,
+      diario_id,
+      cuenta_debe:cuenta_debe_id(id, codigo, nombre),
+      cuenta_haber:cuenta_haber_id(id, codigo, nombre)
+    `)
+    .eq("tipo_origen", "remito_venta")
+    .eq("activo", true)
+
+  if (mapeoErr) return { ok: false, error: `Error al leer mapeo contable: ${mapeoErr.message}` }
+  if (!mapeo || mapeo.length === 0) {
+    return {
+      ok: false,
+      error: "Sin mapeo contable para remito_venta. Ejecute el script 037_seed_mapeo_remito_venta.sql.",
+    }
+  }
+
+  const pm = Object.fromEntries(mapeo.map((r: any) => [r.subtipo, r]))
+  const cCMV        = pm["cmv"]?.cuenta_debe        as { id: string; codigo: string; nombre: string } | null
+  const cExistencias = pm["existencias"]?.cuenta_haber as { id: string; codigo: string; nombre: string } | null
+  const diario_id: string = pm["cmv"]?.diario_id ?? pm["existencias"]?.diario_id
+
+  if (!cCMV)        return { ok: false, error: "Mapeo incompleto: falta cuenta 'cmv' (cuenta_debe) para remito_venta." }
+  if (!cExistencias) return { ok: false, error: "Mapeo incompleto: falta cuenta 'existencias' (cuenta_haber) para remito_venta." }
+  if (!diario_id)   return { ok: false, error: "Mapeo incompleto: falta diario_id (STK) para remito_venta." }
+
+  // 2. Obtener costo_contable de cada producto
+  const productoIds = [...new Set(remito.lineas.map((l) => String(l.producto_id)))]
+  const { data: productos, error: prodErr } = await supabase
+    .from("productos")
+    .select("id, costo_contable")
+    .in("id", productoIds)
+
+  if (prodErr) return { ok: false, error: `Error al leer costos de productos: ${prodErr.message}` }
+
+  const costoPorProducto: Record<string, number> = {}
+  for (const p of productos ?? []) {
+    costoPorProducto[String(p.id)] = Number(p.costo_contable ?? 0)
+  }
+
+  // 3. Calcular costo total (suma de costo_contable * cantidad por línea)
+  let costoTotal = 0
+  for (const linea of remito.lineas) {
+    const costoUnitario = costoPorProducto[String(linea.producto_id)] ?? 0
+    costoTotal += costoUnitario * Number(linea.cantidad)
+  }
+  costoTotal = Math.round(costoTotal * 100) / 100
+
+  // El asiento se genera incluso con costo 0 para mantener trazabilidad (según spec)
+
+  // 4. Período contable
+  const fechaDate = remito.fecha.split("T")[0]
+  const { data: periodo_id } = await supabase
+    .rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate })
+
+  // 5. Sucursal
+  let sucursal_id: number | null = null
+  if (remito.sucursal) {
+    const { data: suc } = await supabase
+      .from("sucursales")
+      .select("id")
+      .eq("nombre", remito.sucursal)
+      .maybeSingle()
+    sucursal_id = suc?.id ?? null
+  }
+
+  // 6. Construir líneas (partida doble simplificada: 1 DEBE + 1 HABER)
+  const concepto = `Según Remito ${remito.numero}${remito.cliente_nombre ? ` de ${remito.cliente_nombre}` : ""}`
+  const lineas = [
+    {
+      cuenta_id:    cCMV.id,
+      cuenta_codigo: cCMV.codigo,
+      cuenta_nombre: cCMV.nombre,
+      debe:         costoTotal,
+      haber:        0,
+      descripcion:  remito.numero,
+      orden:        0,
+    },
+    {
+      cuenta_id:    cExistencias.id,
+      cuenta_codigo: cExistencias.codigo,
+      cuenta_nombre: cExistencias.nombre,
+      debe:         0,
+      haber:        costoTotal,
+      descripcion:  remito.cliente_nombre ?? null,
+      orden:        1,
+    },
+  ]
+
+  // 7. Número correlativo
+  const { data: numero } = await supabase
+    .rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario_id, p_fecha: fechaDate })
+
+  // 8. Insertar asiento en estado publicado
+  const { data: asiento, error: asientoErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero:           numero ?? null,
+      diario_id,
+      periodo_id:       periodo_id ?? null,
+      fecha:            fechaDate,
+      sucursal_id,
+      concepto,
+      referencia:       remito.numero,
+      comprobante_tipo: "remito",
+      moneda_original:  "ARS",
+      es_manual:        false,
+      estado:           "publicado",
+    })
+    .select("id")
+    .single()
+
+  if (asientoErr) return { ok: false, error: `Error al crear asiento CMV: ${asientoErr.message}` }
+
+  // 9. Insertar líneas
+  const { error: lineasErr } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineas.map((l) => ({ ...l, asiento_id: asiento.id })))
+
+  if (lineasErr) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
+    return { ok: false, error: `Error en líneas del asiento CMV: ${lineasErr.message}` }
+  }
+
+  return { ok: true, asiento_id: asiento.id }
+}
+
+// ─── NC Toma de Equipo ────────────────────────────────────────────────────────
+// Genera el asiento al confirmar la Toma de Equipo:
+//   DEBE  11030101  Deudores por Ventas    (importe)
+//   HABER 99999996  Cta Puente Toma Equipo (importe)
+export async function generarAsientoNCTomaEquipo(
+  supabase: SupabaseClient,
+  nc: {
+    id: number | string
+    numero: string
+    fecha: string
+    cliente_nombre?: string | null
+    sucursal?: string | null
+    total: number
+  }
+): Promise<ResultadoAsiento> {
+  // Idempotencia
+  const { data: existente } = await supabase
+    .from("contabilidad_asientos")
+    .select("id")
+    .eq("comprobante_tipo", "nc_toma_equipo")
+    .eq("referencia", nc.numero)
+    .eq("estado", "publicado")
+    .maybeSingle()
+  if (existente?.id) return { ok: true, asiento_id: existente.id }
+
+  if (nc.total <= 0) return { ok: false, error: "El total de la NC debe ser mayor a 0." }
+
+  // Mapeo de cuentas
+  const { data: mapeo } = await supabase
+    .from("contabilidad_mapeo_cuentas")
+    .select(`
+      subtipo, diario_id,
+      cuenta_debe:cuenta_debe_id(id, codigo, nombre),
+      cuenta_haber:cuenta_haber_id(id, codigo, nombre)
+    `)
+    .eq("tipo_origen", "nc_toma_equipo")
+    .eq("activo", true)
+
+  if (!mapeo || mapeo.length === 0)
+    return { ok: false, error: "Sin mapeo contable para nc_toma_equipo. Ejecute 032_circuito_toma_equipo_contable.sql." }
+
+  const pm = Object.fromEntries((mapeo as any[]).map((r: any) => [r.subtipo, r]))
+  const cDeudores  = pm["deudores"]?.cuenta_debe  as { id: string; codigo: string; nombre: string } | null
+  const cPuente    = pm["cta_puente"]?.cuenta_haber as { id: string; codigo: string; nombre: string } | null
+  const diario_id: string = pm["deudores"]?.diario_id ?? pm["cta_puente"]?.diario_id
+
+  if (!cDeudores) return { ok: false, error: "Mapeo incompleto: falta cuenta 'deudores' para nc_toma_equipo." }
+  if (!cPuente)   return { ok: false, error: "Mapeo incompleto: falta cuenta 'cta_puente' para nc_toma_equipo." }
+  if (!diario_id) return { ok: false, error: "Mapeo incompleto: falta diario_id para nc_toma_equipo." }
+
+  const fechaDate = nc.fecha.split("T")[0]
+  const { data: periodo_id } = await supabase
+    .rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate })
+
+  let sucursal_id: number | null = null
+  if (nc.sucursal) {
+    const { data: suc } = await supabase.from("sucursales").select("id").eq("nombre", nc.sucursal).maybeSingle()
+    sucursal_id = suc?.id ?? null
+  }
+
+  const { data: numero } = await supabase
+    .rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario_id, p_fecha: fechaDate })
+
+  const { data: asiento, error: asientoErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null, diario_id, periodo_id: periodo_id ?? null, fecha: fechaDate,
+      sucursal_id,
+      concepto: `NC por Toma de Equipo ${nc.numero}${nc.cliente_nombre ? ` de ${nc.cliente_nombre}` : ""}`,
+      referencia: nc.numero, comprobante_tipo: "nc_toma_equipo",
+      moneda_original: "ARS", es_manual: false, estado: "publicado",
+    })
+    .select("id").single()
+  if (asientoErr) return { ok: false, error: `Error al crear asiento NC TE: ${asientoErr.message}` }
+
+  // NC TE: DEBE Cuenta Puente / HABER Deudores
+  // La cuenta puente se cancela cuando llega la REP (DEBE Productos / HABER Cuenta Puente)
+  const lineas = [
+    { cuenta_id: cPuente.id,   cuenta_codigo: cPuente.codigo,   cuenta_nombre: cPuente.nombre,   debe: nc.total, haber: 0,        descripcion: nc.numero,                    orden: 0 },
+    { cuenta_id: cDeudores.id, cuenta_codigo: cDeudores.codigo, cuenta_nombre: cDeudores.nombre, debe: 0,        haber: nc.total, descripcion: nc.cliente_nombre ?? null, orden: 1 },
+  ]
+
+  const { error: lineasErr } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineas.map(l => ({ ...l, asiento_id: asiento.id })))
+  if (lineasErr) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
+    return { ok: false, error: `Error en líneas del asiento NC TE: ${lineasErr.message}` }
+  }
+
+  return { ok: true, asiento_id: asiento.id }
+}
+
+// ─── Recepción Toma de Equipo ─────────────────────────────────────────────────
+// Genera el asiento al confirmar la Recepción de una TE:
+//   DEBE  11050101  Productos Terminados   (importe)
+//   HABER 99999996  Cta Puente Toma Equipo (importe)
+export async function generarAsientoRecepcionTomaEquipo(
+  supabase: SupabaseClient,
+  rec: {
+    id: number | string
+    numero: string
+    fecha: string
+    cliente_nombre?: string | null
+    sucursal?: string | null
+    total: number
+  }
+): Promise<ResultadoAsiento> {
+  // Idempotencia
+  const { data: existente } = await supabase
+    .from("contabilidad_asientos")
+    .select("id")
+    .eq("comprobante_tipo", "recepcion_toma_equipo")
+    .eq("referencia", rec.numero)
+    .eq("estado", "publicado")
+    .maybeSingle()
+  if (existente?.id) return { ok: true, asiento_id: existente.id }
+
+  if (rec.total <= 0) return { ok: false, error: "El total de la recepción TE debe ser mayor a 0." }
+
+  const { data: mapeo } = await supabase
+    .from("contabilidad_mapeo_cuentas")
+    .select(`
+      subtipo, diario_id,
+      cuenta_debe:cuenta_debe_id(id, codigo, nombre),
+      cuenta_haber:cuenta_haber_id(id, codigo, nombre)
+    `)
+    .eq("tipo_origen", "recepcion_toma_equipo")
+    .eq("activo", true)
+
+  if (!mapeo || mapeo.length === 0)
+    return { ok: false, error: "Sin mapeo contable para recepcion_toma_equipo. Ejecute 032_circuito_toma_equipo_contable.sql." }
+
+  const pm = Object.fromEntries((mapeo as any[]).map((r: any) => [r.subtipo, r]))
+  const cProductos = pm["productos"]?.cuenta_debe  as { id: string; codigo: string; nombre: string } | null
+  const cPuente    = pm["cta_puente"]?.cuenta_haber as { id: string; codigo: string; nombre: string } | null
+  const diario_id: string = pm["productos"]?.diario_id ?? pm["cta_puente"]?.diario_id
+
+  if (!cProductos) return { ok: false, error: "Mapeo incompleto: falta cuenta 'productos' para recepcion_toma_equipo." }
+  if (!cPuente)    return { ok: false, error: "Mapeo incompleto: falta cuenta 'cta_puente' para recepcion_toma_equipo." }
+  if (!diario_id)  return { ok: false, error: "Mapeo incompleto: falta diario_id para recepcion_toma_equipo." }
+
+  const fechaDate = rec.fecha.split("T")[0]
+  const { data: periodo_id } = await supabase
+    .rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate })
+
+  let sucursal_id: number | null = null
+  if (rec.sucursal) {
+    const { data: suc } = await supabase.from("sucursales").select("id").eq("nombre", rec.sucursal).maybeSingle()
+    sucursal_id = suc?.id ?? null
+  }
+
+  const { data: numero } = await supabase
+    .rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario_id, p_fecha: fechaDate })
+
+  const { data: asiento, error: asientoErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null, diario_id, periodo_id: periodo_id ?? null, fecha: fechaDate,
+      sucursal_id,
+      concepto: `Recepción Toma de Equipo ${rec.numero}${rec.cliente_nombre ? ` de ${rec.cliente_nombre}` : ""}`,
+      referencia: rec.numero, comprobante_tipo: "recepcion_toma_equipo",
+      moneda_original: "ARS", es_manual: false, estado: "publicado",
+    })
+    .select("id").single()
+  if (asientoErr) return { ok: false, error: `Error al crear asiento REP TE: ${asientoErr.message}` }
+
+  const lineas = [
+    { cuenta_id: cProductos.id, cuenta_codigo: cProductos.codigo, cuenta_nombre: cProductos.nombre, debe: rec.total, haber: 0, descripcion: rec.numero, orden: 0 },
+    { cuenta_id: cPuente.id,    cuenta_codigo: cPuente.codigo,    cuenta_nombre: cPuente.nombre,    debe: 0, haber: rec.total, descripcion: rec.cliente_nombre ?? null, orden: 1 },
+  ]
+
+  const { error: lineasErr } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineas.map(l => ({ ...l, asiento_id: asiento.id })))
+  if (lineasErr) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
+    return { ok: false, error: `Error en líneas del asiento REP TE: ${lineasErr.message}` }
+  }
+
+  return { ok: true, asiento_id: asiento.id }
+}
+

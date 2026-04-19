@@ -807,6 +807,20 @@ function CellHomeERPContent() {
     return groups
   }, [])
 
+  // Navegación cross-módulo desde historial de costos u otros eventos
+  const [pendingRecepcionNumero, setPendingRecepcionNumero] = useState<string | null>(null)
+
+  useEffect(() => {
+    function handleNavegarRecepcion(e: Event) {
+      const { numero } = (e as CustomEvent<{ numero: string }>).detail
+      setActiveModule("compras")
+      setActiveView("dashboard")
+      setPendingRecepcionNumero(numero)
+    }
+    window.addEventListener("erp:navegar-recepcion", handleNavegarRecepcion)
+    return () => window.removeEventListener("erp:navegar-recepcion", handleNavegarRecepcion)
+  }, [])
+
   // Reset filters when view changes
   useEffect(() => {
     setSearchQuery("")
@@ -2558,7 +2572,10 @@ function CellHomeERPContent() {
   </div>
   ) : activeModule === "compras" ? (
   <div className="pt-11">
-  <ModuloCompras />
+  <ModuloCompras
+    initialRecepcionNumero={pendingRecepcionNumero}
+    onNavigationHandled={() => setPendingRecepcionNumero(null)}
+  />
   </div>
   ) : activeModule === "finanzas" ? (
   <div className="pt-11">
@@ -2661,7 +2678,7 @@ function CellHomeERPContent() {
                   telefono: fd.get("telefono") as string || "",
                   celular: fd.get("celular") as string || "",
                   email,
-                  categoria: fd.get("categoria") as ClienteVenta["categoria"] || "publico",
+                  categoria_id: fd.get("categoria_id") ? parseInt(fd.get("categoria_id") as string) : null,
                   vendedor_id: parseInt(fd.get("vendedor_id") as string) || null,
                   cobrador_id: null,
                   lista_precios_id: parseInt(fd.get("lista_precios_id") as string) || 1,
