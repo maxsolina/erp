@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+import { generarAsientoRecibo } from "@/lib/contabilidad-asiento-factory"
 
 function getSupabase() {
   return createClient(
@@ -33,12 +34,29 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   // ── REGISTRAR SEÑA ──────────────────────────────────────────────────────────
   if (accion === "registrar_senia") {
-    const { monto_senia, medio_pago_senia, sucursal_id, usuario } = body
+    // Bloquear si ya existe un recibo activo (solo se permite uno a la vez)
+    if (senia.estado_senia === "registrada" && senia.recibo_senia_id) {
+      return NextResponse.json({ error: "Ya existe un recibo de seña activo. Cancelalo antes de registrar uno nuevo." }, { status: 409 })
+    }
+
+    const { monto_senia, medio_pago_senia, sucursal_id, usuario, cotizacion_senia, moneda_pago } = body
+
+    // Cotización al momento del pago: la que viene del form, fallback 1
+    const cotizPago: number = Number(cotizacion_senia) > 0 ? Number(cotizacion_senia) : 1
+    // El recibo siempre se imputa en USD.
+    // La moneda del pago viene del caja_valor seleccionado (no de la moneda del equipo).
+    // Si el pago fue en ARS → convertir: monto_usd = monto_ars / cotizacion
+    // Si el pago fue en USD → monto_usd = monto_senia directo
+    const esMonedaUSD = (moneda_pago ?? 'ARS') === 'USD'
+    const montoUSD = esMonedaUSD
+      ? Number(monto_senia)
+      : parseFloat((Number(monto_senia) / cotizPago).toFixed(4))
 
     // Generar recibo por la seña
     let reciboNumero = ""
     let reciboId: number | null = null
     try {
+      // Número correlativo
       const { data: lastRec } = await supabase
         .from("recibos")
         .select("numero")
@@ -50,33 +68,122 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         : 11735
       reciboNumero = `RC X Norte-${String(lastNum + 1).padStart(6, "0")}`
 
+      // Nombre de sucursal: de la caja si hay caja_id, o fallback
+      let sucursalNombre = "Casa Central"
+      if (body.caja_id) {
+        const { data: cajaRow } = await supabase
+          .from("cajas")
+          .select("sucursal")
+          .eq("id", body.caja_id)
+          .maybeSingle()
+        if (cajaRow?.sucursal) sucursalNombre = cajaRow.sucursal
+      } else if (sucursal_id) {
+        const { data: sucRow } = await supabase
+          .from("sucursales")
+          .select("nombre")
+          .eq("id", sucursal_id)
+          .maybeSingle()
+        if (sucRow?.nombre) sucursalNombre = sucRow.nombre
+      }
+
+      // Insertar recibo en la moneda real del pago (ARS o USD según caja_valor)
       const { data: recData, error: recErr } = await supabase
         .from("recibos")
         .insert({
           numero: reciboNumero,
+          sucursal: sucursalNombre,
           cliente_id: senia.cliente_id,
           cliente_nombre: senia.cliente_nombre,
-          vendedor_id: senia.vendedor_id ?? null,
-          sucursal_id: sucursal_id ?? senia.sucursal_id,
-          fecha: new Date().toISOString(),
-          estado: "activo",
-          moneda: "ARS",
-          importe_total: monto_senia,
-          importe_no_conciliado: monto_senia,
-          notas: `Seña por equipo: ${senia.equipo_nombre} (${senia.numero})`,
+          caja_id: body.caja_id ?? null,
+          fecha: new Date().toISOString().split("T")[0],
+          estado: "publicado",
+          fecha_publicacion: new Date().toISOString(),
+          moneda: moneda_pago ?? "ARS",
+          importe: Number(monto_senia),
+          importe_no_conciliado: Number(monto_senia),
+          observaciones: `Seña: ${senia.equipo_nombre} (${senia.numero})${!esMonedaUSD ? ` | USD ${montoUSD} @ $${cotizPago}` : ''}`,
+          cotizacion: cotizPago,
         })
         .select()
         .single()
-      if (!recErr && recData) {
+      if (recErr) {
+        console.error("[senias] recibo insert error:", recErr.message, recErr.details)
+      } else if (recData) {
         reciboId = recData.id
-        // Insertar línea del recibo
-        await supabase.from("recibos_lineas").insert({
+        // Línea de pago del recibo — en la moneda real del pago
+        await supabase.from("recibo_pagos").insert({
           recibo_id: recData.id,
-          medio: medio_pago_senia,
-          descripcion: `Seña equipo ${senia.equipo_nombre}`,
-          monto_original: monto_senia,
-          monto_con_recargo: monto_senia,
+          valor_id: body.caja_valor_id ?? null,
+          valor_nombre: medio_pago_senia ?? null,
+          tipo_valor: "efectivo",
+          importe_comprobante: Number(monto_senia),
+          moneda_comprobante: moneda_pago ?? "ARS",
+          importe: Number(monto_senia),
+          moneda: moneda_pago ?? "ARS",
+          cotizacion: cotizPago,
+          es_tarjeta: false,
+          es_cheque: false,
+          cantidad_cuotas: 1,
+          recargo_porcentaje: 0,
+          recargo_importe: 0,
         })
+
+        // ── Movimiento en caja (si hay extracto abierto) ───────────────────────
+        if (body.caja_id) {
+          const { data: extracto } = await supabase
+            .from("extractos_caja")
+            .select("id")
+            .eq("caja_id", body.caja_id)
+            .eq("estado", "abierto")
+            .maybeSingle()
+          if (extracto) {
+            const { error: movErr } = await supabase.from("movimientos_caja").insert({
+              extracto_id: extracto.id,
+              valor_id: body.caja_valor_id ?? null,
+              valor_nombre: medio_pago_senia ?? null,
+              tipo_movimiento: "ingreso",
+              importe: Number(monto_senia),
+              moneda: moneda_pago ?? "ARS",
+              concepto: `Seña ${senia.numero} - ${senia.cliente_nombre}`,
+              documento_origen_tipo: "recibo",
+              documento_origen_numero: reciboNumero,
+            })
+            if (movErr) console.error("[senias] movimiento_caja error:", movErr.message)
+          } else {
+            console.warn("[senias] No hay extracto abierto para caja_id:", body.caja_id)
+          }
+        }
+
+        // ── Movimiento cuenta corriente USD del cliente ─────────────────────
+        const ccMov = {
+          cliente_id: senia.cliente_id,
+          sentido: 'haber',
+          moneda: 'USD',
+          tipo_movimiento: 'recibo',
+          importe: montoUSD,
+          cotizacion_aplicada: cotizPago,
+          comprobante_tipo: 'recibo',
+          comprobante_numero: reciboNumero,
+          fecha: new Date().toISOString().split('T')[0],
+        }
+        const { error: ccErr } = await supabase.from('ventas_cc_movimientos').insert(ccMov)
+        if (ccErr) console.error('[senias] cc_movimiento error:', ccErr.message)
+
+        // ── Asiento contable ────────────────────────────────────────────────
+        const asientoRes = await generarAsientoRecibo(supabase, {
+          id: recData.id,
+          numero: reciboNumero,
+          fecha: new Date().toISOString().split('T')[0],
+          caja_id: body.caja_id ?? '',
+          cliente_nombre: senia.cliente_nombre,
+          sucursal: sucursalNombre,
+          importe: montoUSD,
+          moneda: 'USD',
+          cotizacion: cotizPago,
+        })
+        if (!asientoRes.ok) {
+          console.error('[senias] asiento recibo error:', asientoRes.error)
+        }
       }
     } catch (e) {
       console.error("[senias] recibo error:", e)
@@ -88,10 +195,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         fecha: new Date().toISOString(),
         usuario: usuario ?? "Operador",
         accion: "Seña registrada",
-        detalle: `Monto: $${monto_senia?.toLocaleString("es-AR")}. Medio: ${medio_pago_senia}`,
+        detalle: esMonedaUSD
+          ? `USD ${montoUSD.toLocaleString('es-AR', { minimumFractionDigits: 2 })}. Medio: ${medio_pago_senia}`
+          : `ARS $${Number(monto_senia).toLocaleString('es-AR')} → USD ${montoUSD.toLocaleString('es-AR', { minimumFractionDigits: 2 })} @ $${cotizPago}. Medio: ${medio_pago_senia}`,
       },
     ]
 
+    // UPDATE base (columnas que siempre existen)
     const { data: updated, error } = await supabase
       .from("senias_equipo")
       .update({
@@ -99,14 +209,132 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         medio_pago_senia,
         estado_senia: "registrada",
         recibo_senia_numero: reciboNumero,
-        recibo_senia_id: reciboId,
         seguimiento,
       })
       .eq("id", id)
       .select()
       .single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ ok: true, senia: updated, recibo_numero: reciboNumero })
+
+    // UPDATE columnas opcionales (script 062) — se ignora el error si aún no existen
+    await supabase.from("senias_equipo").update({
+      recibo_senia_id: reciboId,
+      cotizacion_senia: cotizPago,
+      monto_senia_usd: montoUSD,
+    }).eq("id", id)
+
+    // Reservar la unidad de stock (fallback: cubre señas creadas antes del fix en POST)
+    if (senia.stock_item_id) {
+      await supabase
+        .from("stock_unidades")
+        .update({ estado: "reservado" })
+        .eq("id", senia.stock_item_id)
+        .eq("estado", "disponible")
+      // Vincular NV (columnas opcionales — script 064)
+      await supabase
+        .from("stock_unidades")
+        .update({ nota_venta_id: senia.nota_venta_id ?? null, nota_venta_numero: senia.nota_venta_numero ?? null })
+        .eq("id", senia.stock_item_id)
+    }
+
+    return NextResponse.json({ ok: true, senia: { ...updated, recibo_senia_id: reciboId, cotizacion_senia: cotizPago, monto_senia_usd: montoUSD }, recibo_numero: reciboNumero })
+  }
+
+  // ── CANCELAR RECIBO DE SEÑA ─────────────────────────────────────────────────
+  if (accion === "cancelar_recibo_senia") {
+    const { usuario } = body
+    if (senia.estado_senia !== "registrada") {
+      return NextResponse.json({ error: "No hay recibo activo para cancelar" }, { status: 400 })
+    }
+    // Cancelar el recibo en tabla recibos
+    if (senia.recibo_senia_id) {
+      const { error: cancelErr } = await supabase
+        .from("recibos")
+        .update({ estado: "cancelado", importe_no_conciliado: 0 })
+        .eq("id", senia.recibo_senia_id)
+      if (cancelErr) {
+        console.error("[senias] cancelar recibo error:", cancelErr.message)
+        return NextResponse.json({ error: "Error al cancelar el recibo: " + cancelErr.message }, { status: 500 })
+      }
+
+      // Reversa en caja: leer recibo + recibo_pagos para obtener el importe original del comprobante
+      const { data: reciboCancelado } = await supabase
+        .from("recibos")
+        .select("caja_id")
+        .eq("id", senia.recibo_senia_id)
+        .maybeSingle()
+      const { data: pagosOriginales } = await supabase
+        .from("recibo_pagos")
+        .select("valor_id, valor_nombre, importe_comprobante, moneda_comprobante")
+        .eq("recibo_id", senia.recibo_senia_id)
+      if (reciboCancelado?.caja_id && pagosOriginales && pagosOriginales.length > 0) {
+        const { data: extracto } = await supabase
+          .from("extractos_caja")
+          .select("id")
+          .eq("caja_id", reciboCancelado.caja_id)
+          .eq("estado", "abierto")
+          .maybeSingle()
+        if (extracto) {
+          for (const pago of pagosOriginales) {
+            const { error: reversaErr } = await supabase.from("movimientos_caja").insert({
+              extracto_id: extracto.id,
+              valor_id: pago.valor_id,
+              valor_nombre: pago.valor_nombre,
+              tipo_movimiento: "egreso",
+              importe: pago.importe_comprobante,
+              moneda: pago.moneda_comprobante,
+              concepto: `Reversa seña cancelada - ${senia.numero} (${senia.cliente_nombre})`,
+              documento_origen_tipo: "recibo",
+              documento_origen_numero: senia.recibo_senia_numero,
+            })
+            if (reversaErr) console.error("[senias] reversa caja error:", reversaErr.message)
+          }
+        } else {
+          console.warn("[senias] No hay extracto abierto para revertir caja, caja_id:", reciboCancelado.caja_id)
+        }
+      }
+
+      // Reversa en cuenta corriente USD: eliminar el movimiento haber del recibo
+      await supabase
+        .from("ventas_cc_movimientos")
+        .delete()
+        .eq("comprobante_numero", senia.recibo_senia_numero)
+        .eq("tipo_movimiento", "recibo")
+        .eq("sentido", "haber")
+        .eq("cliente_id", senia.cliente_id)
+    }
+    const seguimiento = [
+      ...(senia.seguimiento ?? []),
+      {
+        fecha: new Date().toISOString(),
+        usuario: usuario ?? "Operador",
+        accion: "Recibo de seña cancelado",
+        detalle: `Recibo ${senia.recibo_senia_numero ?? ""} anulado. Seña devuelta a sin_senia.`,
+      },
+    ]
+    // UPDATE base
+    const { data: updated, error } = await supabase
+      .from("senias_equipo")
+      .update({
+        estado_senia: "sin_senia",
+        monto_senia: 0,
+        medio_pago_senia: null,
+        recibo_senia_numero: null,
+        seguimiento,
+      })
+      .eq("id", id)
+      .select()
+      .single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // UPDATE columnas opcionales (script 062)
+    await supabase.from("senias_equipo").update({
+      recibo_senia_id: null,
+      cotizacion_senia: null,
+      monto_senia_usd: null,
+    }).eq("id", id)
+
+    return NextResponse.json({ ok: true, senia: { ...updated, recibo_senia_id: null, cotizacion_senia: null, monto_senia_usd: null } })
   }
 
   // ── ACTUALIZAR FECHA LÍMITE ─────────────────────────────────────────────────
@@ -134,6 +362,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   // ── CANCELAR ────────────────────────────────────────────────────────────────
   if (accion === "cancelar") {
     const { usuario, motivo } = body
+
+    // Liberar la unidad de stock reservada
+    if (senia.stock_item_id) {
+      await supabase
+        .from("stock_unidades")
+        .update({
+          estado: "disponible",
+          nota_venta_id: null,
+          nota_venta_numero: null,
+        })
+        .eq("id", senia.stock_item_id)
+        .eq("estado", "reservado")
+    }
 
     // Cancelar OE
     if (senia.oe_id) {
@@ -269,7 +510,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         sucursal_id: senia.sucursal_id ?? null,
         fecha: ahora,
         estado: "abierta",
-        moneda: "ARS",
+        moneda: senia.moneda ?? 'ARS',
         subtotal: senia.precio_final,
         descuento: senia.descuento ?? 0,
         impuestos: 0,

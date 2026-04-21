@@ -40,6 +40,7 @@ import {
   cancelarFacturaCompra,
   fetchAsientoFacturaCompra,
   fetchAsientoRecepcion,
+  fetchAsientoOrdenPago,
 } from "@/lib/compras-actions"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 
@@ -1646,7 +1647,11 @@ export default function ModuloCompras({
   // Órdenes de Pago
   const [selectedOP, setSelectedOP] = useState<OrdenPago | null>(null)
   const [creandoOP, setCreandoOP] = useState(false)
-  const [opTabActivo, setOpTabActivo] = useState<"info_pago" | "comprobantes" | "otra_info" | "observaciones">("info_pago")
+  const [opTabActivo, setOpTabActivo] = useState<"info_pago" | "comprobantes" | "otra_info" | "observaciones" | "detalles">("info_pago")
+  const [opAsientos, setOpAsientos] = useState<FcAsientoItem[]>([])
+  const [opAsientoCargando, setOpAsientoCargando] = useState(false)
+  const [opAsientoModalOpen, setOpAsientoModalOpen] = useState(false)
+  const [opAsientoModalItem, setOpAsientoModalItem] = useState<FcAsientoItem | null>(null)
   const [opForm, setOpForm] = useState<Partial<OrdenPago>>({
     proveedor_id: undefined,
   })
@@ -1686,12 +1691,14 @@ export default function ModuloCompras({
   // ─── Conciliación de Deuda Compras ────────────────────────────────────────
   const [cdcProveedorId, setCdcProveedorId] = useState<number | null>(null)
   const [cdcSelDebitos, setCdcSelDebitos] = useState<{id: number; tipo: 'factura'; moneda: 'ARS' | 'USD'; montoAplicar: number}[]>([])
-  const [cdcSelCreditos, setCdcSelCreditos] = useState<{id: number; tipo: 'op' | 'nc'; moneda: 'ARS' | 'USD'; montoAplicar: number}[]>([])
+  const [cdcSelCreditos, setCdcSelCreditos] = useState<{id: number | string; tipo: 'op' | 'nc'; moneda: 'ARS' | 'USD'; montoAplicar: number}[]>([])
+  // medios_pago por OP cargados lazy cuando se selecciona proveedor en conciliación
+  const [cdcMediosPorOP, setCdcMediosPorOP] = useState<Record<string, {moneda: string; importe: number; importe_comp: number}[]>>({})
   const [cdcHistorial, setCdcHistorial] = useState<{
     id: number; fecha: string; proveedor_id: number; proveedor_nombre: string
     total_conciliado: number; usuario: string; estado: 'activa' | 'cancelada'
     fecha_cancelacion: string | null
-    aplicaciones: {debito_tipo: string; debito_numero: string; credito_tipo: string; credito_numero: string; monto: number}[]
+    aplicaciones: {debito_tipo: string; debito_numero: string; credito_tipo: string; credito_numero: string; monto: number; debito_moneda?: string; credito_moneda?: string; cotizacion?: number}[]
   }[]>([])
   const [cdcTab, setCdcTab] = useState<'conciliar' | 'historial'>('conciliar')
   const [cdcFiltroTextoDb, setCdcFiltroTextoDb] = useState('')
@@ -7016,6 +7023,7 @@ export default function ModuloCompras({
     setOpComprobantesDebito([])
     setOpComprobantesCredito([])
     setOpTabActivo("info_pago")
+    setOpAsientos([])
     setCreandoOP(true)
     setSelectedOP(null)
   }
@@ -7027,6 +7035,7 @@ export default function ModuloCompras({
     setOpComprobantesDebito((op.comprobantes ?? []).filter(c => c.tipo === "debito"))
     setOpComprobantesCredito((op.comprobantes ?? []).filter(c => c.tipo === "credito"))
     setOpTabActivo("info_pago")
+    setOpAsientos([])
     setCreandoOP(false)
     // Cargar OCs del proveedor
     setOpOCsProveedor(ordenesCompra.filter(oc => oc.proveedor_id === op.proveedor_id).map(oc => ({ id: oc.id, numero: oc.numero })))
@@ -7083,30 +7092,35 @@ export default function ModuloCompras({
     }))
   }
 
+  // Lógica core de guardado sin manejo de opSaving ni abrirFichaOP
+  const _guardarOPCore = async (): Promise<OrdenPago | null> => {
+    if (!opForm.proveedor_id || typeof opForm.proveedor_id !== "number" || opForm.proveedor_id <= 0) {
+      alert("Debe seleccionar un proveedor válido antes de guardar la Orden de Pago.")
+      return null
+    }
+    const payload = {
+      ...opForm,
+      medios_pago: opMediosPago.map(({ id: _id, ...rest }) => rest),
+      comprobantes: [
+        ...opComprobantesDebito.map(({ id: _id, ...rest }) => rest),
+        ...opComprobantesCredito.map(({ id: _id, ...rest }) => rest),
+      ],
+    }
+    const saved = await guardarOrdenPago(payload, selectedOP?.id)
+    const [all, detalle] = await Promise.all([
+      fetchOrdenesPago(),
+      fetchOrdenPagoDetalle(String(saved.id)),
+    ])
+    setOrdenesPago(all)
+    return detalle as OrdenPago
+  }
+
   const guardarOPCompleta = async (): Promise<OrdenPago | null> => {
     try {
       setOpSaving(true)
-      if (!opForm.proveedor_id || typeof opForm.proveedor_id !== "number" || opForm.proveedor_id <= 0) {
-        alert("Debe seleccionar un proveedor válido antes de guardar la Orden de Pago.")
-        return null
-      }
-      const payload = {
-        ...opForm,
-        medios_pago: opMediosPago.map(({ id: _id, ...rest }) => rest),
-        comprobantes: [
-          ...opComprobantesDebito.map(({ id: _id, ...rest }) => rest),
-          ...opComprobantesCredito.map(({ id: _id, ...rest }) => rest),
-        ],
-      }
-      const saved = await guardarOrdenPago(payload, selectedOP?.id)
-      // Recargar lista y detalle completo (con medios_pago y comprobantes)
-      const [all, detalle] = await Promise.all([
-        fetchOrdenesPago(),
-        fetchOrdenPagoDetalle(String(saved.id)),
-      ])
-      setOrdenesPago(all)
+      const detalle = await _guardarOPCore()
       if (detalle) abrirFichaOP(detalle as OrdenPago)
-      return detalle as OrdenPago
+      return detalle
     } catch (error) {
       alert(error instanceof Error ? error.message : "Error al guardar OP")
       return null
@@ -7116,17 +7130,21 @@ export default function ModuloCompras({
   }
 
   const confirmarOPAction = async () => {
+    if (opSaving) return
     try {
       setOpSaving(true)
-      const opGuardada = await guardarOPCompleta()
+      const opGuardada = await _guardarOPCore()
       if (!opGuardada?.id) return
-      await confirmarOrdenPagoAPI(String(opGuardada.id))
+      const resConfirmar = await confirmarOrdenPagoAPI(String(opGuardada.id))
       const [all, detalle] = await Promise.all([
         fetchOrdenesPago(),
         fetchOrdenPagoDetalle(String(opGuardada.id)),
       ])
       setOrdenesPago(all)
       if (detalle) abrirFichaOP(detalle as OrdenPago)
+      if (resConfirmar?.aviso_asiento) {
+        alert(`⚠️ ${resConfirmar.aviso_asiento}`)
+      }
     } catch (error) {
       alert(error instanceof Error ? error.message : "Error al confirmar OP")
     } finally {
@@ -7189,10 +7207,99 @@ export default function ModuloCompras({
       { key: "comprobantes" as const, label: "Comprobantes", count: opComprobantesDebito.length + opComprobantesCredito.length },
       { key: "otra_info" as const, label: "Otra Información", count: null },
       { key: "observaciones" as const, label: "Observaciones", count: null },
+      { key: "detalles" as const, label: "Detalles", count: null },
     ]
+
+    const handleCambiarTabOP = async (tab: typeof opTabActivo) => {
+      setOpTabActivo(tab)
+      if (tab === "detalles" && opAsientos.length === 0 && !opAsientoCargando && selectedOP?.id) {
+        setOpAsientoCargando(true)
+        try {
+          const { asientos } = await fetchAsientoOrdenPago(String(selectedOP.id))
+          setOpAsientos(asientos)
+        } catch {
+          setOpAsientos([])
+        } finally {
+          setOpAsientoCargando(false)
+        }
+      }
+    }
 
     return (
       <div>
+        {/* Modal popup asiento OP */}
+        {opAsientoModalOpen && opAsientoModalItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50">
+                <div>
+                  <h2 className="text-base font-bold text-gray-900">
+                    Asiento {opAsientoModalItem.numero ?? "S/N"}
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {formatDate(opAsientoModalItem.fecha)}
+                    {opAsientoModalItem.concepto ? ` · ${opAsientoModalItem.concepto}` : ""}
+                  </p>
+                </div>
+                <button
+                  onClick={() => { setOpAsientoModalOpen(false); setOpAsientoModalItem(null) }}
+                  className="text-gray-400 hover:text-gray-700 p-1 rounded"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="px-6 py-4 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-xs font-semibold text-gray-500 uppercase">
+                      <th className="text-left py-2 pr-4">Cuenta</th>
+                      <th className="text-left py-2 pr-4">Descripción</th>
+                      <th className="text-right py-2 pr-4">Debe</th>
+                      <th className="text-right py-2">Haber</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {opAsientoModalItem.lineas.map((linea, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="py-2 pr-4 font-mono text-xs text-gray-800 whitespace-nowrap">
+                          <span className="font-semibold">{linea.cuenta_codigo}</span>
+                          <span className="text-gray-500 ml-1">— {linea.cuenta_nombre}</span>
+                        </td>
+                        <td className="py-2 pr-4 text-xs text-gray-500">{linea.descripcion ?? "—"}</td>
+                        <td className="py-2 pr-4 text-right font-medium text-gray-800">
+                          {linea.debe > 0 ? formatCurrency(linea.debe) : "—"}
+                        </td>
+                        <td className="py-2 text-right font-medium text-gray-800">
+                          {linea.haber > 0 ? formatCurrency(linea.haber) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t font-semibold text-sm">
+                      <td colSpan={2} className="py-2 text-gray-600">Total</td>
+                      <td className="py-2 pr-4 text-right">
+                        {formatCurrency(opAsientoModalItem.lineas.reduce((s, l) => s + l.debe, 0))}
+                      </td>
+                      <td className="py-2 text-right">
+                        {formatCurrency(opAsientoModalItem.lineas.reduce((s, l) => s + l.haber, 0))}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              <div className="px-6 py-3 border-t bg-gray-50 flex justify-end">
+                <button
+                  onClick={() => { setOpAsientoModalOpen(false); setOpAsientoModalItem(null) }}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-100"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Breadcrumb */}
         <div className="text-sm text-gray-500 mb-4 flex items-center gap-2">
           <button onClick={() => { setSelectedOP(null); setCreandoOP(false) }} className="hover:text-blue-600">Órdenes de Pago</button>
@@ -7365,48 +7472,6 @@ export default function ModuloCompras({
                 <p className="font-medium text-sm text-emerald-600">{formatCurrency(tots.aCuenta, opForm.moneda as string || "ARS")}</p>
               </div>
               <div>
-                <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Moneda</label>
-                {editable ? (
-                  <div className="flex gap-2 items-center">
-                    <select
-                      value={opForm.moneda ?? "ARS"}
-                      onChange={e => setOpForm(prev => ({ ...prev, moneda: e.target.value }))}
-                      className="border rounded px-2 py-1.5 text-sm"
-                    >
-                      {monedas.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo}</option>)}
-                    </select>
-                    {opForm.moneda && opForm.moneda !== "ARS" && (
-                      <>
-                        <select
-                          value={opForm.tipo_cotizacion ?? "oficial"}
-                          onChange={e => setOpForm(prev => ({ ...prev, tipo_cotizacion: e.target.value as "oficial" | "blue" | "mep" }))}
-                          className="border rounded px-2 py-1.5 text-sm"
-                        >
-                          <option value="oficial">Oficial</option>
-                          <option value="blue">Blue</option>
-                          <option value="mep">MEP</option>
-                        </select>
-                        <input
-                          type="number"
-                          placeholder="Cotización"
-                          value={opForm.cotizacion ?? ""}
-                          onChange={e => {
-                            const cot = parseFloat(e.target.value) || 0
-                            setOpForm(prev => ({
-                              ...prev,
-                              cotizacion: cot,
-                              importe_ars: (prev.importe ?? 0) * cot,
-                            }))
-                          }}
-                          className="border rounded px-2 py-1.5 text-sm w-28"
-                        />
-                        <span className="text-xs text-gray-500">= {formatCurrency((opForm.importe ?? 0) * (opForm.cotizacion ?? 0))}</span>
-                      </>
-                    )}
-                  </div>
-                ) : <p className="font-medium text-sm">{opForm.moneda}{opForm.cotizacion ? ` (${opForm.tipo_cotizacion} ${opForm.cotizacion})` : ""}</p>}
-              </div>
-              <div>
                 <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Concepto</label>
                 {editable ? (
                   <input
@@ -7443,7 +7508,7 @@ export default function ModuloCompras({
             {tabsOP.map(tab => (
               <button
                 key={tab.key}
-                onClick={() => setOpTabActivo(tab.key)}
+                onClick={() => handleCambiarTabOP(tab.key)}
                 className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
                   opTabActivo === tab.key
                     ? "border-blue-600 text-blue-600"
@@ -7459,70 +7524,110 @@ export default function ModuloCompras({
           <div className="p-4">
             {/* TAB INFORMACIÓN DE PAGO */}
             {opTabActivo === "info_pago" && (
-              <div>
+              <div className="space-y-3">
                 {editable && (
-                  <div className="mb-3">
+                  <div className="flex gap-2">
                     <button
                       onClick={() => setOpModalMedioPago(true)}
-                      className="flex items-center gap-2 bg-indigo-900 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-800"
+                      className="bg-indigo-900 text-white px-3 py-1.5 rounded text-sm hover:bg-indigo-800 flex items-center gap-1"
                     >
-                      <Plus className="w-4 h-4" /> Añadir medio de pago
+                      <Plus className="w-4 h-4" />Añadir un elemento
                     </button>
                   </div>
                 )}
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b">
-                    <tr className="text-xs font-semibold text-gray-600 uppercase">
-                      <th className="text-left py-2 px-3">Nombre</th>
-                      <th className="text-right py-2 px-3">Importe Comp.</th>
-                      <th className="text-center py-2 px-3">Mon. Comp.</th>
-                      <th className="text-right py-2 px-3">Importe</th>
-                      <th className="text-center py-2 px-3">Moneda</th>
-                      {editable && <th className="w-10"></th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {opMediosPago.map((mp, idx) => (
-                      <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="py-2 px-3 text-sm">{mp.nombre || mp.forma_pago_nombre || "-"}</td>
-                        <td className="py-2 px-3 text-sm text-right font-medium">{formatCurrency(mp.importe_comp)}</td>
-                        <td className="py-2 px-3 text-sm text-center">{mp.moneda_comp || opForm.moneda}</td>
-                        <td className="py-2 px-3 text-sm text-right font-medium">{formatCurrency(mp.importe)}</td>
-                        <td className="py-2 px-3 text-sm text-center">{mp.moneda}</td>
-                        {editable && (
-                          <td className="py-2 px-3 text-center">
-                            <button
-                              onClick={() => {
-                                const nuevosMedios = opMediosPago.filter((_, i) => i !== idx)
-                                setOpMediosPago(nuevosMedios)
-                                const t = calcOpTotales(nuevosMedios, opComprobantesDebito, opComprobantesCredito)
-                                setOpForm(prev => ({ ...prev, importe: t.totalMedios, importe_a_cuenta: t.aCuenta, importe_no_conciliado: t.noConciliado }))
-                              }}
-                              className="text-red-400 hover:text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                    {opMediosPago.length === 0 && (
-                      <tr><td colSpan={6} className="py-6 text-center text-gray-400 text-sm">Sin medios de pago cargados</td></tr>
-                    )}
-                  </tbody>
-                  {opMediosPago.length > 0 && (
-                    <tfoot className="bg-gray-50 font-semibold text-sm">
-                      <tr>
-                        <td className="py-2 px-3">Total</td>
-                        <td className="py-2 px-3 text-right">{formatCurrency(tots.totalMedios)}</td>
-                        <td></td>
-                        <td className="py-2 px-3 text-right">{formatCurrency(opMediosPago.reduce((s, m) => s + m.importe, 0))}</td>
-                        <td></td>
-                        {editable && <td></td>}
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
+                {opMediosPago.length > 0 ? (
+                  <div className="space-y-3">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-xs text-gray-500">
+                          <th className="py-2 px-3">Nombre (valor)</th>
+                          <th className="text-right py-2 px-3">Imp. Comp.</th>
+                          <th className="py-2 px-3">Mon. Comp.</th>
+                          <th className="text-right py-2 px-3">Importe</th>
+                          <th className="py-2 px-3">Moneda</th>
+                          {editable && <th className="w-10"></th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {opMediosPago.map((mp, idx) => (
+                          <tr key={idx} className="border-b">
+                            <td className="py-1.5 px-3">{mp.nombre || mp.forma_pago_nombre || "-"}</td>
+                            <td className="text-right px-3">{formatCurrency(mp.importe_comp, mp.moneda_comp || "ARS")}</td>
+                            <td className="px-3">{mp.moneda_comp || opForm.moneda || "ARS"}</td>
+                            <td className="text-right px-3 font-medium">{formatCurrency(mp.importe, mp.moneda || "ARS")}</td>
+                            <td className="px-3">{mp.moneda}</td>
+                            {editable && (
+                              <td className="text-center">
+                                <button
+                                  onClick={() => {
+                                    const nuevosMedios = opMediosPago.filter((_, i) => i !== idx)
+                                    setOpMediosPago(nuevosMedios)
+                                    const t = calcOpTotales(nuevosMedios, opComprobantesDebito, opComprobantesCredito)
+                                    setOpForm(prev => ({ ...prev, importe: t.totalMedios, importe_a_cuenta: t.aCuenta, importe_no_conciliado: t.noConciliado }))
+                                  }}
+                                  className="text-red-500 hover:text-red-700"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    {/* Resumen de totales */}
+                    {(() => {
+                      const totalARS = opMediosPago.filter(m => m.moneda !== "USD").reduce((s, m) => s + (m.importe || 0), 0)
+                      const totalUSD = opMediosPago.filter(m => m.moneda === "USD").reduce((s, m) => s + (m.importe || 0), 0)
+                      const hasMixed = totalARS > 0 && totalUSD > 0
+                      const fmt = (n: number) => n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                      if (!hasMixed) {
+                        return (
+                          <div className="flex justify-end pt-2 border-t">
+                            <span className="text-sm font-semibold text-gray-800">
+                              Total:&nbsp;
+                              {totalUSD > 0 ? `USD ${fmt(totalUSD)}` : `$ ${fmt(totalARS)}`}
+                            </span>
+                          </div>
+                        )
+                      }
+                      // Derivar cotización desde el importe_comp del primer medio USD
+                      const primerUSD = opMediosPago.find(m => m.moneda === "USD")
+                      const cotiz = primerUSD?.cotizacion
+                        ?? (primerUSD && primerUSD.importe > 0 ? primerUSD.importe_comp / primerUSD.importe : 1)
+                      const totalEnARS = Math.round((totalARS + totalUSD * cotiz) * 100) / 100
+                      const totalEnUSD = cotiz > 0 ? Math.round((totalUSD + totalARS / cotiz) * 100) / 100 : totalUSD
+                      return (
+                        <div className="flex justify-end">
+                          <div className="bg-gray-50 rounded-lg border border-gray-200 text-sm overflow-hidden min-w-[280px]">
+                            <div className="flex justify-between items-center px-4 py-2 border-b border-gray-200">
+                              <span className="text-gray-500">Efectivo / ARS</span>
+                              <span className="font-medium text-gray-800">$ {fmt(totalARS)}</span>
+                            </div>
+                            <div className="flex justify-between items-center px-4 py-2 border-b border-dashed border-gray-200">
+                              <span className="text-gray-500">Dólares</span>
+                              <span className="font-medium text-gray-800">USD {fmt(totalUSD)}</span>
+                            </div>
+                            <div className="px-4 py-1.5 text-xs text-gray-400 text-center border-b border-gray-100">
+                              TC 1 USD = $ {fmt(cotiz)}
+                            </div>
+                            <div className="flex justify-between items-center px-4 py-2 bg-indigo-50">
+                              <span className="font-semibold text-gray-700">Total en ARS</span>
+                              <span className="font-bold text-indigo-900">$ {fmt(totalEnARS)}</span>
+                            </div>
+                            <div className="flex justify-between items-center px-4 py-2 bg-indigo-50 border-t border-indigo-100">
+                              <span className="font-semibold text-gray-700">Total en USD</span>
+                              <span className="font-bold text-indigo-900">USD {fmt(totalEnUSD)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 py-6 text-center">No hay medios de pago agregados.</p>
+                )}
               </div>
             )}
 
@@ -7697,6 +7802,65 @@ export default function ModuloCompras({
                   />
                 ) : (
                   <p className="text-sm text-gray-700 whitespace-pre-wrap">{opForm.observaciones || "Sin observaciones"}</p>
+                )}
+              </div>
+            )}
+
+            {/* TAB DETALLES (Asientos contables) */}
+            {opTabActivo === "detalles" && (
+              <div>
+                {opAsientoCargando ? (
+                  <div className="flex items-center justify-center py-12 text-gray-400 text-sm">
+                    Cargando asientos contables...
+                  </div>
+                ) : opAsientos.length === 0 ? (
+                  <div className="bg-white rounded-lg border p-8 text-center">
+                    <p className="text-gray-400 text-sm">
+                      {opForm.estado === "borrador"
+                        ? "Esta orden de pago aún no tiene asiento contable. Confirmala para generarlo."
+                        : "No se encontró asiento contable para esta orden de pago."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {opAsientos.map((asiento) => (
+                      <div key={asiento.id} className="bg-white rounded-lg border overflow-hidden">
+                        <div className="px-5 py-3 bg-gray-50 border-b flex items-center justify-between">
+                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Asiento Contable</span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                            asiento.estado === "publicado" ? "bg-green-100 text-green-700" :
+                            asiento.estado === "cancelado" ? "bg-red-100 text-red-700" :
+                            "bg-gray-100 text-gray-600"
+                          }`}>
+                            {asiento.estado === "publicado" ? "Publicado" : asiento.estado === "cancelado" ? "Cancelado" : asiento.estado}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => { setOpAsientoModalItem(asiento); setOpAsientoModalOpen(true) }}
+                          className="w-full flex items-center justify-between px-5 py-4 hover:bg-indigo-50 transition-colors group text-left"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 group-hover:bg-indigo-200 transition-colors">
+                              <FileText className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-indigo-900 group-hover:text-indigo-700">
+                                {asiento.numero ?? "Asiento S/N"}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {formatDate(asiento.fecha)}
+                                {asiento.concepto ? ` · ${asiento.concepto}` : ""}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-gray-400 group-hover:text-indigo-600">
+                            <span>{asiento.lineas.length} líneas</span>
+                            <ChevronRight className="w-4 h-4" />
+                          </div>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
@@ -8434,7 +8598,7 @@ export default function ModuloCompras({
     const supabase = createSupabaseClient()
     const { data } = await supabase
       .from('conciliaciones_deuda_compras')
-      .select('id, fecha, proveedor_id, proveedor_nombre, total_conciliado, usuario, estado, fecha_cancelacion, conciliaciones_deuda_compras_aplicaciones(debito_tipo, debito_numero, credito_tipo, credito_numero, monto)')
+      .select('id, fecha, proveedor_id, proveedor_nombre, total_conciliado, usuario, estado, fecha_cancelacion, conciliaciones_deuda_compras_aplicaciones(debito_tipo, debito_numero, credito_tipo, credito_numero, monto, debito_moneda, credito_moneda, cotizacion)')
       .eq('proveedor_id', proveedorId)
       .order('fecha', { ascending: false })
     if (!data) return
@@ -8443,9 +8607,42 @@ export default function ModuloCompras({
       proveedor_id: c.proveedor_id as number, proveedor_nombre: c.proveedor_nombre as string,
       total_conciliado: c.total_conciliado as number, usuario: c.usuario as string,
       estado: c.estado as 'activa' | 'cancelada', fecha_cancelacion: c.fecha_cancelacion as string | null,
-      aplicaciones: (c.conciliaciones_deuda_compras_aplicaciones ?? []) as {debito_tipo: string; debito_numero: string; credito_tipo: string; credito_numero: string; monto: number}[],
+      aplicaciones: (c.conciliaciones_deuda_compras_aplicaciones ?? []) as {debito_tipo: string; debito_numero: string; credito_tipo: string; credito_numero: string; monto: number; debito_moneda?: string; credito_moneda?: string; cotizacion?: number}[],
     }))
     setCdcHistorial(prev => [...prev.filter(h => h.proveedor_id !== proveedorId), ...loaded])
+  }
+
+  const cargarMediosCdcOP = async (proveedorId: number) => {
+    const supabase = createSupabaseClient()
+    // Query directo a DB para evitar race condition con el estado ordenesPago
+    const { data: ops } = await supabase
+      .from('compras_ordenes_pago')
+      .select('id, importe_no_conciliado_ars, importe_no_conciliado_usd')
+      .eq('proveedor_id', proveedorId)
+      .eq('estado', 'publicado')
+    if (!ops || ops.length === 0) return
+    const opIds = ops.map((o: any) => o.id)
+    const { data: medios } = await supabase
+      .from('compras_op_medios_pago')
+      .select('op_id, moneda, importe, importe_comp')
+      .in('op_id', opIds)
+    if (!medios) return
+    const byOP: Record<string, {moneda: string; importe: number; importe_comp: number}[]> = {}
+    for (const m of medios as any[]) {
+      if (!byOP[m.op_id]) byOP[m.op_id] = []
+      byOP[m.op_id].push({ moneda: m.moneda || 'ARS', importe: Number(m.importe), importe_comp: Number(m.importe_comp ?? m.importe) })
+    }
+    setCdcMediosPorOP(prev => ({ ...prev, ...byOP }))
+    // Actualizar las columnas per-currency en el estado de ordenesPago
+    setOrdenesPago(prev => prev.map(o => {
+      const dbOp = ops.find((dbO: any) => dbO.id === o.id)
+      if (!dbOp) return o
+      return {
+        ...o,
+        importe_no_conciliado_ars: dbOp.importe_no_conciliado_ars,
+        importe_no_conciliado_usd: dbOp.importe_no_conciliado_usd,
+      }
+    }))
   }
 
   const confirmarConciliacionCompras = async () => {
@@ -8459,11 +8656,11 @@ export default function ModuloCompras({
     setCdcEjecutando(true)
     try {
       const supabase = createSupabaseClient()
-      const aplicaciones: {debito_tipo: string; debito_numero: string; credito_tipo: string; credito_numero: string; monto: number}[] = []
+      const aplicaciones: {debito_tipo: string; debito_numero: string; credito_tipo: string; credito_numero: string; monto: number; debito_moneda: string; credito_moneda: string; cotizacion?: number}[] = []
       const debitosWork = cdcSelDebitos.map(d => ({ ...d, restante: d.montoAplicar }))
       const creditosWork = cdcSelCreditos.map(c => ({ ...c, restante: c.montoAplicar }))
       const facturaUpdates: {id: number; saldoNuevo: number}[] = []
-      const opUpdates: {id: string; importeNuevo: number}[] = []
+      const opUpdates: {id: string; importeNuevo: number; noConcARS?: number; noConcUSD?: number}[] = []
       const ncUpdates: {id: number; saldoNuevo: number}[] = []
       for (const d of debitosWork) {
         if (d.restante <= 0) continue
@@ -8479,7 +8676,7 @@ export default function ModuloCompras({
             else if (d.moneda === 'USD' && c.moneda === 'ARS') montoAplicar = Math.min(d.restante * cdcCotizacion, c.restante)
           }
           if (montoAplicar <= 0) continue
-          const opSel = c.tipo === 'op' ? ordenesPago.find(o => o.id === String(c.id)) : null
+          const opSel = c.tipo === 'op' ? ordenesPago.find(o => o.id === c.id) : null
           const ncSel = c.tipo === 'nc' ? notasCreditoCompra.find(n => n.id === c.id) : null
           const montoRegistrado = d.moneda === c.moneda ? montoAplicar : d.moneda === 'USD' ? montoAplicar / cdcCotizacion : montoAplicar
           aplicaciones.push({
@@ -8487,6 +8684,9 @@ export default function ModuloCompras({
             credito_tipo: c.tipo === 'op' ? 'OP' : `NC ${ncSel?.tipo ?? ''}`.trim(),
             credito_numero: opSel?.numero ?? ncSel?.numero ?? String(c.id),
             monto: montoRegistrado,
+            debito_moneda: d.moneda,
+            credito_moneda: c.moneda,
+            cotizacion: d.moneda !== c.moneda && cdcCotizacion > 0 ? cdcCotizacion : undefined,
           })
           if (d.moneda === c.moneda) { d.restante -= montoAplicar; c.restante -= montoAplicar }
           else if (d.moneda === 'ARS') { d.restante -= montoAplicar; c.restante -= montoAplicar / cdcCotizacion }
@@ -8497,8 +8697,29 @@ export default function ModuloCompras({
       for (const c of creditosWork) {
         const reduccion = c.montoAplicar - c.restante
         if (reduccion <= 0) continue
-        if (c.tipo === 'op') { const op = ordenesPago.find(o => o.id === String(c.id)); if (op) opUpdates.push({ id: op.id, importeNuevo: Math.max(0, op.importe_no_conciliado - reduccion) }) }
-        else { const nc = notasCreditoCompra.find(n => n.id === c.id); if (nc) ncUpdates.push({ id: nc.id, saldoNuevo: Math.max(0, (nc.saldo_disponible ?? nc.total) - reduccion) }) }
+        if (c.tipo === 'op') {
+          const op = ordenesPago.find(o => o.id === c.id)
+          if (op) {
+            const mediosOP = cdcMediosPorOP[op.id] ?? []
+            const usdM = mediosOP.filter(m => m.moneda === 'USD')
+            const usdTotal = usdM.reduce((s, m) => s + m.importe, 0)
+            const usdTotalARS = usdM.reduce((s, m) => s + (m.importe_comp || 0), 0)
+            const cotiz = usdTotal > 0 ? usdTotalARS / usdTotal : 1
+            let reduccionARS = reduccion
+            let noConcARS: number | undefined
+            let noConcUSD: number | undefined
+            if (c.moneda === 'USD') {
+              reduccionARS = reduccion * cotiz
+              noConcUSD = Math.max(0, (op.importe_no_conciliado_usd ?? usdTotal) - reduccion)
+              noConcARS = op.importe_no_conciliado_ars ?? undefined
+            } else {
+              // ARS credit
+              noConcARS = Math.max(0, (op.importe_no_conciliado_ars ?? (mediosOP.filter(m => !m.moneda || m.moneda === 'ARS').reduce((s, m) => s + (m.importe_comp || m.importe), 0))) - reduccion)
+              noConcUSD = op.importe_no_conciliado_usd ?? undefined
+            }
+            opUpdates.push({ id: op.id, importeNuevo: Math.max(0, (op.importe_no_conciliado ?? op.importe) - reduccionARS), noConcARS, noConcUSD })
+          }
+        } else { const nc = notasCreditoCompra.find(n => n.id === c.id); if (nc) ncUpdates.push({ id: nc.id, saldoNuevo: Math.max(0, (nc.saldo_disponible ?? nc.total) - reduccion) }) }
       }
       if (aplicaciones.length === 0) { alert('No se encontraron pares válidos.'); return }
       for (const u of facturaUpdates) {
@@ -8507,7 +8728,12 @@ export default function ModuloCompras({
         const { error } = await supabase.from('facturas_compra').update({ saldo: u.saldoNuevo, estado }).eq('id', u.id)
         if (error) { alert('Error al actualizar factura: ' + error.message); return }
       }
-      for (const u of opUpdates) await supabase.from('compras_ordenes_pago').update({ importe_no_conciliado: u.importeNuevo }).eq('id', u.id)
+      for (const u of opUpdates) {
+        const updateData: any = { importe_no_conciliado: u.importeNuevo }
+        if (u.noConcARS !== undefined) updateData.importe_no_conciliado_ars = u.noConcARS
+        if (u.noConcUSD !== undefined) updateData.importe_no_conciliado_usd = u.noConcUSD
+        await supabase.from('compras_ordenes_pago').update(updateData).eq('id', u.id)
+      }
       for (const u of ncUpdates) {
         const estado = u.saldoNuevo <= 0.01 ? 'aplicada' : 'confirmada'
         await supabase.from('notas_credito_compra').update({ saldo_disponible: u.saldoNuevo, estado }).eq('id', u.id)
@@ -8517,12 +8743,28 @@ export default function ModuloCompras({
         const estado = u.saldoNuevo <= 0.01 ? 'pagada' as const : u.saldoNuevo < total ? 'pagada_parcial' as const : 'pendiente' as const
         setFacturasCompra(prev => prev.map(f => f.id === u.id ? { ...f, saldo: u.saldoNuevo, estado } : f))
       }
-      for (const u of opUpdates) setOrdenesPago(prev => prev.map(o => o.id === u.id ? { ...o, importe_no_conciliado: u.importeNuevo } : o))
+      for (const u of opUpdates) setOrdenesPago(prev => prev.map(o => o.id === u.id ? { ...o, importe_no_conciliado: u.importeNuevo, ...(u.noConcARS !== undefined ? { importe_no_conciliado_ars: u.noConcARS } : {}), ...(u.noConcUSD !== undefined ? { importe_no_conciliado_usd: u.noConcUSD } : {}) } : o))
       for (const u of ncUpdates) {
         const estado = u.saldoNuevo <= 0.01 ? 'aplicada' as const : 'confirmada' as const
         setNotasCreditoCompra(prev => prev.map(n => n.id === u.id ? { ...n, saldo_disponible: u.saldoNuevo, estado } : n))
       }
-      const totalConciliado = aplicaciones.reduce((s, a) => s + a.monto, 0)
+      const totalConciliado = aplicaciones.reduce((s, a) => {
+        const factura = facturasCompra.find(f => f.numero === a.debito_numero)
+        if (factura?.moneda === 'USD') {
+          // Buscar cotizacion de la OP o NC para convertir a ARS
+          const cred = creditosWork.find(c => (c.tipo === 'op' ? ordenesPago.find(o => o.id === c.id)?.numero : notasCreditoCompra.find(n => n.id === c.id)?.numero) === a.credito_numero)
+          if (cred?.tipo === 'op') {
+            const mediosOP = cdcMediosPorOP[cred.id as string] ?? []
+            const usdM = mediosOP.filter(m => m.moneda === 'USD')
+            const usdTotal = usdM.reduce((acc, m) => acc + m.importe, 0)
+            const usdTotalARS = usdM.reduce((acc, m) => acc + (m.importe_comp || 0), 0)
+            const cotiz = usdTotal > 0 ? usdTotalARS / usdTotal : (cdcCotizacion || 1)
+            return s + a.monto * cotiz
+          }
+          return s + a.monto * (cdcCotizacion || 1)
+        }
+        return s + a.monto
+      }, 0)
       const { data: nuevaConc, error: concErr } = await supabase
         .from('conciliaciones_deuda_compras')
         .insert({ fecha: new Date().toISOString(), proveedor_id: proveedor.id, proveedor_nombre: proveedor.nombre, total_conciliado: totalConciliado, usuario: currentUser?.nombre || 'Admin', sucursal_id: sucursalActiva?.id ?? null })
@@ -8558,9 +8800,28 @@ export default function ModuloCompras({
         } else {
           const op = ordenesPago.find(o => o.numero === apl.credito_numero)
           if (op) {
-            const importeR = (op.importe_no_conciliado || 0) + apl.monto
-            await supabase.from('compras_ordenes_pago').update({ importe_no_conciliado: importeR }).eq('id', op.id)
-            setOrdenesPago(prev => prev.map(o => o.id === op.id ? { ...o, importe_no_conciliado: importeR } : o))
+            const creditoMoneda = apl.credito_moneda ?? 'ARS'
+            const { data: mediosOP } = await supabase.from('compras_op_medios_pago')
+              .select('moneda, importe, importe_comp').eq('op_id', op.id)
+            const usdM = (mediosOP ?? []).filter((m: any) => m.moneda === 'USD')
+            const usdTotal = usdM.reduce((s: number, m: any) => s + Number(m.importe), 0)
+            const usdTotalARS = usdM.reduce((s: number, m: any) => s + Number(m.importe_comp || 0), 0)
+            const cotiz = usdTotal > 0 ? usdTotalARS / usdTotal : 1
+            // Calcular cuánto se restaura en ARS para el total
+            const montoARS = creditoMoneda === 'USD' ? apl.monto * cotiz : apl.monto
+            const importeR = Math.min((op.importe_no_conciliado ?? op.importe ?? 0) + montoARS, op.importe)
+            const updateData: any = { importe_no_conciliado: importeR }
+            if (creditoMoneda === 'USD' && op.importe_no_conciliado_usd != null) {
+              const usdR = Math.min((op.importe_no_conciliado_usd ?? 0) + apl.monto, usdTotal)
+              updateData.importe_no_conciliado_usd = usdR
+            } else if (creditoMoneda === 'ARS' && op.importe_no_conciliado_ars != null) {
+              const arsM = (mediosOP ?? []).filter((m: any) => !m.moneda || m.moneda === 'ARS')
+              const arsTotal = arsM.reduce((s: number, m: any) => s + Number(m.importe_comp ?? m.importe), 0)
+              const arsR = Math.min((op.importe_no_conciliado_ars ?? 0) + apl.monto, arsTotal)
+              updateData.importe_no_conciliado_ars = arsR
+            }
+            await supabase.from('compras_ordenes_pago').update(updateData).eq('id', op.id)
+            setOrdenesPago(prev => prev.map(o => o.id === op.id ? { ...o, ...updateData } : o))
           }
         }
       }
@@ -8578,22 +8839,55 @@ export default function ModuloCompras({
     const factsARS = todasFacts.filter(f => !f.moneda || f.moneda === 'ARS')
     const factsUSD = todasFacts.filter(f => f.moneda === 'USD')
     const todasOP = cdcProveedorId ? ordenesPago.filter(o => o.proveedor_id === cdcProveedorId && o.estado === 'publicado') : []
-    const opARS = todasOP.filter(o => !o.moneda || o.moneda === 'ARS')
-    const opUSD = todasOP.filter(o => o.moneda === 'USD')
     const todasNC = cdcProveedorId ? notasCreditoCompra.filter(n => n.proveedor_id === cdcProveedorId && n.estado === 'confirmada') : []
     const ncARS = todasNC.filter(n => !n.moneda || n.moneda === 'ARS')
     const ncUSD = todasNC.filter(n => n.moneda === 'USD')
+
+    // Construir credit items per currency desde medios_pago de cada OP
+    type OPCreditItem = { id: string; numero: string; fecha: string; importe: number; importeNoConc: number; moneda: 'ARS' | 'USD' }
+    const opCreditosARS: OPCreditItem[] = []
+    const opCreditosUSD: OPCreditItem[] = []
+    for (const op of todasOP) {
+      const medios = cdcMediosPorOP[op.id]
+      if (medios && medios.length > 0) {
+        const arsM = medios.filter(m => !m.moneda || m.moneda === 'ARS')
+        const usdM = medios.filter(m => m.moneda === 'USD')
+        const arsTotal = arsM.reduce((s, m) => s + (m.importe_comp || m.importe || 0), 0)
+        const usdTotal = usdM.reduce((s, m) => s + (m.importe || 0), 0)
+        const usdTotalARS = usdM.reduce((s, m) => s + (m.importe_comp || 0), 0)
+        const cotizUSD = usdTotal > 0 ? usdTotalARS / usdTotal : 1
+        const noConc = Number(op.importe_no_conciliado ?? op.importe ?? 0)
+        // Usar columnas per-currency si están disponibles (script 059)
+        const noConcARS = typeof op.importe_no_conciliado_ars === 'number'
+          ? op.importe_no_conciliado_ars
+          : (() => { const applied = Math.max(0, (arsTotal + usdTotalARS) - noConc); return Math.max(0, arsTotal - Math.min(arsTotal, applied)) })()
+        const noConcUSD = typeof op.importe_no_conciliado_usd === 'number'
+          ? op.importe_no_conciliado_usd
+          : (() => { const applied = Math.max(0, (arsTotal + usdTotalARS) - noConc); const appARS = Math.min(arsTotal, applied); return Math.max(0, usdTotalARS - (applied - appARS)) / cotizUSD })()
+        if (arsTotal > 0) opCreditosARS.push({ id: op.id, numero: op.numero, fecha: op.fecha, importe: arsTotal, importeNoConc: noConcARS, moneda: 'ARS' })
+        if (usdTotal > 0) opCreditosUSD.push({ id: op.id, numero: op.numero, fecha: op.fecha, importe: usdTotal, importeNoConc: noConcUSD, moneda: 'USD' })
+      } else {
+        // Fallback si no se cargaron medios: usar moneda de la OP
+        const noConc = Number(op.importe_no_conciliado ?? op.importe ?? 0)
+        if (!op.moneda || op.moneda === 'ARS') {
+          opCreditosARS.push({ id: op.id, numero: op.numero, fecha: op.fecha, importe: op.importe, importeNoConc: noConc, moneda: 'ARS' })
+        } else {
+          opCreditosUSD.push({ id: op.id, numero: op.numero, fecha: op.fecha, importe: op.importe, importeNoConc: noConc, moneda: 'USD' })
+        }
+      }
+    }
+
     const debitoARSTotal = factsARS.filter(f => f.saldo > 0).reduce((s, f) => s + f.saldo, 0)
-    const creditoARSTotal = opARS.filter(o => o.importe_no_conciliado > 0).reduce((s, o) => s + o.importe_no_conciliado, 0) + ncARS.filter(n => (n.saldo_disponible ?? n.total) > 0).reduce((s, n) => s + (n.saldo_disponible ?? n.total), 0)
+    const creditoARSTotal = opCreditosARS.filter(o => o.importeNoConc > 0).reduce((s, o) => s + o.importeNoConc, 0) + ncARS.filter(n => (n.saldo_disponible ?? n.total) > 0).reduce((s, n) => s + (n.saldo_disponible ?? n.total), 0)
     const debitoUSDTotal = factsUSD.filter(f => f.saldo > 0).reduce((s, f) => s + f.saldo, 0)
-    const creditoUSDTotal = opUSD.filter(o => o.importe_no_conciliado > 0).reduce((s, o) => s + o.importe_no_conciliado, 0) + ncUSD.filter(n => (n.saldo_disponible ?? n.total) > 0).reduce((s, n) => s + (n.saldo_disponible ?? n.total), 0)
+    const creditoUSDTotal = opCreditosUSD.filter(o => o.importeNoConc > 0).reduce((s, o) => s + o.importeNoConc, 0) + ncUSD.filter(n => (n.saldo_disponible ?? n.total) > 0).reduce((s, n) => s + (n.saldo_disponible ?? n.total), 0)
     const hayMixto = (cdcSelDebitos.some(d => d.moneda === 'ARS') && cdcSelCreditos.some(c => c.moneda === 'USD')) || (cdcSelDebitos.some(d => d.moneda === 'USD') && cdcSelCreditos.some(c => c.moneda === 'ARS'))
     const haySeleccion = (cdcSelDebitos.some(d => d.moneda === 'ARS') && cdcSelCreditos.some(c => c.moneda === 'ARS')) ||
       (cdcSelDebitos.some(d => d.moneda === 'USD') && cdcSelCreditos.some(c => c.moneda === 'USD')) ||
       (hayMixto && cdcCotizacion > 0)
     const toggleDebito = (id: number, moneda: 'ARS' | 'USD', saldo: number) =>
       setCdcSelDebitos(prev => prev.find(d => d.id === id) ? prev.filter(d => d.id !== id) : [...prev, { id, tipo: 'factura' as const, moneda, montoAplicar: saldo }])
-    const toggleCredito = (id: number, tipo: 'op' | 'nc', moneda: 'ARS' | 'USD', saldo: number) =>
+    const toggleCredito = (id: number | string, tipo: 'op' | 'nc', moneda: 'ARS' | 'USD', saldo: number) =>
       setCdcSelCreditos(prev => prev.find(c => c.id === id && c.tipo === tipo) ? prev.filter(c => !(c.id === id && c.tipo === tipo)) : [...prev, { id, tipo, moneda, montoAplicar: saldo }])
 
     const PanelDebitos = ({ moneda, factsList }: { moneda: 'ARS' | 'USD'; factsList: typeof factsARS }) => {
@@ -8645,9 +8939,9 @@ export default function ModuloCompras({
       )
     }
 
-    const PanelCreditos = ({ moneda, opList, ncList }: { moneda: 'ARS' | 'USD'; opList: typeof opARS; ncList: typeof ncARS }) => {
+    const PanelCreditos = ({ moneda, opItems, ncList }: { moneda: 'ARS' | 'USD'; opItems: OPCreditItem[]; ncList: typeof ncARS }) => {
       const filtro = cdcFiltroTextoCr.toLowerCase()
-      const opFilt = (cdcFiltroConciliado === 'si' ? opList.filter(o => o.importe_no_conciliado <= 0) : opList.filter(o => cdcMostrarTodosCr ? true : o.importe_no_conciliado > 0)).filter(o => !filtro || o.numero?.toLowerCase().includes(filtro))
+      const opFilt = (cdcMostrarTodosCr ? opItems : opItems.filter(o => o.importeNoConc > 0)).filter(o => !filtro || o.numero?.toLowerCase().includes(filtro))
       const ncFilt = (cdcFiltroConciliado === 'si' ? ncList.filter(n => (n.saldo_disponible ?? n.total) <= 0) : ncList.filter(n => cdcMostrarTodosCr ? true : (n.saldo_disponible ?? n.total) > 0)).filter(n => !filtro || n.numero?.toLowerCase().includes(filtro))
       return (
         <div className="flex-1 flex flex-col min-w-0">
@@ -8671,14 +8965,14 @@ export default function ModuloCompras({
               </tr></thead>
               <tbody>
                 {opFilt.map(o => {
-                  const saldo = o.importe_no_conciliado
-                  const sel = cdcSelCreditos.find(c => c.id === Number(o.id) && c.tipo === 'op')
+                  const saldo = o.importeNoConc
+                  const sel = cdcSelCreditos.find(c => c.id === o.id && c.tipo === 'op' && c.moneda === moneda)
                   const aplicado = saldo <= 0
                   return (
-                    <tr key={`op-${o.id}`} onClick={() => !aplicado && toggleCredito(Number(o.id), 'op', moneda, saldo)}
+                    <tr key={`op-${o.id}-${moneda}`} onClick={() => !aplicado && toggleCredito(o.id, 'op', moneda, saldo)}
                       className={`border-b cursor-pointer ${sel ? 'bg-blue-50' : 'hover:bg-gray-50'} ${aplicado ? 'opacity-40' : ''}`}>
                       <td className="py-1 px-2 text-center" onClick={e => e.stopPropagation()}>
-                        {!aplicado && <input type="checkbox" checked={!!sel} onChange={() => toggleCredito(Number(o.id), 'op', moneda, saldo)} className="w-3.5 h-3.5 rounded border-gray-300" />}
+                        {!aplicado && <input type="checkbox" checked={!!sel} onChange={() => toggleCredito(o.id, 'op', moneda, saldo)} className="w-3.5 h-3.5 rounded border-gray-300" />}
                       </td>
                       <td className="py-1 px-2 text-right font-semibold text-green-600">{moneda === 'USD' ? `USD ${saldo?.toLocaleString('es-AR')}` : `$${saldo?.toLocaleString('es-AR')}`}</td>
                       <td className="py-1 px-2 text-right">{moneda === 'USD' ? `USD ${o.importe?.toLocaleString('es-AR')}` : `$${o.importe?.toLocaleString('es-AR')}`}</td>
@@ -8732,7 +9026,7 @@ export default function ModuloCompras({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                 <div className="md:col-span-2">
                   <label className="block text-xs font-medium text-gray-600 mb-1">Proveedor</label>
-                  <select value={cdcProveedorId ?? ''} onChange={e => { const id = Number(e.target.value) || null; setCdcProveedorId(id); setCdcSelDebitos([]); setCdcSelCreditos([]); if (id) cargarHistorialCdcCompras(id) }} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                  <select value={cdcProveedorId ?? ''} onChange={e => { const id = Number(e.target.value) || null; setCdcProveedorId(id); setCdcSelDebitos([]); setCdcSelCreditos([]); if (id) { cargarHistorialCdcCompras(id); cargarMediosCdcOP(id) } }} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                     <option value="">Seleccionar proveedor...</option>
                     {proveedores.filter((p: any) => p.activo !== false).map((p: any) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                   </select>
@@ -8758,24 +9052,45 @@ export default function ModuloCompras({
             <div className="space-y-3">
               <div className="bg-white border rounded-lg overflow-hidden">
                 <div className="px-4 py-2 bg-gray-50 border-b"><span className="text-xs font-semibold text-gray-600 uppercase">Pesos (ARS)</span></div>
-                <div className="flex divide-x"><PanelDebitos moneda="ARS" factsList={factsARS} /><PanelCreditos moneda="ARS" opList={opARS} ncList={ncARS} /></div>
+                <div className="flex divide-x">{PanelDebitos({ moneda: "ARS", factsList: factsARS })}{PanelCreditos({ moneda: "ARS", opItems: opCreditosARS, ncList: ncARS })}</div>
               </div>
               <div className="bg-white border rounded-lg overflow-hidden">
                 <div className="px-4 py-2 bg-gray-50 border-b"><span className="text-xs font-semibold text-gray-600 uppercase">Dólares (USD)</span></div>
-                <div className="flex divide-x"><PanelDebitos moneda="USD" factsList={factsUSD} /><PanelCreditos moneda="USD" opList={opUSD} ncList={ncUSD} /></div>
+                <div className="flex divide-x">{PanelDebitos({ moneda: "USD", factsList: factsUSD })}{PanelCreditos({ moneda: "USD", opItems: opCreditosUSD, ncList: ncUSD })}</div>
               </div>
             </div>
             <div className="bg-white border rounded-lg p-4">
               <div className="flex flex-wrap items-center gap-4">
                 {hayMixto && (
                   <div className="flex items-center gap-2">
-                    <label className="text-xs font-medium text-gray-600">Cotización USD/ARS</label>
-                    <input type="number" value={cdcCotizacion || ''} onChange={e => setCdcCotizacion(Number(e.target.value))} placeholder="1200" className="w-24 border border-gray-300 rounded px-2 py-1 text-sm" />
+                    <label className="text-xs font-medium text-orange-600">⚠ Cotización USD/ARS <span className="font-bold">(requerida)</span></label>
+                    <input
+                      type="number"
+                      value={cdcCotizacion || ''}
+                      onChange={e => setCdcCotizacion(Number(e.target.value))}
+                      placeholder="Ej: 1400"
+                      className={`w-28 border rounded px-2 py-1 text-sm font-medium ${cdcCotizacion > 0 ? 'border-green-400 focus:ring-green-400' : 'border-orange-400 bg-orange-50 ring-1 ring-orange-400 animate-pulse'}`}
+                    />
+                    {cdcCotizacion <= 0 && <span className="text-xs text-orange-600">Ingresá la cotización para habilitar el botón</span>}
                   </div>
                 )}
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-gray-500">Débitos sel.:</span><span className="font-semibold">{cdcSelDebitos.length}</span>
-                  <span className="text-gray-500 ml-2">Créditos sel.:</span><span className="font-semibold">{cdcSelCreditos.length}</span>
+                <div className="flex items-center gap-3 text-sm flex-wrap">
+                  {cdcSelDebitos.filter(d => d.moneda === 'ARS').length > 0 && (
+                    <span className="text-red-600 font-medium">Deuda ARS: <span className="font-bold">${cdcSelDebitos.filter(d => d.moneda === 'ARS').reduce((s, d) => s + d.montoAplicar, 0).toLocaleString('es-AR')}</span></span>
+                  )}
+                  {cdcSelDebitos.filter(d => d.moneda === 'USD').length > 0 && (
+                    <span className="text-red-600 font-medium">Deuda USD: <span className="font-bold">USD {cdcSelDebitos.filter(d => d.moneda === 'USD').reduce((s, d) => s + d.montoAplicar, 0).toLocaleString('es-AR')}</span></span>
+                  )}
+                  {(cdcSelDebitos.length > 0 && cdcSelCreditos.length > 0) && <span className="text-gray-400">→</span>}
+                  {cdcSelCreditos.filter(c => c.moneda === 'ARS').length > 0 && (
+                    <span className="text-green-600 font-medium">Crédito ARS: <span className="font-bold">${cdcSelCreditos.filter(c => c.moneda === 'ARS').reduce((s, c) => s + c.montoAplicar, 0).toLocaleString('es-AR')}</span></span>
+                  )}
+                  {cdcSelCreditos.filter(c => c.moneda === 'USD').length > 0 && (
+                    <span className="text-green-600 font-medium">Crédito USD: <span className="font-bold">USD {cdcSelCreditos.filter(c => c.moneda === 'USD').reduce((s, c) => s + c.montoAplicar, 0).toLocaleString('es-AR')}</span></span>
+                  )}
+                  {cdcSelDebitos.length === 0 && cdcSelCreditos.length === 0 && (
+                    <span className="text-gray-400 text-xs">Seleccioná facturas y créditos para conciliar</span>
+                  )}
                 </div>
                 <div className="ml-auto flex gap-3">
                   <button onClick={() => { setCdcSelDebitos([]); setCdcSelCreditos([]) }} className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Limpiar selección</button>
@@ -8808,20 +9123,48 @@ export default function ModuloCompras({
                     </div>
                     {h.aplicaciones.length > 0 && (
                       <div className="mt-2 ml-2">
-                        <table className="w-full text-xs text-gray-500">
+                        <table className="w-full text-xs text-gray-500 table-fixed">
+                          <colgroup>
+                            <col className="w-16" /><col className="w-32" />
+                            <col className="w-12" /><col className="w-32" />
+                            <col className="w-52" />
+                            <col className="w-24" />
+                          </colgroup>
                           <thead><tr>
                             <th className="text-left py-1 font-medium">Débito</th><th className="text-left py-1 font-medium">N° Débito</th>
                             <th className="text-left py-1 font-medium">Crédito</th><th className="text-left py-1 font-medium">N° Crédito</th>
+                            <th className="text-left py-1 font-medium">Monedas</th>
                             <th className="text-right py-1 font-medium">Monto</th>
                           </tr></thead>
                           <tbody>
-                            {h.aplicaciones.map((a, i) => (
-                              <tr key={i} className="border-t border-gray-100">
-                                <td className="py-1">{a.debito_tipo}</td><td className="py-1 text-blue-600">{a.debito_numero}</td>
-                                <td className="py-1">{a.credito_tipo}</td><td className="py-1 text-blue-600">{a.credito_numero}</td>
-                                <td className="py-1 text-right font-mono">${a.monto.toLocaleString('es-AR', {minimumFractionDigits:2})}</td>
-                              </tr>
-                            ))}
+                            {h.aplicaciones.map((a, i) => {
+                              const dm = a.debito_moneda ?? 'ARS'
+                              const cm = a.credito_moneda ?? 'ARS'
+                              const esMixto = dm !== cm
+                              const parLabel = `${dm}→${cm}`
+                              const montoFmt = cm === 'USD'
+                                ? `USD ${a.monto.toLocaleString('es-AR', {minimumFractionDigits:2})}`
+                                : `$${a.monto.toLocaleString('es-AR', {minimumFractionDigits:2})}`
+                              return (
+                                <tr key={i} className="border-t border-gray-100">
+                                  <td className="py-1">{a.debito_tipo}</td>
+                                  <td className="py-1 text-blue-600">{a.debito_numero}</td>
+                                  <td className="py-1">{a.credito_tipo}</td>
+                                  <td className="py-1 text-blue-600">{a.credito_numero}</td>
+                                  <td className="py-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${esMixto ? 'bg-orange-100 text-orange-700' : cm === 'USD' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                                        {parLabel}
+                                      </span>
+                                      {esMixto && a.cotizacion && (
+                                        <span className="text-gray-400 text-xs">cotización: {a.cotizacion.toLocaleString('es-AR')}</span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="py-1 text-right font-mono">{montoFmt}</td>
+                                </tr>
+                              )
+                            })}
                           </tbody>
                         </table>
                       </div>

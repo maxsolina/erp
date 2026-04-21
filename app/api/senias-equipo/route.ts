@@ -38,6 +38,9 @@ export async function POST(req: Request) {
     fecha_limite,
     vendedor_id,
     sucursal_id,
+    moneda = 'ARS',
+    cotizacion = 1,
+    lista_precios_id = null,
   } = body
 
   const errors: Record<string, string> = {}
@@ -76,7 +79,8 @@ export async function POST(req: Request) {
       fecha: new Date().toISOString(),
       sucursal_id: sucursal_id ?? null,
       vendedor_id: vendedor_id ?? null,
-      moneda: "ARS",
+      moneda,
+      lista_precios_id: lista_precios_id ?? null,
       subtotal: precio_final,
       impuestos: 0,
       total: precio_final,
@@ -157,6 +161,8 @@ export async function POST(req: Request) {
       precio_final,
       monto_senia: 0,
       estado_senia: "sin_senia",
+      moneda,
+      cotizacion,
       nota_venta_id: nvId,
       nota_venta_numero: nvNumero,
       oe_id: oeId,
@@ -177,6 +183,26 @@ export async function POST(req: Request) {
     .single()
 
   if (seniaErr) return NextResponse.json({ error: seniaErr.message }, { status: 500 })
+
+  // 5. Reservar la unidad de stock específica (stock_item_id = id en stock_unidades)
+  if (stock_item_id) {
+    // Paso 5a: marcar estado = 'reservado' (columna siempre existente)
+    const { error: reservaErr } = await supabase
+      .from("stock_unidades")
+      .update({ estado: "reservado" })
+      .eq("id", stock_item_id)
+      .eq("estado", "disponible") // solo si sigue disponible (idempotente)
+    if (reservaErr) {
+      console.error("[senias] reserva stock error:", reservaErr.message)
+      errors.stock = reservaErr.message
+    } else {
+      // Paso 5b: vincular NV (columnas opcionales — script 064; error silencioso si no existen aún)
+      await supabase
+        .from("stock_unidades")
+        .update({ nota_venta_id: nvId, nota_venta_numero: nvNumero })
+        .eq("id", stock_item_id)
+    }
+  }
 
   return NextResponse.json({
     ok: true,

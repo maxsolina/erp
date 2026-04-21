@@ -280,6 +280,8 @@ interface SeniaEquipo {
   precio_venta: number
   descuento: number
   precio_final: number
+  moneda: 'ARS' | 'USD'
+  cotizacion: number
   monto_senia: number
   medio_pago_senia: string | null
   estado_senia: "sin_senia" | "registrada"
@@ -1494,11 +1496,24 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [seniaEquipoBateria, setSeniaEquipoBateria] = useState<number | undefined>(undefined)
   const [seniaPrecioVenta, setSeniaPrecioVenta] = useState(0)
   const [seniaDescuento, setSeniaDescuento] = useState(0)
-  const [seniaFechaLimite, setSeniaFechaLimite] = useState("")
+  const [seniaFechaLimite, setSeniaFechaLimite] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() + 15); return d.toISOString().split('T')[0]
+  })
+  // Lista de precios y moneda de la seña
+  const [seniaListaPreciosId, setSeniaListaPreciosId] = useState<number | null>(null)
+  const [seniaMoneda, setSeniaMoneda] = useState<'ARS' | 'USD'>('ARS')
+  const [seniaCotizacion, setSeniaCotizacion] = useState(1)
   // Registrar seña (pago adelantado)
   const [seniaMontoInput, setSeniaMontoInput] = useState(0)
   const [seniaMedioPagoInput, setSeniaMedioPagoInput] = useState("efectivo")
+  const [seniaCotizacionPago, setSeniaCotizacionPago] = useState(1)
   const [seniaRegistrando, setSeniaRegistrando] = useState(false)
+  const [seniaCancelRecibo, setSeniaCancelRecibo] = useState(false)
+  // Caja dinámica para recibo de seña
+  const [seniaCajas, setSeniaCajas] = useState<{ id: string; nombre: string; sucursal: string }[]>([])
+  const [seniaCajaId, setSeniaCajaId] = useState<string>("")
+  const [seniaCajaValores, setSeniaCajaValores] = useState<{ id: string; nombre: string; moneda: string; tipo: string; subtipo: string | null }[]>([])
+  const [seniaCajaValorId, setSeniaCajaValorId] = useState<string>("")
   // Editar fecha límite en detalle
   const [seniaEditandoFecha, setSeniaEditandoFecha] = useState(false)
   const [seniaFechaLimiteEdit, setSeniaFechaLimiteEdit] = useState("")
@@ -1553,6 +1568,48 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       .then(data => { if (Array.isArray(data)) setSeniasEquipo(data) })
       .catch(console.error)
   }, [])
+
+  // Cargar cajas para recibo de seña
+  useEffect(() => {
+    ;(async () => {
+      const { createClient } = await import("@/lib/supabase/client")
+      const supabase = createClient()
+      const { data } = await supabase
+        .from("cajas")
+        .select("id, nombre, sucursal")
+        .eq("activo", true)
+        .order("nombre")
+      setSeniaCajas(data ?? [])
+    })()
+  }, [])
+
+  // Cargar cotización blue del día para seña
+  useEffect(() => {
+    fetch("/api/contabilidad/cotizaciones?moneda_codigo=USD&tipo=blue&latest=true")
+      .then(r => r.json())
+      .then(d => { if (d?.tasa && Number(d.tasa) > 1) setSeniaCotizacionPago(Number(d.tasa)) })
+      .catch(() => {})
+  }, [])
+
+  // Cargar caja_valores al cambiar la caja seleccionada
+  useEffect(() => {
+    if (!seniaCajaId) { setSeniaCajaValores([]); setSeniaCajaValorId(""); setSeniaMedioPagoInput(""); return }
+    ;(async () => {
+      const { createClient } = await import("@/lib/supabase/client")
+      const supabase = createClient()
+      const { data } = await supabase
+        .from("caja_valores")
+        .select("id, nombre, moneda, tipo, subtipo")
+        .eq("caja_id", seniaCajaId)
+        .eq("activo", true)
+        .in("tipo", ["efectivo", "transferencia"])
+        .order("nombre")
+      setSeniaCajaValores(data ?? [])
+      setSeniaCajaValorId("")
+      setSeniaMedioPagoInput("")
+    })()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seniaCajaId])
 
   // Cargar modelos de equipo desde la lista "Toma de Equipos" (versiones)
   useEffect(() => {
@@ -6395,9 +6452,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setSeniaEquipoBateria(undefined)
     setSeniaPrecioVenta(0)
     setSeniaDescuento(0)
-    setSeniaFechaLimite("")
+    const _d15 = new Date(); _d15.setDate(_d15.getDate() + 15)
+    setSeniaFechaLimite(_d15.toISOString().split('T')[0])
+    setSeniaListaPreciosId(null)
+    setSeniaMoneda('ARS')
+    setSeniaCotizacion(1)
     setSeniaMontoInput(0)
-    setSeniaMedioPagoInput("efectivo")
+    setSeniaMedioPagoInput("")
+    setSeniaCajaValorId("")
     setSeniaConTomaIntegrada(false)
     setSeniaMediosCierre([{ medio: "efectivo", monto: 0 }])
     setCreandoSenia(false)
@@ -6412,7 +6474,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const precioFinalCalculado = seniaPrecioVenta - seniaDescuento
 
     const handleCrear = async () => {
-      if (!seniaClienteId || !seniaFechaLimite || !seniaEquipoNombre) return
+      if (!seniaClienteId || !seniaEquipoNombre) return
       try {
         const res = await fetch("/api/senias-equipo", {
           method: "POST",
@@ -6429,6 +6491,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             descuento: seniaDescuento,
             precio_final: precioFinalCalculado,
             fecha_limite: seniaFechaLimite,
+            lista_precios_id: seniaListaPreciosId,
+            moneda: seniaMoneda,
+            cotizacion: seniaMoneda === 'USD' ? seniaCotizacion : 1,
             sucursal_id: sucursalActiva?.id ?? null,
           }),
         })
@@ -6454,6 +6519,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             precio_final: precioFinalCalculado,
             monto_senia: 0,
             medio_pago_senia: null,
+            moneda: seniaMoneda,
+            cotizacion: seniaMoneda === 'USD' ? seniaCotizacion : 1,
             estado_senia: "sin_senia",
             recibo_senia_numero: null,
             nota_venta_id: data.nota_venta_id ?? null,
@@ -6515,10 +6582,49 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha límite <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha límite</label>
                 <input type="date" value={seniaFechaLimite} onChange={e => setSeniaFechaLimite(e.target.value)}
                   min={new Date().toISOString().split("T")[0]}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cliente <span className="text-red-500">*</span></label>
+                <select
+                  value={seniaClienteId ?? ""}
+                  onChange={e => {
+                    const clienteId = Number(e.target.value) || null
+                    setSeniaClienteId(clienteId)
+                    if (clienteId) {
+                      const cliente = clientes.find(c => c.id === clienteId)
+                      const categoria = categoriasCliente.find(cat => cat.id === cliente?.categoria_id)
+                      const listaId = categoria?.lista_precios_defecto_id ?? cliente?.lista_precios_id ?? null
+                      setSeniaListaPreciosId(listaId ?? null)
+                      if (listaId) {
+                        const lista = listasPrecios.find(l => l.id === listaId)
+                        const moneda = (lista?.moneda_base === 'USD' ? 'USD' : 'ARS') as 'ARS' | 'USD'
+                        setSeniaMoneda(moneda)
+                        if (moneda === 'ARS') setSeniaCotizacion(1)
+                      }
+                    } else {
+                      setSeniaListaPreciosId(null)
+                      setSeniaMoneda('ARS')
+                      setSeniaCotizacion(1)
+                    }
+                  }}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500">
+                  <option value="">Seleccionar cliente...</option>
+                  {clientes.map(c => (
+                    <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Lista de precios</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={seniaListaPreciosId ? (listasPrecios.find(l => l.id === seniaListaPreciosId)?.nombre ?? `Lista #${seniaListaPreciosId}`) : '— Sin lista —'}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500" />
               </div>
             </div>
           </div>
@@ -6529,17 +6635,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <Users className="w-4 h-4 text-emerald-600" /> Datos del Cliente y Equipo
             </h3>
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Cliente <span className="text-red-500">*</span></label>
-                <select value={seniaClienteId ?? ""} onChange={e => setSeniaClienteId(Number(e.target.value) || null)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500">
-                  <option value="">Seleccionar cliente...</option>
-                  {clientes.map(c => (
-                    <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>
-                  ))}
-                </select>
-              </div>
-
               {/* Selector de equipo — igual estilo NV */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Equipo <span className="text-red-500">*</span></label>
@@ -6572,18 +6667,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     {seniaEquipoSearchOpen && (
                       <ProductoDropdown
                         nvClienteId={seniaClienteId}
-                        nvListaPreciosId={null}
+                        nvListaPreciosId={seniaListaPreciosId}
                         clientes={clientes}
                         listasPrecios={listasPrecios}
                         versionesLista={versionesLista}
                         productosConSerie={productosMaestro}
                         productoSearchText={seniaEquipoSearchText}
                         anchorRef={seniaInputRef as React.RefObject<HTMLInputElement>}
-                        onSelect={(p, precioUnitario) => {
+                        onSelect={(p, precioUnitario, moneda, precioUSD, precioARS) => {
                           setSeniaEquipoNombre(p.nombre)
                           setSeniaEquipoSearchText(p.nombre)
                           setSeniaEquipoSearchOpen(false)
-                          setSeniaPrecioVenta(precioUnitario)
+                          // Usar el precio en la moneda correcta de la lista
+                          setSeniaPrecioVenta(moneda === 'USD' ? precioUSD : precioARS)
+                          setSeniaMoneda(moneda)
                           setSeniaProductoId(p.id)
                           setSeniaProductoRequiereSerie(p.requiere_serie ?? false)
                           setSeniaStockItemId(null)
@@ -6620,18 +6717,18 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
               <div className="grid grid-cols-3 gap-3 pt-1 border-t">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Precio de venta</label>
-                  <input type="number" min={0} value={seniaPrecioVenta} onChange={e => setSeniaPrecioVenta(Number(e.target.value))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500" />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Precio de venta {seniaMoneda === 'USD' ? '(USD)' : '($)'}</label>
+                  <input type="text" readOnly value={seniaMoneda === 'USD' ? `USD ${seniaPrecioVenta.toLocaleString('es-AR', {minimumFractionDigits:2})}` : formatCurrency(seniaPrecioVenta)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Descuento ($)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Descuento {seniaMoneda === 'USD' ? '(USD)' : '($)'}</label>
                   <input type="number" min={0} value={seniaDescuento} onChange={e => setSeniaDescuento(Number(e.target.value))}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Precio final acordado</label>
-                  <input type="text" value={formatCurrency(precioFinalCalculado)} readOnly
+                  <input type="text" value={seniaMoneda === 'USD' ? `USD ${precioFinalCalculado.toLocaleString('es-AR', {minimumFractionDigits:2})}` : formatCurrency(precioFinalCalculado)} readOnly
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-emerald-50 text-emerald-800 font-semibold" />
                 </div>
               </div>
@@ -6655,7 +6752,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </button>
             <button
               onClick={handleCrear}
-              disabled={!seniaClienteId || !seniaFechaLimite || !seniaEquipoNombre}
+              disabled={!seniaClienteId || !seniaEquipoNombre}
               className="px-6 py-2.5 bg-indigo-900 text-white rounded-lg text-sm font-semibold hover:bg-indigo-800 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <CheckCircle className="w-4 h-4" /> Crear Seña
@@ -6687,6 +6784,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             accion: "registrar_senia",
             monto_senia: seniaMontoInput,
             medio_pago_senia: seniaMedioPagoInput,
+            cotizacion_senia: seniaCotizacionPago,
+            moneda_pago: seniaCajaValores.find(v => v.id === seniaCajaValorId)?.moneda ?? "ARS",
+            caja_id: seniaCajaId || null,
+            caja_valor_id: seniaCajaValorId || null,
             sucursal_id: sucursalActiva?.id ?? null,
             usuario: "Operador",
           }),
@@ -6696,9 +6797,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           const updated = { ...s, ...data.senia }
           setSeniasEquipo(prev => prev.map(x => x.id === s.id ? updated : x))
           setSelectedSenia(updated)
+          setSeniaMontoInput(0)
+          setSeniaCajaValorId("")
+        } else {
+          const err = await res.json().catch(() => ({ error: `Error ${res.status}` }))
+          alert(`Error al registrar seña: ${err.error ?? res.status}`)
         }
       } catch (e) {
         console.error("[senias] registrar error:", e)
+        alert("Error de conexión al registrar la seña.")
       } finally {
         setSeniaRegistrando(false)
       }
@@ -6863,7 +6970,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <p className="text-sm text-gray-500">{fechaHora}</p>
           </div>
           <div className="ml-auto flex items-center gap-2 flex-wrap justify-end">
-            {/* Badge de vencimiento */}
+            {/* Badge moneda */}
+            {s.moneda === 'USD' && (
+              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
+                USD {s.cotizacion && s.cotizacion > 1 ? `@${s.cotizacion.toLocaleString('es-AR')}` : ''}
+              </span>
+            )}
             {s.estado === "en_curso" && dias !== null && (
               <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                 vencida ? "bg-red-100 text-red-700" :
@@ -6930,9 +7042,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               {s.equipo_color && <div className="flex justify-between"><span className="text-gray-500">Color</span><span className="font-medium">{s.equipo_color}</span></div>}
               {s.equipo_bateria != null && <div className="flex justify-between"><span className="text-gray-500">Batería</span><span className="font-medium flex items-center gap-1"><Battery className="w-3 h-3" />{s.equipo_bateria}%</span></div>}
               <div className="border-t pt-3 space-y-1">
-                <div className="flex justify-between"><span className="text-gray-500">Precio de venta</span><span className="font-medium">{formatCurrency(s.precio_venta)}</span></div>
-                {s.descuento > 0 && <div className="flex justify-between"><span className="text-gray-500">Descuento</span><span className="text-red-600 font-medium">-{formatCurrency(s.descuento)}</span></div>}
-                <div className="flex justify-between font-semibold"><span>Precio final acordado</span><span className="text-emerald-600 text-base">{formatCurrency(s.precio_final)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Precio de venta</span><span className="font-medium">{s.moneda === 'USD' ? `USD ${s.precio_venta.toLocaleString('es-AR',{minimumFractionDigits:2})}` : formatCurrency(s.precio_venta)}</span></div>
+                {s.descuento > 0 && <div className="flex justify-between"><span className="text-gray-500">Descuento</span><span className="text-red-600 font-medium">-{s.moneda === 'USD' ? `USD ${s.descuento.toLocaleString('es-AR',{minimumFractionDigits:2})}` : formatCurrency(s.descuento)}</span></div>}
+                <div className="flex justify-between font-semibold"><span>Precio final acordado</span><span className="text-emerald-600 text-base">{s.moneda === 'USD' ? `USD ${s.precio_final.toLocaleString('es-AR',{minimumFractionDigits:2})}` : formatCurrency(s.precio_final)}</span></div>
               </div>
             </div>
           </div>
@@ -6944,39 +7056,139 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <Banknote className="w-4 h-4 text-emerald-600" /> Seña (pago adelantado)
           </h3>
           {s.estado_senia === "registrada" ? (
-            <div className="flex items-center gap-4">
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex-1 text-sm">
-                <p className="text-green-800 font-medium">Seña registrada: {formatCurrency(s.monto_senia)}</p>
-                <p className="text-green-600 text-xs mt-0.5">Medio: {s.medio_pago_senia} {s.recibo_senia_numero ? `· Recibo: ${s.recibo_senia_numero}` : ""}</p>
+            <div className="space-y-3">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm">
+                <p className="text-green-800 font-medium">
+                  Seña registrada: {s.moneda === 'USD'
+                    ? `USD ${s.monto_senia?.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+                    : formatCurrency(s.monto_senia)}
+                  {(s as any).monto_senia_usd && s.moneda !== 'USD' && (
+                    <span className="ml-2 text-blue-700 font-semibold">
+                      → USD {Number((s as any).monto_senia_usd).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      {(s as any).cotizacion_senia ? ` @ $${(s as any).cotizacion_senia}` : ''}
+                    </span>
+                  )}
+                </p>
+                <p className="text-green-600 text-xs mt-0.5">
+                  Medio: {s.medio_pago_senia}{s.recibo_senia_numero ? ` · Recibo: ${s.recibo_senia_numero}` : ''}
+                </p>
+                <p className="text-blue-600 text-xs mt-1 font-medium">
+                  Imputado en cuenta corriente USD del cliente
+                </p>
               </div>
+              {/* Cancelar recibo */}
+              {!seniaCancelRecibo ? (
+                <button
+                  onClick={() => setSeniaCancelRecibo(true)}
+                  className="text-xs text-red-600 hover:text-red-800 underline"
+                >
+                  Cancelar recibo y registrar uno nuevo
+                </button>
+              ) : (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm space-y-2">
+                  <p className="text-red-700 font-medium">¿Confirmar anulación del recibo {s.recibo_senia_numero}?</p>
+                  <p className="text-red-600 text-xs">El recibo se marcará como anulado y podrás registrar uno nuevo.</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        const res = await fetch(`/api/senias-equipo/${s.id}`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ accion: "cancelar_recibo_senia", usuario: "Operador" }),
+                        })
+                        if (res.ok) {
+                          const data = await res.json()
+                          const updated = { ...s, ...data.senia }
+                          setSeniasEquipo(prev => prev.map(x => x.id === s.id ? updated : x))
+                          setSelectedSenia(updated)
+                        }
+                        setSeniaCancelRecibo(false)
+                      }}
+                      className="px-3 py-1.5 bg-red-600 text-white text-xs rounded hover:bg-red-700"
+                    >
+                      Sí, anular recibo
+                    </button>
+                    <button onClick={() => setSeniaCancelRecibo(false)} className="px-3 py-1.5 border border-gray-300 text-gray-600 text-xs rounded hover:bg-gray-50">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : s.estado === "en_curso" ? (
             <div className="space-y-3">
               <p className="text-sm text-gray-500">Sin seña registrada. Podés registrar el pago adelantado ahora o más adelante.</p>
-              <div className="grid grid-cols-3 gap-3">
+              {(() => {
+                const cajaValorSeleccionado = seniaCajaValores.find(v => v.id === seniaCajaValorId)
+                const monedaPago = cajaValorSeleccionado?.moneda ?? 'ARS'
+                const pagoEnARS = monedaPago !== 'USD'
+                return (
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Monto de la seña ($)</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Monto recibido ({monedaPago})</label>
                   <input type="number" min={0} value={seniaMontoInput} onChange={e => setSeniaMontoInput(Number(e.target.value))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500" />
+                    disabled={!seniaCajaValorId}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100 disabled:cursor-not-allowed" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Medio de pago</label>
-                  <select value={seniaMedioPagoInput} onChange={e => setSeniaMedioPagoInput(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500">
-                    <option value="efectivo">Efectivo</option>
-                    <option value="transferencia">Transferencia</option>
-                    <option value="tarjeta_debito">Tarjeta Débito</option>
-                    <option value="tarjeta_credito">Tarjeta Crédito</option>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Caja</label>
+                  <select
+                    value={seniaCajaId}
+                    onChange={e => setSeniaCajaId(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="">— Seleccionar caja —</option>
+                    {seniaCajas.map(c => (
+                      <option key={c.id} value={c.id}>{c.nombre}{c.sucursal ? ` (${c.sucursal})` : ''}</option>
+                    ))}
                   </select>
                 </div>
-                <div className="flex items-end">
-                  <button onClick={handleRegistrarSenia} disabled={seniaRegistrando}
-                    className="w-full py-2 bg-indigo-900 text-white text-sm font-semibold rounded-lg hover:bg-indigo-800 disabled:bg-gray-300 flex items-center justify-center gap-2">
-                    <CreditCard className="w-4 h-4" />
-                    {seniaRegistrando ? "Registrando..." : "Registrar seña"}
-                  </button>
-                </div>
+                {seniaCajaId && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Forma de pago</label>
+                    <select
+                      value={seniaCajaValorId}
+                      onChange={e => {
+                        const vid = e.target.value
+                        setSeniaCajaValorId(vid)
+                        const val = seniaCajaValores.find(v => v.id === vid)
+                        setSeniaMedioPagoInput(val ? `${val.nombre} (${val.moneda})` : "")
+                      }}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="">— Seleccionar —</option>
+                      {seniaCajaValores.map(v => (
+                        <option key={v.id} value={v.id}>
+                          {v.nombre} ({v.moneda}){v.subtipo ? ` · ${v.subtipo}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {pagoEnARS && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Cotización ARS/USD al momento del pago</label>
+                    <input type="number" min={1} value={seniaCotizacionPago || ''} onChange={e => setSeniaCotizacionPago(Number(e.target.value))}
+                      placeholder="Ej: 1400"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500" />
+                  </div>
+                )}
+                {seniaMontoInput > 0 && pagoEnARS && seniaCotizacionPago > 1 && (
+                  <div className="flex items-end">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm w-full">
+                      <p className="text-xs text-blue-600 font-medium">Equivalente en USD (a imputar)</p>
+                      <p className="text-blue-800 font-bold">USD {(seniaMontoInput / seniaCotizacionPago).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
+                    </div>
+                  </div>
+                )}
               </div>
+                )
+              })()}
+              <button onClick={handleRegistrarSenia} disabled={seniaRegistrando || !seniaMontoInput || !seniaCajaId || !seniaCajaValorId}
+                className="w-full py-2 bg-indigo-900 text-white text-sm font-semibold rounded-lg hover:bg-indigo-800 disabled:bg-gray-300 flex items-center justify-center gap-2">
+                <CreditCard className="w-4 h-4" />
+                {seniaRegistrando ? "Registrando..." : "Registrar seña → imputar en cuenta USD"}
+              </button>
             </div>
           ) : (
             <p className="text-sm text-gray-400">Sin seña pagada.</p>
@@ -7312,10 +7524,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <td className="py-3 px-4 text-sm text-gray-600">{new Date(s.fecha).toLocaleDateString("es-AR")}</td>
                     <td className="py-3 px-4 text-sm">{s.cliente_nombre}</td>
                     <td className="py-3 px-4 text-sm max-w-[200px] truncate">{s.equipo_nombre}</td>
-                    <td className="py-3 px-4 text-sm text-right font-medium">{formatCurrency(s.precio_final)}</td>
+                    <td className="py-3 px-4 text-sm text-right font-medium">
+                      {s.moneda === 'USD'
+                        ? <span className="text-blue-700">USD {s.precio_final.toLocaleString('es-AR', {minimumFractionDigits:2})}</span>
+                        : formatCurrency(s.precio_final)}
+                    </td>
                     <td className="py-3 px-4 text-sm text-right">
                       {s.estado_senia === "registrada"
-                        ? <span className="text-emerald-600 font-medium">{formatCurrency(s.monto_senia)}</span>
+                        ? <span className="text-emerald-600 font-medium">{s.moneda === 'USD' ? `USD ${s.monto_senia.toLocaleString('es-AR',{minimumFractionDigits:2})}` : formatCurrency(s.monto_senia)}</span>
                         : <span className="text-gray-400 text-xs">Sin seña</span>
                       }
                     </td>
@@ -7448,7 +7664,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <td className="py-3 px-4 text-sm text-right font-semibold text-emerald-600">{formatCurrency(toma.precio_final)}</td>
                     <td className="py-3 px-4 text-center">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        operacionEnCurso ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+                        operacionEnCurso ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
                       }`}>
                         {operacionEnCurso ? 'En curso' : 'Finalizada'}
                       </span>
@@ -9966,21 +10182,21 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <div className="space-y-3">
                     <table className="w-full text-sm">
                       <thead><tr className="border-b text-left text-xs text-gray-500">
-                        <th className="py-2">Nombre (valor)</th>
-                        <th className="text-right">Imp. Comp.</th>
-                        <th>Mon. Comp.</th>
-                        <th className="text-right">Importe</th>
-                        <th>Moneda</th>
-                        {calcularCasoImputacion(reciboCCResumen) === 'C' && <th className="text-center">Imputar a</th>}
-                        {esBorrador && <th></th>}
+                        <th className="py-2 px-3">Nombre (valor)</th>
+                        <th className="text-right px-3">Imp. Comp.</th>
+                        <th className="px-3">Mon. Comp.</th>
+                        <th className="text-right px-3">Importe</th>
+                        <th className="px-3">Moneda</th>
+                        {calcularCasoImputacion(reciboCCResumen) === 'C' && <th className="text-center px-3">Imputar a</th>}
+                        {esBorrador && <th className="w-10"></th>}
                       </tr></thead>
                       <tbody>{reciboPagosForm.map((p, i) => (
                         <tr key={i} className="border-b">
-                          <td className="py-1.5">{p.valor_nombre}{p.es_tarjeta && <span className="ml-1 text-xs text-blue-600">({p.tarjeta_nombre} x{p.cantidad_cuotas})</span>}</td>
-                          <td className="text-right">${(p.importe_comprobante || p.importe)?.toLocaleString()}</td>
-                          <td>{p.moneda_comprobante || p.moneda}</td>
-                          <td className="text-right font-medium">${p.importe?.toLocaleString()}</td>
-                          <td>{p.moneda}</td>
+                          <td className="py-1.5 px-3">{p.valor_nombre}{p.es_tarjeta && <span className="ml-1 text-xs text-blue-600">({p.tarjeta_nombre} x{p.cantidad_cuotas})</span>}</td>
+                          <td className="text-right px-3">${(p.importe_comprobante || p.importe)?.toLocaleString()}</td>
+                          <td className="px-3">{p.moneda_comprobante || p.moneda}</td>
+                          <td className="text-right px-3 font-medium">${p.importe?.toLocaleString()}</td>
+                          <td className="px-3">{p.moneda}</td>
                           {calcularCasoImputacion(reciboCCResumen) === 'C' && (
                             <td className="text-center">
                               {p.moneda === 'USD' ? (
@@ -10263,7 +10479,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             const factInfo = facturas.find(f => f.id === deb.id)
             if (!factInfo) continue
             const monto = Math.min(deb.montoAplicar, cred.montoAplicar)
-            aplicaciones.push({ debito_tipo: 'Factura', debito_numero: factInfo.numero, credito_tipo: cred.tipo === 'nc' ? 'NC' : 'Recibo', credito_numero: creditoNum, monto })
+            aplicaciones.push({ debito_tipo: 'Factura', debito_numero: factInfo.numero, credito_tipo: cred.tipo === 'nc' ? 'NC' : 'Recibo', credito_numero: creditoNum, monto, debito_moneda: moneda, credito_moneda: moneda })
             const fu = facturaUpdates.find(u => u.id === deb.id)
             if (fu) fu.saldoNuevo -= monto
             else facturaUpdates.push({ id: deb.id, saldoNuevo: factInfo.saldo - monto })
@@ -10306,7 +10522,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             if (!factInfo) continue
             const montoAplicadoARS = Math.min(deb.montoAplicar, cred.montoAplicar * cot)
             const montoAplicadoUSD = montoAplicadoARS / cot
-            aplicaciones.push({ debito_tipo: 'Factura', debito_numero: factInfo.numero, credito_tipo: `Recibo USD@${cot}`, credito_numero: creditoNum, monto: montoAplicadoARS })
+            aplicaciones.push({ debito_tipo: 'Factura', debito_numero: factInfo.numero, credito_tipo: 'Recibo', credito_numero: creditoNum, monto: montoAplicadoARS, debito_moneda: 'ARS', credito_moneda: 'USD', cotizacion: cot })
             const fu = facturaUpdates.find(u => u.id === deb.id)
             if (fu) fu.saldoNuevo = Math.max(0, fu.saldoNuevo - montoAplicadoARS)
             else facturaUpdates.push({ id: deb.id, saldoNuevo: Math.max(0, factInfo.saldo - montoAplicadoARS) })
@@ -10339,7 +10555,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             if (!factInfo) continue
             const montoAplicadoARS = Math.min(cred.montoAplicar, deb.montoAplicar * cot)
             const montoAplicadoUSD = montoAplicadoARS / cot
-            aplicaciones.push({ debito_tipo: 'Factura USD', debito_numero: factInfo.numero, credito_tipo: `${cred.tipo === 'nc' ? 'NC' : 'Recibo'} ARS@${cot}`, credito_numero: creditoNum, monto: montoAplicadoUSD })
+            aplicaciones.push({ debito_tipo: 'Factura', debito_numero: factInfo.numero, credito_tipo: cred.tipo === 'nc' ? 'NC' : 'Recibo', credito_numero: creditoNum, monto: montoAplicadoUSD, debito_moneda: 'USD', credito_moneda: 'ARS', cotizacion: cot })
             const fu = facturaUpdates.find(u => u.id === deb.id)
             if (fu) fu.saldoNuevo = Math.max(0, fu.saldoNuevo - montoAplicadoUSD)
             else facturaUpdates.push({ id: deb.id, saldoNuevo: Math.max(0, factInfo.saldo - montoAplicadoUSD) })
@@ -10411,6 +10627,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           credito_tipo: a.credito_tipo,
           credito_numero: a.credito_numero,
           monto: a.monto,
+          debito_moneda: (a as any).debito_moneda ?? 'ARS',
+          credito_moneda: (a as any).credito_moneda ?? 'ARS',
+          cotizacion: (a as any).cotizacion ?? null,
         }))
         await supabase.from('conciliaciones_deuda_aplicaciones').insert(aplRows)
         setConciliacionHistorial(prev => [
@@ -10503,7 +10722,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const supabase = createClient()
     const { data, error } = await supabase
       .from('conciliaciones_deuda')
-      .select('id, fecha, cliente_id, total_conciliado, usuario, estado, fecha_cancelacion, conciliaciones_deuda_aplicaciones(debito_tipo, debito_numero, credito_tipo, credito_numero, monto)')
+      .select('id, fecha, cliente_id, total_conciliado, usuario, estado, fecha_cancelacion, conciliaciones_deuda_aplicaciones(debito_tipo, debito_numero, credito_tipo, credito_numero, monto, debito_moneda, credito_moneda, cotizacion)')
       .eq('cliente_id', clienteId)
       .order('fecha', { ascending: false })
     if (error || !data) return
@@ -11019,17 +11238,38 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
                           <th className="py-2 px-3 text-left font-semibold">Débito</th>
                           <th className="py-2 px-3 text-left font-semibold">Crédito</th>
+                          <th className="py-2 px-3 text-left font-semibold">Monedas</th>
                           <th className="py-2 px-3 text-right font-semibold">Monto</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {h.aplicaciones.map((a, idx) => (
-                          <tr key={idx} className="border-b">
-                            <td className="py-2 px-3 text-red-700">{a.debito_tipo} {a.debito_numero}</td>
-                            <td className="py-2 px-3 text-green-700">{a.credito_tipo} {a.credito_numero}</td>
-                            <td className="py-2 px-3 text-right font-medium">{formatCurrency(a.monto)}</td>
-                          </tr>
-                        ))}
+                        {h.aplicaciones.map((a, idx) => {
+                          const dm = (a as any).debito_moneda ?? 'ARS'
+                          const cm = (a as any).credito_moneda ?? 'ARS'
+                          const cot = (a as any).cotizacion
+                          const esMixto = dm !== cm
+                          const parLabel = `${dm}→${cm}`
+                          const montoFmt = cm === 'USD'
+                            ? `USD ${a.monto.toLocaleString('es-AR', {minimumFractionDigits:2})}`
+                            : `$${a.monto.toLocaleString('es-AR', {minimumFractionDigits:2})}`
+                          return (
+                            <tr key={idx} className="border-b">
+                              <td className="py-2 px-3 text-red-700">{a.debito_tipo} {a.debito_numero}</td>
+                              <td className="py-2 px-3 text-green-700">{a.credito_tipo} {a.credito_numero}</td>
+                              <td className="py-2 px-3">
+                                <div className="flex items-center gap-2">
+                                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${esMixto ? 'bg-orange-100 text-orange-700' : cm === 'USD' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                                    {parLabel}
+                                  </span>
+                                  {esMixto && cot && (
+                                    <span className="text-gray-400 text-xs">cotización: {Number(cot).toLocaleString('es-AR')}</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-2 px-3 text-right font-medium">{montoFmt}</td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -11520,46 +11760,72 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setListaPreciosTab("versiones")
   }
 
-  const guardarListaPrecios = () => {
+  const guardarListaPrecios = async () => {
     if (!editingListaPrecios || !editingListaPrecios.nombre.trim()) return
     
     const fechaActual = new Date().toISOString()
     
     if (creandoListaPrecios) {
-      const nuevoId = Math.max(...listasPrecios.map(l => l.id), 0) + 1
       const nuevaLista: ListaPrecios = {
         ...editingListaPrecios,
-        id: nuevoId,
+        id: 0, // placeholder, se sobreescribe con la respuesta
         estado: editingListaPrecios.estado === "borrador" ? "creada" : editingListaPrecios.estado,
-        seguimiento: [{
-          id: 1,
-          fecha: fechaActual,
-          usuario: "Max Solina",
-          tipo: "creacion",
-          descripcion: "Lista de precios creada"
-        }]
       }
-      setListasPrecios(prev => [nuevaLista, ...prev])
-      setSelectedListaPrecios(nuevaLista)
+      try {
+        const res = await fetch("/api/listas-precios", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nombre: nuevaLista.nombre,
+            tipo: nuevaLista.tipo,
+            moneda_base: nuevaLista.moneda_base,
+            incluye_iva: nuevaLista.incluye_iva,
+            activa: nuevaLista.activa,
+            no_visible: nuevaLista.no_visible,
+            dias_validez: nuevaLista.dias_validez,
+            estado: nuevaLista.estado,
+            usuarios_admin: nuevaLista.usuarios_admin,
+            usuarios_habilitados: nuevaLista.usuarios_habilitados,
+            observaciones_filtro: nuevaLista.observaciones_filtro,
+          }),
+        })
+        const saved = await res.json()
+        const listaConId = { ...nuevaLista, id: saved.id ?? nuevaLista.id }
+        setListasPrecios(prev => [listaConId, ...prev])
+        setSelectedListaPrecios(listaConId)
+      } catch (e) {
+        console.error("[listas-precios] crear error:", e)
+      }
       setEditingListaPrecios(null)
       setCreandoListaPrecios(false)
       setModoEdicionListaPrecios(false)
     } else {
-      const seguimientoActualizado = [
-        {
-          id: (editingListaPrecios.seguimiento?.length || 0) + 1,
-          fecha: fechaActual,
-          usuario: "Max Solina",
-          tipo: "cambio_campo" as const,
-          campo: "Datos",
-          valor_nuevo: "Lista actualizada"
-        },
-        ...(editingListaPrecios.seguimiento || [])
-      ]
-      
-      const listaActualizada = { ...editingListaPrecios, seguimiento: seguimientoActualizado }
-      setListasPrecios(prev => prev.map(l => l.id === editingListaPrecios.id ? listaActualizada : l))
-      setSelectedListaPrecios(listaActualizada)
+      try {
+        const res = await fetch("/api/listas-precios", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: editingListaPrecios.id,
+            nombre: editingListaPrecios.nombre,
+            tipo: editingListaPrecios.tipo,
+            moneda_base: editingListaPrecios.moneda_base,
+            incluye_iva: editingListaPrecios.incluye_iva,
+            activa: editingListaPrecios.activa,
+            no_visible: editingListaPrecios.no_visible,
+            dias_validez: editingListaPrecios.dias_validez,
+            estado: editingListaPrecios.estado,
+            usuarios_admin: editingListaPrecios.usuarios_admin,
+            usuarios_habilitados: editingListaPrecios.usuarios_habilitados,
+            observaciones_filtro: editingListaPrecios.observaciones_filtro,
+          }),
+        })
+        const saved = await res.json()
+        const listaActualizada = { ...editingListaPrecios, ...saved }
+        setListasPrecios(prev => prev.map(l => l.id === editingListaPrecios.id ? listaActualizada : l))
+        setSelectedListaPrecios(listaActualizada)
+      } catch (e) {
+        console.error("[listas-precios] actualizar error:", e)
+      }
       setEditingListaPrecios(null)
       setModoEdicionListaPrecios(false)
     }

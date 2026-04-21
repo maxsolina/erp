@@ -479,6 +479,216 @@ export async function generarAsientoFacturaCompra(
   return { ok: true, asiento_id: asiento.id }
 }
 
+// ─── Orden de Pago a Proveedor ───────────────────────────────────────────────
+// Genera el asiento al confirmar una OP (pago a proveedor):
+//   DEBE   21010101  Proveedores / Acreedores  [total en ARS, por categoría]
+//   HABER  1101xxxx  Caja / Banco              [por cada medio de pago]
+export async function generarAsientoOrdenPago(
+  supabase: SupabaseClient,
+  op: {
+    id: string | number
+    numero: string
+    fecha: string
+    caja_id: string
+    proveedor_id?: number | string | null
+    proveedor_nombre?: string | null
+    proveedor_categoria_id?: number | string | null
+    sucursal_id?: number | null
+    importe: number
+    moneda?: string
+    cotizacion?: number | null
+  }
+): Promise<ResultadoAsiento> {
+
+  // 0. Idempotencia
+  const { data: existente } = await supabase
+    .from("contabilidad_asientos")
+    .select("id")
+    .eq("comprobante_tipo", "orden_pago")
+    .eq("referencia", op.numero)
+    .eq("estado", "publicado")
+    .maybeSingle()
+  if (existente?.id) return { ok: true, asiento_id: existente.id }
+
+  // 1. Medios de pago de la OP
+  const { data: medios, error: mediosErr } = await supabase
+    .from("compras_op_medios_pago")
+    .select("id, forma_pago_id, forma_pago_nombre, importe, importe_comp, moneda")
+    .eq("op_id", String(op.id))
+  if (mediosErr) return { ok: false, error: `Error al leer medios de pago: ${mediosErr.message}` }
+  if (!medios || medios.length === 0) return { ok: false, error: "La OP no tiene medios de pago registrados." }
+
+  // 2. Cuentas contables de cada caja_valor
+  const valorIds = [...new Set(medios.map((m: any) => m.forma_pago_id).filter(Boolean))]
+  const cuentasPorValor: Record<string, { id: string; codigo: string; nombre: string } | null> = {}
+  if (valorIds.length > 0) {
+    const { data: valores } = await supabase
+      .from("caja_valores")
+      .select("id, cuenta_contable_id, contabilidad_plan_cuentas:cuenta_contable_id(id, codigo, nombre)")
+      .in("id", valorIds)
+    for (const v of valores ?? []) {
+      cuentasPorValor[v.id] = (v as any).contabilidad_plan_cuentas ?? null
+    }
+  }
+  // Fallback: resolver por nombre dentro de la caja
+  const mediosSinId = (medios as any[]).filter(m => !m.forma_pago_id && m.forma_pago_nombre)
+  if (mediosSinId.length > 0) {
+    const nombres = [...new Set(mediosSinId.map((m: any) => m.forma_pago_nombre).filter(Boolean))]
+    if (nombres.length > 0) {
+      const { data: porNombre } = await supabase
+        .from("caja_valores")
+        .select("id, nombre, cuenta_contable_id, contabilidad_plan_cuentas:cuenta_contable_id(id, codigo, nombre)")
+        .eq("caja_id", op.caja_id)
+        .in("nombre", nombres)
+      for (const v of porNombre ?? []) {
+        cuentasPorValor[`nombre:${v.nombre}`] = (v as any).contabilidad_plan_cuentas ?? null
+      }
+    }
+  }
+
+  // 3. Cuenta de Proveedores: desde categoría del proveedor o mapeo global
+  let cAcreedores: { id: string; codigo: string; nombre: string } | null = null
+  if (op.proveedor_categoria_id) {
+    const { data: cat } = await supabase
+      .from("categorias_proveedor")
+      .select("cuenta_pagar_id")
+      .eq("id", op.proveedor_categoria_id)
+      .maybeSingle()
+    if (cat?.cuenta_pagar_id) {
+      const { data: cuentaRow } = await supabase
+        .from("contabilidad_plan_cuentas")
+        .select("id, codigo, nombre")
+        .eq("id", cat.cuenta_pagar_id)
+        .maybeSingle()
+      if (cuentaRow?.id) cAcreedores = { id: cuentaRow.id, codigo: cuentaRow.codigo, nombre: cuentaRow.nombre }
+    }
+  }
+  if (!cAcreedores) {
+    // Fallback: mapeo global factura_compra.acreedores
+    const { data: mapeo } = await supabase
+      .from("contabilidad_mapeo_cuentas")
+      .select("cuenta_haber:cuenta_haber_id(id, codigo, nombre)")
+      .eq("tipo_origen", "factura_compra")
+      .eq("subtipo", "acreedores")
+      .eq("activo", true)
+      .maybeSingle()
+    cAcreedores = (mapeo as any)?.cuenta_haber ?? null
+  }
+  if (!cAcreedores) return { ok: false, error: "Sin cuenta Proveedores configurada. Ejecute 022_seed_mapeo_facturas_compra.sql o configure la categoría del proveedor." }
+
+  // 4. Diario — el de la caja de la OP
+  const { data: diario } = await supabase
+    .from("contabilidad_diarios")
+    .select("id")
+    .eq("caja_id", op.caja_id)
+    .limit(1)
+    .maybeSingle()
+  if (!diario?.id) return { ok: false, error: `Sin diario contable para la caja ${op.caja_id}. Ejecute 014_diarios_dinamicos.sql.` }
+
+  // 5. Período y sucursal
+  const fechaDate = op.fecha.split("T")[0]
+  const { data: periodo_id } = await supabase
+    .rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate })
+
+  let sucursal_id: number | null = op.sucursal_id ?? null
+  if (!sucursal_id) {
+    const { data: caja } = await supabase.from("cajas").select("sucursal").eq("id", op.caja_id).maybeSingle()
+    if (caja?.sucursal) {
+      const { data: suc } = await supabase.from("sucursales").select("id").eq("nombre", caja.sucursal).maybeSingle()
+      sucursal_id = suc?.id ?? null
+    }
+  }
+
+  // 6. Construir líneas
+  const tc = (op.moneda && op.moneda !== "ARS" && (op.cotizacion ?? 0) > 0) ? Number(op.cotizacion) : 1
+  type Linea = {
+    cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
+    debe: number; haber: number; descripcion: string | null; orden: number
+    importe_moneda_original?: number | null
+  }
+  const lineas: Linea[] = []
+  let orden = 0
+  let totalHaberARS = 0
+  let cotizacionAsiento: number | null = null
+
+  for (const medio of medios as any[]) {
+    let cMedio: { id: string; codigo: string; nombre: string } | null = null
+    if (medio.forma_pago_id) {
+      cMedio = cuentasPorValor[medio.forma_pago_id] ?? null
+    } else if (medio.forma_pago_nombre) {
+      cMedio = cuentasPorValor[`nombre:${medio.forma_pago_nombre}`] ?? null
+    }
+    if (!cMedio?.id) {
+      const nombre = medio.forma_pago_nombre
+      if (nombre && nombre !== "null") {
+        return { ok: false, error: `El medio de pago "${nombre}" no tiene cuenta contable asignada. Configure la cuenta en Configuración → Cajas.` }
+      }
+      continue
+    }
+    const esExtranjero = medio.moneda && medio.moneda !== "ARS"
+    const cotizMedio = esExtranjero ? (tc || 1) : 1
+    const importeComp = Number(medio.importe_comp ?? medio.importe)
+    const importeARS = esExtranjero ? Math.round(importeComp * cotizMedio * 100) / 100 : importeComp
+    if (esExtranjero && cotizMedio > 1 && !cotizacionAsiento) cotizacionAsiento = cotizMedio
+    totalHaberARS += importeARS
+    lineas.push({
+      cuenta_id: cMedio.id, cuenta_codigo: cMedio.codigo, cuenta_nombre: cMedio.nombre,
+      debe: 0, haber: importeARS,
+      descripcion: medio.forma_pago_nombre ?? null,
+      orden: orden++,
+      importe_moneda_original: esExtranjero ? importeComp : null,
+    })
+  }
+
+  if (lineas.length === 0) return { ok: false, error: "La OP no tiene medios de pago con cuenta contable asignable." }
+
+  // DEBE: Proveedores — suma ARS de todos los pagos válidos
+  const debeProveedores = totalHaberARS > 0 ? totalHaberARS : Math.round(op.importe * tc * 100) / 100
+  lineas.push({
+    cuenta_id: cAcreedores.id, cuenta_codigo: cAcreedores.codigo, cuenta_nombre: cAcreedores.nombre,
+    debe: debeProveedores, haber: 0,
+    descripcion: op.proveedor_nombre ?? null,
+    orden: orden,
+  })
+
+  // 7. Validar partida doble
+  const sumaDebe  = lineas.reduce((s, l) => s + l.debe, 0)
+  const sumaHaber = lineas.reduce((s, l) => s + l.haber, 0)
+  if (Math.abs(sumaDebe - sumaHaber) > 0.01) {
+    return { ok: false, error: `Partida doble inválida en OP: DEBE=${sumaDebe.toFixed(2)} HABER=${sumaHaber.toFixed(2)}` }
+  }
+
+  // 8. Número correlativo
+  const { data: numero } = await supabase
+    .rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario.id, p_fecha: fechaDate })
+
+  // 9. Insertar asiento
+  const { data: asiento, error: asientoErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null, diario_id: diario.id, periodo_id: periodo_id ?? null,
+      fecha: fechaDate, sucursal_id,
+      concepto: `Orden de Pago ${op.numero} - ${op.proveedor_nombre ?? ""}`,
+      referencia: op.numero, comprobante_tipo: "orden_pago",
+      moneda_original: op.moneda ?? "ARS",
+      cotizacion_aplicada: cotizacionAsiento ?? (op.cotizacion ?? null),
+      es_manual: false, estado: "publicado",
+    })
+    .select("id").single()
+  if (asientoErr) return { ok: false, error: `Error al crear asiento OP: ${asientoErr.message}` }
+
+  // 10. Insertar líneas
+  const { error: lineasErr } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineas.map(l => ({ ...l, asiento_id: asiento.id })))
+  if (lineasErr) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
+    return { ok: false, error: `Error en líneas del asiento OP: ${lineasErr.message}` }
+  }
+
+  return { ok: true, asiento_id: asiento.id }
+}
+
 // ─── Recibo de Cobro ──────────────────────────────────────────────────────────
 export async function generarAsientoRecibo(
   supabase: SupabaseClient,

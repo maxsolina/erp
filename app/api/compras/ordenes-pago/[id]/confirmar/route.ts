@@ -1,8 +1,10 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { generarAsientoOrdenPago } from "@/lib/contabilidad-asiento-factory"
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
+  const adminClient = createAdminClient()
   const { id } = await params
 
   // 1. Obtener la OP completa
@@ -93,7 +95,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       .select("saldo_apertura")
       .eq("extracto_id", extracto.id)
       .eq("valor_id", medio.forma_pago_id)
-      .single()
+      .maybeSingle()
+
+    // Si no hay registro en extracto_saldos para este valor, no bloquear (saldo desconocido)
+    if (!saldoApertura) continue
 
     const { data: movsExistentes } = await supabase
       .from("movimientos_caja")
@@ -102,7 +107,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       .eq("valor_id", medio.forma_pago_id)
       .neq("estado_movimiento", "cancelado")
 
-    const apertura = Number(saldoApertura?.saldo_apertura ?? 0)
+    const apertura = Number(saldoApertura.saldo_apertura ?? 0)
     const totalIngresos = (movsExistentes ?? [])
       .filter(m => m.tipo_movimiento === "ingreso")
       .reduce((a, m) => a + Number(m.importe), 0)
@@ -111,7 +116,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       .reduce((a, m) => a + Number(m.importe), 0)
 
     const saldoDisponible = apertura + totalIngresos - totalEgresos
-    const importeMedio = Number(medio.importe_comp ?? medio.importe)
+    // Usar importe (moneda propia del valor), NO importe_comp (equivalente ARS)
+    const importeMedio = Number(medio.importe ?? medio.importe_comp)
 
     if (importeMedio > saldoDisponible) {
       return NextResponse.json({
@@ -126,8 +132,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       valor_id: medio.forma_pago_id ?? null,
       valor_nombre: medio.forma_pago_nombre ?? medio.nombre ?? "Efectivo",
       tipo_movimiento: "egreso",
-      importe: medio.importe_comp ?? medio.importe,
-      moneda: op.moneda ?? "ARS",
+      importe: medio.importe ?? medio.importe_comp,
+      moneda: medio.moneda ?? op.moneda ?? "ARS",
       concepto: `OP ${op.numero} - ${op.proveedor_nombre}`,
       documento_origen_tipo: "orden_pago",
       documento_origen_numero: op.numero,
@@ -192,5 +198,42 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     }
   }
 
-  return NextResponse.json({ success: true, estado: "publicado" })
+  // 9. Generar asiento contable para la OP
+  let asientoError: string | null = null
+  try {
+    const resultadoAsiento = await generarAsientoOrdenPago(adminClient, {
+      id: op.id,
+      numero: op.numero,
+      fecha: op.fecha,
+      caja_id: op.caja_id,
+      proveedor_id: op.proveedor_id,
+      proveedor_nombre: op.proveedor_nombre,
+      proveedor_categoria_id: op.proveedor_categoria_id ?? null,
+      sucursal_id: op.sucursal_id ?? null,
+      importe: op.importe,
+      moneda: op.moneda ?? "ARS",
+      cotizacion: op.cotizacion ?? null,
+    })
+    if (resultadoAsiento.ok && resultadoAsiento.asiento_id) {
+      await adminClient
+        .from("compras_ordenes_pago")
+        .update({ asiento_id: resultadoAsiento.asiento_id })
+        .eq("id", id)
+    } else if (!resultadoAsiento.ok) {
+      asientoError = resultadoAsiento.error ?? "Error desconocido al generar asiento"
+    }
+  } catch (e: any) {
+    asientoError = e?.message ?? "Error al generar asiento contable"
+    console.error("[OP confirmar] Error en generarAsientoOrdenPago:", asientoError)
+  }
+
+  if (asientoError) {
+    console.error(`[OP confirmar] OP ${op.numero} publicada SIN asiento: ${asientoError}`)
+  }
+
+  return NextResponse.json({
+    success: true,
+    estado: "publicado",
+    ...(asientoError ? { aviso_asiento: `OP publicada. Asiento contable pendiente: ${asientoError}` } : {}),
+  })
 }

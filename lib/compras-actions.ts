@@ -157,6 +157,17 @@ export async function fetchAsientoRecepcion(recepcionId: number | string): Promi
   return res.json()
 }
 
+export async function fetchAsientoOrdenPago(opId: number | string): Promise<{
+  asientos: { id: string; numero: string | null; fecha: string; concepto: string | null; estado: string; referencia: string | null; lineas: { id: string; cuenta_codigo: string; cuenta_nombre: string; debe: number; haber: number; descripcion: string | null }[] }[]
+}> {
+  const res = await fetch(`/api/compras/ordenes-pago/${opId}/asiento-detalle`, { cache: "no-store" })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || "Error al obtener asiento de orden de pago")
+  }
+  return res.json()
+}
+
 // =====================================================
 // ÓRDENES DE PAGO
 // =====================================================
