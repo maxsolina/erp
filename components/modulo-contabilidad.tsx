@@ -1863,7 +1863,429 @@ function LibroMayorView() {
   )
 }
 
+// ─── Tipos Monedas ─────────────────────────────────────────────────────────
+
+interface Cotizacion {
+  id: number
+  moneda_id: number
+  fecha: string
+  tipo: string
+  tasa: number
+  created_at: string
+}
+
+interface Moneda {
+  id: number
+  codigo: string
+  nombre: string
+  simbolo: string
+  moneda_afip: string | null
+  es_base: boolean
+  posicion_simbolo: 'antes' | 'despues'
+  factor_redondeo: number
+  precision_calculo: number
+  tipo_cotizacion_defecto: string
+  cotizacion_automatica: boolean
+  activo: boolean
+  created_at: string
+  cotizaciones: Cotizacion[]
+  cotizacion_actual: number | null
+  fecha_tasa: string | null
+}
+
+// ─── MonedaView ──────────────────────────────────────────────────────────────
+
+const MONEDAS_AFIP_LISTA: string[] = [
+  'PES - Peso Argentino',
+  'DOL - Dólar Estadounidense',
+  'EUR - Euro',
+  'BRL - Real Brasileño',
+  'UYP - Peso Uruguayo',
+]
+
+function MonedaView() {
+  const [monedas, setMonedas] = useState<Moneda[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState<Moneda | null>(null)
+  const [editando, setEditando] = useState(false)
+  const [form, setForm] = useState<Partial<Moneda>>({})
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [tabMoneda, setTabMoneda] = useState<'cotizaciones' | 'configuracion'>('cotizaciones')
+  const [tiposCotizacion, setTiposCotizacion] = useState<string[]>([])
+  const [nuevaCot, setNuevaCot] = useState({ fecha: new Date().toISOString().split('T')[0], tipo: '', tasa: '' })
+  const [agregandoCot, setAgregandoCot] = useState(false)
+  const [eliminando, setEliminando] = useState(false)
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    const r = await fetch('/api/contabilidad/monedas?activo=false')
+    const data = await r.json()
+    setMonedas(Array.isArray(data) ? data : [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  useEffect(() => {
+    fetch('/api/contabilidad/tipos-cotizacion?activo=true')
+      .then(r => r.json())
+      .then((data: Array<{ nombre: string }>) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setTiposCotizacion(data.map((t) => t.nombre))
+          setNuevaCot(p => ({ ...p, tipo: data[0].nombre }))
+        }
+      })
+  }, [])
+
+  const guardarMoneda = async () => {
+    setGuardando(true); setError(null)
+    try {
+      const url = selected ? '/api/contabilidad/monedas?id=' + selected.id : '/api/contabilidad/monedas'
+      const method = selected ? 'PATCH' : 'POST'
+      const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? 'Error al guardar') }
+      await cargar(); setEditando(false); setSelected(null)
+    } catch (e: any) { setError(e.message) }
+    finally { setGuardando(false) }
+  }
+
+  const agregarCotizacion = async () => {
+    if (!selected || !nuevaCot.tasa) return
+    setAgregandoCot(true)
+    const r = await fetch('/api/contabilidad/cotizaciones', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ moneda_id: selected.id, fecha: nuevaCot.fecha, tipo: nuevaCot.tipo, tasa: parseFloat(nuevaCot.tasa.replace(',', '.')) }),
+    })
+    if (r.ok) {
+      setNuevaCot({ fecha: new Date().toISOString().split('T')[0], tipo: selected.tipo_cotizacion_defecto ?? 'blue', tasa: '' })
+      const updated = await fetch('/api/contabilidad/monedas?activo=false').then(x => x.json())
+      const m = (updated as Moneda[]).find((x: Moneda) => x.id === selected.id)
+      if (m) { setSelected(m); setMonedas(updated) }
+    }
+    setAgregandoCot(false)
+  }
+
+  const eliminarCotizacion = async (id: number) => {
+    await fetch('/api/contabilidad/cotizaciones?id=' + id, { method: 'DELETE' })
+    const updated = await fetch('/api/contabilidad/monedas?activo=false').then(x => x.json())
+    setMonedas(updated)
+    const m = (updated as Moneda[]).find((x: Moneda) => x.id === selected?.id)
+    if (m) setSelected(m)
+  }
+
+  const eliminarMoneda = async () => {
+    if (!selected) return
+    if (!confirm(`¿Eliminar la moneda "${selected.nombre} (${selected.codigo})"? Esta acción no se puede deshacer.`)) return
+    setEliminando(true); setError(null)
+    try {
+      const r = await fetch('/api/contabilidad/monedas?id=' + selected.id, { method: 'DELETE' })
+      const d = await r.json()
+      if (!r.ok) { setError(d.error ?? 'No se puede eliminar.'); return }
+      await cargar()
+      setSelected(null); setEditando(false)
+    } catch {
+      setError('Error al eliminar la moneda.')
+    } finally {
+      setEliminando(false)
+    }
+  }
+
+  const cls = 'border border-gray-300 rounded-md px-3 py-1.5 text-sm w-full'
+
+  const FormFields = ({ disabled = false }: { disabled?: boolean }) => (
+    <div className="grid grid-cols-2 gap-4 max-w-xl">
+      <div><label className="block text-xs text-gray-500 mb-1">Código</label><input value={form.codigo ?? ''} onChange={e => setForm(p => ({ ...p, codigo: e.target.value.toUpperCase() }))} className={cls} maxLength={10} disabled={selected?.es_base ?? false} /></div>
+      <div><label className="block text-xs text-gray-500 mb-1">Nombre</label><input value={form.nombre ?? ''} onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))} className={cls} /></div>
+      <div><label className="block text-xs text-gray-500 mb-1">Símbolo</label><input value={form.simbolo ?? ''} onChange={e => setForm(p => ({ ...p, simbolo: e.target.value }))} className={cls} maxLength={10} /></div>
+      <div><label className="block text-xs text-gray-500 mb-1">Moneda AFIP</label>
+        <select value={form.moneda_afip ?? ''} onChange={e => setForm(p => ({ ...p, moneda_afip: e.target.value || null }))} className={cls}>
+          <option value="">— Sin asignar —</option>
+          {MONEDAS_AFIP_LISTA.map(m => <option key={m} value={m}>{m}</option>)}
+        </select></div>
+      <div><label className="block text-xs text-gray-500 mb-1">Tipo cotización por defecto</label>
+        <select value={form.tipo_cotizacion_defecto ?? ''} onChange={e => setForm(p => ({ ...p, tipo_cotizacion_defecto: e.target.value }))} className={cls} disabled={!!form.es_base}>
+          <option value="">— Sin asignar —</option>
+          {tiposCotizacion.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+        </select></div>
+      <div><label className="block text-xs text-gray-500 mb-1">Posición símbolo</label>
+        <select value={form.posicion_simbolo ?? 'antes'} onChange={e => setForm(p => ({ ...p, posicion_simbolo: e.target.value as 'antes' | 'despues' }))} className={cls}>
+          <option value="antes">Antes del importe</option>
+          <option value="despues">Después del importe</option>
+        </select></div>
+      <div className="col-span-2 flex items-center gap-6">
+        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={!!form.activo} onChange={e => setForm(p => ({ ...p, activo: e.target.checked }))} disabled={selected?.es_base ?? false} /> Activa</label>
+        {!selected && <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={!!form.es_base} onChange={e => setForm(p => ({ ...p, es_base: e.target.checked }))} /> Moneda base</label>}
+      </div>
+    </div>
+  )
+
+  if (editando && !selected) return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setEditando(false)} className="p-1 rounded hover:bg-gray-100"><ArrowLeft className="w-5 h-5 text-gray-500" /></button>
+          <h1 className="text-2xl font-bold text-amber-900">Nueva Moneda</h1>
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setEditando(false)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Cancelar</button>
+          <button onClick={guardarMoneda} disabled={guardando} className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800 disabled:opacity-50">{guardando ? 'Guardando…' : 'Guardar'}</button>
+        </div>
+      </div>
+      {error && <p className="text-red-600 text-sm mb-4 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</p>}
+      <FormFields />
+    </div>
+  )
+
+  if (selected) return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <button onClick={() => { setSelected(null); setEditando(false); setError(null) }} className="p-1 rounded hover:bg-gray-100"><ArrowLeft className="w-5 h-5 text-gray-500" /></button>
+          <h1 className="text-2xl font-bold text-amber-900">{editando ? 'Editar Moneda' : selected.nombre + ' (' + selected.codigo + ')'}</h1>
+        </div>
+        <div className="flex items-center gap-3">
+          {editando ? (
+            <>
+              <button onClick={() => setEditando(false)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Cancelar</button>
+              <button onClick={guardarMoneda} disabled={guardando} className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800 disabled:opacity-50">{guardando ? 'Guardando…' : 'Guardar'}</button>
+            </>
+          ) : (
+            <>
+              {!selected.es_base && (
+                <button onClick={eliminarMoneda} disabled={eliminando} className="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm hover:bg-red-50 disabled:opacity-50">
+                  {eliminando ? 'Eliminando…' : 'Eliminar'}
+                </button>
+              )}
+              <button onClick={() => { setForm({ ...selected }); setEditando(true) }} className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800">Editar</button>
+            </>
+          )}
+        </div>
+      </div>
+      {error && <p className="text-red-600 text-sm mb-4 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</p>}
+      {!editando && (
+        <div className="flex border-b mb-4">
+          {(['cotizaciones', 'configuracion'] as const).map(t => (
+            <button key={t} onClick={() => setTabMoneda(t)} className={'px-6 py-3 text-sm font-medium border-b-2 transition-colors ' + (tabMoneda === t ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500 hover:text-gray-700')}>
+              {t === 'cotizaciones' ? 'Cotizaciones' : 'Configuración'}
+            </button>
+          ))}
+        </div>
+      )}
+      {!editando && tabMoneda === 'cotizaciones' && (
+        <div className="space-y-4">
+          <div className="bg-gray-50 border rounded-lg p-4">
+            <p className="text-xs font-semibold text-gray-600 uppercase mb-3">Agregar cotización</p>
+            <div className="flex items-end gap-3">
+              <div className="flex-1"><label className="block text-xs text-gray-500 mb-1">Fecha</label><input type="date" value={nuevaCot.fecha} onChange={e => setNuevaCot(p => ({ ...p, fecha: e.target.value }))} className={cls} /></div>
+              <div className="flex-1"><label className="block text-xs text-gray-500 mb-1">Tipo</label><select value={nuevaCot.tipo} onChange={e => setNuevaCot(p => ({ ...p, tipo: e.target.value }))} className={cls}>{tiposCotizacion.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}</select></div>
+              <div className="flex-1"><label className="block text-xs text-gray-500 mb-1">Tasa</label><input type="number" step="0.01" value={nuevaCot.tasa} onChange={e => setNuevaCot(p => ({ ...p, tasa: e.target.value }))} className={cls} placeholder="0.00" /></div>
+              <button onClick={agregarCotizacion} disabled={agregandoCot || !nuevaCot.tasa} className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50">{agregandoCot ? '…' : 'Agregar'}</button>
+            </div>
+          </div>
+          <table className="w-full text-sm border rounded-lg overflow-hidden">
+            <thead className="border-b bg-gray-50"><tr>{['Fecha', 'Tipo', 'Tasa', ''].map(h => <th key={h} className="text-xs font-semibold text-gray-600 uppercase px-3 py-2 text-left">{h}</th>)}</tr></thead>
+            <tbody>
+              {(selected.cotizaciones ?? []).length === 0 && <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-400 text-sm">Sin cotizaciones registradas</td></tr>}
+              {(selected.cotizaciones ?? []).map(c => (
+                <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="px-3 py-2">{c.fecha}</td><td className="px-3 py-2 capitalize">{c.tipo}</td>
+                  <td className="px-3 py-2 font-mono">{Number(c.tasa).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+                  <td className="px-3 py-2 text-right">{!selected.es_base && <button onClick={() => eliminarCotizacion(c.id)} className="text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {(editando || tabMoneda === 'configuracion') && (
+        editando ? <FormFields /> : (
+          <div className="grid grid-cols-2 gap-4 max-w-xl">
+            <div><label className="block text-xs text-gray-500 mb-1">Código</label><p className="text-sm font-mono font-bold">{selected.codigo}</p></div>
+            <div><label className="block text-xs text-gray-500 mb-1">Nombre</label><p className="text-sm">{selected.nombre}</p></div>
+            <div><label className="block text-xs text-gray-500 mb-1">Símbolo</label><p className="text-sm">{selected.simbolo}</p></div>
+            <div><label className="block text-xs text-gray-500 mb-1">Moneda AFIP</label><p className="text-sm">{selected.moneda_afip ?? '—'}</p></div>
+            <div><label className="block text-xs text-gray-500 mb-1">Tipo cotización por defecto</label><p className="text-sm capitalize">{selected.tipo_cotizacion_defecto}</p></div>
+            <div><label className="block text-xs text-gray-500 mb-1">Posición símbolo</label><p className="text-sm capitalize">{selected.posicion_simbolo}</p></div>
+            <div><label className="block text-xs text-gray-500 mb-1">Moneda base</label><p className="text-sm">{selected.es_base ? 'Sí' : 'No'}</p></div>
+            <div><label className="block text-xs text-gray-500 mb-1">Estado</label><span className={'px-2 py-0.5 rounded-full text-xs font-medium ' + (selected.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>{selected.activo ? 'Activa' : 'Inactiva'}</span></div>
+          </div>
+        )
+      )}
+    </div>
+  )
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-amber-900">Monedas</h2>
+        <button onClick={() => { setForm({ activo: true, es_base: false, posicion_simbolo: 'antes', tipo_cotizacion_defecto: 'blue', factor_redondeo: 0.01, precision_calculo: 0.000001 }); setEditando(true) }} className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800">
+          <Plus className="w-4 h-4" /> Nueva Moneda
+        </button>
+      </div>
+      <table className="w-full text-sm border rounded-lg overflow-hidden">
+        <thead className="border-b bg-gray-50">
+          <tr>{['Código', 'Nombre', 'Símbolo', '', 'Cotización actual', 'Fecha tasa', 'Estado'].map(h => <th key={h} className="text-xs font-semibold text-gray-600 uppercase px-3 py-2 text-left">{h}</th>)}</tr>
+        </thead>
+        <tbody>
+          {loading && <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400 text-sm">Cargando…</td></tr>}
+          {!loading && monedas.length === 0 && <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400 text-sm">Sin monedas — ejecutar script 043 en Supabase</td></tr>}
+          {monedas.map(m => (
+            <tr key={m.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => { setSelected(m); setTabMoneda('cotizaciones') }}>
+              <td className="px-3 py-2 font-mono text-sm font-semibold">{m.codigo}</td>
+              <td className="px-3 py-2 text-sm">{m.nombre}</td>
+              <td className="px-3 py-2 text-sm">{m.simbolo}</td>
+              <td className="px-3 py-2">{m.es_base && <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700 font-medium">Base</span>}</td>
+              <td className="px-3 py-2 text-right font-mono text-sm">{m.cotizacion_actual != null ? Number(m.cotizacion_actual).toLocaleString('es-AR', { minimumFractionDigits: 2 }) : '—'}</td>
+              <td className="px-3 py-2 text-xs text-gray-500">{m.fecha_tasa ?? '—'}</td>
+              <td className="px-3 py-2"><span className={'px-2 py-0.5 rounded-full text-xs font-medium ' + (m.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>{m.activo ? 'Activa' : 'Inactiva'}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+
 // â”€â”€â”€ MENÃš â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+// ─── TiposCotizacionView ───────────────────────────────────────────────────
+
+interface TipoCotizacion {
+  id: number
+  nombre: string
+  descripcion: string | null
+  activo: boolean
+  created_at: string
+}
+
+function TiposCotizacionView() {
+  const [tipos, setTipos] = useState<TipoCotizacion[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editando, setEditando] = useState<TipoCotizacion | null | 'nuevo'>(null)
+  const [form, setForm] = useState<{ nombre: string; descripcion: string; activo: boolean }>({ nombre: '', descripcion: '', activo: true })
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    const r = await fetch('/api/contabilidad/tipos-cotizacion?activo=false')
+    const data = await r.json()
+    setTipos(Array.isArray(data) ? data : [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  const abrirNuevo = () => {
+    setForm({ nombre: '', descripcion: '', activo: true })
+    setEditando('nuevo')
+    setError(null)
+  }
+
+  const abrirEditar = (t: TipoCotizacion) => {
+    setForm({ nombre: t.nombre, descripcion: t.descripcion ?? '', activo: t.activo })
+    setEditando(t)
+    setError(null)
+  }
+
+  const guardar = async () => {
+    if (!form.nombre.trim()) { setError('El nombre es requerido'); return }
+    setGuardando(true); setError(null)
+    try {
+      const isNuevo = editando === 'nuevo'
+      const url = isNuevo ? '/api/contabilidad/tipos-cotizacion' : '/api/contabilidad/tipos-cotizacion?id=' + (editando as TipoCotizacion).id
+      const method = isNuevo ? 'POST' : 'PATCH'
+      const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? 'Error al guardar') }
+      await cargar(); setEditando(null)
+    } catch (e: any) { setError(e.message) }
+    finally { setGuardando(false) }
+  }
+
+  const toggleActivo = async (t: TipoCotizacion) => {
+    await fetch('/api/contabilidad/tipos-cotizacion?id=' + t.id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...t, activo: !t.activo }),
+    })
+    await cargar()
+  }
+
+  const cls = 'border border-gray-300 rounded-md px-3 py-1.5 text-sm w-full'
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-amber-900">Tipos de Cotización</h2>
+        <button onClick={abrirNuevo} className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800">
+          <Plus className="w-4 h-4" /> Nuevo Tipo
+        </button>
+      </div>
+
+      {editando !== null && (
+        <div className="bg-gray-50 border rounded-lg p-4 space-y-3 max-w-lg">
+          <p className="text-xs font-semibold text-gray-600 uppercase">{editando === 'nuevo' ? 'Nuevo tipo de cotización' : 'Editar tipo'}</p>
+          {error && <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded px-3 py-2">{error}</p>}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Nombre <span className="text-red-500">*</span></label>
+            <input value={form.nombre} onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))} className={cls} placeholder="ej: blue" />
+            <p className="text-xs text-gray-400 mt-1">Se guardará en minúsculas</p>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Descripción</label>
+            <input value={form.descripcion} onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))} className={cls} placeholder="Descripción opcional" />
+          </div>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={form.activo} onChange={e => setForm(p => ({ ...p, activo: e.target.checked }))} /> Activo
+          </label>
+          <div className="flex items-center gap-3 pt-1">
+            <button onClick={() => setEditando(null)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Cancelar</button>
+            <button onClick={guardar} disabled={guardando} className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800 disabled:opacity-50">{guardando ? 'Guardando...' : 'Guardar'}</button>
+          </div>
+        </div>
+      )}
+
+      <table className="w-full text-sm border rounded-lg overflow-hidden">
+        <thead className="border-b bg-gray-50">
+          <tr>
+            {['Nombre', 'Descripción', 'Estado', ''].map(h => (
+              <th key={h} className="text-xs font-semibold text-gray-600 uppercase px-3 py-2 text-left">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {loading && <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-400 text-sm">Cargando...</td></tr>}
+          {!loading && tipos.length === 0 && (
+            <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-400 text-sm">Sin tipos de cotización — ejecutar script 044 en Supabase</td></tr>
+          )}
+          {tipos.map(t => (
+            <tr key={t.id} className="border-b border-gray-100 hover:bg-gray-50">
+              <td className="px-3 py-2 font-medium capitalize">{t.nombre}</td>
+              <td className="px-3 py-2 text-gray-500">{t.descripcion ?? '—'}</td>
+              <td className="px-3 py-2">
+                <span className={'px-2 py-0.5 rounded-full text-xs font-medium ' + (t.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
+                  {t.activo ? 'Activo' : 'Inactivo'}
+                </span>
+              </td>
+              <td className="px-3 py-2 text-right">
+                <div className="flex items-center justify-end gap-2">
+                  <button onClick={() => abrirEditar(t)} className="text-gray-400 hover:text-indigo-700"><Pencil className="w-4 h-4" /></button>
+                  <button onClick={() => toggleActivo(t)} className={'text-gray-400 ' + (t.activo ? 'hover:text-red-500' : 'hover:text-green-600')} title={t.activo ? 'Desactivar' : 'Activar'}>
+                    {t.activo ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 
 const menuConfig = [
   {
@@ -1913,6 +2335,8 @@ const menuConfig = [
       { id: "plan-cuentas",  label: "Plan de Cuentas" },
       { id: "tipos-cuenta",  label: "Tipos de Cuentas" },
       { id: "diarios",       label: "Diarios" },
+      { id: "monedas",           label: "Monedas", icon: Coins },
+      { id: "tipos-cotizacion",   label: "Tipos de Cotizaciones" },
     ],
   },
 ]
@@ -1937,6 +2361,8 @@ export default function ModuloContabilidad() {
       case "plan-cuentas-view":          return <PlanCuentasView />
       case "tipos-cuenta":                return <TiposCuentaView />
       case "diarios":                     return <DiariosView />
+      case "monedas":                     return <MonedaView />
+      case "tipos-cotizacion":             return <TiposCotizacionView />
       case "balance-general":             return <PlaceholderView title="Balance General" icon={Scale} />
       case "balance-sumas-saldos":        return <PlaceholderView title="Balance de Sumas y Saldos" icon={ListOrdered} />
       case "estado-resultados":           return <PlaceholderView title="Estado de Resultados (PyG)" icon={PieChart} />

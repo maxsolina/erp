@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { X } from "lucide-react"
-import { tarjetasIniciales } from "./modulo-finanzas"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -15,7 +14,7 @@ export interface MedioPagoResult {
   moneda: string
   importe: number
   importe_ars?: number
-  tipo_cotizacion?: "oficial" | "blue" | "mep"
+  tipo_cotizacion?: string
   cotizacion?: number
   // banco
   tipo_operacion?: string
@@ -83,6 +82,7 @@ export interface ModalMedioPagoProps {
   cajaId: string
   showTipoMovimiento?: boolean
   defaultTipoMovimiento?: "entrada" | "salida"
+  puedeEditarCotizacion?: boolean
   onGuardar: (result: MedioPagoResult, yNuevo: boolean) => void
   onCerrar: () => void
 }
@@ -93,12 +93,14 @@ export function ModalMedioPago({
   cajaId,
   showTipoMovimiento = false,
   defaultTipoMovimiento = "salida",
+  puedeEditarCotizacion = false,
   onGuardar,
   onCerrar,
 }: ModalMedioPagoProps) {
   const [valoresCaja, setValoresCaja] = useState<ValorCaja[]>([])
   const [bancos, setBancos] = useState<BancoData[]>([])
   const [tarjetas, setTarjetas] = useState<TarjetaData[]>([])
+  const [tiposCotizacion, setTiposCotizacion] = useState<string[]>([])
 
   // campo común
   const [valorId, setValorId] = useState("")
@@ -107,7 +109,7 @@ export function ModalMedioPago({
   const [obs, setObs] = useState("")
 
   // moneda extranjera
-  const [tipoCot, setTipoCot] = useState<"oficial" | "blue" | "mep">("oficial")
+  const [tipoCot, setTipoCot] = useState("")
   const [cotizacion, setCotizacion] = useState("")
 
   // banco
@@ -158,15 +160,22 @@ export function ModalMedioPago({
         .eq("activo", true)
         .order("nombre"),
       supabase.from("bancos").select("id, nombre").eq("activo", true).order("nombre"),
-    ]).then(([v, b]) => {
+      fetch('/api/contabilidad/tipos-cotizacion?activo=true').then(r => r.json()),
+      fetch('/api/tarjetas').then(r => r.json()),
+    ]).then(([v, b, tipos, tars]) => {
       setValoresCaja(v.data || [])
       setBancos(b.data || [])
-      setTarjetas(tarjetasIniciales.filter(t => t.activa).map(t => ({
+      setTarjetas(Array.isArray(tars) ? tars.map((t: { id: number; nombre: string; tipo: string }) => ({
         id: t.id,
         nombre: t.nombre,
         tipo: t.tipo,
         recargo_pct: undefined,
-      })))
+      })) : [])
+      if (Array.isArray(tipos) && tipos.length > 0) {
+        const nombres: string[] = tipos.map((t: { nombre: string }) => t.nombre)
+        setTiposCotizacion(nombres)
+        setTipoCot(nombres[0])
+      }
     })
   }, [cajaId])
 
@@ -180,6 +189,19 @@ export function ModalMedioPago({
   const tarjetaSel = tarjetas.find(t => t.id === tarjetaId)
   const recargoPct = tarjetaSel?.recargo_pct || 0
   const importeConRecargo = tarjetaCuotas > 1 ? importeNum * (1 + recargoPct / 100) : importeNum
+
+  // Auto-completar cotización desde la DB al cambiar tipo o moneda
+  useEffect(() => {
+    if (!esMonedaExtranjera || !tipoCot) return
+    fetch(`/api/contabilidad/cotizaciones?moneda_codigo=${moneda}&tipo=${tipoCot}&latest=true`)
+      .then(r => r.json())
+      .then((data: { tasa?: number } | null) => {
+        if (data?.tasa) setCotizacion(String(data.tasa))
+        else setCotizacion("")
+      })
+      .catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tipoCot, moneda])
 
   const resetCampos = () => {
     setImporte("")
@@ -348,15 +370,28 @@ export function ModalMedioPago({
               <>
                 <div>
                   <label className={lbl}>Tipo Cotización</label>
-                  <select value={tipoCot} onChange={e => setTipoCot(e.target.value as "oficial" | "blue" | "mep")} className={cls}>
-                    <option value="oficial">Oficial</option>
-                    <option value="blue">Blue</option>
-                    <option value="mep">MEP</option>
+                  <select
+                    value={tipoCot}
+                    onChange={e => puedeEditarCotizacion && setTipoCot(e.target.value)}
+                    disabled={!puedeEditarCotizacion}
+                    className={`${cls} ${!puedeEditarCotizacion ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                  >
+                    {tiposCotizacion.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className={lbl}>Cotización</label>
-                  <input type="number" value={cotizacion} onChange={e => setCotizacion(e.target.value)} step="0.0001" className={cls} />
+                  <label className={lbl}>
+                    Cotización
+                    {!puedeEditarCotizacion && <span className="ml-1 text-xs text-gray-400 font-normal">(solo lectura)</span>}
+                  </label>
+                  <input
+                    type="number"
+                    value={cotizacion}
+                    onChange={e => puedeEditarCotizacion && setCotizacion(e.target.value)}
+                    readOnly={!puedeEditarCotizacion}
+                    step="0.0001"
+                    className={`${cls} ${!puedeEditarCotizacion ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                  />
                 </div>
                 <div>
                   <label className={lbl}>Equivalente ARS</label>

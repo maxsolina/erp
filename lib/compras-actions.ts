@@ -146,6 +146,17 @@ export async function fetchAsientoFacturaCompra(facturaId: number | string): Pro
   return res.json()
 }
 
+export async function fetchAsientoRecepcion(recepcionId: number | string): Promise<{
+  asientos: { id: string; numero: string | null; fecha: string; concepto: string | null; estado: string; referencia: string | null; lineas: { id: string; cuenta_codigo: string; cuenta_nombre: string; debe: number; haber: number; descripcion: string | null }[] }[]
+}> {
+  const res = await fetch(`/api/compras/recepciones/${recepcionId}/asiento-detalle`, { cache: "no-store" })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || "Error al obtener asiento de recepción")
+  }
+  return res.json()
+}
+
 // =====================================================
 // ÓRDENES DE PAGO
 // =====================================================

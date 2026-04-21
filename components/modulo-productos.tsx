@@ -50,7 +50,10 @@ export interface Producto {
   requiere_observaciones: boolean
   costo_manual: number
   moneda_costo: string
+  tipo_cotizacion_costo: string   // 'oficial' | 'blue' | 'mep'
   costo_contable: number
+  costo_ars: number
+  costo_usd: number
   historial_costos: HistorialCosto[]
   garantia_propia_valor: number
   garantia_propia_unidad: "meses" | "dias"
@@ -70,13 +73,7 @@ export type FormProducto = Omit<Producto, "id" | "historial_costos"> & {
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const CATEGORIAS = ["Celulares", "Accesorios", "Repuestos", "Servicios", "Usados", "Tablets", "Laptops", "Audio", "Fundas y Protectores"]
-const MARCAS = ["Apple", "Samsung", "Motorola", "Xiaomi", "Huawei", "LG", "Sony", "OnePlus", "Genérica"]
-const COLORES = ["Negro", "Blanco", "Azul", "Rojo", "Verde", "Oro", "Plata", "Rosa", "Violeta", "Transparente", "Gris"]
-const MONEDAS = ["ARS", "USD", "EUR"]
 const OPCIONES_IVA = [{ value: 0, label: "0%" }, { value: 10.5, label: "10,5%" }, { value: 21, label: "21%" }]
-const CUENTAS_VENTAS = ["4.1.01 - Ventas de mercadería", "4.1.02 - Ventas de servicios", "4.1.03 - Otros ingresos"]
-const CUENTAS_EXISTENCIAS = ["1.1.03 - Mercaderías", "1.1.04 - Materias primas", "1.1.05 - Productos terminados"]
 
 const DEFAULT_FORM: FormProducto = {
   imagen_url: null, nombre: "", codigo_interno: "", categoria: "", marca: "", modelo: "",
@@ -84,7 +81,7 @@ const DEFAULT_FORM: FormProducto = {
   stock_real: 0, stock_minimo: 0, stock_maximo: 0, stock_critico: 0,
   tiene_numero_serie: false, requiere_color: false, requiere_bateria: false,
   requiere_outlet: false, requiere_observaciones: false,
-  costo_manual: 0, moneda_costo: "ARS", costo_contable: 0, historial_costos: [],
+  costo_manual: 0, moneda_costo: "ARS", tipo_cotizacion_costo: "oficial", costo_contable: 0, costo_ars: 0, costo_usd: 0, historial_costos: [],
   garantia_propia_valor: 0, garantia_propia_unidad: "meses",
   garantia_fabricante_valor: 0, garantia_fabricante_unidad: "meses",
   iva_venta: 21, iva_compra: 21, cuenta_ventas: "", cuenta_existencias: "", observaciones: "",
@@ -162,6 +159,32 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
   const [guardando, setGuardando] = useState(false)
   const [modalHistorialCampo, setModalHistorialCampo] = useState<"manual" | "contable" | null>(null)
   const costoManualOriginalRef = useRef(inicial?.costo_manual ?? 0)
+
+  // Catálogos dinámicos
+  const [categorias, setCategorias] = useState<{ id: number; nombre: string }[]>([])
+  const [marcas, setMarcas] = useState<{ id: number; nombre: string }[]>([])
+  const [colores, setColores] = useState<{ id: number; nombre: string }[]>([])
+  const [monedas, setMonedas] = useState<{ codigo: string; nombre: string }[]>([])
+  const [cuentasContables, setCuentasContables] = useState<{ id: number; codigo: string; nombre: string }[]>([])
+
+  useEffect(() => {
+    fetch("/api/catalogos-producto")
+      .then(r => r.json())
+      .then(d => {
+        if (d.categorias) setCategorias(d.categorias)
+        if (d.marcas) setMarcas(d.marcas)
+        if (d.colores) setColores(d.colores)
+      })
+      .catch(console.error)
+    fetch("/api/monedas")
+      .then(r => r.json())
+      .then(d => setMonedas(Array.isArray(d) ? d : []))
+      .catch(console.error)
+    fetch("/api/contabilidad/plan-cuentas?activo=true")
+      .then(r => r.json())
+      .then(d => setCuentasContables(Array.isArray(d) ? d : []))
+      .catch(console.error)
+  }, [])
 
   function set<K extends keyof FormProducto>(key: K, value: FormProducto[K]) {
     setForm(prev => ({ ...prev, [key]: value }))
@@ -256,7 +279,7 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
               <Label required>Categoría</Label>
               <Sel value={form.categoria} onChange={e => set("categoria", e.target.value)} disabled={soloLectura}>
                 <option value="">Seleccionar...</option>
-                {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
+                {categorias.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
               </Sel>
               {errores.categoria && <p className="text-xs text-red-500 mt-1">{errores.categoria}</p>}
             </div>
@@ -264,7 +287,7 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
               <Label>Marca</Label>
               <Sel value={form.marca} onChange={e => set("marca", e.target.value)} disabled={soloLectura}>
                 <option value="">Seleccionar...</option>
-                {MARCAS.map(m => <option key={m} value={m}>{m}</option>)}
+                {marcas.map(m => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
               </Sel>
             </div>
             <div>
@@ -275,7 +298,7 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
               <Label>Color</Label>
               <Sel value={form.color} onChange={e => set("color", e.target.value)} disabled={soloLectura}>
                 <option value="">Sin color</option>
-                {COLORES.map(c => <option key={c} value={c}>{c}</option>)}
+                {colores.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
               </Sel>
             </div>
           </div>
@@ -366,7 +389,15 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
               <div>
                 <Label>Moneda</Label>
                 <Sel value={form.moneda_costo} onChange={e => set("moneda_costo", e.target.value)} disabled={soloLectura}>
-                  {MONEDAS.map(m => <option key={m} value={m}>{m}</option>)}
+                  {monedas.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} - {m.nombre}</option>)}
+                </Sel>
+              </div>
+              <div>
+                <Label>Tipo Cotización Costo</Label>
+                <Sel value={form.tipo_cotizacion_costo ?? "oficial"} onChange={e => set("tipo_cotizacion_costo", e.target.value)} disabled={soloLectura}>
+                  <option value="oficial">Oficial</option>
+                  <option value="blue">Blue</option>
+                  <option value="mep">MEP</option>
                 </Sel>
               </div>
               <div>
@@ -381,6 +412,28 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
                 <Input type="number" min={0} value={form.costo_manual} onChange={e => set("costo_manual", Number(e.target.value))} disabled={soloLectura} />
               </div>
             </div>
+            {/* Doble guardado bimoenatrio: referencia siempre visible */}
+            {(form.costo_ars > 0 || form.costo_usd > 0) && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Últimos costos registrados</p>
+                <div className="flex gap-6">
+                  <div>
+                    <span className="text-xs text-gray-400">ARS</span>
+                    <p className="text-sm font-semibold text-gray-700">
+                      {form.costo_ars?.toLocaleString("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 }) ?? "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-gray-400">USD</span>
+                    <p className="text-sm font-semibold text-gray-700">
+                      {form.costo_usd > 0
+                        ? `USD ${form.costo_usd?.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+                        : "—"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -430,14 +483,14 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
                 <Label>Cuenta de ventas</Label>
                 <Sel value={form.cuenta_ventas} onChange={e => set("cuenta_ventas", e.target.value)} disabled={soloLectura}>
                   <option value="">Seleccionar...</option>
-                  {CUENTAS_VENTAS.map(c => <option key={c} value={c}>{c}</option>)}
+                  {cuentasContables.map(c => <option key={c.id} value={`${c.codigo} - ${c.nombre}`}>{c.codigo} - {c.nombre}</option>)}
                 </Sel>
               </div>
               <div>
                 <Label>Cuenta de existencias</Label>
                 <Sel value={form.cuenta_existencias} onChange={e => set("cuenta_existencias", e.target.value)} disabled={soloLectura}>
                   <option value="">Seleccionar...</option>
-                  {CUENTAS_EXISTENCIAS.map(c => <option key={c} value={c}>{c}</option>)}
+                  {cuentasContables.map(c => <option key={`ex-${c.id}`} value={`${c.codigo} - ${c.nombre}`}>{c.codigo} - {c.nombre}</option>)}
                 </Sel>
               </div>
             </div>
@@ -580,7 +633,7 @@ export default function ModuloProductos() {
     const { data, error: err } = await supabase
       .from("productos")
       .select("*")
-      .order("nombre", { ascending: true })
+      .order("id", { ascending: false })
     if (err) setError(err.message)
     else setProductos((data ?? []) as Producto[])
     setCargando(false)

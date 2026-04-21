@@ -147,6 +147,7 @@ export async function POST(
     impuestos:        0,
     total,
     moneda:           oc.moneda ?? "ARS",
+    cotizacion:       Number((oc as any).cotizacion_dia ?? 1) || 1,
   })
 
   if (!asientoFc.ok) {

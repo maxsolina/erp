@@ -17,6 +17,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
   const { lineas, lista_precios_nombre, id: _id, created_at, ...versionData } = body
 
+  console.log(`[PUT versiones/${id}] lineas recibidas:`, Array.isArray(lineas) ? lineas.length : typeof lineas, lineas)
+
   const ESTADOS_VALIDOS = ["borrador", "confirmada", "activa", "cerrada"]
   const estadoRaw = (versionData.estado ?? "borrador").toLowerCase()
   const estadoNorm = ESTADOS_VALIDOS.includes(estadoRaw) ? estadoRaw : "borrador"

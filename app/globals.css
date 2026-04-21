@@ -123,3 +123,21 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ── Responsive tables ────────────────────────────────────
+   Hace que cualquier contenedor con overflow-hidden que
+   contenga una <table> sea scrolleable horizontalmente en mobile.
+   `:has()` está soportado en todos los browsers modernos (2024+).
+─────────────────────────────────────────────────────────── */
+@media (max-width: 767px) {
+  .overflow-hidden:has(table) {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  /* Evita que tablas se compriman por debajo de 520px */
+  .overflow-hidden:has(table) table,
+  .overflow-x-auto table {
+    min-width: 520px;
+  }
+}

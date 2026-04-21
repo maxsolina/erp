@@ -250,7 +250,7 @@ export interface OrdenPago {
   caja_id?: string
   caja_nombre?: string
   moneda: "ARS" | "USD" | "EUR"
-  tipo_cotizacion?: "oficial" | "blue" | "mep"
+  tipo_cotizacion?: string
   cotizacion?: number
   importe: number
   importe_ars?: number
@@ -276,7 +276,7 @@ export interface OrdenPagoMedio {
   forma_pago_id?: string
   forma_pago_nombre?: string
   tipo_operacion?: string
-  tipo_cotizacion?: "oficial" | "blue" | "mep"
+  tipo_cotizacion?: string
   cotizacion?: number
   numero_operacion?: string
   fecha_operacion?: string

@@ -38,130 +38,54 @@ import {
 
 // Mock data para el usuario actual
 const currentUser = {
-  id: 1,
-  nombre: "Martín",
-  apellido: "González",
-  rol: "Administrador",
+  id: 0,
+  nombre: "",
+  apellido: "",
+  rol: "",
   avatar: null,
-  sucursal: "Casa Central",
-  diasVacacionesDisponibles: 12,
-  diasVacacionesTomados: 3
+  sucursal: "",
+  diasVacacionesDisponibles: 0,
+  diasVacacionesTomados: 0
 }
 
-// Mock data para cumpleaños
-const cumpleanosHoy = [
-  { id: 1, nombre: "Ana", apellido: "Rodríguez", puesto: "Técnica" },
-  { id: 2, nombre: "Carlos", apellido: "Méndez", puesto: "Ventas" },
-]
+const cumpleanosHoy: { id: number; nombre: string; apellido: string; puesto: string }[] = []
 
-// Mock data para menú del almuerzo
 const menuAlmuerzo = {
-  disponible: true,
-  horaLimite: "11:00",
-  opciones: [
-    { id: 1, nombre: "Milanesa con puré", precio: 3500 },
-    { id: 2, nombre: "Pollo grillado con ensalada", precio: 3200 },
-    { id: 3, nombre: "Pasta del día", precio: 2800 },
-    { id: 4, nombre: "Empanadas (x3)", precio: 2400 },
-    { id: 5, nombre: "Ensalada completa", precio: 2600 },
-  ]
+  disponible: false,
+  horaLimite: "",
+  opciones: [] as { id: number; nombre: string; precio: number }[]
 }
 
-// Mock data para documentos del empleado (estilo Drive)
 const misDocumentos = {
-  carpetas: [
-    { 
-      id: 1, 
-      nombre: "Mi puesto", 
-      icono: "puesto",
-      archivos: [
-        { id: 1, nombre: "Descripción del puesto - Administrador.pdf", tipo: "pdf", fecha: "2024-01-15" },
-        { id: 2, nombre: "Objetivos 2024.pdf", tipo: "pdf", fecha: "2024-01-20" },
-        { id: 3, nombre: "Evaluación de desempeño Q4-2023.pdf", tipo: "pdf", fecha: "2024-01-05" },
-      ]
-    },
-    { 
-      id: 2, 
-      nombre: "Procedimientos", 
-      icono: "procedimientos",
-      archivos: [
-        { id: 4, nombre: "Manual de procesos - Ventas.pdf", tipo: "pdf", fecha: "2023-11-10" },
-        { id: 5, nombre: "Protocolo de atención al cliente.pdf", tipo: "pdf", fecha: "2023-09-05" },
-        { id: 6, nombre: "Guía de uso del ERP.pdf", tipo: "pdf", fecha: "2024-02-01" },
-      ]
-    },
-    { 
-      id: 3, 
-      nombre: "Capacitaciones", 
-      icono: "capacitacion",
-      archivos: [
-        { id: 7, nombre: "Certificado - Atención al cliente.pdf", tipo: "pdf", fecha: "2023-08-15" },
-        { id: 8, nombre: "Capacitación - Nuevos productos Apple.pdf", tipo: "pdf", fecha: "2024-01-25" },
-      ]
-    },
-    { 
-      id: 4, 
-      nombre: "Recibos de sueldo", 
-      icono: "recibos",
-      archivos: [
-        { id: 9, nombre: "Recibo - Febrero 2024.pdf", tipo: "pdf", fecha: "2024-02-28" },
-        { id: 10, nombre: "Recibo - Enero 2024.pdf", tipo: "pdf", fecha: "2024-01-31" },
-        { id: 11, nombre: "Recibo - Diciembre 2023.pdf", tipo: "pdf", fecha: "2023-12-29" },
-      ]
-    },
-  ]
+  carpetas: [] as { id: number; nombre: string; icono: string; archivos: { id: number; nombre: string; tipo: string; fecha: string }[] }[]
 }
 
 // Mock data para organigrama
 const organigrama = {
-  empresa: "TechFix SRL",
+  empresa: "",
   miPosicion: {
-    nombre: "Martín González",
-    puesto: "Administrador",
-    area: "Administración",
-    reportaA: { nombre: "Roberto Fernández", puesto: "Director General" },
-    equipoDirecto: [
-      { nombre: "Ana Rodríguez", puesto: "Técnica Senior" },
-      { nombre: "Carlos Méndez", puesto: "Ventas" },
-      { nombre: "Pedro Martínez", puesto: "Técnico" },
-    ]
+    nombre: "",
+    puesto: "",
+    area: "",
+    reportaA: { nombre: "", puesto: "" },
+    equipoDirecto: [] as { nombre: string; puesto: string }[]
   },
-  areas: [
-    { nombre: "Dirección", cantidad: 2 },
-    { nombre: "Administración", cantidad: 3 },
-    { nombre: "Ventas", cantidad: 4 },
-    { nombre: "Taller", cantidad: 8 },
-    { nombre: "Depósito", cantidad: 2 },
-  ]
+  areas: [] as { nombre: string; cantidad: number }[]
 }
 
-// Mock data para KPIs
 const mockKPIs = {
-  ventasHoy: 125400,
-  ventasAyer: 98200,
-  otPendientes: 12,
-  otEnProceso: 8,
-  cobranzasPendientes: 45600,
-  stockBajo: 5
+  ventasHoy: 0,
+  ventasAyer: 0,
+  otPendientes: 0,
+  otEnProceso: 0,
+  cobranzasPendientes: 0,
+  stockBajo: 0
 }
 
-// Mock data para tareas pendientes
-const mockTareas = [
-  { id: 1, tipo: "ot", titulo: "OT-2024-015 - Control de calidad pendiente", prioridad: "alta", fecha: "Hoy", icono: Wrench },
-  { id: 2, tipo: "cobranza", titulo: "Cobranza pendiente - Juan Pérez ($12,500)", prioridad: "media", fecha: "Hoy", icono: DollarSign },
-  { id: 3, tipo: "stock", titulo: "Stock bajo: Pantalla iPhone 14 Pro (2 unidades)", prioridad: "alta", fecha: "Hoy", icono: Package },
-  { id: 4, tipo: "ot", titulo: "OT-2024-012 - Esperando aprobación cliente", prioridad: "media", fecha: "Ayer", icono: Wrench },
-  { id: 5, tipo: "factura", titulo: "Factura #00125 vencida hace 3 días", prioridad: "alta", fecha: "Hace 3 días", icono: FileText },
-]
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockTareas: { id: number; tipo: string; titulo: string; prioridad: string; fecha: string; icono: any }[] = []
 
-// Mock data para actividad reciente
-const mockActividad = [
-  { id: 1, accion: "Nueva venta registrada", detalle: "NV-2024-089 - $45,200", usuario: "Carlos", tiempo: "Hace 5 min" },
-  { id: 2, accion: "OT completada", detalle: "OT-2024-014 - iPhone 14 Pro", usuario: "Pedro", tiempo: "Hace 15 min" },
-  { id: 3, accion: "Pago recibido", detalle: "María García - $28,000", usuario: "Ana", tiempo: "Hace 30 min" },
-  { id: 4, accion: "Stock actualizado", detalle: "Recepción de mercadería", usuario: "Luis", tiempo: "Hace 1 hora" },
-  { id: 5, accion: "Cliente nuevo", detalle: "Tech Solutions SRL", usuario: "Martín", tiempo: "Hace 2 horas" },
-]
+const mockActividad: { id: number; accion: string; detalle: string; usuario: string; tiempo: string }[] = []
 
 // Accesos rápidos
 const accesosRapidos = [

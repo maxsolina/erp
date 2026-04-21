@@ -91,6 +91,7 @@ export async function POST(
     impuestos: Number(factura.impuestos ?? 0),
     total: Number(factura.total ?? 0),
     moneda: factura.moneda ?? "ARS",
+    cotizacion: Number(factura.cotizacion ?? factura.tipo_cambio ?? 1) || 1,
     lineas_detalle,
   })
 

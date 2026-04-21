@@ -15,7 +15,7 @@ const COLUMNAS = new Set([
   "stock_real", "stock_minimo", "stock_maximo", "stock_critico",
   "tiene_numero_serie", "requiere_color", "requiere_bateria",
   "requiere_outlet", "requiere_observaciones",
-  "costo_manual", "moneda_costo", "costo_contable", "historial_costos",
+  "costo_manual", "moneda_costo", "tipo_cotizacion_costo", "costo_contable", "costo_ars", "costo_usd", "historial_costos",
   "garantia_propia_valor", "garantia_propia_unidad",
   "garantia_fabricante_valor", "garantia_fabricante_unidad",
   "iva_venta", "iva_compra", "cuenta_ventas", "cuenta_existencias", "observaciones",
@@ -37,7 +37,7 @@ export async function GET(request: Request) {
   const activo = searchParams.get("activo")
   const tipo = searchParams.get("tipo")
 
-  let query = supabase.from("productos").select("*").order("nombre", { ascending: true })
+  let query = supabase.from("productos").select("*").order("id", { ascending: false })
 
   if (busqueda) {
     query = query.or(

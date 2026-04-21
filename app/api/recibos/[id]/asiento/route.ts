@@ -23,7 +23,7 @@ export async function POST(
   // Traer datos del recibo — sin sucursal porque puede no existir la columna (020_add_sucursal_recibos.sql)
   const { data: recibo, error: reciboErr } = await supabase
     .from("recibos")
-    .select("id, numero, fecha, caja_id, cliente_nombre, importe, moneda, created_at")
+    .select("id, numero, fecha, caja_id, cliente_nombre, importe, moneda, cotizacion, created_at")
     .eq("id", id)
     .single()
 
@@ -56,6 +56,7 @@ export async function POST(
     sucursal: sucursalRecibo,
     importe: recibo.importe,
     moneda: recibo.moneda,
+    cotizacion: recibo.cotizacion ?? null,
   })
 
   if (!resultado.ok) {

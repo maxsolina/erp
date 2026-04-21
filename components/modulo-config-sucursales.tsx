@@ -168,7 +168,7 @@ function PanelUsuarios({
           body: JSON.stringify({ usuario_id: usuarioId, sucursal_id: sucursal.id, [campo]: valor }),
         })
         const created = await res.json()
-        setAsignaciones(prev => [...prev, created])
+        setAsignaciones(prev => [created, ...prev])
       } else {
         const updated = { ...existe, [campo]: valor }
         await fetch("/api/usuario-sucursales", {
@@ -226,7 +226,7 @@ function PanelUsuarios({
                           onChange={e => {
                             if (e.target.checked) {
                               fetch("/api/usuario-sucursales", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ usuario_id: u.id, sucursal_id: sucursal.id }) })
-                                .then(r => r.json()).then(created => setAsignaciones(prev => [...prev, created]))
+                                .then(r => r.json()).then(created => setAsignaciones(prev => [created, ...prev]))
                             } else {
                               quitarAsignacion(u.id)
                             }
@@ -321,7 +321,7 @@ export default function ModuloConfigSucursales() {
         })
         if (!res.ok) throw new Error((await res.json()).error)
         const created = await res.json()
-        setSucursales(prev => [...prev, created])
+        setSucursales(prev => [created, ...prev])
         setCreando(false)
       }
     } catch (e: any) {

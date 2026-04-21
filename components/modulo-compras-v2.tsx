@@ -39,6 +39,7 @@ import {
   publicarFacturaCompra,
   cancelarFacturaCompra,
   fetchAsientoFacturaCompra,
+  fetchAsientoRecepcion,
 } from "@/lib/compras-actions"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 
@@ -156,7 +157,7 @@ interface ListaPrecioPermitida {
   id: number
   nombre: string
   tipo: string
-  moneda: "ARS" | "USD" | "EUR"
+  moneda: string
 }
 
 interface CategoriaProveedor {
@@ -214,7 +215,7 @@ interface Proveedor {
   contacto_telefono: string
   contacto_email: string
   condicion_pago: string
-  moneda_habitual: "ARS" | "USD" | "EUR"
+  moneda_habitual: string
   categoria: "publico" | "privado"
   confidencial: boolean
   tipo: "nacional" | "internacional" | "despachante"
@@ -224,7 +225,7 @@ interface Proveedor {
   contactos: ContactoProveedor[]
   // Tab Ventas & Compras
   sucursal_origen: string
-  moneda_defecto: "ARS" | "USD" | "EUR"
+  moneda_defecto: string
   // Tab Contabilidad
   aplica_circuito_compras: boolean
   cuenta_gastos_defecto: string
@@ -270,7 +271,9 @@ interface OrdenCompra {
   deposito_destino_id?: number
   ubicacion_destino?: string
   ubicacion_destino_id?: number
-  moneda: "ARS" | "USD" | "EUR"
+  moneda: string
+  tipo_cotizacion?: string   // 'oficial' | 'blue' | 'mep'
+  cotizacion_dia?: number | null  // valor ARS/USD al emitir la OC
   tipo_cambio: number
   subtotal: number
   impuestos: number
@@ -379,7 +382,7 @@ interface FacturaCompra {
   estado: "borrador" | "pendiente" | "pagada_parcial" | "pagada" | "cancelada"
   orden_compra_id?: number
   recepcion_id?: number
-  moneda: "ARS" | "USD" | "EUR"
+  moneda: string
   tipo_cambio: number
   cotizacion?: number
   tipo_cotizacion?: string
@@ -407,10 +410,11 @@ interface NotaCreditoCompra {
   factura_numero?: string
   estado: "borrador" | "confirmada" | "aplicada" | "cancelada"
   motivo: string
-  moneda: "ARS" | "USD"
+  moneda: string
   subtotal: number
   impuestos: number
   total: number
+  saldo_disponible?: number | null
   legajo_id?: number
   lineas: {
     descripcion: string
@@ -431,10 +435,11 @@ interface NotaDebitoCompra {
   factura_numero?: string
   estado: "borrador" | "confirmada" | "pagada" | "cancelada"
   motivo: string
-  moneda: "ARS" | "USD"
+  moneda: string
   subtotal: number
   impuestos: number
   total: number
+  saldo_disponible?: number | null
   legajo_id?: number
   lineas: {
     descripcion: string
@@ -454,7 +459,7 @@ interface OrdenPago {
   proveedor_nombre: string
   caja_id?: string
   caja_nombre?: string
-  moneda: "ARS" | "USD" | "EUR"
+  moneda: string
   tipo_cotizacion?: "oficial" | "blue" | "mep"
   cotizacion?: number
   importe: number
@@ -485,9 +490,9 @@ interface OPMedioPago {
   numero_operacion?: string
   fecha_operacion?: string
   importe: number
-  moneda: "ARS" | "USD" | "EUR"
+  moneda: string
   importe_comp: number
-  moneda_comp?: "ARS" | "USD" | "EUR"
+  moneda_comp?: string
   observaciones?: string
 }
 
@@ -548,7 +553,7 @@ interface GastoImportacion {
   proveedor_nombre?: string
   comprobante_numero?: string
   importe: number
-  moneda: "ARS" | "USD" | "EUR"
+  moneda: string
   tipo_cambio_tipo: "dia_factura" | "dia_dji" | "manual"
   tipo_cambio: number
   importe_base: number
@@ -572,13 +577,13 @@ interface DespachoSimple {
   total_fletes: number
   flete_internacional: {
     importe: number
-    moneda: "ARS" | "USD"
+    moneda: string
     tipo_cambio: number
     importe_base: number
   }
   flete_nacional: {
     importe: number
-    moneda: "ARS" | "USD"
+    moneda: string
     tipo_cambio: number
     importe_base: number
   }
@@ -606,7 +611,7 @@ interface TipoGasto {
   cuenta_debe: string
   cuenta_haber: string
   criterio_sugerido: "fob" | "peso" | "cantidad" | "posicion_arancelaria" | "manual"
-  moneda_habitual: "ARS" | "USD" | "EUR"
+  moneda_habitual: string
   tc_defecto: "dia_factura" | "dia_dji" | "manual"
 }
 
@@ -841,7 +846,7 @@ function ProveedorSelector({
   value, onChange, proveedores, placeholder = "Seleccionar proveedor...",
 }: {
   value: number | undefined | null
-  onChange: (id: number | undefined, nombre: string, moneda?: string) => void
+  onChange: (id: number | undefined, nombre: string, moneda?: string, tipoCotizacion?: string) => void
   proveedores: any[]
   placeholder?: string
 }) {
@@ -874,7 +879,7 @@ function ProveedorSelector({
   }
 
   const seleccionar = (p: any) => {
-    onChange(p.id, p.nombre || p.razon_social || "", p.moneda_habitual)
+    onChange(p.id, p.nombre || p.razon_social || "", p.moneda_habitual, p.tipo_cotizacion_defecto)
     setQuery("")
     setAbierto(false)
     setModalAbierto(false)
@@ -1170,24 +1175,29 @@ export default function ModuloCompras({
     sucursales,
     sucursalActiva,
     recargarProductos,
+    currentUser,
   } = useERP()
 
   // Carga inicial desde Supabase
   useEffect(() => {
+    let cancelled = false
     fetchProveedores().then(data => {
+      if (cancelled) return
       setProveedores(
         (data ?? []).map((p: any) => ({ ...p, nombre: p.nombre ?? p.razon_social ?? "" }))
       )
     }).catch(console.error)
-    fetchOrdenesCompra().then(data =>
+    fetchOrdenesCompra().then(data => {
+      if (cancelled) return
       setOrdenesCompra((data ?? []).map((oc: any) => ({
         ...oc,
         lineas: Array.isArray(oc.lineas) ? oc.lineas
               : Array.isArray(oc.items)  ? oc.items
               : [],
       })))
-    ).catch(console.error)
-    fetchRecepciones().then(data =>
+    }).catch(console.error)
+    fetchRecepciones().then(data => {
+      if (cancelled) return
       setRecepciones((data ?? []).map((r: any) => {
         const rawLineas = Array.isArray(r.lineas) ? r.lineas
                         : Array.isArray(r.items)  ? r.items
@@ -1209,11 +1219,12 @@ export default function ModuloCompras({
           })),
         }
       }))
-    ).catch(console.error)
-    fetchFacturasCompra().then(data => setFacturasCompra(data)).catch(console.error)
-    fetchOrdenesPago().then(data => setOrdenesPago(data)).catch(console.error)
-    fetchNotasCreditoCompra().then(data => setNotasCreditoCompra(data)).catch(console.error)
-    fetchNotasDebitoCompra().then(data => setNotasDebitoCompra(data)).catch(console.error)
+    }).catch(console.error)
+    fetchFacturasCompra().then(data => { if (!cancelled) setFacturasCompra(data) }).catch(console.error)
+    fetchOrdenesPago().then(data => { if (!cancelled) setOrdenesPago(data) }).catch(console.error)
+    fetchNotasCreditoCompra().then(data => { if (!cancelled) setNotasCreditoCompra(data) }).catch(console.error)
+    fetchNotasDebitoCompra().then(data => { if (!cancelled) setNotasDebitoCompra(data) }).catch(console.error)
+    return () => { cancelled = true }
   }, [])
 
   // Active view state
@@ -1242,6 +1253,7 @@ export default function ModuloCompras({
   const [confirmandoConfidencial, setConfirmandoConfidencial] = useState(false)
 
   const [categoriasProveedor, setCategoriasProveedor] = useState<CategoriaProveedor[]>([])
+  const [monedas, setMonedas] = useState<{ codigo: string; nombre: string }[]>([])
   const [selectedCatProv, setSelectedCatProv] = useState<CategoriaProveedor | null>(null)
   const [creandoCatProv, setCreandoCatProv] = useState(false)
   const [catProvTabActivo, setCatProvTabActivo] = useState<"listas_precios" | "grupos_descuentos" | "cuentas_perm" | "leyenda" | "grupos">("listas_precios")
@@ -1254,6 +1266,7 @@ export default function ModuloCompras({
   const [cuentaPtTransito, setCuentaPtTransito] = useState<{ id: string; codigo: string; nombre: string } | null>(null)
 
   useEffect(() => {
+    fetch("/api/monedas", { cache: 'no-store' }).then(r => r.json()).then(d => setMonedas(Array.isArray(d) ? d : [])).catch(console.error)
     setLoadingCatProv(true)
     getCategoriaProveedores()
       .then(async rows => {
@@ -1331,7 +1344,6 @@ export default function ModuloCompras({
   const CATEGORIAS_PROVEEDOR = categoriasProveedor.map(c => c.nombre)
 
   const SUCURSALES_LISTA = sucursales.map(s => s.nombre)
-  const MONEDAS_LISTA: Array<"ARS" | "USD" | "EUR"> = ["ARS", "USD", "EUR"]
 
   const proveedorFormVacio: Omit<Proveedor, "id" | "codigo" | "saldo"> = {
     nombre: "",
@@ -1443,10 +1455,29 @@ export default function ModuloCompras({
     deposito_destino: "",
     ubicacion_destino: "",
     moneda: "ARS",
+    tipo_cotizacion: "oficial",
+    cotizacion_dia: null,
     tipo_cambio: 1,
     observaciones: "",
     lineas: []
   })
+
+  // Auto-fetch cotización vigente al cambiar moneda o tipo en el form de OC
+  useEffect(() => {
+    const moneda = nuevaOC.moneda ?? "ARS"
+    const tipo = nuevaOC.tipo_cotizacion ?? "oficial"
+    if (moneda === "ARS") {
+      setNuevaOC(prev => ({ ...prev, cotizacion_dia: null }))
+      return
+    }
+    fetch(`/api/contabilidad/cotizaciones?moneda_codigo=${moneda}&tipo=${tipo}&latest=true`)
+      .then(r => r.json())
+      .then(data => {
+        const tasa = data?.tasa ?? null
+        setNuevaOC(prev => ({ ...prev, cotizacion_dia: tasa }))
+      })
+      .catch(err => console.error("[OC] Error fetching cotización:", err))
+  }, [nuevaOC.moneda, nuevaOC.tipo_cotizacion])
 
   // OC — dropdown búsqueda de producto por línea
   const [ocProductoSearch, setOcProductoSearch] = useState<Record<number, string>>({})
@@ -1495,7 +1526,11 @@ export default function ModuloCompras({
 
   // Resetear modo edición cuando se cambia de recepción
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { setRecepcionModoEdicion(false) }, [selectedRecepcion?.id])
+  useEffect(() => {
+    setRecepcionModoEdicion(false)
+    setRecDetalleTab("info")
+    setRecAsientos([])
+  }, [selectedRecepcion?.id])
 
   // Modal de N° serie
   const [modalSerieOpen, setModalSerieOpen] = useState(false)
@@ -1538,6 +1573,12 @@ export default function ModuloCompras({
   const [fcAsientoCargando, setFcAsientoCargando] = useState(false)
   const [fcAsientoModalOpen, setFcAsientoModalOpen] = useState(false)
   const [fcAsientoModalItem, setFcAsientoModalItem] = useState<FcAsientoItem | null>(null)
+  // Recepciones — tab detalles asiento
+  const [recDetalleTab, setRecDetalleTab] = useState<"info" | "detalles">("info")
+  const [recAsientos, setRecAsientos] = useState<FcAsientoItem[]>([])
+  const [recAsientoCargando, setRecAsientoCargando] = useState(false)
+  const [recAsientoModalOpen, setRecAsientoModalOpen] = useState(false)
+  const [recAsientoModalItem, setRecAsientoModalItem] = useState<FcAsientoItem | null>(null)
   const [fcLineas, setFcLineas] = useState<FacturaCompraLinea[]>([])
   const [fcImpuestos, setFcImpuestos] = useState<{ nombre: string; redondeo: number; importe: number }[]>([])
   const fcLineaVacia = (): FacturaCompraLinea => ({
@@ -1565,7 +1606,7 @@ export default function ModuloCompras({
     moneda: "ARS",
     tipo_cambio: 1,
     cotizacion: undefined,
-    tipo_cotizacion: undefined,
+    tipo_cotizacion: "blue",
     sucursal: "",
     subtotal: 0,
     impuestos: 0,
@@ -1574,6 +1615,23 @@ export default function ModuloCompras({
   }
   const [fcForm, setFcForm] = useState<Omit<FacturaCompra, "id" | "lineas" | "seguimiento">>(facturaFormVacio)
   const setFc = (patch: Partial<typeof fcForm>) => setFcForm(prev => ({ ...prev, ...patch }))
+
+  // Auto-fetch cotización vigente al cambiar moneda o tipo_cotizacion en el form de factura compra
+  useEffect(() => {
+    const moneda = fcForm.moneda ?? "ARS"
+    const tipo = (fcForm.tipo_cotizacion ?? "oficial").toLowerCase()
+    if (moneda === "ARS") {
+      setFcForm(prev => ({ ...prev, cotizacion: undefined }))
+      return
+    }
+    fetch(`/api/contabilidad/cotizaciones?moneda_codigo=${moneda}&tipo=${tipo}&latest=true`)
+      .then(r => r.json())
+      .then(data => {
+        const tasa = data?.tasa ?? null
+        if (tasa) setFcForm(prev => ({ ...prev, cotizacion: tasa }))
+      })
+      .catch(err => console.error("[FC] Error fetching cotización:", err))
+  }, [fcForm.moneda, fcForm.tipo_cotizacion])
 
   // Notas de Crédito de Compra
   const [notasCreditoCompra, setNotasCreditoCompra] = useState<NotaCreditoCompra[]>([])
@@ -1625,12 +1683,31 @@ export default function ModuloCompras({
   // Movimientos Cuenta Corriente Proveedores
   const [movimientosCtaCte, setMovimientosCtaCte] = useState<MovimientoCtaCteProveedor[]>([])
 
+  // ─── Conciliación de Deuda Compras ────────────────────────────────────────
+  const [cdcProveedorId, setCdcProveedorId] = useState<number | null>(null)
+  const [cdcSelDebitos, setCdcSelDebitos] = useState<{id: number; tipo: 'factura'; moneda: 'ARS' | 'USD'; montoAplicar: number}[]>([])
+  const [cdcSelCreditos, setCdcSelCreditos] = useState<{id: number; tipo: 'op' | 'nc'; moneda: 'ARS' | 'USD'; montoAplicar: number}[]>([])
+  const [cdcHistorial, setCdcHistorial] = useState<{
+    id: number; fecha: string; proveedor_id: number; proveedor_nombre: string
+    total_conciliado: number; usuario: string; estado: 'activa' | 'cancelada'
+    fecha_cancelacion: string | null
+    aplicaciones: {debito_tipo: string; debito_numero: string; credito_tipo: string; credito_numero: string; monto: number}[]
+  }[]>([])
+  const [cdcTab, setCdcTab] = useState<'conciliar' | 'historial'>('conciliar')
+  const [cdcFiltroTextoDb, setCdcFiltroTextoDb] = useState('')
+  const [cdcFiltroTextoCr, setCdcFiltroTextoCr] = useState('')
+  const [cdcFiltroConciliado, setCdcFiltroConciliado] = useState<'no' | 'si' | 'todos'>('no')
+  const [cdcMostrarTodosDb, setCdcMostrarTodosDb] = useState(false)
+  const [cdcMostrarTodosCr, setCdcMostrarTodosCr] = useState(false)
+  const [cdcCotizacion, setCdcCotizacion] = useState<number>(0)
+  const [cdcEjecutando, setCdcEjecutando] = useState(false)
+  const [cdcRevertiendoId, setCdcRevertiendoId] = useState<number | null>(null)
+
   // Helpers
-  const formatCurrency = (amount: number, currency: "ARS" | "USD" = "ARS") => {
-    if (currency === "USD") {
-      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)
-    }
-    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(amount)
+  const formatCurrency = (amount: number, currency: string = "ARS") => {
+    const num = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)
+    const code = currency || "ARS"
+    return `${code}\u00a0$\u00a0${num}`
   }
 
   const formatDate = (dateStr: string) => {
@@ -2266,7 +2343,7 @@ export default function ModuloCompras({
         } else {
           const codigoAuto = `PROV-${String(proveedores.length + 1).padStart(3, "0")}`
           const created = await guardarProveedor({ ...payload, codigo: codigoAuto, saldo: 0 })
-          setProveedores(prev => [...prev, { ...created, nombre: created.nombre ?? created.razon_social ?? "" }])
+          setProveedores(prev => [{ ...created, nombre: created.nombre ?? created.razon_social ?? "" }, ...prev])
           setCreandoProveedor(false)
           setNuevoProveedor(proveedorFormVacio)
           setProveedorTabActivo("contactos")
@@ -2734,11 +2811,27 @@ export default function ModuloCompras({
                   <label className="block text-xs font-medium text-gray-700 mb-1">Moneda por Defecto</label>
                   <select
                     value={prov.moneda_defecto}
-                    onChange={e => setP({ moneda_defecto: e.target.value as "ARS" | "USD" | "EUR", moneda_habitual: e.target.value as "ARS" | "USD" | "EUR" })}
+                    onChange={e => setP({ moneda_defecto: e.target.value, moneda_habitual: e.target.value })}
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    {MONEDAS_LISTA.map(m => <option key={m} value={m}>{m}</option>)}
+                    {monedas.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} - {m.nombre}</option>)}
                   </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de Cotización por Defecto</label>
+                  <select
+                    value={prov.tipo_cotizacion_defecto}
+                    onChange={e => setP({ tipo_cotizacion_defecto: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-xs"
+                  >
+                    <option value="">— Sin asignar —</option>
+                    <option value="oficial">Dólar Oficial</option>
+                    <option value="blue">Dólar Blue</option>
+                    <option value="mep">Dólar MEP</option>
+                  </select>
+                  {(!prov.moneda_defecto || prov.moneda_defecto === "ARS") && (
+                    <p className="text-xs text-gray-400 mt-1">Relevante principalmente cuando la moneda por defecto es distinta de ARS.</p>
+                  )}
                 </div>
               </div>
             )}
@@ -2778,22 +2871,6 @@ export default function ModuloCompras({
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Opcional"
                   />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de Cotización por Defecto</label>
-                  <select
-                    value={prov.tipo_cotizacion_defecto}
-                    onChange={e => setP({ tipo_cotizacion_defecto: e.target.value })}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">— Sin asignar —</option>
-                    <option value="oficial">Dólar Oficial</option>
-                    <option value="blue">Dólar Blue</option>
-                    <option value="mep">Dólar MEP</option>
-                  </select>
-                  {prov.moneda_defecto === "ARS" && (
-                    <p className="text-xs text-gray-400 mt-1">Relevante principalmente cuando la moneda es distinta de ARS.</p>
-                  )}
                 </div>
               </div>
             )}
@@ -2919,11 +2996,7 @@ export default function ModuloCompras({
                 { value: "estandar", label: "Estándar" },
                 { value: "inmediato", label: "Inmediato" },
               ]},
-              { field: "moneda", label: "Moneda", values: [
-                { value: "ARS", label: "ARS" },
-                { value: "USD", label: "USD" },
-                { value: "EUR", label: "EUR" },
-              ]},
+              { field: "moneda", label: "Moneda", values: monedas.map(m => ({ value: m.codigo, label: m.codigo })) },
             ]}
             groupByOptions={[
               { id: "estado", label: "Estado", field: "estado" },
@@ -3090,7 +3163,7 @@ export default function ModuloCompras({
               nac: l.nac ?? false,
             })),
           }
-          setRecepciones(prev => [...prev, nuevaRec])
+          setRecepciones(prev => [nuevaRec, ...prev])
         }
       } catch (err: any) {
         console.error("[circuito] Error al confirmar OC:", err.message)
@@ -3170,7 +3243,7 @@ export default function ModuloCompras({
         })),
       }
       const ocConfirmada: OrdenCompra = { ...oc, ...ocActualizada, lineas: oc.lineas }
-      setRecepciones(prev => [...prev, nuevaRec])
+      setRecepciones(prev => [nuevaRec, ...prev])
       setOrdenesCompra(prev => prev.map(o => o.id === oc.id ? ocConfirmada : o))
       setSelectedOC(ocConfirmada)
     } catch (err: any) {
@@ -3669,14 +3742,15 @@ export default function ModuloCompras({
         alert(`La línea ${lineaSinProducto + 1} no tiene un producto seleccionado. Buscá y seleccioná un producto del listado.`)
         return
       }
-      const nextNum = Math.max(...ordenesCompra.map(o => o.id ?? 0), 0) + 1
       const payload = {
-        numero: `OC-${String(nextNum).padStart(5, '0')}`,
+        // numero lo genera el backend consultando la DB
         fecha: oc.fecha || new Date().toISOString(),
         proveedor_id: oc.proveedor_id || 0,
         proveedor_nombre: oc.proveedor_nombre || "",
         estado: "borrador",
         moneda: oc.moneda || "ARS",
+        tipo_cotizacion: oc.tipo_cotizacion ?? "oficial",
+        cotizacion_dia: oc.cotizacion_dia ?? null,
         sucursal: oc.sucursal ?? "",
         sucursal_id: (oc as any).sucursal_id ?? null,
         deposito_destino: oc.deposito_destino ?? "",
@@ -3689,10 +3763,42 @@ export default function ModuloCompras({
       try {
         const created = await guardarOrdenCompra(payload)
         const nuevaOrden: OrdenCompra = { ...created, lineas: oc.lineas }
-        setOrdenesCompra(prev => [...prev, nuevaOrden])
+        // Agregar al estado local inmediatamente (UX) y también recargar desde DB
+        // para evitar que el fetch inicial en vuelo pise la lista
+        setOrdenesCompra(prev => {
+          const sinDuplicado = prev.filter(o => o.id !== created.id)
+          return [nuevaOrden, ...sinDuplicado]
+        })
         setCreandoOC(false)
         setSelectedOC(nuevaOrden)
         setOcTabActivo("productos")
+        // Recargar lista desde DB en background para sincronizar
+        fetchOrdenesCompra()
+          .then(data => setOrdenesCompra((data ?? []).map((oc: any) => ({
+            ...oc,
+            lineas: Array.isArray(oc.lineas) ? oc.lineas : Array.isArray(oc.items) ? oc.items : [],
+          }))))
+          .catch(console.error)
+        setOcTabActivo("productos")
+        // Resetear el formulario para la próxima vez
+        setNuevaOC({
+          sucursal: "",
+          proveedor_id: 0,
+          proveedor_nombre: "",
+          termino_pago: "Contado",
+          tipo_compra: "nacional",
+          metodo_compra: "estandar",
+          fecha: new Date().toISOString().slice(0, 10),
+          fecha_entrega_estimada: "",
+          deposito_destino: "",
+          ubicacion_destino: "",
+          moneda: "ARS",
+          tipo_cotizacion: "oficial",
+          cotizacion_dia: null,
+          tipo_cambio: 1,
+          observaciones: "",
+          lineas: []
+        })
       } catch (err: any) {
         console.error("[v0] Error al guardar OC:", err.message)
         alert("Error al guardar la orden de compra: " + err.message)
@@ -3757,8 +3863,14 @@ export default function ModuloCompras({
                 <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Proveedor <span className="text-red-500">*</span></label>
                 <ProveedorSelector
                   value={oc.proveedor_id ?? null}
-                  onChange={(id, nombre, moneda) => {
-                    if (id) setNuevaOC(prev => ({ ...prev, proveedor_id: id, proveedor_nombre: nombre, moneda: moneda ?? prev.moneda }))
+                  onChange={(id, nombre, moneda, tipoCotizacion) => {
+                    if (id) setNuevaOC(prev => ({
+                      ...prev,
+                      proveedor_id: id,
+                      proveedor_nombre: nombre,
+                      moneda: moneda ?? prev.moneda,
+                      tipo_cotizacion: tipoCotizacion ?? prev.tipo_cotizacion ?? "oficial",
+                    }))
                     else setNuevaOC(prev => ({ ...prev, proveedor_id: undefined, proveedor_nombre: "" }))
                   }}
                   proveedores={proveedores}
@@ -3864,14 +3976,40 @@ export default function ModuloCompras({
                 <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Moneda</label>
                 <select
                   value={oc.moneda || "ARS"}
-                  onChange={e => setNuevaOC(prev => ({ ...prev, moneda: e.target.value as "ARS" | "USD" | "EUR" }))}
+                  onChange={e => setNuevaOC(prev => ({ ...prev, moneda: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="ARS">ARS - Peso Argentino</option>
-                  <option value="USD">USD - Dolar</option>
-                  <option value="EUR">EUR - Euro</option>
+                  {monedas.map(m => (
+                    <option key={m.codigo} value={m.codigo}>{m.codigo} - {m.nombre}</option>
+                  ))}
                 </select>
               </div>
+              {(oc.moneda && oc.moneda !== "ARS") && (
+                <div>
+                  <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Tipo Cotización</label>
+                  <select
+                    value={oc.tipo_cotizacion ?? "oficial"}
+                    onChange={e => setNuevaOC(prev => ({ ...prev, tipo_cotizacion: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="oficial">Oficial</option>
+                    <option value="blue">Blue</option>
+                    <option value="mep">MEP</option>
+                  </select>
+                </div>
+              )}
+              {(oc.moneda && oc.moneda !== "ARS") && (
+                <div>
+                  <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Cotización del Día</label>
+                  <input
+                    type="number"
+                    value={oc.cotizacion_dia ?? ""}
+                    onChange={e => setNuevaOC(prev => ({ ...prev, cotizacion_dia: e.target.value ? Number(e.target.value) : null }))}
+                    placeholder="Ingrese cotización..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -4030,18 +4168,21 @@ export default function ModuloCompras({
                     />
                   </td>
                   <td className="py-2 px-4">
-                    <input
-                      type="number"
-                      min={0}
-                      value={linea.precio_unitario}
-                      onChange={e => {
-                        const updated = [...oc.lineas]
-                        const precio = Math.max(0, Number(e.target.value))
-                        updated[idx] = { ...updated[idx], precio_unitario: precio, subtotal: updated[idx].cantidad * precio }
-                        setNuevaOC(prev => ({ ...prev, lineas: updated }))
-                      }}
-                      className="w-full text-right px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-blue-500"
-                    />
+                    <div className="relative flex items-center">
+                      <span className="absolute left-2 text-xs text-gray-500 pointer-events-none select-none">$</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={linea.precio_unitario}
+                        onChange={e => {
+                          const updated = [...oc.lineas]
+                          const precio = Math.max(0, Number(e.target.value))
+                          updated[idx] = { ...updated[idx], precio_unitario: precio, subtotal: updated[idx].cantidad * precio }
+                          setNuevaOC(prev => ({ ...prev, lineas: updated }))
+                        }}
+                        className="w-full text-right pl-5 pr-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
                   </td>
                   <td className="py-2 px-4 text-right font-medium text-gray-700">
                     {formatCurrency(linea.subtotal, oc.moneda)}
@@ -5263,6 +5404,21 @@ export default function ModuloCompras({
     const canEdit = ["borrador", "esperando_recepcion"].includes(rec.estado ?? "")
     const editable = canEdit && recepcionModoEdicion
 
+    const handleCambiarTabRec = async (tab: "info" | "detalles") => {
+      setRecDetalleTab(tab)
+      if (tab === "detalles" && recAsientos.length === 0 && !recAsientoCargando) {
+        setRecAsientoCargando(true)
+        try {
+          const { asientos } = await fetchAsientoRecepcion(rec.id)
+          setRecAsientos(asientos)
+        } catch {
+          setRecAsientos([])
+        } finally {
+          setRecAsientoCargando(false)
+        }
+      }
+    }
+
     const estadoColor: Record<string, string> = {
       borrador:             'bg-gray-100 text-gray-600',
       esperando_recepcion:  'bg-amber-100 text-amber-700',
@@ -5315,6 +5471,79 @@ export default function ModuloCompras({
 
     return (
       <div>
+        {/* Modal popup asiento (recepción) */}
+        {recAsientoModalOpen && recAsientoModalItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50">
+                <div>
+                  <h2 className="text-base font-bold text-gray-900">
+                    Asiento {recAsientoModalItem.numero ?? "S/N"}
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {formatDate(recAsientoModalItem.fecha)}
+                    {recAsientoModalItem.concepto ? ` · ${recAsientoModalItem.concepto}` : ""}
+                  </p>
+                </div>
+                <button
+                  onClick={() => { setRecAsientoModalOpen(false); setRecAsientoModalItem(null) }}
+                  className="text-gray-400 hover:text-gray-700 p-1 rounded"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="px-6 py-4 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-xs font-semibold text-gray-500 uppercase">
+                      <th className="text-left py-2 pr-4">Cuenta</th>
+                      <th className="text-left py-2 pr-4">Descripción</th>
+                      <th className="text-right py-2 pr-4">Debe</th>
+                      <th className="text-right py-2">Haber</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {recAsientoModalItem.lineas.map((linea, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="py-2 pr-4 font-mono text-xs text-gray-800 whitespace-nowrap">
+                          <span className="font-semibold">{linea.cuenta_codigo}</span>
+                          <span className="text-gray-500 ml-1">— {linea.cuenta_nombre}</span>
+                        </td>
+                        <td className="py-2 pr-4 text-xs text-gray-500">{linea.descripcion ?? "—"}</td>
+                        <td className="py-2 pr-4 text-right font-medium text-gray-800">
+                          {linea.debe > 0 ? formatCurrency(linea.debe) : "—"}
+                        </td>
+                        <td className="py-2 text-right font-medium text-gray-800">
+                          {linea.haber > 0 ? formatCurrency(linea.haber) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t font-semibold text-sm">
+                      <td colSpan={2} className="py-2 text-gray-600">Total</td>
+                      <td className="py-2 pr-4 text-right">
+                        {formatCurrency(recAsientoModalItem.lineas.reduce((s, l) => s + l.debe, 0))}
+                      </td>
+                      <td className="py-2 text-right">
+                        {formatCurrency(recAsientoModalItem.lineas.reduce((s, l) => s + l.haber, 0))}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              <div className="px-6 py-3 border-t bg-gray-50 flex justify-end">
+                <button
+                  onClick={() => { setRecAsientoModalOpen(false); setRecAsientoModalItem(null) }}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-100"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Breadcrumb */}
         <div className="text-sm text-gray-500 mb-4 flex items-center gap-2">
           <button onClick={() => setSelectedRecepcion(null)} className="hover:text-emerald-600">
@@ -5417,6 +5646,28 @@ export default function ModuloCompras({
           </div>
         </div>
 
+        {/* Tabs estilo Odoo */}
+        <div className="border-b mb-6">
+          <div className="flex gap-1">
+            {(["info", "detalles"] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => handleCambiarTabRec(tab)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  recDetalleTab === tab
+                    ? "border-indigo-600 text-indigo-700"
+                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
+              >
+                {tab === "info" ? "Información" : "Detalles"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tab: Información */}
+        {recDetalleTab === "info" && (
+          <>
         {/* Cabecera datos */}
         <div className="bg-white rounded-lg border p-6 mb-6">
           <div className="grid grid-cols-3 gap-x-8 gap-y-4 text-sm">
@@ -5639,6 +5890,67 @@ export default function ModuloCompras({
             </tbody>
           </table>
         </div>
+          </>
+        )}
+
+        {/* Tab: Detalles (Asientos contables) */}
+        {recDetalleTab === "detalles" && (
+          <div>
+            {recAsientoCargando ? (
+              <div className="flex items-center justify-center py-12 text-gray-400 text-sm">
+                Cargando asientos contables...
+              </div>
+            ) : recAsientos.length === 0 ? (
+              <div className="bg-white rounded-lg border p-8 text-center">
+                <p className="text-gray-400 text-sm">
+                  {["borrador", "esperando_recepcion"].includes(rec.estado)
+                    ? "Esta recepción aún no tiene asiento contable. Confírmala para generarlo."
+                    : "No se encontró asiento contable para esta recepción."}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recAsientos.map((asiento) => (
+                  <div key={asiento.id} className="bg-white rounded-lg border overflow-hidden">
+                    <div className="px-5 py-3 bg-gray-50 border-b flex items-center justify-between">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Asiento Contable</span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        asiento.estado === "publicado" ? "bg-green-100 text-green-700" :
+                        asiento.estado === "cancelado" ? "bg-red-100 text-red-700" :
+                        "bg-gray-100 text-gray-600"
+                      }`}>
+                        {asiento.estado === "publicado" ? "Publicado" : asiento.estado === "cancelado" ? "Cancelado" : asiento.estado}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => { setRecAsientoModalItem(asiento); setRecAsientoModalOpen(true) }}
+                      className="w-full flex items-center justify-between px-5 py-4 hover:bg-indigo-50 transition-colors group text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 group-hover:bg-indigo-200 transition-colors">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-indigo-900 group-hover:text-indigo-700">
+                            {asiento.numero ?? "Asiento S/N"}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {formatDate(asiento.fecha)}
+                            {asiento.concepto ? ` · ${asiento.concepto}` : ""}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-gray-400 group-hover:text-indigo-600">
+                        <span>{asiento.lineas.length} líneas</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </div>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     )
   }
@@ -5758,7 +6070,16 @@ export default function ModuloCompras({
       setFcLineas(lineasOC)
       const tots = calcularTotalesLineas(lineasOC)
       const ivaSum = fcImpuestos.reduce((s, t) => s + t.importe, 0)
-      setFcForm(prev => ({ ...prev, subtotal: tots.subtotal, impuestos: ivaSum, total: tots.subtotal + ivaSum, saldo: tots.subtotal + ivaSum }))
+      setFcForm(prev => ({
+        ...prev,
+        moneda: oc.moneda ?? prev.moneda,
+        cotizacion: (oc as any).cotizacion_dia ?? prev.cotizacion,
+        tipo_cotizacion: (oc as any).tipo_cotizacion ?? prev.tipo_cotizacion,
+        subtotal: tots.subtotal,
+        impuestos: ivaSum,
+        total: tots.subtotal + ivaSum,
+        saldo: tots.subtotal + ivaSum,
+      }))
     }
 
     const handleGuardarFac = async () => {
@@ -6234,11 +6555,15 @@ export default function ModuloCompras({
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Moneda</label>
-                <select value={f.moneda} onChange={e => setFc({ moneda: e.target.value as "ARS"|"USD"|"EUR" })}
+                <select value={f.moneda} onChange={e => {
+                  const newMoneda = e.target.value
+                  setFc({
+                    moneda: newMoneda,
+                    tipo_cotizacion: newMoneda === "ARS" ? undefined : (f.tipo_cotizacion || "blue"),
+                  })
+                }}
                   className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="ARS">ARS $</option>
-                  <option value="USD">USD u$s</option>
-                  <option value="EUR">EUR €</option>
+                  {monedas.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} {m.nombre}</option>)}
                 </select>
               </div>
             </div>
@@ -6256,10 +6581,10 @@ export default function ModuloCompras({
                   <select value={f.tipo_cotizacion ?? ""} onChange={e => setFc({ tipo_cotizacion: e.target.value })}
                     className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                     <option value="">Seleccionar...</option>
-                    <option value="Oficial">Oficial</option>
-                    <option value="Blue">Blue</option>
-                    <option value="CCL">CCL</option>
-                    <option value="MEP">MEP</option>
+                    <option value="oficial">Oficial</option>
+                    <option value="blue">Blue</option>
+                    <option value="ccl">CCL</option>
+                    <option value="mep">MEP</option>
                   </select>
                 </div>
               </div>
@@ -6271,7 +6596,18 @@ export default function ModuloCompras({
                 <label className="block text-xs font-medium text-gray-600 mb-1">
                   Orden de Compra vinculada <span className="font-normal text-gray-400">(opcional)</span>
                 </label>
-                <select value={f.orden_compra_id ?? ""} onChange={e => setFc({ orden_compra_id: e.target.value ? Number(e.target.value) : undefined })}
+                <select value={f.orden_compra_id ?? ""} onChange={e => {
+                  const ocId = e.target.value ? Number(e.target.value) : undefined
+                  const oc = ocId ? ordenesCompra.find(o => o.id === ocId) : undefined
+                  setFc({
+                    orden_compra_id: ocId,
+                    ...(oc ? {
+                      moneda: oc.moneda ?? "ARS",
+                      cotizacion: (oc as any).cotizacion_dia ?? undefined,
+                      tipo_cotizacion: (oc as any).tipo_cotizacion ?? undefined,
+                    } : {}),
+                  })
+                }}
                   className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                   <option value="">Sin OC vinculada</option>
                   {ordenesCompra.filter(oc => !f.proveedor_id || oc.proveedor_id === f.proveedor_id)
@@ -6985,12 +7321,12 @@ export default function ModuloCompras({
               </div>
               <div>
                 <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Importe</label>
-                <p className="font-medium text-sm text-lg">{formatCurrency(tots.totalMedios, opForm.moneda as "ARS" | "USD" || "ARS")}</p>
+                <p className="font-medium text-sm text-lg">{formatCurrency(tots.totalMedios, opForm.moneda as string || "ARS")}</p>
               </div>
               <div>
                 <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Importe no Conciliado</label>
                 <p className={`font-medium text-sm ${tots.noConciliado > 0 ? "text-amber-600" : "text-gray-600"}`}>
-                  {formatCurrency(Math.abs(tots.noConciliado), opForm.moneda as "ARS" | "USD" || "ARS")}
+                  {formatCurrency(Math.abs(tots.noConciliado), opForm.moneda as string || "ARS")}
                 </p>
               </div>
             </div>
@@ -7026,7 +7362,7 @@ export default function ModuloCompras({
               </div>
               <div>
                 <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Importe a Cuenta</label>
-                <p className="font-medium text-sm text-emerald-600">{formatCurrency(tots.aCuenta, opForm.moneda as "ARS" | "USD" || "ARS")}</p>
+                <p className="font-medium text-sm text-emerald-600">{formatCurrency(tots.aCuenta, opForm.moneda as string || "ARS")}</p>
               </div>
               <div>
                 <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Moneda</label>
@@ -7034,12 +7370,10 @@ export default function ModuloCompras({
                   <div className="flex gap-2 items-center">
                     <select
                       value={opForm.moneda ?? "ARS"}
-                      onChange={e => setOpForm(prev => ({ ...prev, moneda: e.target.value as "ARS" | "USD" | "EUR" }))}
+                      onChange={e => setOpForm(prev => ({ ...prev, moneda: e.target.value }))}
                       className="border rounded px-2 py-1.5 text-sm"
                     >
-                      <option value="ARS">ARS</option>
-                      <option value="USD">USD</option>
-                      <option value="EUR">EUR</option>
+                      {monedas.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo}</option>)}
                     </select>
                     {opForm.moneda && opForm.moneda !== "ARS" && (
                       <>
@@ -8093,6 +8427,416 @@ export default function ModuloCompras({
   }
 
   // =====================================================
+  // CONCILIACIÓN DE DEUDA - COMPRAS
+  // =====================================================
+
+  const cargarHistorialCdcCompras = async (proveedorId: number) => {
+    const supabase = createSupabaseClient()
+    const { data } = await supabase
+      .from('conciliaciones_deuda_compras')
+      .select('id, fecha, proveedor_id, proveedor_nombre, total_conciliado, usuario, estado, fecha_cancelacion, conciliaciones_deuda_compras_aplicaciones(debito_tipo, debito_numero, credito_tipo, credito_numero, monto)')
+      .eq('proveedor_id', proveedorId)
+      .order('fecha', { ascending: false })
+    if (!data) return
+    const loaded = data.map((c: any) => ({
+      id: c.id as number, fecha: c.fecha as string,
+      proveedor_id: c.proveedor_id as number, proveedor_nombre: c.proveedor_nombre as string,
+      total_conciliado: c.total_conciliado as number, usuario: c.usuario as string,
+      estado: c.estado as 'activa' | 'cancelada', fecha_cancelacion: c.fecha_cancelacion as string | null,
+      aplicaciones: (c.conciliaciones_deuda_compras_aplicaciones ?? []) as {debito_tipo: string; debito_numero: string; credito_tipo: string; credito_numero: string; monto: number}[],
+    }))
+    setCdcHistorial(prev => [...prev.filter(h => h.proveedor_id !== proveedorId), ...loaded])
+  }
+
+  const confirmarConciliacionCompras = async () => {
+    if (cdcEjecutando) return
+    if (cdcSelDebitos.length === 0 || cdcSelCreditos.length === 0) { alert('Seleccioná al menos un débito y un crédito.'); return }
+    const proveedor = proveedores.find(p => p.id === cdcProveedorId)
+    if (!proveedor) return
+    const hayMixto = (cdcSelDebitos.some(d => d.moneda === 'ARS') && cdcSelCreditos.some(c => c.moneda === 'USD')) ||
+                     (cdcSelDebitos.some(d => d.moneda === 'USD') && cdcSelCreditos.some(c => c.moneda === 'ARS'))
+    if (hayMixto && cdcCotizacion <= 0) { alert('Para conciliar entre monedas distintas ingresá la cotización.'); return }
+    setCdcEjecutando(true)
+    try {
+      const supabase = createSupabaseClient()
+      const aplicaciones: {debito_tipo: string; debito_numero: string; credito_tipo: string; credito_numero: string; monto: number}[] = []
+      const debitosWork = cdcSelDebitos.map(d => ({ ...d, restante: d.montoAplicar }))
+      const creditosWork = cdcSelCreditos.map(c => ({ ...c, restante: c.montoAplicar }))
+      const facturaUpdates: {id: number; saldoNuevo: number}[] = []
+      const opUpdates: {id: string; importeNuevo: number}[] = []
+      const ncUpdates: {id: number; saldoNuevo: number}[] = []
+      for (const d of debitosWork) {
+        if (d.restante <= 0) continue
+        const factura = facturasCompra.find(f => f.id === d.id)
+        if (!factura) continue
+        for (const c of creditosWork) {
+          if (c.restante <= 0) continue
+          let montoAplicar = 0
+          if (d.moneda === c.moneda) {
+            montoAplicar = Math.min(d.restante, c.restante)
+          } else if (cdcCotizacion > 0) {
+            if (d.moneda === 'ARS' && c.moneda === 'USD') montoAplicar = Math.min(d.restante, c.restante * cdcCotizacion)
+            else if (d.moneda === 'USD' && c.moneda === 'ARS') montoAplicar = Math.min(d.restante * cdcCotizacion, c.restante)
+          }
+          if (montoAplicar <= 0) continue
+          const opSel = c.tipo === 'op' ? ordenesPago.find(o => o.id === String(c.id)) : null
+          const ncSel = c.tipo === 'nc' ? notasCreditoCompra.find(n => n.id === c.id) : null
+          const montoRegistrado = d.moneda === c.moneda ? montoAplicar : d.moneda === 'USD' ? montoAplicar / cdcCotizacion : montoAplicar
+          aplicaciones.push({
+            debito_tipo: `FC ${factura.tipo}`, debito_numero: factura.numero,
+            credito_tipo: c.tipo === 'op' ? 'OP' : `NC ${ncSel?.tipo ?? ''}`.trim(),
+            credito_numero: opSel?.numero ?? ncSel?.numero ?? String(c.id),
+            monto: montoRegistrado,
+          })
+          if (d.moneda === c.moneda) { d.restante -= montoAplicar; c.restante -= montoAplicar }
+          else if (d.moneda === 'ARS') { d.restante -= montoAplicar; c.restante -= montoAplicar / cdcCotizacion }
+          else { d.restante -= montoAplicar / cdcCotizacion; c.restante -= montoAplicar }
+        }
+        facturaUpdates.push({ id: d.id, saldoNuevo: Math.max(0, factura.saldo - (d.montoAplicar - d.restante)) })
+      }
+      for (const c of creditosWork) {
+        const reduccion = c.montoAplicar - c.restante
+        if (reduccion <= 0) continue
+        if (c.tipo === 'op') { const op = ordenesPago.find(o => o.id === String(c.id)); if (op) opUpdates.push({ id: op.id, importeNuevo: Math.max(0, op.importe_no_conciliado - reduccion) }) }
+        else { const nc = notasCreditoCompra.find(n => n.id === c.id); if (nc) ncUpdates.push({ id: nc.id, saldoNuevo: Math.max(0, (nc.saldo_disponible ?? nc.total) - reduccion) }) }
+      }
+      if (aplicaciones.length === 0) { alert('No se encontraron pares válidos.'); return }
+      for (const u of facturaUpdates) {
+        const total = facturasCompra.find(f => f.id === u.id)?.total ?? 0
+        const estado = u.saldoNuevo <= 0.01 ? 'pagada' : u.saldoNuevo < total ? 'pagada_parcial' : 'pendiente'
+        const { error } = await supabase.from('facturas_compra').update({ saldo: u.saldoNuevo, estado }).eq('id', u.id)
+        if (error) { alert('Error al actualizar factura: ' + error.message); return }
+      }
+      for (const u of opUpdates) await supabase.from('compras_ordenes_pago').update({ importe_no_conciliado: u.importeNuevo }).eq('id', u.id)
+      for (const u of ncUpdates) {
+        const estado = u.saldoNuevo <= 0.01 ? 'aplicada' : 'confirmada'
+        await supabase.from('notas_credito_compra').update({ saldo_disponible: u.saldoNuevo, estado }).eq('id', u.id)
+      }
+      for (const u of facturaUpdates) {
+        const total = facturasCompra.find(f => f.id === u.id)?.total ?? 0
+        const estado = u.saldoNuevo <= 0.01 ? 'pagada' as const : u.saldoNuevo < total ? 'pagada_parcial' as const : 'pendiente' as const
+        setFacturasCompra(prev => prev.map(f => f.id === u.id ? { ...f, saldo: u.saldoNuevo, estado } : f))
+      }
+      for (const u of opUpdates) setOrdenesPago(prev => prev.map(o => o.id === u.id ? { ...o, importe_no_conciliado: u.importeNuevo } : o))
+      for (const u of ncUpdates) {
+        const estado = u.saldoNuevo <= 0.01 ? 'aplicada' as const : 'confirmada' as const
+        setNotasCreditoCompra(prev => prev.map(n => n.id === u.id ? { ...n, saldo_disponible: u.saldoNuevo, estado } : n))
+      }
+      const totalConciliado = aplicaciones.reduce((s, a) => s + a.monto, 0)
+      const { data: nuevaConc, error: concErr } = await supabase
+        .from('conciliaciones_deuda_compras')
+        .insert({ fecha: new Date().toISOString(), proveedor_id: proveedor.id, proveedor_nombre: proveedor.nombre, total_conciliado: totalConciliado, usuario: currentUser?.nombre || 'Admin', sucursal_id: sucursalActiva?.id ?? null })
+        .select('id').single()
+      if (concErr) { alert('Error al guardar historial: ' + concErr.message); return }
+      await supabase.from('conciliaciones_deuda_compras_aplicaciones').insert(aplicaciones.map(a => ({ conciliacion_id: nuevaConc.id, ...a })))
+      setCdcHistorial(prev => [{ id: nuevaConc.id, fecha: new Date().toISOString(), proveedor_id: proveedor.id, proveedor_nombre: proveedor.nombre, total_conciliado: totalConciliado, usuario: currentUser?.nombre || 'Admin', estado: 'activa', fecha_cancelacion: null, aplicaciones }, ...prev.filter(h => h.id !== nuevaConc.id)])
+    } catch (err) { alert('Error inesperado: ' + (err as Error).message) }
+    finally { setCdcEjecutando(false); setCdcSelDebitos([]); setCdcSelCreditos([]) }
+  }
+
+  const revertirConciliacionCompras = async (concId: number) => {
+    if (!confirm('¿Confirmás revertir esta conciliación? Se restaurarán los saldos involucrados.')) return
+    setCdcRevertiendoId(concId)
+    try {
+      const supabase = createSupabaseClient()
+      const { data: apls, error: aplErr } = await supabase.from('conciliaciones_deuda_compras_aplicaciones').select('*').eq('conciliacion_id', concId)
+      if (aplErr || !apls) { alert('Error al obtener aplicaciones: ' + aplErr?.message); return }
+      for (const apl of apls) {
+        const factura = facturasCompra.find(f => f.numero === apl.debito_numero)
+        if (factura) {
+          const saldoR = Math.min((factura.saldo || 0) + apl.monto, factura.total)
+          await supabase.from('facturas_compra').update({ saldo: saldoR, estado: 'pendiente' }).eq('id', factura.id)
+          setFacturasCompra(prev => prev.map(f => f.id === factura.id ? { ...f, saldo: saldoR, estado: 'pendiente' } : f))
+        }
+        if (apl.credito_tipo?.startsWith('NC')) {
+          const nc = notasCreditoCompra.find(n => n.numero === apl.credito_numero)
+          if (nc) {
+            const saldoR = Math.min((nc.saldo_disponible ?? nc.total ?? 0) + apl.monto, nc.total)
+            await supabase.from('notas_credito_compra').update({ saldo_disponible: saldoR, estado: 'confirmada' }).eq('id', nc.id)
+            setNotasCreditoCompra(prev => prev.map(n => n.id === nc.id ? { ...n, saldo_disponible: saldoR, estado: 'confirmada' as const } : n))
+          }
+        } else {
+          const op = ordenesPago.find(o => o.numero === apl.credito_numero)
+          if (op) {
+            const importeR = (op.importe_no_conciliado || 0) + apl.monto
+            await supabase.from('compras_ordenes_pago').update({ importe_no_conciliado: importeR }).eq('id', op.id)
+            setOrdenesPago(prev => prev.map(o => o.id === op.id ? { ...o, importe_no_conciliado: importeR } : o))
+          }
+        }
+      }
+      const fechaCancelacion = new Date().toISOString()
+      const { error: updErr } = await supabase.from('conciliaciones_deuda_compras').update({ estado: 'cancelada', fecha_cancelacion: fechaCancelacion }).eq('id', concId)
+      if (updErr) { alert('Error al cancelar: ' + updErr.message); return }
+      setCdcHistorial(prev => prev.map(h => h.id === concId ? { ...h, estado: 'cancelada', fecha_cancelacion: fechaCancelacion } : h))
+    } catch (err) { alert('Error inesperado: ' + (err as Error).message) }
+    finally { setCdcRevertiendoId(null) }
+  }
+
+  const renderConciliacionDeudaCompras = () => {
+    const proveedorSel = proveedores.find(p => p.id === cdcProveedorId)
+    const todasFacts = cdcProveedorId ? facturasCompra.filter(f => f.proveedor_id === cdcProveedorId && f.estado !== 'borrador' && f.estado !== 'cancelada') : []
+    const factsARS = todasFacts.filter(f => !f.moneda || f.moneda === 'ARS')
+    const factsUSD = todasFacts.filter(f => f.moneda === 'USD')
+    const todasOP = cdcProveedorId ? ordenesPago.filter(o => o.proveedor_id === cdcProveedorId && o.estado === 'publicado') : []
+    const opARS = todasOP.filter(o => !o.moneda || o.moneda === 'ARS')
+    const opUSD = todasOP.filter(o => o.moneda === 'USD')
+    const todasNC = cdcProveedorId ? notasCreditoCompra.filter(n => n.proveedor_id === cdcProveedorId && n.estado === 'confirmada') : []
+    const ncARS = todasNC.filter(n => !n.moneda || n.moneda === 'ARS')
+    const ncUSD = todasNC.filter(n => n.moneda === 'USD')
+    const debitoARSTotal = factsARS.filter(f => f.saldo > 0).reduce((s, f) => s + f.saldo, 0)
+    const creditoARSTotal = opARS.filter(o => o.importe_no_conciliado > 0).reduce((s, o) => s + o.importe_no_conciliado, 0) + ncARS.filter(n => (n.saldo_disponible ?? n.total) > 0).reduce((s, n) => s + (n.saldo_disponible ?? n.total), 0)
+    const debitoUSDTotal = factsUSD.filter(f => f.saldo > 0).reduce((s, f) => s + f.saldo, 0)
+    const creditoUSDTotal = opUSD.filter(o => o.importe_no_conciliado > 0).reduce((s, o) => s + o.importe_no_conciliado, 0) + ncUSD.filter(n => (n.saldo_disponible ?? n.total) > 0).reduce((s, n) => s + (n.saldo_disponible ?? n.total), 0)
+    const hayMixto = (cdcSelDebitos.some(d => d.moneda === 'ARS') && cdcSelCreditos.some(c => c.moneda === 'USD')) || (cdcSelDebitos.some(d => d.moneda === 'USD') && cdcSelCreditos.some(c => c.moneda === 'ARS'))
+    const haySeleccion = (cdcSelDebitos.some(d => d.moneda === 'ARS') && cdcSelCreditos.some(c => c.moneda === 'ARS')) ||
+      (cdcSelDebitos.some(d => d.moneda === 'USD') && cdcSelCreditos.some(c => c.moneda === 'USD')) ||
+      (hayMixto && cdcCotizacion > 0)
+    const toggleDebito = (id: number, moneda: 'ARS' | 'USD', saldo: number) =>
+      setCdcSelDebitos(prev => prev.find(d => d.id === id) ? prev.filter(d => d.id !== id) : [...prev, { id, tipo: 'factura' as const, moneda, montoAplicar: saldo }])
+    const toggleCredito = (id: number, tipo: 'op' | 'nc', moneda: 'ARS' | 'USD', saldo: number) =>
+      setCdcSelCreditos(prev => prev.find(c => c.id === id && c.tipo === tipo) ? prev.filter(c => !(c.id === id && c.tipo === tipo)) : [...prev, { id, tipo, moneda, montoAplicar: saldo }])
+
+    const PanelDebitos = ({ moneda, factsList }: { moneda: 'ARS' | 'USD'; factsList: typeof factsARS }) => {
+      const filtro = cdcFiltroTextoDb.toLowerCase()
+      const visibles = cdcFiltroConciliado === 'si' ? factsList.filter(f => f.saldo <= 0) : cdcFiltroConciliado === 'no' ? factsList.filter(f => f.saldo > 0) : cdcMostrarTodosDb ? factsList : factsList.filter(f => f.saldo > 0)
+      const filtradas = filtro ? visibles.filter(f => f.numero?.toLowerCase().includes(filtro)) : visibles
+      return (
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="px-3 py-2 bg-red-50 border-b flex items-center justify-between">
+            <span className="text-sm font-medium text-red-800">Débitos {moneda}</span>
+            <div className="flex items-center gap-2">
+              <input type="text" placeholder="Filtrar..." value={cdcFiltroTextoDb} onChange={e => setCdcFiltroTextoDb(e.target.value)} className="px-2 py-0.5 text-xs border rounded w-24" />
+              <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer"><input type="checkbox" checked={cdcMostrarTodosDb} onChange={e => setCdcMostrarTodosDb(e.target.checked)} className="w-3 h-3 rounded" /> Todos</label>
+              <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-medium">{filtradas.length}</span>
+            </div>
+          </div>
+          <div className="overflow-auto max-h-52">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-white border-b"><tr className="text-gray-500 uppercase">
+                <th className="py-1.5 px-2 text-left font-semibold">N°</th>
+                <th className="py-1.5 px-2 text-left font-semibold">Tipo</th>
+                <th className="py-1.5 px-2 text-left font-semibold">Venc.</th>
+                <th className="py-1.5 px-2 text-right font-semibold">Total</th>
+                <th className="py-1.5 px-2 text-right font-semibold">Saldo</th>
+                <th className="py-1.5 px-2 text-center font-semibold">✓</th>
+              </tr></thead>
+              <tbody>
+                {filtradas.length > 0 ? filtradas.map(f => {
+                  const sel = cdcSelDebitos.find(d => d.id === f.id)
+                  const conciliada = f.saldo <= 0
+                  return (
+                    <tr key={f.id} onClick={() => !conciliada && toggleDebito(f.id, moneda, f.saldo)}
+                      className={`border-b cursor-pointer ${sel ? 'bg-red-50' : 'hover:bg-gray-50'} ${conciliada ? 'opacity-40' : ''}`}>
+                      <td className="py-1 px-2 text-blue-600">{f.numero}</td>
+                      <td className="py-1 px-2 text-gray-500">FC {f.tipo}</td>
+                      <td className="py-1 px-2 text-gray-500">{f.fecha_vencimiento ? f.fecha_vencimiento.split('T')[0] : '-'}</td>
+                      <td className="py-1 px-2 text-right">{moneda === 'USD' ? `USD ${f.total?.toLocaleString('es-AR')}` : `$${f.total?.toLocaleString('es-AR')}`}</td>
+                      <td className="py-1 px-2 text-right font-semibold text-red-600">{moneda === 'USD' ? `USD ${f.saldo?.toLocaleString('es-AR')}` : `$${f.saldo?.toLocaleString('es-AR')}`}</td>
+                      <td className="py-1 px-2 text-center" onClick={e => e.stopPropagation()}>
+                        {!conciliada && <input type="checkbox" checked={!!sel} onChange={() => toggleDebito(f.id, moneda, f.saldo)} className="w-3.5 h-3.5 rounded border-gray-300" />}
+                      </td>
+                    </tr>
+                  )
+                }) : <tr><td colSpan={6} className="py-6 text-center text-gray-400">{!cdcProveedorId ? 'Seleccioná un proveedor' : `Sin débitos ${moneda}`}</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )
+    }
+
+    const PanelCreditos = ({ moneda, opList, ncList }: { moneda: 'ARS' | 'USD'; opList: typeof opARS; ncList: typeof ncARS }) => {
+      const filtro = cdcFiltroTextoCr.toLowerCase()
+      const opFilt = (cdcFiltroConciliado === 'si' ? opList.filter(o => o.importe_no_conciliado <= 0) : opList.filter(o => cdcMostrarTodosCr ? true : o.importe_no_conciliado > 0)).filter(o => !filtro || o.numero?.toLowerCase().includes(filtro))
+      const ncFilt = (cdcFiltroConciliado === 'si' ? ncList.filter(n => (n.saldo_disponible ?? n.total) <= 0) : ncList.filter(n => cdcMostrarTodosCr ? true : (n.saldo_disponible ?? n.total) > 0)).filter(n => !filtro || n.numero?.toLowerCase().includes(filtro))
+      return (
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="px-3 py-2 bg-blue-50 border-b flex items-center justify-between">
+            <span className="text-sm font-medium text-blue-800">Créditos {moneda}</span>
+            <div className="flex items-center gap-2">
+              <input type="text" placeholder="Filtrar..." value={cdcFiltroTextoCr} onChange={e => setCdcFiltroTextoCr(e.target.value)} className="px-2 py-0.5 text-xs border rounded w-24" />
+              <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer"><input type="checkbox" checked={cdcMostrarTodosCr} onChange={e => setCdcMostrarTodosCr(e.target.checked)} className="w-3 h-3 rounded" /> Todos</label>
+              <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">{opFilt.length + ncFilt.length}</span>
+            </div>
+          </div>
+          <div className="overflow-auto max-h-52">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-white border-b"><tr className="text-gray-500 uppercase">
+                <th className="py-1.5 px-2 text-center font-semibold">✓</th>
+                <th className="py-1.5 px-2 text-right font-semibold">Saldo</th>
+                <th className="py-1.5 px-2 text-right font-semibold">Importe</th>
+                <th className="py-1.5 px-2 text-left font-semibold">Fecha</th>
+                <th className="py-1.5 px-2 text-left font-semibold">N°</th>
+                <th className="py-1.5 px-2 text-left font-semibold">Tipo</th>
+              </tr></thead>
+              <tbody>
+                {opFilt.map(o => {
+                  const saldo = o.importe_no_conciliado
+                  const sel = cdcSelCreditos.find(c => c.id === Number(o.id) && c.tipo === 'op')
+                  const aplicado = saldo <= 0
+                  return (
+                    <tr key={`op-${o.id}`} onClick={() => !aplicado && toggleCredito(Number(o.id), 'op', moneda, saldo)}
+                      className={`border-b cursor-pointer ${sel ? 'bg-blue-50' : 'hover:bg-gray-50'} ${aplicado ? 'opacity-40' : ''}`}>
+                      <td className="py-1 px-2 text-center" onClick={e => e.stopPropagation()}>
+                        {!aplicado && <input type="checkbox" checked={!!sel} onChange={() => toggleCredito(Number(o.id), 'op', moneda, saldo)} className="w-3.5 h-3.5 rounded border-gray-300" />}
+                      </td>
+                      <td className="py-1 px-2 text-right font-semibold text-green-600">{moneda === 'USD' ? `USD ${saldo?.toLocaleString('es-AR')}` : `$${saldo?.toLocaleString('es-AR')}`}</td>
+                      <td className="py-1 px-2 text-right">{moneda === 'USD' ? `USD ${o.importe?.toLocaleString('es-AR')}` : `$${o.importe?.toLocaleString('es-AR')}`}</td>
+                      <td className="py-1 px-2 text-gray-500">{o.fecha?.split('T')[0]}</td>
+                      <td className="py-1 px-2 text-blue-600">{o.numero}</td>
+                      <td className="py-1 px-2 text-gray-500">OP</td>
+                    </tr>
+                  )
+                })}
+                {ncFilt.map(n => {
+                  const saldo = n.saldo_disponible ?? n.total
+                  const sel = cdcSelCreditos.find(c => c.id === n.id && c.tipo === 'nc')
+                  const aplicada = saldo <= 0
+                  return (
+                    <tr key={`nc-${n.id}`} onClick={() => !aplicada && toggleCredito(n.id, 'nc', moneda, saldo)}
+                      className={`border-b cursor-pointer bg-emerald-50/30 ${sel ? 'bg-emerald-100' : 'hover:bg-emerald-50'} ${aplicada ? 'opacity-40' : ''}`}>
+                      <td className="py-1 px-2 text-center" onClick={e => e.stopPropagation()}>
+                        {!aplicada && <input type="checkbox" checked={!!sel} onChange={() => toggleCredito(n.id, 'nc', moneda, saldo)} className="w-3.5 h-3.5 rounded border-gray-300 accent-emerald-600" />}
+                      </td>
+                      <td className="py-1 px-2 text-right font-semibold text-green-600">{moneda === 'USD' ? `USD ${saldo?.toLocaleString('es-AR')}` : `$${saldo?.toLocaleString('es-AR')}`}</td>
+                      <td className="py-1 px-2 text-right">{moneda === 'USD' ? `USD ${n.total?.toLocaleString('es-AR')}` : `$${n.total?.toLocaleString('es-AR')}`}</td>
+                      <td className="py-1 px-2 text-gray-500">{n.fecha?.split('T')[0]}</td>
+                      <td className="py-1 px-2 text-emerald-700 font-medium">{n.numero}</td>
+                      <td className="py-1 px-2"><span className="bg-emerald-100 text-emerald-600 rounded px-1 text-xs">NC</span></td>
+                    </tr>
+                  )
+                })}
+                {opFilt.length === 0 && ncFilt.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-gray-400">{!cdcProveedorId ? 'Seleccioná un proveedor' : `Sin créditos ${moneda}`}</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )
+    }
+
+    const historialProveedor = cdcProveedorId ? cdcHistorial.filter(h => h.proveedor_id === cdcProveedorId) : []
+
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-2xl font-bold text-amber-900">Conciliación de Deuda - Compras</h1>
+          <div className="flex gap-2">
+            <button onClick={() => setCdcTab('conciliar')} className={`px-4 py-2 text-sm font-medium rounded ${cdcTab === 'conciliar' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Conciliar</button>
+            <button onClick={() => { setCdcTab('historial'); if (cdcProveedorId) cargarHistorialCdcCompras(cdcProveedorId) }} className={`px-4 py-2 text-sm font-medium rounded ${cdcTab === 'historial' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Historial</button>
+          </div>
+        </div>
+
+        {cdcTab === 'conciliar' && (
+          <div className="space-y-4">
+            <div className="bg-white border rounded-lg p-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Proveedor</label>
+                  <select value={cdcProveedorId ?? ''} onChange={e => { const id = Number(e.target.value) || null; setCdcProveedorId(id); setCdcSelDebitos([]); setCdcSelCreditos([]); if (id) cargarHistorialCdcCompras(id) }} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    <option value="">Seleccionar proveedor...</option>
+                    {proveedores.filter((p: any) => p.activo !== false).map((p: any) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Filtro</label>
+                  <select value={cdcFiltroConciliado} onChange={e => setCdcFiltroConciliado(e.target.value as 'no' | 'si' | 'todos')} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                    <option value="no">Pendientes</option>
+                    <option value="todos">Todos</option>
+                    <option value="si">Conciliados</option>
+                  </select>
+                </div>
+              </div>
+              {proveedorSel && (
+                <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-red-50 rounded p-2 text-center"><p className="text-xs text-red-600">Deuda ARS</p><p className="text-sm font-bold text-red-700">${debitoARSTotal.toLocaleString('es-AR', {minimumFractionDigits:2})}</p></div>
+                  <div className="bg-blue-50 rounded p-2 text-center"><p className="text-xs text-blue-600">Crédito ARS</p><p className="text-sm font-bold text-blue-700">${creditoARSTotal.toLocaleString('es-AR', {minimumFractionDigits:2})}</p></div>
+                  <div className="bg-red-50 rounded p-2 text-center"><p className="text-xs text-red-600">Deuda USD</p><p className="text-sm font-bold text-red-700">USD {debitoUSDTotal.toLocaleString('es-AR', {minimumFractionDigits:2})}</p></div>
+                  <div className="bg-blue-50 rounded p-2 text-center"><p className="text-xs text-blue-600">Crédito USD</p><p className="text-sm font-bold text-blue-700">USD {creditoUSDTotal.toLocaleString('es-AR', {minimumFractionDigits:2})}</p></div>
+                </div>
+              )}
+            </div>
+            <div className="space-y-3">
+              <div className="bg-white border rounded-lg overflow-hidden">
+                <div className="px-4 py-2 bg-gray-50 border-b"><span className="text-xs font-semibold text-gray-600 uppercase">Pesos (ARS)</span></div>
+                <div className="flex divide-x"><PanelDebitos moneda="ARS" factsList={factsARS} /><PanelCreditos moneda="ARS" opList={opARS} ncList={ncARS} /></div>
+              </div>
+              <div className="bg-white border rounded-lg overflow-hidden">
+                <div className="px-4 py-2 bg-gray-50 border-b"><span className="text-xs font-semibold text-gray-600 uppercase">Dólares (USD)</span></div>
+                <div className="flex divide-x"><PanelDebitos moneda="USD" factsList={factsUSD} /><PanelCreditos moneda="USD" opList={opUSD} ncList={ncUSD} /></div>
+              </div>
+            </div>
+            <div className="bg-white border rounded-lg p-4">
+              <div className="flex flex-wrap items-center gap-4">
+                {hayMixto && (
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-medium text-gray-600">Cotización USD/ARS</label>
+                    <input type="number" value={cdcCotizacion || ''} onChange={e => setCdcCotizacion(Number(e.target.value))} placeholder="1200" className="w-24 border border-gray-300 rounded px-2 py-1 text-sm" />
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-gray-500">Débitos sel.:</span><span className="font-semibold">{cdcSelDebitos.length}</span>
+                  <span className="text-gray-500 ml-2">Créditos sel.:</span><span className="font-semibold">{cdcSelCreditos.length}</span>
+                </div>
+                <div className="ml-auto flex gap-3">
+                  <button onClick={() => { setCdcSelDebitos([]); setCdcSelCreditos([]) }} className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Limpiar selección</button>
+                  <button onClick={confirmarConciliacionCompras} disabled={!haySeleccion || cdcEjecutando} className="px-4 py-2 text-sm bg-indigo-900 text-white rounded-lg font-medium hover:bg-indigo-800 disabled:opacity-50 transition-colors">{cdcEjecutando ? 'Conciliando...' : 'Conciliar'}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {cdcTab === 'historial' && (
+          <div className="bg-white border rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b bg-gray-50"><p className="text-sm font-medium text-gray-700">{proveedorSel ? `Historial de ${proveedorSel.nombre}` : 'Seleccioná un proveedor para ver el historial'}</p></div>
+            {historialProveedor.length === 0 ? (
+              <div className="py-12 text-center text-gray-400">{cdcProveedorId ? 'Sin conciliaciones registradas' : 'Seleccioná un proveedor'}</div>
+            ) : (
+              <div className="divide-y">
+                {historialProveedor.map(h => (
+                  <div key={h.id} className={`p-4 ${h.estado === 'cancelada' ? 'opacity-50' : ''}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs px-2 py-0.5 rounded font-medium ${h.estado === 'activa' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{h.estado === 'activa' ? 'Activa' : 'Cancelada'}</span>
+                        <span className="text-sm text-gray-600">{h.fecha.split('T')[0]}</span>
+                        <span className="text-sm font-semibold">${h.total_conciliado.toLocaleString('es-AR', {minimumFractionDigits:2})}</span>
+                        <span className="text-xs text-gray-400">{h.usuario}</span>
+                      </div>
+                      {h.estado === 'activa' && (
+                        <button onClick={() => revertirConciliacionCompras(h.id)} disabled={cdcRevertiendoId === h.id} className="px-3 py-1 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 disabled:opacity-50">{cdcRevertiendoId === h.id ? 'Revirtiendo...' : 'Revertir'}</button>
+                      )}
+                    </div>
+                    {h.aplicaciones.length > 0 && (
+                      <div className="mt-2 ml-2">
+                        <table className="w-full text-xs text-gray-500">
+                          <thead><tr>
+                            <th className="text-left py-1 font-medium">Débito</th><th className="text-left py-1 font-medium">N° Débito</th>
+                            <th className="text-left py-1 font-medium">Crédito</th><th className="text-left py-1 font-medium">N° Crédito</th>
+                            <th className="text-right py-1 font-medium">Monto</th>
+                          </tr></thead>
+                          <tbody>
+                            {h.aplicaciones.map((a, i) => (
+                              <tr key={i} className="border-t border-gray-100">
+                                <td className="py-1">{a.debito_tipo}</td><td className="py-1 text-blue-600">{a.debito_numero}</td>
+                                <td className="py-1">{a.credito_tipo}</td><td className="py-1 text-blue-600">{a.credito_numero}</td>
+                                <td className="py-1 text-right font-mono">${a.monto.toLocaleString('es-AR', {minimumFractionDigits:2})}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // =====================================================
   // RENDER PLACEHOLDER
   // =====================================================
   const renderPlaceholder = (title: string) => (
@@ -8116,7 +8860,7 @@ export default function ModuloCompras({
       case "historial_proveedores":
         return renderPlaceholder("Historial Proveedores")
       case "conciliacion_deuda":
-        return renderPlaceholder("Conciliación de Deuda")
+        return renderConciliacionDeudaCompras()
       case "ordenes_compra":
         return renderOrdenesCompra()
       case "recepciones":
@@ -8173,7 +8917,7 @@ export default function ModuloCompras({
               numero_operacion: result.numero_operacion || result.numero_cheque || undefined,
               fecha_operacion: result.fecha_operacion || result.vencimiento_cheque || undefined,
               importe: result.importe,
-              moneda: result.moneda as "ARS" | "USD" | "EUR",
+              moneda: result.moneda as string,
               importe_comp: result.importe_ars ?? result.importe,
               moneda_comp: opForm.moneda ?? "ARS",
               observaciones: result.observaciones,

@@ -3,8 +3,6 @@
 import { useEffect, useRef, useState, useMemo } from "react"
 import { Search, X } from "lucide-react"
 
-const COTIZACION_DOLAR_MOCK = 1200
-
 interface ProductoDropdownProps {
   nvClienteId: number | null
   nvListaPreciosId: number | null
@@ -31,6 +29,14 @@ export default function ProductoDropdown({
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [modalSearch, setModalSearch] = useState(productoSearchText ?? "")
+  const [cotizacionDolar, setCotizacionDolar] = useState(1)
+
+  useEffect(() => {
+    fetch("/api/contabilidad/cotizaciones?moneda_codigo=USD&latest=true")
+      .then(r => r.json())
+      .then((d: { tasa?: number } | null) => { if (d?.tasa) setCotizacionDolar(d.tasa) })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!anchorRef.current) return
@@ -77,7 +83,7 @@ export default function ProductoDropdown({
     const lineaLP = versionActiva?.lineas?.find((l: any) => l.producto_id === p.id)
     const iva: number = lineaLP?.iva ?? 21
     if (lineaLP) {
-      const cotiz = lineaLP.cotizacion_dolar || COTIZACION_DOLAR_MOCK
+      const cotiz = lineaLP.cotizacion_dolar || cotizacionDolar
       if (lineaLP.forzar_precio_pesos && lineaLP.precio_forzado_ars) {
         const precioARS = lineaLP.precio_forzado_ars
         return { precioUnitario: precioARS, moneda: "ARS" as const, precioUSD: parseFloat((precioARS / cotiz).toFixed(2)), precioARS, iva }
@@ -91,7 +97,7 @@ export default function ProductoDropdown({
       }
     }
     const precioARS = p.precio_venta ?? p.costo_manual ?? 0
-    return { precioUnitario: precioARS, moneda: (p.moneda_costo === "USD" ? "USD" : "ARS") as "ARS" | "USD", precioUSD: parseFloat((precioARS / COTIZACION_DOLAR_MOCK).toFixed(2)), precioARS, iva: 21 }
+    return { precioUnitario: precioARS, moneda: (p.moneda_costo === "USD" ? "USD" : "ARS") as "ARS" | "USD", precioUSD: parseFloat((precioARS / cotizacionDolar).toFixed(2)), precioARS, iva: 21 }
   }
 
   const formatPrice = (n: number) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(n)

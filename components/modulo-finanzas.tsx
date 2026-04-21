@@ -790,7 +790,7 @@ function SeccionTarjetas({ tarjetas, setTarjetas }: { tarjetas: Tarjeta[]; setTa
   const guardar = () => {
     if (!form.nombre?.trim()) return
     if (creando) {
-      setTarjetas(prev => [...prev, { ...form, id: Date.now() } as Tarjeta])
+      setTarjetas(prev => [{ ...form, id: Date.now() } as Tarjeta, ...prev])
     } else if (editando) {
       setTarjetas(prev => prev.map(t => t.id === editando.id ? { ...t, ...form } as Tarjeta : t))
     }
@@ -916,7 +916,7 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
     if (!form.nombre?.trim()) return
     if (creando) {
       const nuevo: GrupoTarjeta = { ...form, id: Date.now() } as GrupoTarjeta
-      setGrupos(prev => [...prev, nuevo])
+      setGrupos(prev => [nuevo, ...prev])
       setSelectedGrupo(nuevo)
     } else if (selectedGrupo) {
       const updated = { ...selectedGrupo, ...form } as GrupoTarjeta
@@ -1139,7 +1139,7 @@ function SeccionRecargos({ tarjetas, grupos, recargos, setRecargos }: {
   const guardar = () => {
     if (!form.tarjeta_id || !form.grupo_id) return
     if (creando) {
-      setRecargos(prev => [...prev, { ...form, id: Date.now() } as RecargoTarjeta])
+      setRecargos(prev => [{ ...form, id: Date.now() } as RecargoTarjeta, ...prev])
     } else if (editando) {
       setRecargos(prev => prev.map(r => r.id === editando.id ? { ...r, ...form } as RecargoTarjeta : r))
     }
@@ -1548,13 +1548,40 @@ function SeccionExtractosCaja() {
       supabase.from("extracto_saldos").select("*").eq("extracto_id", ext.id),
       supabase.from("movimientos_caja").select("*").eq("extracto_id", ext.id).order("fecha", { ascending: false }),
     ])
-    const saldos = (sR.data || []).map((s: ExtractoSaldo) => {
-      const movs = ((mR.data || []) as MovimientoCaja[]).filter((m) => m.valor_id === s.valor_id && m.estado_movimiento !== "cancelado")
+    let saldosData: ExtractoSaldo[] = sR.data || []
+    const todosMovs: MovimientoCaja[] = mR.data || []
+
+    // Detectar movimientos con valor_id no registrado en extracto_saldos
+    // (puede ocurrir si se agregó un valor a la caja después de abrir el extracto)
+    if (ext.estado === "abierto") {
+      const valorIdsRegistrados = new Set(saldosData.map(s => s.valor_id))
+      const valoresHuerfanos = new Map<string, MovimientoCaja>()
+      for (const m of todosMovs) {
+        if (m.valor_id && !valorIdsRegistrados.has(m.valor_id) && !valoresHuerfanos.has(m.valor_id)) {
+          valoresHuerfanos.set(m.valor_id, m)
+        }
+      }
+      if (valoresHuerfanos.size > 0) {
+        const filasNuevas = Array.from(valoresHuerfanos.values()).map(m => ({
+          extracto_id: ext.id,
+          valor_id: m.valor_id,
+          valor_nombre: m.valor_nombre,
+          valor_codigo: m.valor_nombre, // fallback al nombre como código
+          moneda: m.moneda,
+          saldo_apertura: 0,
+        }))
+        const { data: insertados } = await supabase.from("extracto_saldos").insert(filasNuevas).select()
+        if (insertados) saldosData = [...saldosData, ...insertados]
+      }
+    }
+
+    const saldos = saldosData.map((s: ExtractoSaldo) => {
+      const movs = todosMovs.filter((m) => m.valor_id === s.valor_id && m.estado_movimiento !== "cancelado")
       const ingresos = movs.filter((m) => m.tipo_movimiento === "ingreso").reduce((a: number, m) => a + Number(m.importe), 0)
       const egresos = movs.filter((m) => m.tipo_movimiento === "egreso").reduce((a: number, m) => a + Number(m.importe), 0)
       return { ...s, transacciones: movs.length, saldo_estimado: Number(s.saldo_apertura) + ingresos - egresos }
     })
-    setExtractoSel({ ...ext, saldos, movimientos: mR.data || [] })
+    setExtractoSel({ ...ext, saldos, movimientos: todosMovs })
     setTabDetalle("saldos")
     setVista("detalle")
   }
@@ -1586,8 +1613,25 @@ function SeccionExtractosCaja() {
       .eq("caja_id", cajaId).eq("estado", "cerrado")
       .order("fecha_cierre", { ascending: false }).limit(1)
     if (last && last.length > 0) {
-      const { data: saldos } = await supabase.from("extracto_saldos").select("*").eq("extracto_id", last[0].id)
-      setUltimosSaldos(saldos || [])
+      const [saldosRes, movsRes] = await Promise.all([
+        supabase.from("extracto_saldos").select("*").eq("extracto_id", last[0].id),
+        supabase.from("movimientos_caja")
+          .select("valor_id, tipo_movimiento, importe, estado_movimiento")
+          .eq("extracto_id", last[0].id),
+      ])
+      const saldosConEstimado = (saldosRes.data || []).map((s: ExtractoSaldo) => {
+        const movs = (movsRes.data || []).filter(
+          (m: Record<string, unknown>) => m.valor_id === s.valor_id && m.estado_movimiento !== "cancelado"
+        )
+        const ingresos = movs
+          .filter((m: Record<string, unknown>) => m.tipo_movimiento === "ingreso")
+          .reduce((a: number, m: Record<string, unknown>) => a + Number(m.importe), 0)
+        const egresos = movs
+          .filter((m: Record<string, unknown>) => m.tipo_movimiento === "egreso")
+          .reduce((a: number, m: Record<string, unknown>) => a + Number(m.importe), 0)
+        return { ...s, saldo_estimado: Number(s.saldo_apertura) + ingresos - egresos }
+      })
+      setUltimosSaldos(saldosConEstimado)
     }
   }
 
@@ -1611,7 +1655,7 @@ function SeccionExtractosCaja() {
         return {
           extracto_id: newExt.id, valor_id: v.id, valor_nombre: v.nombre,
           valor_codigo: v.codigo, moneda: v.moneda,
-          saldo_apertura: lastS?.saldo_cierre_ingresado ?? 0,
+          saldo_apertura: lastS?.saldo_cierre_ingresado ?? lastS?.saldo_estimado ?? 0,
         }
       })
       await supabase.from("extracto_saldos").insert(filas)
@@ -1780,7 +1824,7 @@ function SeccionExtractosCaja() {
                               {ultimosSaldos.map(s => (
                                 <tr key={s.id} className="border-t border-gray-100">
                                   <td className="py-2 px-3">{s.valor_nombre}</td>
-                                  <td className="py-2 px-3 text-right font-mono">{formatMonto(Number(s.saldo_cierre_ingresado ?? 0))}</td>
+                                  <td className="py-2 px-3 text-right font-mono">{formatMonto(Number(s.saldo_cierre_ingresado ?? s.saldo_estimado ?? 0))}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -8979,9 +9023,15 @@ export type { RecargoTarjeta as RecargoTarjetaType }
 
 export default function ModuloFinanzas() {
   const [activeItem, setActiveItem] = useState<string>("extractos_caja")
-  const [tarjetas, setTarjetas] = useState<Tarjeta[]>(tarjetasIniciales)
-  const [grupos, setGrupos] = useState<GrupoTarjeta[]>(gruposIniciales)
-  const [recargos, setRecargos] = useState<RecargoTarjeta[]>(recargosIniciales)
+  const [tarjetas, setTarjetas] = useState<Tarjeta[]>([])
+  const [grupos, setGrupos] = useState<GrupoTarjeta[]>([])
+  const [recargos, setRecargos] = useState<RecargoTarjeta[]>([])
+
+  useEffect(() => {
+    fetch("/api/tarjetas").then(r => r.json()).then(d => setTarjetas(Array.isArray(d) ? d : [])).catch(console.error)
+    fetch("/api/grupos-tarjeta").then(r => r.json()).then(d => setGrupos(Array.isArray(d) ? d : [])).catch(console.error)
+    fetch("/api/recargos-tarjeta").then(r => r.json()).then(d => setRecargos(Array.isArray(d) ? d : [])).catch(console.error)
+  }, [])
   const [menuExpandido, setMenuExpandido] = useState<Record<string, boolean>>({
     bancoYCaja: true, operaciones: false, cheques: false, tarjetasConc: false, configuracion: false,
   })

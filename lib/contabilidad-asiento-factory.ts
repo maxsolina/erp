@@ -223,6 +223,9 @@ export async function generarAsientoFacturaCompra(
     impuestos: number
     total: number
     moneda?: string
+    /** Cotización de la moneda a ARS (ej: 1200 significa 1 USD = 1200 ARS).
+     *  Obligatorio cuando moneda != 'ARS'. Si se omite, se usa 1 (sin conversión). */
+    cotizacion?: number | null
     /** Líneas de detalle de la factura (cuenta contable + importe por línea).
      *  Si se proveen, el asiento DEBE se construye cuenta a cuenta desde aquí.
      *  Si están vacías o no se proveen, se usa la cuenta genérica de mapeo. */
@@ -230,16 +233,22 @@ export async function generarAsientoFacturaCompra(
       cuenta_id: string | null
       cuenta_codigo: string
       cuenta_nombre: string
-      subtotal: number  // importe de esta línea (sin IVA)
+      subtotal: number  // importe de esta línea (sin IVA, en moneda original)
     }[]
     /** Impuestos detallados (IVA manual, etc.) */
     impuestos_detalle?: {
       nombre: string
-      importe: number
+      importe: number  // en moneda original
       cuenta_id?: string | null
     }[]
   }
 ): Promise<ResultadoAsiento> {
+
+  // Tasa de conversión: si la factura es en moneda extranjera, multiplicar por cotizacion
+  const tc = (factura.moneda && factura.moneda !== "ARS" && (factura.cotizacion ?? 0) > 0)
+    ? Number(factura.cotizacion)
+    : 1
+  const conv = (v: number) => Math.round(v * tc * 100) / 100
 
   // 0. Idempotencia — solo matchea asientos publicados; los cancelados/revertidos permiten re-creación
   const { data: existente } = await supabase
@@ -343,7 +352,7 @@ export async function generarAsientoFacturaCompra(
   const hayLineasDetalle = (factura.lineas_detalle?.length ?? 0) > 0
 
   if (hayLineasDetalle) {
-    // ── Modo dinámico: una línea DEBE por cada línea de la factura ──
+    // ── Modo dinámico: una línea DEBE por cada línea de la factura (convertida a ARS) ──
     for (const [i, ld] of (factura.lineas_detalle ?? []).entries()) {
       if (ld.subtotal === 0) continue
       const cuentaId   = ld.cuenta_id   ?? cCompras?.id
@@ -354,7 +363,7 @@ export async function generarAsientoFacturaCompra(
         cuenta_id:    cuentaId,
         cuenta_codigo: cuentaCod,
         cuenta_nombre: cuentaNom,
-        debe:          ld.subtotal,
+        debe:          conv(ld.subtotal),
         haber:         0,
         descripcion:   factura.numero,
         orden:         i,
@@ -374,7 +383,7 @@ export async function generarAsientoFacturaCompra(
           cuenta_id:    cuentaId,
           cuenta_codigo: cuentaCod,
           cuenta_nombre: cuentaNom,
-          debe:          imp.importe,
+          debe:          conv(imp.importe),
           haber:         0,
           descripcion:   imp.nombre,
           orden:         lineas.length + j,
@@ -386,7 +395,7 @@ export async function generarAsientoFacturaCompra(
         cuenta_id:    cIVA.id,
         cuenta_codigo: cIVA.codigo,
         cuenta_nombre: cIVA.nombre,
-        debe:          factura.impuestos,
+        debe:          conv(factura.impuestos),
         haber:         0,
         descripcion:   factura.numero,
         orden:         lineas.length,
@@ -398,23 +407,23 @@ export async function generarAsientoFacturaCompra(
     const tieneIVA = factura.impuestos > 0.009 && cIVA != null
     if (tieneIVA) {
       lineas.push(
-        { cuenta_id: cCompras.id, cuenta_codigo: cCompras.codigo, cuenta_nombre: cCompras.nombre, debe: factura.subtotal, haber: 0, descripcion: factura.numero, orden: 0 },
-        { cuenta_id: cIVA!.id,    cuenta_codigo: cIVA!.codigo,    cuenta_nombre: cIVA!.nombre,    debe: factura.impuestos, haber: 0, descripcion: factura.numero, orden: 1 }
+        { cuenta_id: cCompras.id, cuenta_codigo: cCompras.codigo, cuenta_nombre: cCompras.nombre, debe: conv(factura.subtotal), haber: 0, descripcion: factura.numero, orden: 0 },
+        { cuenta_id: cIVA!.id,    cuenta_codigo: cIVA!.codigo,    cuenta_nombre: cIVA!.nombre,    debe: conv(factura.impuestos), haber: 0, descripcion: factura.numero, orden: 1 }
       )
     } else {
       lineas.push(
-        { cuenta_id: cCompras.id, cuenta_codigo: cCompras.codigo, cuenta_nombre: cCompras.nombre, debe: factura.total, haber: 0, descripcion: factura.numero, orden: 0 }
+        { cuenta_id: cCompras.id, cuenta_codigo: cCompras.codigo, cuenta_nombre: cCompras.nombre, debe: conv(factura.total), haber: 0, descripcion: factura.numero, orden: 0 }
       )
     }
   }
 
-  // HABER: cuenta del proveedor (categoría) = total de la factura
+  // HABER: cuenta del proveedor = total convertido a ARS
   lineas.push({
     cuenta_id:    cAcreedores.id,
     cuenta_codigo: cAcreedores.codigo,
     cuenta_nombre: cAcreedores.nombre,
     debe:          0,
-    haber:         factura.total,
+    haber:         conv(factura.total),
     descripcion:   factura.proveedor_nombre ?? null,
     orden:         lineas.length,
   })
@@ -446,6 +455,7 @@ export async function generarAsientoFacturaCompra(
       referencia:        factura.numero,
       comprobante_tipo:  "factura_compra",
       moneda_original:   factura.moneda ?? "ARS",
+      cotizacion_aplicada: tc !== 1 ? tc : null,
       es_manual:         false,
       estado:            "publicado",
     })
@@ -481,6 +491,8 @@ export async function generarAsientoRecibo(
     sucursal?: string | null
     importe: number
     moneda?: string
+    /** Cotización a ARS del recibo (fallback si no hay cotización por línea de pago). */
+    cotizacion?: number | null
   }
 ): Promise<ResultadoAsiento> {
 
@@ -494,10 +506,10 @@ export async function generarAsientoRecibo(
 
   if (existente?.id) return { ok: true, asiento_id: existente.id }
 
-  // 1. Pagos del recibo
+  // 1. Pagos del recibo — incluir cotizacion para conversión de moneda extranjera
   const { data: pagos, error: pagosErr } = await supabase
     .from("recibo_pagos")
-    .select("id, importe, moneda, valor_id, valor_nombre")
+    .select("id, importe, moneda, valor_id, valor_nombre, cotizacion, tipo_cotizacion")
     .eq("recibo_id", String(recibo.id))
 
   if (pagosErr) return { ok: false, error: `Error al leer pagos del recibo: ${pagosErr.message}` }
@@ -567,15 +579,18 @@ export async function generarAsientoRecibo(
     sucursal_id = suc?.id ?? null
   }
 
-  // 5. Construir líneas
+  // 5. Construir líneas — todos los importes en ARS
   type Linea = {
     cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
     debe: number; haber: number; descripcion: string | null; orden: number
+    importe_moneda_original?: number | null
   }
 
   const lineas: Linea[] = []
   let orden = 0
-  let importeValidoPagos = 0
+  let importeValidoPagosARS = 0
+  // Cotización principal del asiento (la del primer pago USD, o del recibo)
+  let cotizacionAsiento: number | null = null
 
   for (const pago of pagos) {
     // Resolver cuenta: primero por valor_id, luego por nombre, luego saltar
@@ -600,16 +615,30 @@ export async function generarAsientoRecibo(
       continue
     }
 
-    importeValidoPagos += pago.importe
+    // Conversión de moneda extranjera → ARS
+    const esExtranjero = pago.moneda && pago.moneda !== "ARS"
+    const cotizPago = esExtranjero
+      ? (Number(pago.cotizacion) || Number(recibo.cotizacion) || 1)
+      : 1
+    const importeARS = esExtranjero
+      ? Math.round(pago.importe * cotizPago * 100) / 100
+      : pago.importe
+
+    if (esExtranjero && cotizPago > 1 && !cotizacionAsiento) {
+      cotizacionAsiento = cotizPago
+    }
+
+    importeValidoPagosARS += importeARS
 
     lineas.push({
       cuenta_id: cPago.id,
       cuenta_codigo: cPago.codigo,
       cuenta_nombre: cPago.nombre,
-      debe: pago.importe,
+      debe: importeARS,
       haber: 0,
       descripcion: pago.valor_nombre ?? null,
       orden: orden++,
+      importe_moneda_original: esExtranjero ? pago.importe : null,
     })
   }
 
@@ -617,9 +646,8 @@ export async function generarAsientoRecibo(
     return { ok: false, error: "El recibo no tiene ningún medio de pago con cuenta contable asignable." }
   }
 
-  // HABER: Deudores por Ventas — usar el total de pagos válidos para mantener partida doble
-  // (puede diferir de recibo.importe si había pagos sin valor_id que se ignoraron)
-  const haberDeudores = importeValidoPagos > 0 ? importeValidoPagos : recibo.importe
+  // HABER: Deudores por Ventas — suma ARS de todos los pagos válidos
+  const haberDeudores = importeValidoPagosARS > 0 ? importeValidoPagosARS : recibo.importe
   lineas.push({
     cuenta_id: cDeudores.id,
     cuenta_codigo: cDeudores.codigo,
@@ -648,17 +676,18 @@ export async function generarAsientoRecibo(
   const { data: asiento, error: asientoErr } = await supabase
     .from("contabilidad_asientos")
     .insert({
-      numero:           numero ?? null,
-      diario_id:        diario.id,
-      periodo_id:       periodo_id ?? null,
-      fecha:            fechaDate,
+      numero:               numero ?? null,
+      diario_id:            diario.id,
+      periodo_id:           periodo_id ?? null,
+      fecha:                fechaDate,
       sucursal_id,
-      concepto:         `Recibo ${recibo.numero}`,
-      referencia:       recibo.numero,
-      comprobante_tipo: "recibo",
-      moneda_original:  recibo.moneda ?? "ARS",
-      es_manual:        false,
-      estado:           "publicado",
+      concepto:             `Recibo ${recibo.numero}`,
+      referencia:           recibo.numero,
+      comprobante_tipo:     "recibo",
+      moneda_original:      recibo.moneda ?? "ARS",
+      cotizacion_aplicada:  cotizacionAsiento ?? (recibo.cotizacion ?? null),
+      es_manual:            false,
+      estado:               "publicado",
     })
     .select("id")
     .single()
@@ -699,8 +728,16 @@ export async function generarAsientoFacturaCircuito(
     impuestos: number
     total: number
     moneda?: string
+    /** Cotización a ARS. Obligatorio si moneda != 'ARS'. */
+    cotizacion?: number | null
   }
 ): Promise<ResultadoAsiento> {
+  // Tasa de conversión
+  const tc = (factura.moneda && factura.moneda !== "ARS" && (factura.cotizacion ?? 0) > 0)
+    ? Number(factura.cotizacion)
+    : 1
+  const conv = (v: number) => Math.round(v * tc * 100) / 100
+
   // Idempotencia
   const { data: existente } = await supabase
     .from("contabilidad_asientos")
@@ -757,18 +794,18 @@ export async function generarAsientoFacturaCircuito(
   const tieneIVA = factura.impuestos > 0.009 && cIvaCF != null
   lineas.push({
     cuenta_id: cPtTransito.id, cuenta_codigo: cPtTransito.codigo, cuenta_nombre: cPtTransito.nombre,
-    debe: tieneIVA ? factura.subtotal : factura.total, haber: 0,
+    debe: conv(tieneIVA ? factura.subtotal : factura.total), haber: 0,
     descripcion: factura.numero, orden: 0,
   })
   if (tieneIVA) {
     lineas.push({
       cuenta_id: cIvaCF.id, cuenta_codigo: cIvaCF.codigo, cuenta_nombre: cIvaCF.nombre,
-      debe: factura.impuestos, haber: 0, descripcion: factura.numero, orden: 1,
+      debe: conv(factura.impuestos), haber: 0, descripcion: factura.numero, orden: 1,
     })
   }
   lineas.push({
     cuenta_id: cProv.id, cuenta_codigo: cProv.codigo, cuenta_nombre: cProv.nombre,
-    debe: 0, haber: factura.total, descripcion: factura.proveedor_nombre ?? null, orden: lineas.length,
+    debe: 0, haber: conv(factura.total), descripcion: factura.proveedor_nombre ?? null, orden: lineas.length,
   })
 
   // 6. Validar partida doble
@@ -788,7 +825,9 @@ export async function generarAsientoFacturaCircuito(
       numero: numero ?? null, diario_id, periodo_id: periodo_id ?? null, fecha: fechaDate,
       sucursal_id, concepto: `Factura Compra Circuito ${factura.numero}`,
       referencia: factura.numero, comprobante_tipo: "factura_compra",
-      moneda_original: factura.moneda ?? "ARS", es_manual: false, estado: "publicado",
+      moneda_original: factura.moneda ?? "ARS",
+      cotizacion_aplicada: tc !== 1 ? tc : null,
+      es_manual: false, estado: "publicado",
     })
     .select("id").single()
   if (asientoErr) return { ok: false, error: `Error al crear asiento: ${asientoErr.message}` }
@@ -820,7 +859,11 @@ export async function generarAsientoRecepcionCircuito(
     fecha: string
     proveedor_nombre?: string | null
     sucursal?: string | null
-    total: number   // importe total recibido (suma de cant_recibida * precio)
+    total: number              // importe total en ARS (ya convertido)
+    moneda?: string            // moneda original de la OC (ej: "USD")
+    tipo_cambio?: number       // cotización aplicada
+    tipo_cotizacion?: string | null  // tipo de cotización ("oficial", "blue", etc.)
+    total_moneda_original?: number   // total en moneda original antes de convertir
   }
 ): Promise<ResultadoAsiento> {
   // Idempotencia
@@ -880,11 +923,25 @@ export async function generarAsientoRecepcionCircuito(
     sucursal_id = suc?.id ?? null
   }
 
-  // 5. Construir líneas
+  // 5. Construir líneas (importes en ARS, importes originales si hay conversión)
   const fechaDate = recepcion.fecha.split("T")[0]
   const lineas = [
-    { cuenta_id: cPT.id, cuenta_codigo: cPT.codigo, cuenta_nombre: cPT.nombre, debe: recepcion.total, haber: 0, descripcion: recepcion.numero, orden: 0 },
-    { cuenta_id: cPtTransito.id, cuenta_codigo: cPtTransito.codigo, cuenta_nombre: cPtTransito.nombre, debe: 0, haber: recepcion.total, descripcion: recepcion.proveedor_nombre ?? null, orden: 1 },
+    {
+      cuenta_id: cPT.id, cuenta_codigo: cPT.codigo, cuenta_nombre: cPT.nombre,
+      debe: recepcion.total, haber: 0,
+      descripcion: recepcion.numero,
+      importe_moneda_original: recepcion.total_moneda_original ?? null,
+      orden: 0,
+    },
+    {
+      cuenta_id: cPtTransito.id, cuenta_codigo: cPtTransito.codigo, cuenta_nombre: cPtTransito.nombre,
+      debe: 0, haber: recepcion.total,
+      descripcion: recepcion.proveedor_nombre ?? null,
+      importe_moneda_original: recepcion.total_moneda_original
+        ? -recepcion.total_moneda_original
+        : null,
+      orden: 1,
+    },
   ]
 
   // 6. Número correlativo
@@ -897,7 +954,10 @@ export async function generarAsientoRecepcionCircuito(
       numero: numero ?? null, diario_id, periodo_id: periodo_id ?? null, fecha: fechaDate,
       sucursal_id, concepto: `Según Recepción ${recepcion.numero} de ${recepcion.proveedor_nombre ?? ""}`,
       referencia: recepcion.numero, comprobante_tipo: "recepcion_circuito",
-      moneda_original: "ARS", es_manual: false, estado: "publicado",
+      moneda_original: recepcion.moneda ?? "ARS",
+      cotizacion_aplicada: recepcion.tipo_cambio && recepcion.tipo_cambio !== 1 ? recepcion.tipo_cambio : null,
+      tipo_cotizacion: recepcion.tipo_cotizacion ?? null,
+      es_manual: false, estado: "publicado",
     })
     .select("id").single()
   if (asientoErr) return { ok: false, error: `Error al crear asiento: ${asientoErr.message}` }

@@ -32,113 +32,9 @@ import {
   guardarNotaDebitoCompra,
 } from "@/lib/compras-actions"
 
-// ── Datos geográficos ────────────────────────────────────────────────────────
 
-const PAISES_LISTA = [
-  "Argentina", "Bolivia", "Brasil", "Chile", "Colombia", "Ecuador",
-  "México", "Paraguay", "Perú", "Uruguay", "Venezuela",
-  "Alemania", "Australia", "Bélgica", "Canadá", "China", "Corea del Sur",
-  "España", "Estados Unidos", "Francia", "India", "Italia", "Japón",
-  "Países Bajos", "Portugal", "Reino Unido", "Rusia", "Sudáfrica",
-  "Suiza", "Turquía",
-]
 
-const PROVINCIAS_AR = [
-  "Buenos Aires",
-  "Catamarca",
-  "Chaco",
-  "Chubut",
-  "Córdoba",
-  "Corrientes",
-  "Entre Ríos",
-  "Formosa",
-  "Jujuy",
-  "La Pampa",
-  "La Rioja",
-  "Mendoza",
-  "Misiones",
-  "Neuquén",
-  "Río Negro",
-  "Salta",
-  "San Juan",
-  "San Luis",
-  "Santa Cruz",
-  "Santa Fe",
-  "Santiago del Estero",
-  "Tierra del Fuego",
-  "Tucumán",
-]
 
-const CIUDADES_POR_PROVINCIA: Record<string, string[]> = {
-  "Santa Fe": [
-    "Rosario",
-    "Santa Fe",
-    "Rafaela",
-    "Venado Tuerto",
-    "Villa Gobernador Gálvez",
-    "San Lorenzo",
-    "Reconquista",
-    "Casilda",
-    "Firmat",
-    "Cañada de Gómez",
-    "Villa Constitución",
-    "Esperanza",
-    "Gálvez",
-    "Santo Tomé",
-    "Las Rosas",
-    "Pérez",
-    "Rufino",
-    "Villa del Parque",
-    "Vera",
-    "Totoras",
-    "Sastre",
-    "Coronda",
-    "Las Parejas",
-    "Piamonte",
-  ],
-  "Buenos Aires": [
-    "La Plata",
-    "Mar del Plata",
-    "Quilmes",
-    "Lanús",
-    "Tigre",
-    "Lomas de Zamora",
-    "Almirante Brown",
-    "General San Martín",
-    "Tres de Febrero",
-    "Florencio Varela",
-    "Berazategui",
-    "Avellaneda",
-    "Morón",
-    "Merlo",
-    "Moreno",
-    "La Matanza",
-    "San Isidro",
-    "Vicente López",
-    "Hurlingham",
-    "Ituzaingó",
-    "Bahía Blanca",
-    "Tandil",
-    "Junín",
-    "Pergamino",
-    "San Nicolás de los Arroyos",
-    "Necochea",
-    "Olavarría",
-    "Azul",
-    "Luján",
-    "Pilar",
-    "Campana",
-    "Zárate",
-    "San Pedro",
-    "Chascomús",
-    "Dolores",
-    "Trenque Lauquen",
-    "Pehuajó",
-    "9 de Julio",
-    "Bragado",
-    "Chivilcoy",
-  ],
-}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -146,7 +42,7 @@ interface ListaPrecioPermitida {
   id: number
   nombre: string
   tipo: string
-  moneda: "ARS" | "USD" | "EUR"
+  moneda: string
 }
 
 interface CategoriaProveedor {
@@ -200,7 +96,7 @@ interface Proveedor {
   contacto_telefono: string
   contacto_email: string
   condicion_pago: string
-  moneda_habitual: "ARS" | "USD" | "EUR"
+  moneda_habitual: string
   categoria: "publico" | "privado"
   confidencial: boolean
   tipo: "nacional" | "internacional" | "despachante"
@@ -210,7 +106,7 @@ interface Proveedor {
   contactos: ContactoProveedor[]
   // Tab Ventas & Compras
   sucursal_origen: string
-  moneda_defecto: "ARS" | "USD" | "EUR"
+  moneda_defecto: string
   // Tab Contabilidad
   cuenta_gastos_defecto: string
   cuenta_analitica: string
@@ -250,7 +146,7 @@ interface OrdenCompra {
   fecha_entrega_estimada: string
   deposito_destino: string
   ubicacion_destino?: string
-  moneda: "ARS" | "USD" | "EUR"
+  moneda: string
   tipo_cambio: number
   subtotal: number
   impuestos: number
@@ -457,7 +353,7 @@ interface GastoImportacion {
   proveedor_nombre?: string
   comprobante_numero?: string
   importe: number
-  moneda: "ARS" | "USD" | "EUR"
+  moneda: string
   tipo_cambio_tipo: "dia_factura" | "dia_dji" | "manual"
   tipo_cambio: number
   importe_base: number
@@ -515,7 +411,7 @@ interface TipoGasto {
   cuenta_debe: string
   cuenta_haber: string
   criterio_sugerido: "fob" | "peso" | "cantidad" | "posicion_arancelaria" | "manual"
-  moneda_habitual: "ARS" | "USD" | "EUR"
+  moneda_habitual: string
   tc_defecto: "dia_factura" | "dia_dji" | "manual"
 }
 
@@ -545,6 +441,7 @@ export default function ModuloCompras() {
   const {
     proveedores,
     setProveedores,
+    sucursales,
     ordenesCompra,
     setOrdenesCompra,
     recepciones,
@@ -623,10 +520,20 @@ export default function ModuloCompras() {
   // CATEGORIAS_PROVEEDOR es ahora dinámico
   const CATEGORIAS_PROVEEDOR = categoriasProveedor.map(c => c.nombre)
 
-  const SUCURSALES_LISTA = ["Puerto Norte", "Centro", "Sur"]
-  const MONEDAS_LISTA: Array<"ARS" | "USD" | "EUR"> = ["ARS", "USD", "EUR"]
-  const CUENTAS_GASTOS = ["5.1.1 - Compras Mercadería", "5.1.2 - Gastos Importación", "5.2.1 - Servicios", "5.2.2 - Flete y Aduanas"]
-  const TIPOS_COTIZACION = ["Dólar Oficial", "Dólar MEP", "Dólar Blue"]
+  // Catálogos dinámicos desde API
+  const [monedas, setMonedas] = useState<{ codigo: string; nombre: string }[]>([])
+  const [paises, setPaises] = useState<{ id: number; nombre: string }[]>([])
+  const [provincias, setProvincias] = useState<{ id: number; nombre: string }[]>([])
+  const [cuentasGastos, setCuentasGastos] = useState<{ id: number; codigo: string; nombre: string }[]>([])
+  const [tiposCotizacion, setTiposCotizacion] = useState<{ id: number; nombre: string }[]>([])
+
+  useEffect(() => {
+    fetch("/api/monedas", { cache: 'no-store' }).then(r => r.json()).then(d => setMonedas(Array.isArray(d) ? d : [])).catch(console.error)
+    fetch("/api/geografico?tipo=paises").then(r => r.json()).then(d => setPaises(Array.isArray(d) ? d : [])).catch(console.error)
+    fetch("/api/geografico?tipo=provincias").then(r => r.json()).then(d => setProvincias(Array.isArray(d) ? d : [])).catch(console.error)
+    fetch("/api/contabilidad/plan-cuentas?activo=true").then(r => r.json()).then(d => setCuentasGastos(Array.isArray(d) ? d : [])).catch(console.error)
+    fetch("/api/contabilidad/tipos-cotizacion").then(r => r.json()).then(d => setTiposCotizacion(Array.isArray(d) ? d : [])).catch(console.error)
+  }, [])
 
   const proveedorFormVacio: Omit<Proveedor, "id" | "codigo" | "saldo"> = {
     nombre: "",
@@ -1650,7 +1557,7 @@ export default function ModuloCompras() {
                   onChange={e => setP({ pais: e.target.value, provincia: "", ciudad: "" })}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {PAISES_LISTA.map(p => <option key={p} value={p}>{p}</option>)}
+                  {paises.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
                 </select>
               </div>
 
@@ -1665,7 +1572,7 @@ export default function ModuloCompras() {
                       className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">— Seleccionar —</option>
-                      {PROVINCIAS_AR.map(p => <option key={p} value={p}>{p}</option>)}
+                      {provincias.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
                     </select>
                   ) : (
                     <input
@@ -1678,29 +1585,13 @@ export default function ModuloCompras() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Ciudad</label>
-                  {(() => {
-                    const ciudadesDisponibles = CIUDADES_POR_PROVINCIA[prov.provincia]
-                    return ciudadesDisponibles ? (
-                      <select
-                        value={prov.ciudad}
-                        onChange={e => setP({ ciudad: e.target.value })}
-                        disabled={!prov.provincia}
-                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
-                      >
-                        <option value="">— Seleccionar —</option>
-                        {ciudadesDisponibles.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    ) : (
-                      <input
-                        type="text"
-                        value={prov.ciudad}
-                        onChange={e => setP({ ciudad: e.target.value })}
-                        disabled={prov.pais === "Argentina" && !prov.provincia}
-                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
-                        placeholder={prov.pais === "Argentina" && !prov.provincia ? "Seleccioná provincia primero" : ""}
-                      />
-                    )
-                  })()}
+                  <input
+                    type="text"
+                    value={prov.ciudad}
+                    onChange={e => setP({ ciudad: e.target.value })}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Ciudad"
+                  />
                 </div>
               </div>
 
@@ -1891,17 +1782,17 @@ export default function ModuloCompras() {
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">— Ninguna —</option>
-                    {SUCURSALES_LISTA.map(s => <option key={s} value={s}>{s}</option>)}
+                    {sucursales.map(s => <option key={s.id} value={s.nombre}>{s.nombre}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Moneda por Defecto</label>
                   <select
                     value={prov.moneda_defecto}
-                    onChange={e => setP({ moneda_defecto: e.target.value as "ARS" | "USD" | "EUR", moneda_habitual: e.target.value as "ARS" | "USD" | "EUR" })}
+                    onChange={e => setP({ moneda_defecto: e.target.value, moneda_habitual: e.target.value })}
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    {MONEDAS_LISTA.map(m => <option key={m} value={m}>{m}</option>)}
+                    {monedas.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} - {m.nombre}</option>)}
                   </select>
                 </div>
               </div>
@@ -1918,7 +1809,7 @@ export default function ModuloCompras() {
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">— Sin asignar —</option>
-                    {CUENTAS_GASTOS.map(c => <option key={c} value={c}>{c}</option>)}
+                    {cuentasGastos.map(c => <option key={c.id} value={`${c.codigo} - ${c.nombre}`}>{c.codigo} - {c.nombre}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1939,7 +1830,7 @@ export default function ModuloCompras() {
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">— Sin asignar —</option>
-                    {TIPOS_COTIZACION.map(t => <option key={t} value={t}>{t}</option>)}
+                    {tiposCotizacion.map(t => <option key={t.id} value={t.nombre}>{t.nombre}</option>)}
                   </select>
                   {prov.moneda_defecto === "ARS" && (
                     <p className="text-xs text-gray-400 mt-1">Relevante principalmente cuando la moneda es distinta de ARS.</p>
@@ -2086,11 +1977,7 @@ export default function ModuloCompras() {
                 { value: "estandar", label: "Estándar" },
                 { value: "inmediato", label: "Inmediato" },
               ]},
-              { field: "moneda", label: "Moneda", values: [
-                { value: "ARS", label: "ARS" },
-                { value: "USD", label: "USD" },
-                { value: "EUR", label: "EUR" },
-              ]},
+              { field: "moneda", label: "Moneda", values: monedas.map(m => ({ value: m.codigo, label: m.codigo })) },
             ]}
             groupByOptions={[
               { id: "estado", label: "Estado", field: "estado" },
@@ -2877,12 +2764,12 @@ export default function ModuloCompras() {
                 <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Moneda</label>
                 <select
                   value={oc.moneda || "ARS"}
-                  onChange={e => setNuevaOC(prev => ({ ...prev, moneda: e.target.value as "ARS" | "USD" | "EUR" }))}
+                  onChange={e => setNuevaOC(prev => ({ ...prev, moneda: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="ARS">ARS - Peso Argentino</option>
-                  <option value="USD">USD - Dolar</option>
-                  <option value="EUR">EUR - Euro</option>
+                  {monedas.map(m => (
+                    <option key={m.codigo} value={m.codigo}>{m.codigo} - {m.nombre}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -5216,11 +5103,11 @@ export default function ModuloCompras() {
                               className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Tipo" />
                           </td>
                           <td className="py-1.5 px-3">
-                            <select value={lp.moneda} onChange={e => updateListaPrecio(lp.id, { moneda: e.target.value as "ARS" | "USD" | "EUR" })}
+                            <select value={lp.moneda} onChange={e => updateListaPrecio(lp.id, { moneda: e.target.value })}
                               className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
-                              <option value="ARS">ARS</option>
-                              <option value="USD">USD</option>
-                              <option value="EUR">EUR</option>
+                              {monedas.map(m => (
+                                <option key={m.codigo} value={m.codigo}>{m.codigo}</option>
+                              ))}
                             </select>
                           </td>
                           <td className="py-1.5 px-3">

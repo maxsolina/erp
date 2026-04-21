@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react"
+import { Menu, X } from "lucide-react"
 import ModuloHome from "@/components/modulo-home"
 import ModuloVentas, { type ClienteVenta } from "@/components/ventas-module"
 import ModuloCompras from "@/components/modulo-compras-v2"
@@ -202,13 +203,6 @@ interface FilterConfig {
   groupByOptions: { field: string; label: string }[]
   filterFields: { field: string; label: string; type: "text" | "select" | "number" | "date"; options?: { value: string; label: string }[] }[]
 }
-
-// Mock Data
-const mockClientes: Cliente[] = [
-  { id: 1, nombre: "Juan Pérez", telefono: "555-1234", email: "juan@email.com", direccion: "Calle 1 #100", categoria: "publico", orden_asignacion: 2 },
-  { id: 2, nombre: "María García", telefono: "555-5678", email: "maria@email.com", direccion: "Av. Principal #200", categoria: "mayorista", orden_asignacion: 1 },
-  { id: 3, nombre: "Carlos López", telefono: "555-9012", email: "carlos@email.com", direccion: "Zona Centro #50", categoria: "publico", orden_asignacion: 2 },
-]
 
 const mockTecnicos: Tecnico[] = [
   { id: 1, nombre: "Pedro Martínez", especialidad: "Celulares", activo: true, tipo: "propio", categoria_reparacion_id: 1, categorias_secundarias: [2], complejidad_tope: 5, turno: "manana", tiempo_asignado: 120 },
@@ -510,12 +504,14 @@ const mockEtapasOT: EtapaOT[] = [
 function CellHomeERPContent() {
   const [activeModule, setActiveModule] = useState("home")
   const [activeView, setActiveView] = useState("dashboard")
-  const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>(mockOrdenes)
-  const [clientes, setClientes] = useState<Cliente[]>(mockClientes)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [configSidebarOpen, setConfigSidebarOpen] = useState(false)
+  const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>([])
+  const [clientes, setClientes] = useState<Cliente[]>([])
   const [clientesVenta, setClientesVenta] = useState<ClienteVenta[]>([])
-  const [tecnicos, setTecnicos] = useState<Tecnico[]>(mockTecnicos)
-  const [equipos, setEquipos] = useState<Equipo[]>(mockEquipos)
-  const [fallas, setFallas] = useState<Falla[]>(mockFallas)
+  const [tecnicos, setTecnicos] = useState<Tecnico[]>([])
+  const [equipos, setEquipos] = useState<Equipo[]>([])
+  const [fallas, setFallas] = useState<Falla[]>([])
   
   // OT navigation state
   const [selectedOT, setSelectedOT] = useState<OrdenTrabajo | null>(null)
@@ -555,11 +551,11 @@ function CellHomeERPContent() {
   const [showFallaEquipoModal, setShowFallaEquipoModal] = useState(false)
   
   // Editable config data
-  const [areas, setAreas] = useState<Area[]>(mockAreas)
-  const [tiposOT, setTiposOT] = useState<TipoOT[]>(mockTiposOT)
-  const [categoriasReparacion, setCategoriasReparacion] = useState<CategoriaReparacion[]>(mockCategoriasReparacion)
-  const [controlChecklist, setControlChecklist] = useState<ControlChecklist[]>(mockControlChecklist)
-  const [fallasEquipos, setFallasEquipos] = useState<FallaEquipo[]>(mockFallasEquipos)
+  const [areas, setAreas] = useState<Area[]>([])
+  const [tiposOT, setTiposOT] = useState<TipoOT[]>([])
+  const [categoriasReparacion, setCategoriasReparacion] = useState<CategoriaReparacion[]>([])
+  const [controlChecklist, setControlChecklist] = useState<ControlChecklist[]>([])
+  const [fallasEquipos, setFallasEquipos] = useState<FallaEquipo[]>([])
   
   const [editingArea, setEditingArea] = useState<Area | null>(null)
   const [editingTipoOT, setEditingTipoOT] = useState<TipoOT | null>(null)
@@ -2531,19 +2527,20 @@ function CellHomeERPContent() {
     <div className="min-h-screen bg-gray-100">
       {/* Navbar */}
       <nav className="fixed top-0 left-0 right-0 h-11 bg-indigo-900 flex items-center px-4 z-50 shadow-md">
-        <div className="text-white font-semibold flex items-center gap-2">
+        <div className="text-white font-semibold flex items-center gap-2 shrink-0">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
-          Cell Home ERP
+          <span className="text-sm">Cell Home ERP</span>
         </div>
-        <div className="flex ml-10 gap-1">
+        {/* Desktop tabs */}
+        <div className="hidden md:flex ml-6 gap-1 overflow-x-auto">
           {["home", "taller", "ventas", "compras", "finanzas", "contabilidad", "deposito", "informes", "config"].map(mod => (
             <button
               key={mod}
               onClick={() => { setActiveModule(mod); setActiveView("dashboard") }}
-              className={`px-4 py-2 text-sm rounded transition-colors ${
+              className={`px-3 py-2 text-sm rounded transition-colors whitespace-nowrap ${
                 activeModule === mod 
                   ? "bg-white/20 text-white" 
                   : "text-white/80 hover:bg-white/10 hover:text-white"
@@ -2553,7 +2550,39 @@ function CellHomeERPContent() {
             </button>
           ))}
         </div>
+        {/* Mobile hamburger */}
+        <button
+          onClick={() => setMobileMenuOpen(o => !o)}
+          className="md:hidden ml-auto p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded transition-colors"
+          aria-label="Menú"
+        >
+          {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
       </nav>
+      {/* Mobile nav drawer */}
+      {mobileMenuOpen && (
+        <>
+          <div
+            className="md:hidden fixed inset-0 bg-black/40 z-40"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          <div className="md:hidden fixed top-11 left-0 right-0 bg-indigo-900 z-40 shadow-xl pb-3">
+            {["home", "taller", "ventas", "compras", "finanzas", "contabilidad", "deposito", "informes", "config"].map(mod => (
+              <button
+                key={mod}
+                onClick={() => { setActiveModule(mod); setActiveView("dashboard"); setMobileMenuOpen(false) }}
+                className={`w-full text-left px-5 py-3 text-sm border-b border-white/10 transition-colors ${
+                  activeModule === mod
+                    ? "bg-white/20 text-white font-medium"
+                    : "text-white/80 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                {mod.charAt(0).toUpperCase() + mod.slice(1)}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
 {/* Layout */}
   {activeModule === "home" ? (
@@ -2595,13 +2624,29 @@ function CellHomeERPContent() {
         </div>
       ) : activeModule === "config" ? (
         <div className="flex pt-11">
+          {/* Mobile sidebar toggle */}
+          <button
+            onClick={() => setConfigSidebarOpen(o => !o)}
+            className="md:hidden fixed top-12 left-3 z-30 bg-white border border-gray-200 rounded-md p-1.5 shadow-sm"
+            aria-label="Menú configuración"
+          >
+            <Menu className="w-4 h-4 text-gray-600" />
+          </button>
+          {/* Overlay mobile */}
+          {configSidebarOpen && (
+            <div
+              className="md:hidden fixed inset-0 bg-black/40 z-20"
+              onClick={() => setConfigSidebarOpen(false)}
+            />
+          )}
           {/* Sidebar Config */}
-          <aside className="w-52 bg-white border-r border-gray-200 fixed top-11 left-0 bottom-0 overflow-y-auto">
+          <aside className={`bg-white border-r border-gray-200 fixed top-11 left-0 bottom-0 overflow-y-auto z-30 transition-transform duration-200 w-52
+            ${configSidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}>
             <div className="p-4">
               <div className="mb-6">
                 <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">General</h3>
                 <button
-                  onClick={() => setActiveView("sucursales")}
+                  onClick={() => { setActiveView("sucursales"); setConfigSidebarOpen(false) }}
                   className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${activeView === "sucursales" ? "bg-indigo-100 text-indigo-800 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
                 >
                   Sucursales
@@ -2610,7 +2655,7 @@ function CellHomeERPContent() {
             </div>
           </aside>
           {/* Contenido Config */}
-          <main className="ml-52 flex-1 p-6 min-h-[calc(100vh-44px)]">
+          <main className="flex-1 p-4 md:p-6 md:ml-52 min-h-[calc(100vh-44px)]">
             {activeView === "sucursales" && <ModuloConfigSucursales />}
             {activeView === "dashboard" && (
               <div className="flex items-center justify-center h-96 text-gray-400 text-sm">
@@ -2658,7 +2703,7 @@ function CellHomeERPContent() {
                   categoria,
                   orden_asignacion: clientes.length + 1,
                 }
-                setClientes(prev => [...prev, nuevoCliente])
+                setClientes(prev => [nuevoCliente, ...prev])
 
                 // Agregar también al estado de Ventas (para que aparezca en el módulo de Clientes)
                 const codigoVenta = `C0${15520 + clientesVenta.length}`

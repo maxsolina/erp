@@ -73,7 +73,7 @@ interface ListaPrecios {
   id: number
   nombre: string
   tipo: string
-  moneda_base: "ARS" | "USD"
+  moneda_base: "ARS" | "USD" | "EUR"
   incluye_iva: boolean
   activa: boolean
   no_visible: boolean
@@ -129,6 +129,8 @@ interface ProductoVenta {
   descripcion: string
   precio_venta: number
   costo?: number
+  costo_manual?: number
+  moneda_costo?: "ARS" | "USD"
   stock: number
   categoria: string
   requiere_serie: boolean // Si requiere selección de IMEI/Serie
@@ -347,6 +349,13 @@ interface Factura {
   }[]
 }
 
+interface CCResumen {
+  saldo_ars: number
+  saldo_usd: number
+  tipo_cotizacion_usd: string
+  cotizacion_referencia: number // valor referencial para mostrar equivalencia
+}
+
 interface ReciboPago {
   id: string
   recibo_id: string
@@ -366,6 +375,12 @@ interface ReciboPago {
   es_cheque: boolean
   cheque_id: string | null
   cupon_tarjeta_id: string | null
+  // Bimonetario: a qué CC se imputa este pago (solo relevante para pagos en ARS)
+  imputacion_cuenta: 'ARS' | 'USD' | null
+  cotizacion_cruce: number | null // cotización usada si imputacion_cuenta='USD' y moneda='ARS'
+  // Cotización de moneda extranjera aplicada al cobrar este valor
+  cotizacion: number | null
+  tipo_cotizacion: string | null
 }
 
 interface ReciboImputacion {
@@ -458,50 +473,7 @@ interface MovimientoCuentaCorriente {
   saldo_posterior: number
 }
 
-// Mock data
-const mockVendedores: Vendedor[] = [
-  { id: 1, nombre: "Max Solina", activo: true },
-]
 
-const mockCategoriasCliente: CategoriaCliente[] = []
-
-const mockListasPrecios: ListaPrecios[] = []
-
-const mockVersionesLista: VersionListaPrecios[] = []
-
-const mockTiposListaPrecios = ["Minorista", "Mayorista", "Distribuidor", "Especial", "Promocional"]
-
-const mockUsuariosVentas = [
-  { id: 1, nombre: "Max Solina" },
-  { id: 2, nombre: "Laura García" },
-  { id: 3, nombre: "Carlos Méndez" },
-]
-
-// Cotización del dólar mock (se conectará al módulo Contabilidad)
-const COTIZACION_DOLAR_MOCK = 1200
-
-const mockTerminosPago: TerminoPago[] = [
-  { id: 1, nombre: "Contado Efectivo", dias: 0 },
-  { id: 2, nombre: "Cuenta Corriente 30 días", dias: 30 },
-  { id: 3, nombre: "Cuenta Corriente 60 días", dias: 60 },
-]
-
-const mockClientesVenta: ClienteVenta[] = []
-
-const mockNotasVenta: NotaVenta[] = []
-
-const mockOrdenesEntrega: OrdenEntrega[] = []
-
-const mockRemitos: Remito[] = []
-
-const mockFacturas: Factura[] = []
-
-const mockRecibos: Recibo[] = []
-const mockRecibosLoaded = false
-
-const mockAjustes: AjusteCliente[] = []
-
-const mockMovimientosCC: MovimientoCuentaCorriente[] = []
 
 // ─── Bloque Medios de Pago (dentro de ficha de Factura) ────────────────������─────
 
@@ -1008,7 +980,7 @@ interface ModuloVentasProps {
 
 
 export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: ModuloVentasProps = {}) {
-  const { sucursales, sucursalActiva } = useERP()
+  const { sucursales, sucursalActiva, currentUser } = useERP()
   const [depositos, setDepositos] = useState<{ id: number; nombre: string; codigo: string; sucursal_id?: number | null }[]>([])
   const [ubicaciones, setUbicaciones] = useState<{ id: number; deposito_id: number; codigo: string; nombre: string }[]>([])
   useEffect(() => {
@@ -1041,7 +1013,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   })
   
   // Categorías de clientes — debe declararse antes del useMemo de clientes
-  const [categoriasCliente, setCategoriasCliente] = useState<CategoriaCliente[]>(mockCategoriasCliente)
+  const [categoriasCliente, setCategoriasCliente] = useState<CategoriaCliente[]>([])
 
   // Data states — clientes desde Supabase vía SWR
   const { clientes: clientesDB, isLoading: clientesLoading, mutate: mutateClientes } = useClientes()
@@ -1184,14 +1156,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       .catch((err) => alert("Error al guardar cliente: " + (err as Error).message))
   }, [buildClienteFromForm, clientesDB, mutateClientes])
 
-  const [notasVenta, setNotasVenta] = useState<NotaVenta[]>(mockNotasVenta)
+  const [notasVenta, setNotasVenta] = useState<NotaVenta[]>([])
   const [ordenesEntrega, setOrdenesEntrega] = useState<OrdenEntrega[]>([])
   const [remitos, setRemitos] = useState<Remito[]>([])
   const [facturas, setFacturas] = useState<Factura[]>([])
   const [recibos, setRecibos] = useState<Recibo[]>([])
   const [recibosLoaded, setRecibosLoaded] = useState(false)
-  const [ajustes, setAjustes] = useState<AjusteCliente[]>(mockAjustes)
-  const [movimientosCC, setMovimientosCC] = useState<MovimientoCuentaCorriente[]>(mockMovimientosCC)
+  const [ajustes, setAjustes] = useState<AjusteCliente[]>([])
+  const [movimientosCC, setMovimientosCC] = useState<MovimientoCuentaCorriente[]>([])
   
   // UI states
   const [searchQuery, setSearchQuery] = useState("")
@@ -1272,6 +1244,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [showCancelarReciboModal, setShowCancelarReciboModal] = useState(false)
   const [cancelarReciboMotivo, setCancelarReciboMotivo] = useState("")
   const [cancelarReciboDescripcion, setCancelarReciboDescripcion] = useState("")
+  const [conciliacionRevertiendoId, setConciliacionRevertiendoId] = useState<number | null>(null)
   
   // Estados para cancelar factura
   const [showCancelarFacturaModal, setShowCancelarFacturaModal] = useState(false)
@@ -1283,8 +1256,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [selectedOTData, setSelectedOTData] = useState<{nro: string; fecha: string; equipo: string; imei: string; problema: string; estado: string; tecnico: string; cliente: ClienteVenta | null} | null>(null)
   const [conciliacionClienteId, setConciliacionClienteId] = useState<number | null>(null)
   const [conciliacionMetodo, setConciliacionMetodo] = useState<"manual" | "automatico" | "mixto">("mixto")
-  const [conciliacionSeleccionDebitos, setConciliacionSeleccionDebitos] = useState<{id: number; tipo: "factura" | "nd"; montoAplicar: number}[]>([])
-  const [conciliacionSeleccionCreditos, setConciliacionSeleccionCreditos] = useState<{id: number; tipo: "recibo" | "nc"; montoAplicar: number}[]>([])
+  const [conciliacionSeleccionDebitos, setConciliacionSeleccionDebitos] = useState<{id: number; tipo: "factura" | "nd"; moneda: "ARS" | "USD"; montoAplicar: number}[]>([])
+  const [conciliacionSeleccionCreditos, setConciliacionSeleccionCreditos] = useState<{id: number; tipo: "recibo" | "nc"; moneda: "ARS" | "USD"; montoAplicar: number}[]>([])
   const [conciliacionHistorial, setConciliacionHistorial] = useState<{
     id: number
     fecha: string
@@ -1299,6 +1272,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     }[]
     total_conciliado: number
     usuario: string
+    estado: 'activa' | 'cancelada'
+    fecha_cancelacion?: string | null
   }[]>([])
   const [conciliacionTab, setConciliacionTab] = useState<"conciliar" | "historial">("conciliar")
   const [conciliacionFiltroNV, setConciliacionFiltroNV] = useState<string>("")
@@ -1307,17 +1282,25 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [conciliacionMostrarTodosCreditos, setConciliacionMostrarTodosCreditos] = useState(false)
   const [conciliacionFiltroTextoDebitos, setConciliacionFiltroTextoDebitos] = useState("")
   const [conciliacionFiltroTextoCreditos, setConciliacionFiltroTextoCreditos] = useState("")
+  const [conciliacionMonedaHistorial, setConciliacionMonedaHistorial] = useState<"todos" | "ARS" | "USD">("todos")
+  const [conciliacionEjecutando, setConciliacionEjecutando] = useState(false)
+  const [conciliacionCotizacion, setConciliacionCotizacion] = useState<number>(0)
   
   // Estados para formularios de creacion
   const [oeNvId, setOeNvId] = useState<number | null>(null)
   const [oeProductos, setOeProductos] = useState<{producto_id: number; producto_nombre: string; cantidad: number; reserva: number; estado: "pendiente" | "confirmado"}[]>([])
   const [facturaClienteId, setFacturaClienteId] = useState<number | null>(null)
   const [facturaListaPreciosId, setFacturaListaPreciosId] = useState<number>(1)
+  const [facturaMoneda, setFacturaMoneda] = useState<"ARS" | "USD">("ARS")
+  const [facturaCotizacion, setFacturaCotizacion] = useState<number>(1)
   const [facturaLineas, setFacturaLineas] = useState<{producto_nombre: string; descripcion: string; cantidad: number; precio_unitario: number; descuento: number; subtotal: number; producto_id?: number}[]>([])
   const [reciboClienteIdForm, setReciboClienteIdForm] = useState<string | null>(null)
+  const [reciboFacturaIdForm, setReciboFacturaIdForm] = useState<number | null>(null)
   const [reciboPagosForm, setReciboPagosForm] = useState<ReciboPago[]>([])
   const [reciboImputacionesForm, setReciboImputacionesForm] = useState<ReciboImputacion[]>([])
-  const [reciboFacturaIdForm, setReciboFacturaIdForm] = useState<string | null>(null)
+  // Cuenta corriente bimonetaria del cliente seleccionado en el recibo
+  const [reciboCCResumen, setReciboCCResumen] = useState<CCResumen | null>(null)
+  const [reciboCCCargando, setReciboCCCargando] = useState(false)
   const [reciboMontoForm, setReciboMontoForm] = useState<number>(0)
   const [reciboPrevisualizando, setReciboPrevisualizando] = useState(false)
   const [reciboCajaId, setReciboCajaId] = useState<string>("")
@@ -1336,7 +1319,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [showAddPagoModal, setShowAddPagoModal] = useState(false)
   
   // Vendedores cargados desde Supabase
-  const [vendedores, setVendedores] = useState<Vendedor[]>(mockVendedores)
+  const [vendedores, setVendedores] = useState<Vendedor[]>([])
 
   // Estados para Categorías de NC
   const [ncCategorias, setNcCategorias] = useState<NcCategoria[]>([])
@@ -1345,6 +1328,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [ncCategoriaLoading, setNcCategoriaLoading] = useState(false)
   const [ncCategoriaEditId, setNcCategoriaEditId] = useState<number | null>(null)
   const [ncCategoriaEditNombre, setNcCategoriaEditNombre] = useState("")
+
+  const [terminosPago, setTerminosPago] = useState<TerminoPago[]>([])
+  const [tiposListaPrecios, setTiposListaPrecios] = useState<string[]>([])
 
   // Cargar vendedores y nc_categorias desde Supabase
   useEffect(() => {
@@ -1355,10 +1341,21 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         supabase.from("vendedores").select("id, nombre, activo").order("nombre"),
         supabase.from("nc_categorias").select("*").order("nombre"),
       ])
-      if (vData && vData.length > 0) setVendedores(vData)
+      if (vData) setVendedores(vData)
       if (ncData) setNcCategorias(ncData)
     }
     cargar()
+    fetch("/api/terminos-pago").then(r => r.json()).then(d => setTerminosPago(Array.isArray(d) ? d : [])).catch(console.error)
+    fetch("/api/tipos-lista-precios").then(r => r.json()).then(d => setTiposListaPrecios(Array.isArray(d) ? d.map((t: {nombre: string}) => t.nombre) : [])).catch(console.error)
+  }, [])
+
+  // Pre-cargar cotización blue USD al montar el módulo + resetear estado de ejecución
+  useEffect(() => {
+    setConciliacionEjecutando(false)
+    fetch('/api/contabilidad/cotizaciones?moneda_codigo=USD&tipo=blue&latest=true')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.tasa) setConciliacionCotizacion(Number(d.tasa)) })
+      .catch(() => {})
   }, [])
 
   // Estados para Categorías de Clientes
@@ -1372,8 +1369,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [formClienteCategoriaId, setFormClienteCategoriaId] = useState<number | null>(null)
 
   // Estados para Listas de Precios
-  const [listasPrecios, setListasPrecios] = useState<ListaPrecios[]>(mockListasPrecios)
-  const [versionesLista, setVersionesLista] = useState<VersionListaPrecios[]>(mockVersionesLista)
+  const [listasPrecios, setListasPrecios] = useState<ListaPrecios[]>([])
+  const [versionesLista, setVersionesLista] = useState<VersionListaPrecios[]>([])
   const [selectedListaPrecios, setSelectedListaPrecios] = useState<ListaPrecios | null>(null)
   const [editingListaPrecios, setEditingListaPrecios] = useState<ListaPrecios | null>(null)
   const [selectedVersion, setSelectedVersion] = useState<VersionListaPrecios | null>(null)
@@ -1390,7 +1387,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [nuevaLineaVersion, setNuevaLineaVersion] = useState<Partial<LineaListaPrecios>>({})
   const [modalNuevaVersionBasada, setModalNuevaVersionBasada] = useState(false)
   const [nuevaVersionBasadaForm, setNuevaVersionBasadaForm] = useState({ nombre: "", fecha_inicial: "", fecha_final: "", copiar_lineas: true })
-  
+
+  // Monedas desde contabilidad_monedas
+  const [monedas, setMonedas] = useState<{ id: number; codigo: string; nombre: string; simbolo: string; es_base: boolean }[]>([])
+
   // Estados para lista de precios y productos reales en NV
   const [nvListaPreciosId, setNvListaPreciosId] = useState<number | null>(null)
   const [productosNV, setProductosNV] = useState<ProductoVenta[]>([])
@@ -1537,6 +1537,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     if (seniaDocModalTipo === "remito" && !selectedRemito) { setShowSeniaDocModal(false); setSeniaDocModalTipo(null) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNV, selectedOE, selectedRemito, selectedFactura])
+
+  // Cargar monedas activas desde Supabase al montar
+  useEffect(() => {
+    fetch("/api/monedas")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setMonedas(data) })
+      .catch(console.error)
+  }, [])
 
   // Cargar señas de equipo desde Supabase al montar
   useEffect(() => {
@@ -1895,6 +1903,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         .catch(() => {})
     }
   }, [activeView])
+
+  // Auto-fetch cotización para facturas de venta cuando se elige USD
+  useEffect(() => {
+    if (facturaMoneda !== "USD") { setFacturaCotizacion(1); return }
+    fetch("/api/contabilidad/cotizaciones?moneda_codigo=USD&tipo=blue&latest=true")
+      .then(r => r.json())
+      .then(data => { if (data?.valor) setFacturaCotizacion(Number(data.valor)) })
+      .catch(() => {})
+  }, [facturaMoneda])
 
   // Cargar productos de la lista de precios seleccionada cuando cambia nvListaPreciosId
   useEffect(() => {
@@ -2858,7 +2875,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Término de Pago</label>
                   <select name="termino_pago_id" defaultValue={editingItem?.termino_pago_id || 1}
                     className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                    {mockTerminosPago.map(tp => (
+                    {terminosPago.map(tp => (
                       <option key={tp.id} value={tp.id}>{tp.nombre}</option>
                     ))}
                   </select>
@@ -3517,7 +3534,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <div className="grid grid-cols-3 gap-6 text-sm">
                     <div>
                       <span className="text-gray-500 block">Término de Pago:</span>
-                      <span className="font-medium">{mockTerminosPago.find(t => t.id === selectedCliente.termino_pago_id)?.nombre}</span>
+                      <span className="font-medium">{terminosPago.find(t => t.id === selectedCliente.termino_pago_id)?.nombre}</span>
                     </div>
                     <div>
                       <span className="text-gray-500 block">Saldo Cuenta Corriente:</span>
@@ -3779,7 +3796,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const vendedorId = 1
     const vendedorNombre = vendedores[0]?.nombre || "Max Solina"
     const terminoPagoId = cliente.termino_pago_id || 1
-    const terminoPagoNombre = mockTerminosPago.find(tp => tp.id === terminoPagoId)?.nombre || "Contado Efectivo"
+    const terminoPagoNombre = terminosPago.find(tp => tp.id === terminoPagoId)?.nombre || "Contado Efectivo"
     setGuardandoNV(true)
     try {
     const depositoSeleccionado = depositos.find(d => d.id === nvDepositoId)
@@ -3977,7 +3994,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               series: l.series_seleccionadas ?? [],
             })),
           }
-          setRemitos(prev => [...prev, newRemito])
+          setRemitos(prev => [newRemito, ...prev])
 
           // ── Descontar stock inmediatamente al confirmar el remito ──
           try {
@@ -4095,7 +4112,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             seguimiento: [],
             medios_pago_detalle: [],
           }
-          setFacturas(prev => [...prev, newFactura])
+          setFacturas(prev => [newFactura, ...prev])
         }
       } catch (err) {
         console.error("[handleCrearNVFinal] Error al crear factura:", err)
@@ -4106,7 +4123,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     if (editingNVId) {
       setNotasVenta(prev => prev.map(nv => nv.id === editingNVId ? newNV : nv))
     } else {
-      setNotasVenta(prev => [...prev, newNV])
+      setNotasVenta(prev => [newNV, ...prev])
     }
 
     // Limpiar y abrir la NV creada
@@ -5279,7 +5296,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         valor_declarado: 0,
                         control_factura: "sin_facturar"
                       }
-                      setRemitos(prev => [...prev, newRemito])
+                      setRemitos(prev => [newRemito, ...prev])
                       setOrdenesEntrega(prev => prev.map(oe =>
                         oe.id === selectedOE.id ? { ...oe, remito_numero: remitoNumero } : oe
                       ))
@@ -7799,10 +7816,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       fecha: fechaHoy,
       vendedor_nombre: vendedores[0]?.nombre || "Max Solina",
       domicilio_facturacion: clienteSeleccionado.direccion,
-      moneda: "ARS",
+      moneda: facturaMoneda,
       tipo_cotizacion: "blue",
-      cotizacion: 1150,
-      termino_pago: mockTerminosPago.find(tp => tp.id === clienteSeleccionado.termino_pago_id)?.nombre || "Contado",
+      cotizacion: facturaMoneda === "USD" ? facturaCotizacion : 1,
+      termino_pago: terminosPago.find(tp => tp.id === clienteSeleccionado.termino_pago_id)?.nombre || "Contado",
       subtotal: subtotal,
       descuento: 0,
       impuestos: 0,
@@ -7812,13 +7829,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       lineas: lineasValidas,
       vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: subtotal }]
     }
-    setFacturas(prev => [...prev, newFactura])
+    setFacturas(prev => [newFactura, ...prev])
 
     setCreandoFactura(false)
     setFacturaPrevisualizando(false)
     setFacturaClienteId(null)
     setFacturaLineas([])
     setFacturaListaPreciosId(1)
+    setFacturaMoneda("ARS")
+    setFacturaCotizacion(1)
     setSelectedFactura(newFactura)
   }
 
@@ -7837,7 +7856,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const fechaHoy = new Date().toISOString()
     const sucursalNombre = sucursalActiva?.nombre ?? "Casa Central"
     const vendedorNombre = vendedores[0]?.nombre || "Admin"
-    const terminoPago = mockTerminosPago.find(tp => tp.id === clienteSeleccionado.termino_pago_id)?.nombre || "Contado"
+    const terminoPago = terminosPago.find(tp => tp.id === clienteSeleccionado.termino_pago_id)?.nombre || "Contado"
 
     try {
       const facRes = await fetch("/api/facturas", {
@@ -7850,7 +7869,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           sucursal: sucursalNombre,
           fecha: fechaHoy,
           estado: "abierta",
-          moneda: "ARS",
+          moneda: facturaMoneda,
+          cotizacion: facturaMoneda === "USD" ? facturaCotizacion : 1,
           termino_pago: terminoPago,
           subtotal,
           descuento: 0,
@@ -7897,9 +7917,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         fecha: fechaHoy,
         vendedor_nombre: vendedorNombre,
         domicilio_facturacion: clienteSeleccionado.direccion,
-        moneda: "ARS",
+        moneda: facturaMoneda,
         tipo_cotizacion: "blue",
-        cotizacion: 1150,
+        cotizacion: facturaMoneda === "USD" ? facturaCotizacion : 1,
         termino_pago: terminoPago,
         subtotal,
         descuento: 0,
@@ -7910,7 +7930,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         lineas: facturaLineas,
         vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: totalFinal }]
       }
-      setFacturas(prev => [...prev, newFactura])
+      setFacturas(prev => [newFactura, ...prev])
 
       // Crear movimiento de débito
       const saldoAnterior = clienteSeleccionado.saldo_cuenta_corriente
@@ -7953,6 +7973,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setFacturaClienteId(null)
     setFacturaLineas([])
     setFacturaListaPreciosId(1)
+    setFacturaMoneda("ARS")
+    setFacturaCotizacion(1)
   }
 
   // Vista de previsualización de Factura
@@ -8067,11 +8089,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </div>
                 <div>
                   <span className="text-gray-500">Moneda:</span>
-                  <span className="ml-2 font-medium">ARS</span>
+                  <span className="ml-2 font-medium">{facturaMoneda}{facturaMoneda === "USD" && facturaCotizacion > 1 ? ` (TC: $${facturaCotizacion.toLocaleString("es-AR")})` : ""}</span>
                 </div>
                 <div>
                   <span className="text-gray-500">Condición:</span>
-                  <span className="ml-2 font-medium">{mockTerminosPago.find(tp => tp.id === clienteSeleccionado?.termino_pago_id)?.nombre || "Contado"}</span>
+                  <span className="ml-2 font-medium">{terminosPago.find(tp => tp.id === clienteSeleccionado?.termino_pago_id)?.nombre || "Contado"}</span>
                 </div>
               </div>
             </div>
@@ -8085,9 +8107,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <tr className="border-b text-xs text-gray-500 uppercase">
                   <th className="text-left py-2">Producto</th>
                   <th className="text-center py-2 w-20">Cant.</th>
-                  <th className="text-right py-2 w-28">Precio</th>
+                  <th className="text-right py-2 w-28">Precio{facturaMoneda !== "ARS" && <span className="text-blue-600 normal-case font-semibold ml-1">({facturaMoneda})</span>}</th>
                   <th className="text-center py-2 w-16">Dto.%</th>
-                  <th className="text-right py-2 w-28">Subtotal</th>
+                  <th className="text-right py-2 w-28">Subtotal{facturaMoneda !== "ARS" && <span className="text-blue-600 normal-case font-semibold ml-1">({facturaMoneda})</span>}</th>
                 </tr>
               </thead>
               <tbody>
@@ -8098,9 +8120,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       {linea.descripcion && <div className="text-xs text-gray-500">{linea.descripcion}</div>}
                     </td>
                     <td className="py-2 text-center">{linea.cantidad}</td>
-                    <td className="py-2 text-right">{formatCurrency(linea.precio_unitario)}</td>
+                    <td className="py-2 text-right">{formatCurrency(linea.precio_unitario, facturaMoneda)}</td>
                     <td className="py-2 text-center">{linea.descuento}%</td>
-                    <td className="py-2 text-right font-medium">{formatCurrency(linea.subtotal)}</td>
+                    <td className="py-2 text-right font-medium">{formatCurrency(linea.subtotal, facturaMoneda)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -8112,26 +8134,32 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <div className="w-64 space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-500">Subtotal (precio contado):</span>
-                <span>{formatCurrency(subtotal)}</span>
+                <span>{formatCurrency(subtotal, facturaMoneda)}</span>
               </div>
               {prevRecargosConfirmados && prevRecargosConfirmados.desglose.map((d, i) => (
                 <div key={i} className="flex justify-between text-amber-700">
                   <span>{d.nombre}:</span>
-                  <span>+ {formatCurrency(d.importe)}</span>
+                  <span>+ {formatCurrency(d.importe, facturaMoneda)}</span>
                 </div>
               ))}
               {prevRecargosConfirmados && prevRecargosConfirmados.totalRecargos > 0 && (
                 <div className="flex justify-between text-amber-700 font-medium">
                   <span>Total recargos:</span>
-                  <span>+ {formatCurrency(prevRecargosConfirmados.totalRecargos)}</span>
+                  <span>+ {formatCurrency(prevRecargosConfirmados.totalRecargos, facturaMoneda)}</span>
                 </div>
               )}
               <div className="flex justify-between text-lg font-bold pt-2 border-t">
-                <span>Total:</span>
+                <span>Total{facturaMoneda !== "ARS" && <span className="text-sm font-normal text-blue-600 ml-1">({facturaMoneda})</span>}:</span>
                 <span className="text-emerald-700">
-                  {formatCurrency(subtotal + (prevRecargosConfirmados?.totalRecargos || 0))}
+                  {formatCurrency(subtotal + (prevRecargosConfirmados?.totalRecargos || 0), facturaMoneda)}
                 </span>
               </div>
+              {facturaMoneda === "USD" && facturaCotizacion > 1 && (
+                <div className="flex justify-between text-xs text-gray-500 pt-1">
+                  <span>≈ ARS (TC ${facturaCotizacion.toLocaleString("es-AR")}):</span>
+                  <span>{formatCurrency((subtotal + (prevRecargosConfirmados?.totalRecargos || 0)) * facturaCotizacion, "ARS")}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -8247,9 +8275,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
                     <th className="text-left py-2 px-3">Producto</th>
                     <th className="text-center py-2 px-3 w-24">Cantidad</th>
-                    <th className="text-right py-2 px-3 w-32">Precio Unit.</th>
+                    <th className="text-right py-2 px-3 w-32">Precio Unit.{facturaMoneda !== "ARS" && <span className="text-blue-600 normal-case font-semibold ml-1">({facturaMoneda})</span>}</th>
                     <th className="text-center py-2 px-3 w-24">Dto. %</th>
-                    <th className="text-right py-2 px-3 w-32">Subtotal</th>
+                    <th className="text-right py-2 px-3 w-32">Subtotal{facturaMoneda !== "ARS" && <span className="text-blue-600 normal-case font-semibold ml-1">({facturaMoneda})</span>}</th>
                     <th className="w-10"></th>
                   </tr>
                 </thead>
@@ -8286,7 +8314,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                   p.sku.toLowerCase().includes(facturaProductoSearchText.toLowerCase())
                                 )
                                 .map(p => {
-                                  const precioLista = p.precios?.find((pr: any) => pr.lista_id === facturaListaPreciosId)?.precio || p.precio_venta
+                                  // Buscar precio en la versión activa (o confirmada) de la lista seleccionada
+                                  const versionActiva = versionesLista
+                                    .filter(v => v.lista_precios_id === facturaListaPreciosId)
+                                    .find(v => v.activa || v.estado === "activa" || v.estado === "confirmada")
+                                  const lineaVersion = versionActiva?.lineas?.find(l => l.producto_id === p.id)
+                                  const precioLista = lineaVersion?.precio_venta ?? p.precio_venta
                                   return (
                                     <div
                                       key={p.id}
@@ -8329,14 +8362,17 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-center" />
                       </td>
                       <td className="py-2 px-3">
-                        <input type="number" value={linea.precio_unitario} min="0" step="0.01"
-                          onChange={(e) => {
-                            const updated = [...facturaLineas]
-                            updated[index].precio_unitario = parseFloat(e.target.value) || 0
-                            updated[index].subtotal = updated[index].cantidad * updated[index].precio_unitario * (1 - updated[index].descuento / 100)
-                            setFacturaLineas(updated)
-                          }}
-                          className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right" />
+                        <div className="flex items-center gap-1">
+                          {facturaMoneda !== "ARS" && <span className="text-xs text-blue-600 font-semibold shrink-0">{facturaMoneda}</span>}
+                          <input type="number" value={linea.precio_unitario} min="0" step="0.01"
+                            onChange={(e) => {
+                              const updated = [...facturaLineas]
+                              updated[index].precio_unitario = parseFloat(e.target.value) || 0
+                              updated[index].subtotal = updated[index].cantidad * updated[index].precio_unitario * (1 - updated[index].descuento / 100)
+                              setFacturaLineas(updated)
+                            }}
+                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right" />
+                        </div>
                       </td>
                       <td className="py-2 px-3">
                         <input type="number" value={linea.descuento} min="0" max="100"
@@ -8348,7 +8384,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           }}
                           className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-center" />
                       </td>
-                      <td className="py-2 px-3 text-right font-medium">{formatCurrency(linea.subtotal)}</td>
+                      <td className="py-2 px-3 text-right font-medium">{formatCurrency(linea.subtotal, facturaMoneda)}</td>
                       <td className="py-2 px-3">
                         <button onClick={() => setFacturaLineas(facturaLineas.filter((_, i) => i !== index))} className="text-red-500 hover:text-red-700">
                           <Trash2 className="w-4 h-4" />
@@ -8374,12 +8410,54 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow-sm p-4">
-              <h3 className="font-semibold text-gray-900 mb-4">Resumen</h3>
+              <h3 className="font-semibold text-gray-900 mb-4">Moneda</h3>
               <div className="space-y-3">
-                <div className="flex justify-between text-sm"><span className="text-gray-600">Subtotal:</span><span className="font-medium">{formatCurrency(subtotal)}</span></div>
-                <div className="border-t pt-3">
-                  <div className="flex justify-between text-lg font-bold"><span>Total:</span><span className="text-emerald-700">{formatCurrency(subtotal)}</span></div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Moneda</label>
+                  <select
+                    value={facturaMoneda}
+                    onChange={(e) => {
+                      const m = e.target.value as "ARS" | "USD"
+                      setFacturaMoneda(m)
+                      if (m === "ARS") setFacturaCotizacion(1)
+                    }}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                  >
+                    <option value="ARS">ARS - Peso Argentino</option>
+                    <option value="USD">USD - Dólar</option>
+                  </select>
                 </div>
+                {facturaMoneda === "USD" && (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Cotización (ARS por USD)</label>
+                    <input
+                      type="number"
+                      value={facturaCotizacion}
+                      min={1}
+                      step={1}
+                      onChange={(e) => setFacturaCotizacion(Number(e.target.value) || 1)}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-right"
+                      placeholder="Cotización"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="font-semibold text-gray-900 mb-4">
+                Resumen {facturaMoneda !== "ARS" && <span className="text-sm font-normal text-blue-600 ml-1">en {facturaMoneda}</span>}
+              </h3>
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm"><span className="text-gray-600">Subtotal:</span><span className="font-medium">{formatCurrency(subtotal, facturaMoneda)}</span></div>
+                <div className="border-t pt-3">
+                  <div className="flex justify-between text-lg font-bold"><span>Total:</span><span className="text-emerald-700">{formatCurrency(subtotal, facturaMoneda)}</span></div>
+                </div>
+                {facturaMoneda === "USD" && facturaCotizacion > 1 && (
+                  <div className="border-t pt-2 text-xs text-gray-500 flex justify-between">
+                    <span>Equivalente ARS (TC ${facturaCotizacion.toLocaleString("es-AR")}):</span>
+                    <span className="font-medium text-gray-700">{formatCurrency(subtotal * facturaCotizacion, "ARS")}</span>
+                  </div>
+                )}
               </div>
             </div>
             <div className="bg-white rounded-lg shadow-sm p-4">
@@ -8388,7 +8466,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   className="w-full bg-indigo-900 text-white px-4 py-3 rounded-md text-sm font-medium hover:bg-indigo-800 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed">
                   Continuar
                 </button>
-                <button onClick={() => { setCreandoFactura(false); setFacturaClienteId(null); setFacturaLineas([]); setFacturaPrevisualizando(false); setFacturaListaPreciosId(1) }}
+                <button onClick={() => { setCreandoFactura(false); setFacturaClienteId(null); setFacturaLineas([]); setFacturaPrevisualizando(false); setFacturaListaPreciosId(1); setFacturaMoneda("ARS"); setFacturaCotizacion(1) }}
                   className="w-full bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-200">
                   Cancelar
                 </button>
@@ -9102,14 +9180,30 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       setReciboImputacionesForm(imps || [])
       setReciboClienteIdForm(rec.cliente_id)
       setReciboCajaId(rec.caja_id || "")
-      setReciboMoneda(rec.moneda || "ARS")
       setReciboTipoCotizacion(rec.tipo_cotizacion || "")
       setReciboCotizacion(rec.cotizacion || 0)
       setReciboConcepto(rec.concepto || "")
-      setReciboCobradorNombre(rec.cobrador_nombre || "")
       setReciboNvId(rec.nota_venta_id || "")
       setReciboObservaciones(rec.observaciones || "")
       setReciboTab("pagos")
+
+      // Cargar CC del cliente para que calcularCasoImputacion funcione al publicar
+      if (rec.cliente_id) {
+        try {
+          const ccRes = await fetch(`/api/clientes/${rec.cliente_id}/cc`)
+          if (ccRes.ok) {
+            const cc = await ccRes.json()
+            setReciboCCResumen({
+              saldo_ars: cc.saldo_ars ?? 0,
+              saldo_usd: cc.saldo_usd ?? 0,
+              cotizacion_cliente: cc.cotizacion_cliente ?? 0,
+              tipo_cotizacion_cliente: cc.tipo_cotizacion_cliente ?? "",
+            })
+          }
+        } catch {
+          // no bloquear si la CC no está disponible
+        }
+      }
     }
   }
 
@@ -9178,6 +9272,38 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       asignacion: 0,
     }))
     setReciboImputacionesForm(imps)
+
+    // Cargar cuenta corriente bimonetaria del cliente
+    setReciboCCCargando(true)
+    try {
+      const res = await fetch(`/api/clientes/${clienteId}/cc`)
+      if (res.ok) {
+        const cc = await res.json()
+        setReciboCCResumen({
+          saldo_ars: cc.saldo_ars ?? 0,
+          saldo_usd: cc.saldo_usd ?? 0,
+          cotizacion_cliente: cc.cotizacion_cliente ?? 0,
+          tipo_cotizacion_cliente: cc.tipo_cotizacion_cliente ?? "",
+        })
+      }
+    } catch {
+      // no bloquear si la CC no está disponible
+    } finally {
+      setReciboCCCargando(false)
+    }
+  }
+
+  /** Determina el caso de imputación bimonetaria según los saldos de CC.
+   * Saldo positivo = el cliente nos debe (deuda). Negativo = el cliente tiene crédito.
+   * A = solo deuda ARS | B = solo deuda USD | C = ambas deudas | D = sin deuda */
+  const calcularCasoImputacion = (cc: CCResumen | null): 'A' | 'B' | 'C' | 'D' => {
+    if (!cc) return 'D'
+    const tieneDeudaARS = cc.saldo_ars > 0
+    const tieneDeudaUSD = cc.saldo_usd > 0
+    if (tieneDeudaARS && tieneDeudaUSD) return 'C'
+    if (tieneDeudaARS) return 'A'
+    if (tieneDeudaUSD) return 'B'
+    return 'D'
   }
 
   const guardarRecibo = async () => {
@@ -9277,6 +9403,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       const totalAsig = reciboImputacionesForm.reduce((s, i) => s + (i.asignacion || 0), 0)
       const suc = sucursalActiva?.nombre || ""
 
+      // Cotización del recibo: tomar la del primer pago en moneda extranjera
+      const pagoUSD = reciboPagosForm.find(p => p.moneda === 'USD')
+      const cotizacionRecibo = pagoUSD?.cotizacion ?? null
+      const tipoCotizacionRecibo = pagoUSD?.tipo_cotizacion ?? null
+
       if (selectedRecibo) {
         // Actualizar existente
         const payloadUpdate = {
@@ -9285,13 +9416,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           caja_id: reciboCajaId || null,
           caja_nombre: reciboCajasDisponibles.find(c => c.id === reciboCajaId)?.nombre || null,
           nota_venta_id: reciboNvId || null,
-          cobrador_nombre: reciboCobradorNombre || null,
+          cobrador_nombre: null,
           concepto: reciboConcepto || null,
           importe: totalPagos,
           importe_no_conciliado: Math.max(0, totalPagos - totalAsig),
-          moneda: reciboMoneda,
-          tipo_cotizacion: reciboTipoCotizacion || null,
-          cotizacion: reciboCotizacion || null,
+          moneda: reciboPagosForm.some(p => p.moneda === 'USD') ? 'USD' : 'ARS',
+          tipo_cotizacion: tipoCotizacionRecibo,
+          cotizacion: cotizacionRecibo,
           observaciones: reciboObservaciones || null,
           updated_at: new Date().toISOString(),
         }
@@ -9330,9 +9461,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           concepto: reciboConcepto || null,
           importe: totalPagos,
           importe_no_conciliado: Math.max(0, totalPagos - totalAsig),
-          moneda: reciboMoneda,
-          tipo_cotizacion: reciboTipoCotizacion || null,
-          cotizacion: reciboCotizacion || null,
+          moneda: reciboPagosForm.some(p => p.moneda === 'USD') ? 'USD' : 'ARS',
+          tipo_cotizacion: tipoCotizacionRecibo,
+          cotizacion: cotizacionRecibo,
           observaciones: reciboObservaciones || null,
           estado: "borrador",
           fecha: new Date().toISOString().split("T")[0],
@@ -9462,6 +9593,99 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const totalAsig = reciboImputacionesForm.reduce((s, i) => s + (i.asignacion || 0), 0)
     const noConciliado = Math.max(0, selectedRecibo.importe - totalAsig)
 
+    // Crear movimientos en cuenta corriente bimonetaria (partida doble por moneda)
+    const casoImputacion = calcularCasoImputacion(reciboCCResumen)
+    const cotizacionCC = reciboCCResumen?.cotizacion_cliente || reciboCotizacion || 1
+    const tipoCotizCC = reciboCCResumen?.tipo_cotizacion_cliente || reciboTipoCotizacion || 'blue'
+    const ccMovs: Record<string, unknown>[] = []
+
+    // Resolver comprobante_id vs comprobante_id_int según si el id es UUID o entero
+    const idStr = String(selectedRecibo.id)
+    const isUUIDRec = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idStr)
+
+    for (const pago of pagos) {
+      // Restricción: pagos USD nunca a CC ARS (spec Sección 5, regla 1)
+      if (pago.moneda === 'USD' && pago.imputacion_cuenta === 'ARS') {
+        throw new Error('Los pagos en USD solo pueden imputarse a la Cuenta Corriente en USD.')
+      }
+
+      const baseMovCC: Record<string, unknown> = {
+        cliente_id: selectedRecibo.cliente_id,
+        sentido: 'haber',
+        comprobante_tipo: 'recibo',
+        comprobante_id: isUUIDRec ? idStr : null,
+        comprobante_id_int: !isUUIDRec ? Number(selectedRecibo.id) : null,
+        comprobante_numero: selectedRecibo.numero,
+        fecha: new Date().toISOString().split('T')[0],
+      }
+
+      if (pago.moneda === 'USD') {
+        // Pago en USD → siempre CC USD, tipo_movimiento: 'recibo'
+        const cotizPago = pago.cotizacion || 1
+        ccMovs.push({
+          ...baseMovCC,
+          moneda: 'USD',
+          tipo_movimiento: 'recibo',
+          importe: pago.importe,
+          cotizacion_aplicada: cotizPago,
+          tipo_cotizacion: pago.tipo_cotizacion || tipoCotizCC || null,
+        })
+      } else {
+        // Pago en ARS: determinar destino según caso de imputación
+        const destino = casoImputacion === 'C'
+          ? (pago.imputacion_cuenta || 'ARS')
+          : casoImputacion === 'B' ? 'USD' : 'ARS'
+
+        if (destino === 'USD') {
+          // Conciliación cruzada ARS → USD: DOS filas vinculadas por conciliacion_id
+          const conciliacionId = crypto.randomUUID()
+          const cotiz = pago.cotizacion_cruce || cotizacionCC > 0 ? (pago.cotizacion_cruce || cotizacionCC) : 1
+          const importeUSD = Math.round((pago.importe / cotiz) * 100) / 100
+
+          // Fila 1 – CC ARS: registra el haber en ARS (el dinero que entra)
+          ccMovs.push({
+            ...baseMovCC,
+            moneda: 'ARS',
+            tipo_movimiento: 'conciliacion_cruzada',
+            importe: pago.importe,
+            cotizacion_aplicada: cotiz,
+            tipo_cotizacion: tipoCotizCC,
+            conciliacion_id: conciliacionId,
+          })
+
+          // Fila 2 – CC USD: registra los USD cancelados equivalentes
+          ccMovs.push({
+            ...baseMovCC,
+            moneda: 'USD',
+            tipo_movimiento: 'conciliacion_cruzada',
+            importe: importeUSD,
+            importe_conversion: pago.importe,
+            cotizacion_aplicada: cotiz,
+            tipo_cotizacion: tipoCotizCC,
+            conciliacion_id: conciliacionId,
+          })
+        } else {
+          // ARS directo a CC ARS, tipo_movimiento: 'recibo'
+          ccMovs.push({
+            ...baseMovCC,
+            moneda: 'ARS',
+            tipo_movimiento: 'recibo',
+            importe: pago.importe,
+            cotizacion_aplicada: 1,
+          })
+        }
+      }
+    }
+
+    if (ccMovs.length > 0) {
+      const { error: ccErr } = await supabase.from('ventas_cc_movimientos').insert(ccMovs)
+      if (ccErr) {
+        if (!ccErr.message.includes('does not exist') && !ccErr.message.includes('Could not find the table')) {
+          console.error('[publicarRecibo] Error CC movimientos:', ccErr.message)
+        }
+      }
+    }
+
       // Publicar
       const { error: pubErr } = await supabase.from("recibos").update({
         estado: "publicado",
@@ -9494,8 +9718,30 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const { createClient } = await import("@/lib/supabase/client")
     const supabase = createClient()
 
+    // Bloquear cancelación si el recibo tiene conciliaciones de deuda asociadas
+    const { count: concCount } = await supabase
+      .from('conciliaciones_deuda_aplicaciones')
+      .select('*', { count: 'exact', head: true })
+      .or(`credito_numero.eq.${selectedRecibo.numero},debito_numero.eq.${selectedRecibo.numero}`)
+    if ((concCount ?? 0) > 0) {
+      alert(`No se puede cancelar el recibo ${selectedRecibo.numero} porque tiene conciliaciones de deuda registradas. Revertí las conciliaciones primero.`)
+      setShowCancelarReciboModal(false)
+      setCancelarReciboMotivo("")
+      return
+    }
+
     // Revertir movimientos caja (buscar por numero ya que id no es UUID)
     await supabase.from("movimientos_caja").update({ estado_movimiento: "cancelado" }).eq("documento_origen_tipo", "recibo").eq("documento_origen_numero", selectedRecibo.numero)
+
+    // Revertir movimientos CC bimonetaria (ambas filas de cc cruzadas incluidas, por comprobante_id)
+    const { error: ccRevErr } = await supabase
+      .from('ventas_cc_movimientos')
+      .delete()
+      .eq('comprobante_tipo', 'recibo')
+      .eq('comprobante_id', String(selectedRecibo.id))
+    if (ccRevErr && !ccRevErr.message.includes('does not exist') && !ccRevErr.message.includes('Could not find the table')) {
+      console.warn('[cancelarRecibo] No se pudieron revertir movimientos CC:', ccRevErr.message)
+    }
 
     // Cancelar cupones
     for (const pago of reciboPagosForm) {
@@ -9538,16 +9784,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
   const resetFormRecibo = () => {
     setReciboClienteIdForm(null)
+    setReciboFacturaIdForm(null)
     setReciboPagosForm([])
     setReciboImputacionesForm([])
-    setReciboFacturaIdForm(null)
+    setReciboCCResumen(null)
+    setReciboCCCargando(false)
     setReciboMontoForm(0)
     setReciboCajaId("")
-    setReciboMoneda("ARS")
     setReciboTipoCotizacion("")
     setReciboCotizacion(0)
     setReciboConcepto("")
-    setReciboCobradorNombre("")
     setReciboNvId("")
     setReciboObservaciones("")
     setReciboTab("pagos")
@@ -9625,21 +9871,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <div><label className="text-xs font-medium text-gray-500">Importe</label><input value={`$ ${totalPagos.toLocaleString()}`} disabled className="w-full border rounded px-2 py-1.5 text-sm bg-gray-50" /></div>
                 <div><label className="text-xs font-medium text-gray-500">No Conciliado</label><input value={`$ ${noConciliado.toLocaleString()}`} disabled className="w-full border rounded px-2 py-1.5 text-sm bg-gray-50" /></div>
               </div>
-              <div><label className="text-xs font-medium text-gray-500">Moneda</label>
-                <select value={reciboMoneda} onChange={e => setReciboMoneda(e.target.value)} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm">
-                  <option value="ARS">ARS</option><option value="USD">USD</option>
-                </select>
-              </div>
-              {reciboMoneda === "USD" && (
-                <div className="grid grid-cols-2 gap-2">
-                  <div><label className="text-xs font-medium text-gray-500">Tipo Cotización</label>
-                    <select value={reciboTipoCotizacion} onChange={e => setReciboTipoCotizacion(e.target.value)} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm">
-                      <option value="">Seleccionar</option><option value="Divisa">Divisa</option><option value="Blue">Blue</option><option value="Billete">Billete</option><option value="Oficial">Oficial</option>
-                    </select>
-                  </div>
-                  <div><label className="text-xs font-medium text-gray-500">Cotización</label><input type="number" value={reciboCotizacion} onChange={e => setReciboCotizacion(Number(e.target.value))} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm" /></div>
-                </div>
-              )}
+
             </div>
             <div className="space-y-3">
               <div><label className="text-xs font-medium text-gray-500">Fecha</label><input type="date" value={selectedRecibo?.fecha || new Date().toISOString().split("T")[0]} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm" /></div>
@@ -9650,11 +9882,64 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </select>
               </div>
               <div><label className="text-xs font-medium text-gray-500">Nota de Venta</label><input value={reciboNvId} onChange={e => setReciboNvId(e.target.value)} disabled={esSoloLectura} placeholder="ID o número de NV (opcional)" className="w-full border rounded px-2 py-1.5 text-sm" /></div>
-              <div><label className="text-xs font-medium text-gray-500">Cobrador</label><input value={reciboCobradorNombre} onChange={e => setReciboCobradorNombre(e.target.value)} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm" /></div>
+
               <div><label className="text-xs font-medium text-gray-500">Concepto</label><input value={reciboConcepto} onChange={e => setReciboConcepto(e.target.value)} disabled={esSoloLectura} placeholder="Concepto libre (si no hay NV)" className="w-full border rounded px-2 py-1.5 text-sm" /></div>
             </div>
           </div>
         </div>
+
+        {/* Panel CC Bimonetaria */}
+        {reciboClienteIdForm && (
+          <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-gray-700">Cuenta Corriente del Cliente</h3>
+              {reciboCCCargando && <span className="text-xs text-gray-400 animate-pulse">Cargando...</span>}
+            </div>
+            {reciboCCResumen ? (
+              <>
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div className="bg-gray-50 rounded p-3">
+                    <div className="text-xs text-gray-500 mb-1">Saldo CC ARS</div>
+                    <div className={`font-semibold text-lg ${reciboCCResumen.saldo_ars > 0 ? 'text-red-600' : reciboCCResumen.saldo_ars < 0 ? 'text-green-600' : 'text-gray-700'}`}>
+                      $ {Math.abs(reciboCCResumen.saldo_ars).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                    <div className="text-xs text-gray-400">{reciboCCResumen.saldo_ars > 0 ? 'Deuda del cliente' : reciboCCResumen.saldo_ars < 0 ? 'Crédito a favor' : 'Sin saldo'}</div>
+                  </div>
+                  <div className="bg-gray-50 rounded p-3">
+                    <div className="text-xs text-gray-500 mb-1">Saldo CC USD</div>
+                    <div className={`font-semibold text-lg ${reciboCCResumen.saldo_usd > 0 ? 'text-red-600' : reciboCCResumen.saldo_usd < 0 ? 'text-green-600' : 'text-gray-700'}`}>
+                      USD {Math.abs(reciboCCResumen.saldo_usd).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                    <div className="text-xs text-gray-400">{reciboCCResumen.saldo_usd > 0 ? 'Deuda del cliente' : reciboCCResumen.saldo_usd < 0 ? 'Crédito a favor' : 'Sin saldo'}</div>
+                  </div>
+                  <div className="bg-blue-50 rounded p-3">
+                    <div className="text-xs text-gray-500 mb-1">Caso de Imputación</div>
+                    {(() => {
+                      const caso = calcularCasoImputacion(reciboCCResumen)
+                      const desc: Record<string, string> = {
+                        A: 'Caso A – Solo deuda ARS → pagos ARS imputan CC ARS',
+                        B: 'Caso B – Solo deuda USD → pagos ARS imputan CC USD',
+                        C: 'Caso C – Doble deuda → elegir destino por pago',
+                        D: 'Caso D – Sin deuda → importe a cuenta ARS',
+                      }
+                      return <>
+                        <div className="font-bold text-indigo-900 text-lg">{caso}</div>
+                        <div className="text-xs text-gray-500 leading-tight mt-1">{desc[caso]}</div>
+                      </>
+                    })()}
+                  </div>
+                </div>
+                {reciboCCResumen.cotizacion_cliente > 0 && (
+                  <div className="mt-2 text-xs text-gray-400">
+                    Cotización del cliente: {reciboCCResumen.tipo_cotizacion_cliente} = $ {reciboCCResumen.cotizacion_cliente.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                  </div>
+                )}
+              </>
+            ) : !reciboCCCargando ? (
+              <p className="text-sm text-gray-400">Sin datos de cuenta corriente.</p>
+            ) : null}
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="bg-white rounded-lg shadow-sm">
@@ -9678,20 +9963,93 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   </div>
                 )}
                 {reciboPagosForm.length > 0 ? (
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b text-left text-xs text-gray-500"><th className="py-2">Nombre (valor)</th><th className="text-right">Imp. Comp.</th><th>Mon. Comp.</th><th className="text-right">Importe</th><th>Moneda</th>{esBorrador && <th></th>}</tr></thead>
-                    <tbody>{reciboPagosForm.map((p, i) => (
-                      <tr key={i} className="border-b">
-                        <td className="py-1.5">{p.valor_nombre}{p.es_tarjeta && <span className="ml-1 text-xs text-blue-600">({p.tarjeta_nombre} x{p.cantidad_cuotas})</span>}</td>
-                        <td className="text-right">${(p.importe_comprobante || p.importe)?.toLocaleString()}</td>
-                        <td>{p.moneda_comprobante || p.moneda}</td>
-                        <td className="text-right font-medium">${p.importe?.toLocaleString()}</td>
-                        <td>{p.moneda}</td>
-                        {esBorrador && <td className="text-right"><button onClick={() => setReciboPagosForm(prev => prev.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button></td>}
-                      </tr>
-                    ))}</tbody>
-                    <tfoot><tr className="border-t font-medium"><td className="py-2">Total</td><td></td><td></td><td className="text-right">${totalPagos.toLocaleString()}</td><td></td>{esBorrador && <td></td>}</tr></tfoot>
-                  </table>
+                  <div className="space-y-3">
+                    <table className="w-full text-sm">
+                      <thead><tr className="border-b text-left text-xs text-gray-500">
+                        <th className="py-2">Nombre (valor)</th>
+                        <th className="text-right">Imp. Comp.</th>
+                        <th>Mon. Comp.</th>
+                        <th className="text-right">Importe</th>
+                        <th>Moneda</th>
+                        {calcularCasoImputacion(reciboCCResumen) === 'C' && <th className="text-center">Imputar a</th>}
+                        {esBorrador && <th></th>}
+                      </tr></thead>
+                      <tbody>{reciboPagosForm.map((p, i) => (
+                        <tr key={i} className="border-b">
+                          <td className="py-1.5">{p.valor_nombre}{p.es_tarjeta && <span className="ml-1 text-xs text-blue-600">({p.tarjeta_nombre} x{p.cantidad_cuotas})</span>}</td>
+                          <td className="text-right">${(p.importe_comprobante || p.importe)?.toLocaleString()}</td>
+                          <td>{p.moneda_comprobante || p.moneda}</td>
+                          <td className="text-right font-medium">${p.importe?.toLocaleString()}</td>
+                          <td>{p.moneda}</td>
+                          {calcularCasoImputacion(reciboCCResumen) === 'C' && (
+                            <td className="text-center">
+                              {p.moneda === 'USD' ? (
+                                <span className="text-xs text-gray-400">CC USD</span>
+                              ) : esBorrador ? (
+                                <select
+                                  value={p.imputacion_cuenta || 'ARS'}
+                                  onChange={e => setReciboPagosForm(prev => prev.map((x, idx) => idx === i ? { ...x, imputacion_cuenta: e.target.value as 'ARS' | 'USD' } : x))}
+                                  className="border rounded px-1 py-0.5 text-xs"
+                                >
+                                  <option value="ARS">CC ARS</option>
+                                  <option value="USD">CC USD</option>
+                                </select>
+                              ) : (
+                                <span className="text-xs">{p.imputacion_cuenta === 'USD' ? 'CC USD' : 'CC ARS'}</span>
+                              )}
+                            </td>
+                          )}
+                          {esBorrador && <td className="text-right"><button onClick={() => setReciboPagosForm(prev => prev.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button></td>}
+                        </tr>
+                      ))}</tbody>
+                    </table>
+
+                    {/* Resumen de totales — panel separado */}
+                    {(() => {
+                      const totalARS = reciboPagosForm.filter(p => p.moneda !== 'USD').reduce((s, p) => s + (p.importe || 0), 0)
+                      const totalUSD = reciboPagosForm.filter(p => p.moneda === 'USD').reduce((s, p) => s + (p.importe || 0), 0)
+                      const cotiz = reciboPagosForm.find(p => p.moneda === 'USD')?.cotizacion || reciboCotizacion || 1
+                      const hasMixed = totalARS > 0 && totalUSD > 0
+                      const fmt = (n: number) => n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                      if (!hasMixed) {
+                        return (
+                          <div className="flex justify-end pt-2 border-t">
+                            <span className="text-sm font-semibold text-gray-800">
+                              Total:&nbsp;
+                              {totalUSD > 0 ? `USD ${fmt(totalUSD)}` : `$ ${fmt(totalARS)}`}
+                            </span>
+                          </div>
+                        )
+                      }
+                      const totalReciboARS = Math.round((totalARS + totalUSD * cotiz) * 100) / 100
+                      const totalReciboUSD = Math.round((totalUSD + totalARS / cotiz) * 100) / 100
+                      return (
+                        <div className="flex justify-end">
+                          <div className="bg-gray-50 rounded-lg border border-gray-200 text-sm overflow-hidden min-w-[280px]">
+                            <div className="flex justify-between items-center px-4 py-2 border-b border-gray-200">
+                              <span className="text-gray-500">Efectivo / ARS</span>
+                              <span className="font-medium text-gray-800">$ {fmt(totalARS)}</span>
+                            </div>
+                            <div className="flex justify-between items-center px-4 py-2 border-b border-dashed border-gray-200">
+                              <span className="text-gray-500">Dólares</span>
+                              <span className="font-medium text-gray-800">USD {fmt(totalUSD)}</span>
+                            </div>
+                            <div className="px-4 py-1.5 text-xs text-gray-400 text-center border-b border-gray-100">
+                              TC 1 USD = $ {fmt(cotiz)}
+                            </div>
+                            <div className="flex justify-between items-center px-4 py-2 bg-indigo-50">
+                              <span className="font-semibold text-gray-700">Total en ARS</span>
+                              <span className="font-bold text-indigo-900">$ {fmt(totalReciboARS)}</span>
+                            </div>
+                            <div className="flex justify-between items-center px-4 py-2 bg-indigo-50 border-t border-indigo-100">
+                              <span className="font-semibold text-gray-700">Total en USD</span>
+                              <span className="font-bold text-indigo-900">USD {fmt(totalReciboUSD)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
                 ) : <p className="text-sm text-gray-400 py-6 text-center">No hay medios de pago agregados.</p>}
               </div>
             )}
@@ -9750,6 +10108,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         {showAddPagoModal && (
           <ModalMedioPago
             cajaId={reciboCajaId}
+            puedeEditarCotizacion={currentUser?.rol === "admin" || currentUser?.rol === "supervisor"}
             onGuardar={(result: MedioPagoResult, yNuevo: boolean) => {
               const esTarjeta = result.valor_subtipo === "tarjeta"
               const escheque = result.valor_subtipo === "cheque_tercero"
@@ -9772,6 +10131,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 es_cheque: escheque,
                 cheque_id: null,
                 cupon_tarjeta_id: null,
+                cotizacion: result.cotizacion ?? null,
+                tipo_cotizacion: result.tipo_cotizacion ?? null,
+                imputacion_cuenta: null,
+                cotizacion_cruce: null,
               }
               setReciboPagosForm(prev => [...prev, nuevoPago])
               if (!yNuevo) setShowAddPagoModal(false)
@@ -9859,706 +10222,829 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   
-  // Conciliacion de Deuda - Estilo Odoo
-  const renderConciliacion = () => {
-    const clienteSeleccionado = clientes.find(c => c.id === conciliacionClienteId)
+  // ─── CONCILIACIÓN — función al nivel del componente para evitar closures stale ──
+  const ejecutarConciliacion = async () => {
+    const selDebitos = conciliacionSeleccionDebitos
+    const selCreditos = conciliacionSeleccionCreditos
+    const cot = conciliacionCotizacion
 
-    // Filtrar facturas segun configuracion
-    const todasFacturasCliente = conciliacionClienteId 
-      ? facturas.filter(f => f.cliente_id === conciliacionClienteId).sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
-      : []
-    
-    const facturasFiltradas = todasFacturasCliente.filter(f => {
-      // Filtro por conciliado: "no"=pendientes, "si"=conciliadas, "todos"=todas
-      if (conciliacionFiltroConciliado === "no" && f.saldo <= 0) return false
-      if (conciliacionFiltroConciliado === "si" && f.saldo > 0) return false
-      // Si no hay filtro de conciliado activo ("todos"), aplicar checkbox "Todos" para ocultar conciliadas
-      if (conciliacionFiltroConciliado === "todos" && !conciliacionMostrarTodosDebitos && f.saldo <= 0) return false
-      // Filtro por texto
-      if (conciliacionFiltroTextoDebitos && !f.numero.toLowerCase().includes(conciliacionFiltroTextoDebitos.toLowerCase()) && 
-          !f.nota_venta_numero.toLowerCase().includes(conciliacionFiltroTextoDebitos.toLowerCase())) return false
-      // Filtro por NV
-      if (conciliacionFiltroNV && f.nota_venta_numero !== conciliacionFiltroNV) return false
-      return true
-    })
-    
-    // Filtrar recibos segun configuracion
-    const todosRecibosCliente = conciliacionClienteId
-      ? recibos.filter(r => r.cliente_id === conciliacionClienteId && r.estado === "publicado").sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
-      : []
+    const selDebitosARS  = selDebitos.filter(d => d.moneda === 'ARS')
+    const selCreditosARS = selCreditos.filter(c => c.moneda === 'ARS')
+    const selDebitosUSD  = selDebitos.filter(d => d.moneda === 'USD')
+    const selCreditosUSD = selCreditos.filter(c => c.moneda === 'USD')
 
-    // Notas de crédito publicadas del cliente (NC-) como créditos adicionales
-    const notasCredito = conciliacionClienteId
-      ? ajustes.filter(a => a.cliente_id === conciliacionClienteId && a.estado === "publicado" && a.numero.startsWith("NC-"))
-          .map(a => ({
-            id: a.id,
-            numero: a.numero,
-            fecha: a.fecha,
-            cliente_id: a.cliente_id,
-            importe_no_conciliado: a.saldo_disponible ?? a.total,
-            total: a.total,
-            tipo: "nota_credito" as const,
-            concepto: a.concepto,
-            moneda: a.moneda
-          }))
-      : []
+    const hayParARS = selDebitosARS.length > 0 && selCreditosARS.length > 0
+    const hayParUSD = selDebitosUSD.length > 0 && selCreditosUSD.length > 0
+    const hayMixto  = (selDebitosARS.length > 0 && selCreditosUSD.length > 0) ||
+                      (selDebitosUSD.length > 0 && selCreditosARS.length > 0)
+    const puedeEjecutar = hayParARS || hayParUSD || (hayMixto && cot > 0)
 
-    const recibosFiltrados = todosRecibosCliente.filter(r => {
-      // Filtro por conciliado: "no"=pendientes, "si"=conciliados, "todos"=todos
-      if (conciliacionFiltroConciliado === "no" && r.importe_no_conciliado <= 0) return false
-      if (conciliacionFiltroConciliado === "si" && r.importe_no_conciliado > 0) return false
-      // Si filtro es "todos", el checkbox controla si se muestran los conciliados
-      if (conciliacionFiltroConciliado === "todos" && !conciliacionMostrarTodosCreditos && r.importe_no_conciliado <= 0) return false
-      // Filtro por texto
-      if (conciliacionFiltroTextoCreditos && !r.numero.toLowerCase().includes(conciliacionFiltroTextoCreditos.toLowerCase())) return false
-      return true
-    })
+    if (!puedeEjecutar || conciliacionEjecutando) return
+    setConciliacionEjecutando(true)
 
-    const notasCreditoFiltradas = notasCredito.filter(nc => {
-      if (conciliacionFiltroConciliado === "no" && nc.importe_no_conciliado <= 0) return false
-      if (conciliacionFiltroConciliado === "si" && nc.importe_no_conciliado > 0) return false
-      if (conciliacionFiltroTextoCreditos && !nc.numero.toLowerCase().includes(conciliacionFiltroTextoCreditos.toLowerCase())) return false
-      return true
-    })
+    try {
+      const clienteSeleccionado = clientes.find(c => c.id === conciliacionClienteId)
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
 
-    // Calcular totales (solo pendientes)
-    const totalDebitos = todasFacturasCliente.filter(f => f.saldo > 0).reduce((sum, f) => sum + f.saldo, 0)
-    const totalCreditos = todosRecibosCliente.filter(r => r.importe_no_conciliado > 0).reduce((sum, r) => sum + r.importe_no_conciliado, 0)
-      + notasCredito.filter(nc => nc.importe_no_conciliado > 0).reduce((sum, nc) => sum + nc.importe_no_conciliado, 0)
-    const balance = totalDebitos - totalCreditos
+      const facturaUpdates: { id: number; saldoNuevo: number }[] = []
+      const reciboUpdates: { id: number; importeNoConciliadoNuevo: number }[] = []
+      const ncUpdates: { id: number; saldoDisponibleNuevo: number }[] = []
+      const aplicaciones: typeof conciliacionHistorial[0]['aplicaciones'] = []
 
-    // Calcular totales seleccionados
-    const totalDebitosSeleccionados = conciliacionSeleccionDebitos.reduce((sum, d) => sum + d.montoAplicar, 0)
-    const totalCreditosSeleccionados = conciliacionSeleccionCreditos.reduce((sum, c) => sum + c.montoAplicar, 0)
-    const montoAConciliar = Math.min(totalDebitosSeleccionados, totalCreditosSeleccionados)
-
-    // Funciones de conciliacion
-    const toggleDebitoSeleccion = (factura: Factura) => {
-      const existe = conciliacionSeleccionDebitos.find(d => d.id === factura.id && d.tipo === "factura")
-      if (existe) {
-        setConciliacionSeleccionDebitos(prev => prev.filter(d => !(d.id === factura.id && d.tipo === "factura")))
-      } else {
-        setConciliacionSeleccionDebitos(prev => [...prev, { id: factura.id, tipo: "factura", montoAplicar: factura.saldo }])
-      }
-    }
-
-    const toggleCreditoSeleccion = (item: { id: number; importe_no_conciliado: number; tipo?: string }) => {
-      const tipoItem = (item.tipo === "nota_credito" ? "nc" : "recibo") as "recibo" | "nc"
-      const existe = conciliacionSeleccionCreditos.find(c => c.id === item.id && c.tipo === tipoItem)
-      if (existe) {
-        setConciliacionSeleccionCreditos(prev => prev.filter(c => !(c.id === item.id && c.tipo === tipoItem)))
-      } else {
-        setConciliacionSeleccionCreditos(prev => [...prev, { id: item.id, tipo: tipoItem, montoAplicar: item.importe_no_conciliado }])
-      }
-    }
-
-    const actualizarMontoDebito = (id: number, monto: number) => {
-      setConciliacionSeleccionDebitos(prev => prev.map(d => 
-        d.id === id && d.tipo === "factura" ? { ...d, montoAplicar: monto } : d
-      ))
-    }
-
-    const actualizarMontoCredito = (id: number, monto: number) => {
-      setConciliacionSeleccionCreditos(prev => prev.map(c => 
-        c.id === id && c.tipo === "recibo" ? { ...c, montoAplicar: monto } : c
-      ))
-    }
-
-    const seleccionarTodoDebitos = () => {
-      const pendientes = facturasFiltradas.filter(f => f.saldo > 0)
-      setConciliacionSeleccionDebitos(pendientes.map(f => ({ id: f.id, tipo: "factura" as const, montoAplicar: f.saldo })))
-    }
-
-    const seleccionarTodoCreditos = () => {
-      const pendientes = recibosFiltrados.filter(r => r.importe_no_conciliado > 0)
-      setConciliacionSeleccionCreditos(pendientes.map(r => ({ id: r.id, tipo: "recibo" as const, montoAplicar: r.importe_no_conciliado })))
-    }
-
-    const marcarAutomatico = () => {
-      // Selecciona automaticamente FIFO
-      const debitosPendientes = facturasFiltradas.filter(f => f.saldo > 0)
-      const creditosPendientes = recibosFiltrados.filter(r => r.importe_no_conciliado > 0)
-      if (debitosPendientes.length === 0 || creditosPendientes.length === 0) return
-
-      const nuevosDebitos: typeof conciliacionSeleccionDebitos = []
-      const nuevosCreditos: typeof conciliacionSeleccionCreditos = []
-
-      let creditoIdx = 0
-      let creditoRestante = creditosPendientes[0]?.importe_no_conciliado || 0
-
-      for (const factura of debitosPendientes) {
-        if (creditoIdx >= creditosPendientes.length) break
-        let saldoFactura = factura.saldo
-
-        while (saldoFactura > 0 && creditoIdx < creditosPendientes.length) {
-          const montoAAplicar = Math.min(saldoFactura, creditoRestante)
-          if (montoAAplicar > 0) {
-            const debitoExistente = nuevosDebitos.find(d => d.id === factura.id)
-            if (debitoExistente) {
-              debitoExistente.montoAplicar += montoAAplicar
+      const cruzar = (moneda: 'ARS' | 'USD') => {
+        const debits = selDebitos.filter(d => d.moneda === moneda).map(d => ({ ...d }))
+        const credits = selCreditos.filter(c => c.moneda === moneda).map(c => ({ ...c }))
+        for (const cred of credits) {
+          const creditoInfo = cred.tipo === 'recibo' ? recibos.find(r => r.id === cred.id) : ajustes.find(a => a.id === cred.id)
+          const creditoNum = creditoInfo ? (creditoInfo as any).numero : ''
+          for (const deb of debits) {
+            if (deb.montoAplicar <= 0 || cred.montoAplicar <= 0) continue
+            const factInfo = facturas.find(f => f.id === deb.id)
+            if (!factInfo) continue
+            const monto = Math.min(deb.montoAplicar, cred.montoAplicar)
+            aplicaciones.push({ debito_tipo: 'Factura', debito_numero: factInfo.numero, credito_tipo: cred.tipo === 'nc' ? 'NC' : 'Recibo', credito_numero: creditoNum, monto })
+            const fu = facturaUpdates.find(u => u.id === deb.id)
+            if (fu) fu.saldoNuevo -= monto
+            else facturaUpdates.push({ id: deb.id, saldoNuevo: factInfo.saldo - monto })
+            if (cred.tipo === 'recibo') {
+              const ru = reciboUpdates.find(u => u.id === cred.id)
+              const rInfo = recibos.find(r => r.id === cred.id)
+              if (ru) ru.importeNoConciliadoNuevo -= monto
+              else reciboUpdates.push({ id: cred.id, importeNoConciliadoNuevo: (rInfo?.importe_no_conciliado ?? 0) - monto })
             } else {
-              nuevosDebitos.push({ id: factura.id, tipo: "factura", montoAplicar: montoAAplicar })
+              const nu = ncUpdates.find(u => u.id === cred.id)
+              const nInfo = ajustes.find(a => a.id === cred.id)
+              const saldoBase = nInfo?.saldo_disponible ?? nInfo?.total ?? 0
+              if (nu) nu.saldoDisponibleNuevo -= monto
+              else ncUpdates.push({ id: cred.id, saldoDisponibleNuevo: Math.max(0, saldoBase - monto) })
             }
-            const creditoExistente = nuevosCreditos.find(c => c.id === creditosPendientes[creditoIdx].id)
-            if (creditoExistente) {
-              creditoExistente.montoAplicar += montoAAplicar
-            } else {
-              nuevosCreditos.push({ id: creditosPendientes[creditoIdx].id, tipo: "recibo", montoAplicar: montoAAplicar })
-            }
-            saldoFactura -= montoAAplicar
-            creditoRestante -= montoAAplicar
-          }
-          if (creditoRestante <= 0) {
-            creditoIdx++
-            creditoRestante = creditosPendientes[creditoIdx]?.importe_no_conciliado || 0
+            deb.montoAplicar -= monto; cred.montoAplicar -= monto
           }
         }
       }
-      setConciliacionSeleccionDebitos(nuevosDebitos)
-      setConciliacionSeleccionCreditos(nuevosCreditos)
-    }
+      cruzar('ARS'); cruzar('USD')
 
-    const limpiarSeleccion = () => {
+      if (hayMixto && cot > 0) {
+        // USD créditos → ARS débitos
+        const usdCreds = selCreditosUSD.map(c => {
+          const ru = reciboUpdates.find(u => u.id === c.id)
+          const rInfo = recibos.find(r => r.id === c.id)
+          return { ...c, montoAplicar: ru ? ru.importeNoConciliadoNuevo : (rInfo?.importe_no_conciliado ?? c.montoAplicar) }
+        })
+        const arsDebs = selDebitosARS.map(d => {
+          const fu = facturaUpdates.find(u => u.id === d.id)
+          const fInfo = facturas.find(f => f.id === d.id)
+          return { ...d, montoAplicar: fu ? fu.saldoNuevo : (fInfo?.saldo ?? d.montoAplicar) }
+        })
+        for (const cred of usdCreds) {
+          const rInfo = recibos.find(r => r.id === cred.id)
+          const creditoNum = rInfo?.numero ?? ''
+          for (const deb of arsDebs) {
+            if (deb.montoAplicar <= 0.001 || cred.montoAplicar <= 0.001) continue
+            const factInfo = facturas.find(f => f.id === deb.id)
+            if (!factInfo) continue
+            const montoAplicadoARS = Math.min(deb.montoAplicar, cred.montoAplicar * cot)
+            const montoAplicadoUSD = montoAplicadoARS / cot
+            aplicaciones.push({ debito_tipo: 'Factura', debito_numero: factInfo.numero, credito_tipo: `Recibo USD@${cot}`, credito_numero: creditoNum, monto: montoAplicadoARS })
+            const fu = facturaUpdates.find(u => u.id === deb.id)
+            if (fu) fu.saldoNuevo = Math.max(0, fu.saldoNuevo - montoAplicadoARS)
+            else facturaUpdates.push({ id: deb.id, saldoNuevo: Math.max(0, factInfo.saldo - montoAplicadoARS) })
+            const ru = reciboUpdates.find(u => u.id === cred.id)
+            if (ru) ru.importeNoConciliadoNuevo = Math.max(0, ru.importeNoConciliadoNuevo - montoAplicadoUSD)
+            else reciboUpdates.push({ id: cred.id, importeNoConciliadoNuevo: Math.max(0, (rInfo?.importe_no_conciliado ?? 0) - montoAplicadoUSD) })
+            deb.montoAplicar -= montoAplicadoARS; cred.montoAplicar -= montoAplicadoUSD
+          }
+        }
+
+        // ARS créditos → USD débitos
+        const arsCreds = selCreditosARS.map(c => {
+          const ru = reciboUpdates.find(u => u.id === c.id)
+          const rInfo = recibos.find(r => r.id === c.id)
+          const nInfo = ajustes.find(a => a.id === c.id)
+          return { ...c, montoAplicar: ru ? ru.importeNoConciliadoNuevo : c.tipo === 'recibo' ? (rInfo?.importe_no_conciliado ?? c.montoAplicar) : (nInfo?.saldo_disponible ?? nInfo?.total ?? c.montoAplicar) }
+        })
+        const usdDebs = selDebitosUSD.map(d => {
+          const fu = facturaUpdates.find(u => u.id === d.id)
+          const fInfo = facturas.find(f => f.id === d.id)
+          return { ...d, montoAplicar: fu ? fu.saldoNuevo : (fInfo?.saldo ?? d.montoAplicar) }
+        })
+        for (const cred of arsCreds) {
+          const rInfo = recibos.find(r => r.id === cred.id)
+          const nInfo = ajustes.find(a => a.id === cred.id)
+          const creditoNum = rInfo?.numero ?? nInfo?.numero ?? ''
+          for (const deb of usdDebs) {
+            if (deb.montoAplicar <= 0.001 || cred.montoAplicar <= 0.001) continue
+            const factInfo = facturas.find(f => f.id === deb.id)
+            if (!factInfo) continue
+            const montoAplicadoARS = Math.min(cred.montoAplicar, deb.montoAplicar * cot)
+            const montoAplicadoUSD = montoAplicadoARS / cot
+            aplicaciones.push({ debito_tipo: 'Factura USD', debito_numero: factInfo.numero, credito_tipo: `${cred.tipo === 'nc' ? 'NC' : 'Recibo'} ARS@${cot}`, credito_numero: creditoNum, monto: montoAplicadoUSD })
+            const fu = facturaUpdates.find(u => u.id === deb.id)
+            if (fu) fu.saldoNuevo = Math.max(0, fu.saldoNuevo - montoAplicadoUSD)
+            else facturaUpdates.push({ id: deb.id, saldoNuevo: Math.max(0, factInfo.saldo - montoAplicadoUSD) })
+            const ru = reciboUpdates.find(u => u.id === cred.id)
+            if (cred.tipo === 'recibo') {
+              if (ru) ru.importeNoConciliadoNuevo = Math.max(0, ru.importeNoConciliadoNuevo - montoAplicadoARS)
+              else reciboUpdates.push({ id: cred.id, importeNoConciliadoNuevo: Math.max(0, (rInfo?.importe_no_conciliado ?? 0) - montoAplicadoARS) })
+            } else {
+              const nu = ncUpdates.find(u => u.id === cred.id)
+              const saldoBase = nInfo?.saldo_disponible ?? nInfo?.total ?? 0
+              if (nu) nu.saldoDisponibleNuevo = Math.max(0, nu.saldoDisponibleNuevo - montoAplicadoARS)
+              else ncUpdates.push({ id: cred.id, saldoDisponibleNuevo: Math.max(0, saldoBase - montoAplicadoARS) })
+            }
+            deb.montoAplicar -= montoAplicadoUSD; cred.montoAplicar -= montoAplicadoARS
+          }
+        }
+      }
+
+      if (aplicaciones.length === 0) {
+        alert('No se encontraron pares débito/crédito válidos para conciliar.')
+        return
+      }
+
+      for (const u of facturaUpdates) {
+        const s = Math.max(0, u.saldoNuevo)
+        const { error } = await supabase.from('facturas').update({ saldo: s, estado: s <= 0.01 ? 'conciliada' : 'abierta' }).eq('id', u.id)
+        if (error) { alert('Error al actualizar factura: ' + error.message); return }
+      }
+      for (const u of reciboUpdates) {
+        await supabase.from('recibos').update({ importe_no_conciliado: Math.max(0, u.importeNoConciliadoNuevo) }).eq('id', u.id)
+      }
+      for (const u of ncUpdates) {
+        await supabase.from('ajustes_clientes').update({ saldo_disponible: u.saldoDisponibleNuevo }).eq('id', u.id)
+      }
+
+      for (const u of facturaUpdates) {
+        const s = Math.max(0, u.saldoNuevo)
+        setFacturas(prev => prev.map(f => f.id === u.id ? { ...f, saldo: s, estado: s <= 0.01 ? 'conciliada' : f.estado } : f))
+      }
+      for (const u of reciboUpdates) {
+        setRecibos(prev => prev.map(r => r.id === u.id ? { ...r, importe_no_conciliado: Math.max(0, u.importeNoConciliadoNuevo) } : r))
+      }
+      for (const u of ncUpdates) {
+        setAjustes(prev => prev.map(a => a.id === u.id ? { ...a, saldo_disponible: u.saldoDisponibleNuevo } : a))
+      }
+
+      // Persistir conciliación en DB
+      if (clienteSeleccionado) {
+        const totalConciliado = aplicaciones.reduce((s, a) => s + a.monto, 0)
+        const { data: nuevaConc, error: concErr } = await supabase
+          .from('conciliaciones_deuda')
+          .insert({
+            fecha: new Date().toISOString(),
+            cliente_id: clienteSeleccionado.id,
+            total_conciliado: totalConciliado,
+            usuario: currentUser?.nombre || 'Admin',
+            sucursal_id: sucursalActiva?.id ?? null,
+          })
+          .select('id')
+          .single()
+        if (concErr) {
+          alert('Error al guardar historial de conciliación: ' + concErr.message)
+          return
+        }
+        const aplRows = aplicaciones.map(a => ({
+          conciliacion_id: nuevaConc.id,
+          debito_tipo: a.debito_tipo,
+          debito_numero: a.debito_numero,
+          credito_tipo: a.credito_tipo,
+          credito_numero: a.credito_numero,
+          monto: a.monto,
+        }))
+        await supabase.from('conciliaciones_deuda_aplicaciones').insert(aplRows)
+        setConciliacionHistorial(prev => [
+          {
+            id: nuevaConc.id,
+            fecha: new Date().toISOString(),
+            cliente_id: clienteSeleccionado.id,
+            cliente_nombre: clienteSeleccionado.nombre,
+            aplicaciones,
+            total_conciliado: totalConciliado,
+            usuario: currentUser?.nombre || 'Admin',
+            estado: 'activa' as const,
+            fecha_cancelacion: null,
+          },
+          ...prev.filter(h => h.id !== nuevaConc.id),
+        ])
+      }
+    } catch (err) {
+      alert('Error inesperado: ' + (err as Error).message)
+    } finally {
+      setConciliacionEjecutando(false)
       setConciliacionSeleccionDebitos([])
       setConciliacionSeleccionCreditos([])
     }
+  }
 
-    // Ejecutar conciliacion
-    const ejecutarConciliacion = () => {
-      if (montoAConciliar <= 0) return
+  const revertirConciliacion = async (concId: number) => {
+    if (!confirm('¿Confirmás que querés revertir esta conciliación? Se restaurarán los saldos de las facturas y créditos involucrados.')) return
+    setConciliacionRevertiendoId(concId)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
 
-      const aplicaciones: typeof conciliacionHistorial[0]["aplicaciones"] = []
+      // Traer las aplicaciones de la conciliación
+      const { data: apls, error: aplErr } = await supabase
+        .from('conciliaciones_deuda_aplicaciones')
+        .select('*')
+        .eq('conciliacion_id', concId)
+      if (aplErr || !apls) { alert('Error al obtener aplicaciones: ' + aplErr?.message); return }
 
-      // Crear copias de las selecciones para ir descontando
-      const debitosRestantes = conciliacionSeleccionDebitos.map(d => ({ ...d }))
-      const creditosRestantes = conciliacionSeleccionCreditos.map(c => ({ ...c }))
+      for (const apl of apls) {
+        // Restaurar saldo de factura (débito)
+        const factura = facturas.find(f => f.numero === apl.debito_numero)
+        if (factura) {
+          const saldoRestaurado = Math.min((factura.saldo || 0) + apl.monto, factura.total)
+          await supabase.from('facturas').update({ saldo: saldoRestaurado, estado: 'abierta' }).eq('id', factura.id)
+          setFacturas(prev => prev.map(f => f.id === factura.id ? { ...f, saldo: saldoRestaurado, estado: 'abierta' } : f))
+        }
 
-      // Aplicar creditos a debitos
-      for (const credito of creditosRestantes) {
-        // Resolver la info del crédito (recibo o NC)
-        const reciboInfo = credito.tipo === "recibo" ? recibos.find(r => r.id === credito.id) : null
-        const ncInfo = credito.tipo === "nc" ? ajustes.find(a => a.id === credito.id) : null
-        const creditoNumero = reciboInfo?.numero ?? ncInfo?.numero ?? ""
-        const creditoTipoLabel = credito.tipo === "nc" ? "NC" : "Recibo"
-        if ((!reciboInfo && !ncInfo) || credito.montoAplicar <= 0) continue
-
-        for (const debito of debitosRestantes) {
-          if (debito.montoAplicar <= 0) continue
-
-          const facturaInfo = facturas.find(f => f.id === debito.id)
-          if (!facturaInfo) continue
-
-          const montoAAplicar = Math.min(credito.montoAplicar, debito.montoAplicar)
-
-          if (montoAAplicar > 0) {
-            aplicaciones.push({
-              debito_tipo: "Factura",
-              debito_numero: facturaInfo.numero,
-              credito_tipo: creditoTipoLabel,
-              credito_numero: creditoNumero,
-              monto: montoAAplicar
-            })
-
-            // Actualizar factura
-            setFacturas(prev => prev.map(f => 
-              f.id === debito.id ? { ...f, saldo: f.saldo - montoAAplicar } : f
-            ))
-
-            // Actualizar recibo o NC
-            if (credito.tipo === "recibo") {
-              setRecibos(prev => prev.map(r => 
-                r.id === credito.id ? { ...r, importe_no_conciliado: r.importe_no_conciliado - montoAAplicar } : r
-              ))
-            } else {
-              setAjustes(prev => prev.map(a =>
-                a.id === credito.id
-                  ? { ...a, saldo_disponible: Math.max(0, (a.saldo_disponible ?? a.total) - montoAAplicar) }
-                  : a
-              ))
-            }
-
-            debito.montoAplicar -= montoAAplicar
-            credito.montoAplicar -= montoAAplicar
+        // Restaurar crédito (recibo o NC)
+        const esNC = apl.credito_tipo?.startsWith('NC')
+        if (esNC) {
+          const nc = ajustes.find(a => a.numero === apl.credito_numero)
+          if (nc) {
+            const saldoRestaurado = (nc.saldo_disponible ?? nc.total ?? 0) + apl.monto
+            await supabase.from('ajustes_clientes').update({ saldo_disponible: saldoRestaurado }).eq('id', nc.id)
+            setAjustes(prev => prev.map(a => a.id === nc.id ? { ...a, saldo_disponible: saldoRestaurado } : a))
+          }
+        } else {
+          // Extraer número limpio (credito_numero puede ser p.ej. "REC X ..." sin prefijo extra)
+          const recibo = recibos.find(r => r.numero === apl.credito_numero)
+          if (recibo) {
+            const importeRestaurado = (recibo.importe_no_conciliado || 0) + apl.monto
+            await supabase.from('recibos').update({ importe_no_conciliado: importeRestaurado }).eq('id', recibo.id)
+            setRecibos(prev => prev.map(r => r.id === recibo.id ? { ...r, importe_no_conciliado: importeRestaurado } : r))
           }
         }
       }
 
-      // Agregar al historial
-      if (aplicaciones.length > 0 && clienteSeleccionado) {
-        setConciliacionHistorial(prev => [...prev, {
-          id: prev.length + 1,
-          fecha: new Date().toISOString(),
-          cliente_id: clienteSeleccionado.id,
-          cliente_nombre: clienteSeleccionado.nombre,
-          aplicaciones,
-          total_conciliado: aplicaciones.reduce((sum, a) => sum + a.monto, 0),
-          usuario: "Admin"
-        }])
-      }
+      // Marcar la conciliación como cancelada (no se elimina para conservar historial)
+      const fechaCancelacion = new Date().toISOString()
+      const { error: updErr } = await supabase
+        .from('conciliaciones_deuda')
+        .update({ estado: 'cancelada', fecha_cancelacion: fechaCancelacion })
+        .eq('id', concId)
+      if (updErr) { alert('Error al cancelar la conciliación: ' + updErr.message); return }
 
-      // Limpiar seleccion
-      limpiarSeleccion()
+      setConciliacionHistorial(prev => prev.map(h =>
+        h.id === concId ? { ...h, estado: 'cancelada', fecha_cancelacion: fechaCancelacion } : h
+      ))
+    } catch (err) {
+      alert('Error inesperado: ' + (err as Error).message)
+    } finally {
+      setConciliacionRevertiendoId(null)
+    }
+  }
+
+  const cargarHistorialConciliacionesCliente = async (clienteId: number) => {
+    const { createClient } = await import('@/lib/supabase/client')
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('conciliaciones_deuda')
+      .select('id, fecha, cliente_id, total_conciliado, usuario, estado, fecha_cancelacion, conciliaciones_deuda_aplicaciones(debito_tipo, debito_numero, credito_tipo, credito_numero, monto)')
+      .eq('cliente_id', clienteId)
+      .order('fecha', { ascending: false })
+    if (error || !data) return
+    const clienteNombre = clientes.find(c => c.id === clienteId)?.nombre ?? ''
+    const loaded = (data as any[]).map(c => ({
+      id: c.id as number,
+      fecha: c.fecha as string,
+      cliente_id: c.cliente_id as number,
+      cliente_nombre: clienteNombre,
+      aplicaciones: (c.conciliaciones_deuda_aplicaciones ?? []) as { debito_tipo: string; debito_numero: string; credito_tipo: string; credito_numero: string; monto: number }[],
+      total_conciliado: c.total_conciliado as number,
+      usuario: (c.usuario ?? '') as string,
+      estado: (c.estado ?? 'activa') as 'activa' | 'cancelada',
+      fecha_cancelacion: c.fecha_cancelacion as string | null,
+    }))
+    setConciliacionHistorial(prev => [
+      ...prev.filter(h => h.cliente_id !== clienteId),
+      ...loaded,
+    ])
+  }
+
+  // Conciliacion de Deuda - Bimonetaria
+  const renderConciliacion = () => {
+    // Cargar recibos si aún no se hizo (pueden no estar si se navegó directo a esta vista)
+    if (!recibosLoaded) { cargarRecibos() }
+
+    const clienteSeleccionado = clientes.find(c => c.id === conciliacionClienteId)
+
+    // ── Separar facturas por moneda ──────────────────────────────────────
+    const todasFacts = conciliacionClienteId
+      ? facturas.filter(f => f.cliente_id === conciliacionClienteId)
+      : []
+    const factsARS = todasFacts.filter(f => (!f.moneda || f.moneda === 'ARS'))
+    const factsUSD = todasFacts.filter(f => f.moneda === 'USD')
+
+    const pendientesARS = factsARS.filter(f => f.saldo > 0)
+    const pendientesUSD = factsUSD.filter(f => f.saldo > 0)
+
+    // ── Recibos por moneda ───────────────────────────────────────────────
+    const todosRecibos = conciliacionClienteId
+      ? recibos.filter(r => r.cliente_id === conciliacionClienteId && r.estado === 'publicado')
+      : []
+    const recibosARS = todosRecibos.filter(r => !r.moneda || r.moneda === 'ARS')
+    const recibosUSD = todosRecibos.filter(r => r.moneda === 'USD')
+
+    // ── NC por moneda ────────────────────────────────────────────────────
+    const todasNC = conciliacionClienteId
+      ? ajustes.filter(a => a.cliente_id === conciliacionClienteId && a.estado === 'publicado' && a.numero.startsWith('NC-'))
+      : []
+    const ncARS = todasNC.filter(a => !a.moneda || a.moneda === 'ARS')
+    const ncUSD = todasNC.filter(a => a.moneda === 'USD')
+
+    // ── Saldos totales ───────────────────────────────────────────────────
+    const debitoARSTotal = factsARS.filter(f => f.saldo > 0).reduce((s, f) => s + f.saldo, 0)
+    const creditoARSTotal = recibosARS.filter(r => r.importe_no_conciliado > 0).reduce((s, r) => s + r.importe_no_conciliado, 0)
+      + ncARS.filter(n => (n.saldo_disponible ?? n.total) > 0).reduce((s, n) => s + (n.saldo_disponible ?? n.total), 0)
+    const saldoARS = debitoARSTotal - creditoARSTotal
+
+    const debitoUSDTotal = factsUSD.filter(f => f.saldo > 0).reduce((s, f) => s + f.saldo, 0)
+    const creditoUSDTotal = recibosUSD.filter(r => r.importe_no_conciliado > 0).reduce((s, r) => s + r.importe_no_conciliado, 0)
+      + ncUSD.filter(n => (n.saldo_disponible ?? n.total) > 0).reduce((s, n) => s + (n.saldo_disponible ?? n.total), 0)
+    const saldoUSD = debitoUSDTotal - creditoUSDTotal
+
+    // ── Selecciones ──────────────────────────────────────────────────────
+    const selDebitosARS = conciliacionSeleccionDebitos.filter(d => d.moneda === 'ARS')
+    const selCreditosARS = conciliacionSeleccionCreditos.filter(c => c.moneda === 'ARS')
+    const selDebitosUSD = conciliacionSeleccionDebitos.filter(d => d.moneda === 'USD')
+    const selCreditosUSD = conciliacionSeleccionCreditos.filter(c => c.moneda === 'USD')
+
+    const totalSelDebitosARS = selDebitosARS.reduce((s, d) => s + d.montoAplicar, 0)
+    const totalSelCreditosARS = selCreditosARS.reduce((s, c) => s + c.montoAplicar, 0)
+    const totalSelDebitosUSD = selDebitosUSD.reduce((s, d) => s + d.montoAplicar, 0)
+    const totalSelCreditosUSD = selCreditosUSD.reduce((s, c) => s + c.montoAplicar, 0)
+
+    // Tipo de conciliación detectado
+    const hayParARS  = selDebitosARS.length > 0 && selCreditosARS.length > 0
+    const hayParUSD  = selDebitosUSD.length > 0 && selCreditosUSD.length > 0
+    // Cruzada: débitos ARS + créditos USD (o débitos USD + créditos ARS)
+    const hayMixto   = (selDebitosARS.length > 0 && selCreditosUSD.length > 0) ||
+                       (selDebitosUSD.length > 0 && selCreditosARS.length > 0)
+    const haySeleccion = hayParARS || hayParUSD || (hayMixto && conciliacionCotizacion > 0)
+
+    // ── Helpers de toggle ────────────────────────────────────────────────
+    const toggleDebito = (id: number, moneda: 'ARS' | 'USD', saldo: number) => {
+      setConciliacionSeleccionDebitos(prev => {
+        const existe = prev.find(d => d.id === id && d.tipo === 'factura')
+        return existe ? prev.filter(d => !(d.id === id && d.tipo === 'factura'))
+          : [...prev, { id, tipo: 'factura' as const, moneda, montoAplicar: saldo }]
+      })
+    }
+    const toggleCredito = (id: number, tipo: 'recibo' | 'nc', moneda: 'ARS' | 'USD', saldo: number) => {
+      setConciliacionSeleccionCreditos(prev => {
+        const existe = prev.find(c => c.id === id && c.tipo === tipo)
+        return existe ? prev.filter(c => !(c.id === id && c.tipo === tipo))
+          : [...prev, { id, tipo, moneda, montoAplicar: saldo }]
+      })
+    }
+    const limpiarSeleccion = () => { setConciliacionSeleccionDebitos([]); setConciliacionSeleccionCreditos([]) }
+    const marcarTodoARS = () => {
+      setConciliacionSeleccionDebitos(prev => [
+        ...prev.filter(d => d.moneda !== 'ARS'),
+        ...pendientesARS.map(f => ({ id: f.id, tipo: 'factura' as const, moneda: 'ARS' as const, montoAplicar: f.saldo }))
+      ])
+      setConciliacionSeleccionCreditos(prev => [
+        ...prev.filter(c => c.moneda !== 'ARS'),
+        ...recibosARS.filter(r => r.importe_no_conciliado > 0).map(r => ({ id: r.id, tipo: 'recibo' as const, moneda: 'ARS' as const, montoAplicar: r.importe_no_conciliado })),
+        ...ncARS.filter(n => (n.saldo_disponible ?? n.total) > 0).map(n => ({ id: n.id, tipo: 'nc' as const, moneda: 'ARS' as const, montoAplicar: n.saldo_disponible ?? n.total }))
+      ])
+    }
+    const marcarTodoUSD = () => {
+      setConciliacionSeleccionDebitos(prev => [
+        ...prev.filter(d => d.moneda !== 'USD'),
+        ...pendientesUSD.map(f => ({ id: f.id, tipo: 'factura' as const, moneda: 'USD' as const, montoAplicar: f.saldo }))
+      ])
+      setConciliacionSeleccionCreditos(prev => [
+        ...prev.filter(c => c.moneda !== 'USD'),
+        ...recibosUSD.filter(r => r.importe_no_conciliado > 0).map(r => ({ id: r.id, tipo: 'recibo' as const, moneda: 'USD' as const, montoAplicar: r.importe_no_conciliado })),
+        ...ncUSD.filter(n => (n.saldo_disponible ?? n.total) > 0).map(n => ({ id: n.id, tipo: 'nc' as const, moneda: 'USD' as const, montoAplicar: n.saldo_disponible ?? n.total }))
+      ])
     }
 
-    // Historial de conciliaciones del cliente
-    const historialCliente = conciliacionClienteId 
+    // ── Helper: panel de débitos/créditos por moneda ─────────────────────
+    const PanelDebitos = ({ moneda, factsList }: { moneda: 'ARS' | 'USD'; factsList: typeof factsARS }) => {
+      const filtro = conciliacionFiltroTextoDebitos.toLowerCase()
+      const visibles = conciliacionFiltroConciliado === 'no'
+        ? factsList.filter(f => f.saldo > 0)
+        : conciliacionFiltroConciliado === 'si'
+          ? factsList.filter(f => f.saldo <= 0)
+          : conciliacionMostrarTodosDebitos ? factsList : factsList.filter(f => f.saldo > 0)
+      const filtradas = filtro ? visibles.filter(f => f.numero?.toLowerCase().includes(filtro) || f.nota_venta_numero?.toLowerCase().includes(filtro)) : visibles
+
+      return (
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="px-3 py-2 bg-red-50 border-b flex items-center justify-between">
+            <span className="text-sm font-medium text-red-800">Débitos {moneda}</span>
+            <div className="flex items-center gap-2">
+              <input type="text" placeholder="Filtrar..." value={conciliacionFiltroTextoDebitos}
+                onChange={e => setConciliacionFiltroTextoDebitos(e.target.value)}
+                className="px-2 py-0.5 text-xs border rounded w-24" />
+              <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer">
+                <input type="checkbox" checked={conciliacionMostrarTodosDebitos}
+                  onChange={e => setConciliacionMostrarTodosDebitos(e.target.checked)}
+                  className="w-3 h-3 rounded" /> Todos
+              </label>
+              <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-medium">{filtradas.length}</span>
+            </div>
+          </div>
+          <div className="overflow-auto max-h-52">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-white border-b">
+                <tr className="text-gray-500 uppercase">
+                  <th className="py-1.5 px-2 text-left font-semibold">NV</th>
+                  <th className="py-1.5 px-2 text-left font-semibold">Comprobante</th>
+                  <th className="py-1.5 px-2 text-left font-semibold">Cond.</th>
+                  <th className="py-1.5 px-2 text-left font-semibold">Venc.</th>
+                  <th className="py-1.5 px-2 text-right font-semibold">Importe</th>
+                  <th className="py-1.5 px-2 text-right font-semibold">Saldo</th>
+                  <th className="py-1.5 px-2 text-center font-semibold">✓</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtradas.length > 0 ? filtradas.map(f => {
+                  const sel = conciliacionSeleccionDebitos.find(d => d.id === f.id && d.tipo === 'factura')
+                  const conciliada = f.saldo <= 0
+                  return (
+                    <tr key={f.id} onClick={() => !conciliada && toggleDebito(f.id, moneda, f.saldo)}
+                      className={`border-b cursor-pointer ${sel ? 'bg-red-50' : 'hover:bg-gray-50'} ${conciliada ? 'opacity-40' : ''}`}>
+                      <td className="py-1 px-2 text-orange-600 hover:underline">{f.nota_venta_numero}</td>
+                      <td className="py-1 px-2 text-blue-600 hover:underline">{f.numero}</td>
+                      <td className="py-1 px-2 text-gray-500">{f.condicion_pago || 'Contado'}</td>
+                      <td className="py-1 px-2 text-gray-500">{f.fecha_vencimiento ? f.fecha_vencimiento.split('T')[0] : '-'}</td>
+                      <td className="py-1 px-2 text-right">{moneda === 'USD' ? `USD ${f.total?.toLocaleString()}` : `$${f.total?.toLocaleString()}`}</td>
+                      <td className="py-1 px-2 text-right font-semibold text-red-600">{moneda === 'USD' ? `USD ${f.saldo?.toLocaleString()}` : `$${f.saldo?.toLocaleString()}`}</td>
+                      <td className="py-1 px-2 text-center" onClick={e => e.stopPropagation()}>
+                        {!conciliada && <input type="checkbox" checked={!!sel}
+                          onChange={() => toggleDebito(f.id, moneda, f.saldo)}
+                          className="w-3.5 h-3.5 rounded border-gray-300" />}
+                      </td>
+                    </tr>
+                  )
+                }) : (
+                  <tr><td colSpan={7} className="py-6 text-center text-gray-400">
+                    {!conciliacionClienteId ? 'Seleccioná un cliente' : 'Sin débitos ' + moneda}
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )
+    }
+
+    const PanelCreditos = ({ moneda, recibosList, ncList }: { moneda: 'ARS' | 'USD'; recibosList: typeof recibosARS; ncList: typeof ncARS }) => {
+      const filtro = conciliacionFiltroTextoCreditos.toLowerCase()
+      const recibosFilt = (conciliacionFiltroConciliado === 'si'
+        ? recibosList.filter(r => r.importe_no_conciliado <= 0)
+        : recibosList.filter(r => conciliacionMostrarTodosCreditos ? true : r.importe_no_conciliado > 0))
+        .filter(r => !filtro || r.numero?.toLowerCase().includes(filtro))
+      const ncFilt = (conciliacionFiltroConciliado === 'si'
+        ? ncList.filter(n => (n.saldo_disponible ?? n.total) <= 0)
+        : ncList.filter(n => conciliacionMostrarTodosCreditos ? true : (n.saldo_disponible ?? n.total) > 0))
+        .filter(n => !filtro || n.numero?.toLowerCase().includes(filtro))
+      const total = recibosFilt.length + ncFilt.length
+
+      return (
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="px-3 py-2 bg-blue-50 border-b flex items-center justify-between">
+            <span className="text-sm font-medium text-blue-800">Créditos {moneda}</span>
+            <div className="flex items-center gap-2">
+              <input type="text" placeholder="Filtrar..." value={conciliacionFiltroTextoCreditos}
+                onChange={e => setConciliacionFiltroTextoCreditos(e.target.value)}
+                className="px-2 py-0.5 text-xs border rounded w-24" />
+              <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer">
+                <input type="checkbox" checked={conciliacionMostrarTodosCreditos}
+                  onChange={e => setConciliacionMostrarTodosCreditos(e.target.checked)}
+                  className="w-3 h-3 rounded" /> Todos
+              </label>
+              <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">{total}</span>
+            </div>
+          </div>
+          <div className="overflow-auto max-h-52">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-white border-b">
+                <tr className="text-gray-500 uppercase">
+                  <th className="py-1.5 px-2 text-center font-semibold">✓</th>
+                  <th className="py-1.5 px-2 text-right font-semibold">Saldo</th>
+                  <th className="py-1.5 px-2 text-right font-semibold">Importe</th>
+                  <th className="py-1.5 px-2 text-left font-semibold">Fecha</th>
+                  <th className="py-1.5 px-2 text-left font-semibold">Comprobante</th>
+                  <th className="py-1.5 px-2 text-left font-semibold">Tipo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recibosFilt.map(r => {
+                  const saldo = r.importe_no_conciliado
+                  const sel = conciliacionSeleccionCreditos.find(c => c.id === r.id && c.tipo === 'recibo')
+                  const conciliado = saldo <= 0
+                  return (
+                    <tr key={`r-${r.id}`} onClick={() => !conciliado && toggleCredito(r.id, 'recibo', moneda, saldo)}
+                      className={`border-b cursor-pointer ${sel ? 'bg-blue-50' : 'hover:bg-gray-50'} ${conciliado ? 'opacity-40' : ''}`}>
+                      <td className="py-1 px-2 text-center" onClick={e => e.stopPropagation()}>
+                        {!conciliado && <input type="checkbox" checked={!!sel} onChange={() => toggleCredito(r.id, 'recibo', moneda, saldo)} className="w-3.5 h-3.5 rounded border-gray-300" />}
+                      </td>
+                      <td className="py-1 px-2 text-right font-semibold text-green-600">{moneda === 'USD' ? `USD ${saldo?.toLocaleString()}` : `$${saldo?.toLocaleString()}`}</td>
+                      <td className="py-1 px-2 text-right">{moneda === 'USD' ? `USD ${r.importe?.toLocaleString()}` : `$${r.importe?.toLocaleString()}`}</td>
+                      <td className="py-1 px-2 text-gray-500">{r.fecha?.split('T')[0]}</td>
+                      <td className="py-1 px-2 text-blue-600">{r.numero}</td>
+                      <td className="py-1 px-2 text-gray-500">Recibo</td>
+                    </tr>
+                  )
+                })}
+                {ncFilt.map(n => {
+                  const saldo = n.saldo_disponible ?? n.total
+                  const sel = conciliacionSeleccionCreditos.find(c => c.id === n.id && c.tipo === 'nc')
+                  const conciliado = saldo <= 0
+                  return (
+                    <tr key={`nc-${n.id}`} onClick={() => !conciliado && toggleCredito(n.id, 'nc', moneda, saldo)}
+                      className={`border-b cursor-pointer bg-emerald-50/30 ${sel ? 'bg-emerald-100' : 'hover:bg-emerald-50'} ${conciliado ? 'opacity-40' : ''}`}>
+                      <td className="py-1 px-2 text-center" onClick={e => e.stopPropagation()}>
+                        {!conciliado && <input type="checkbox" checked={!!sel} onChange={() => toggleCredito(n.id, 'nc', moneda, saldo)} className="w-3.5 h-3.5 rounded border-gray-300 accent-emerald-600" />}
+                      </td>
+                      <td className="py-1 px-2 text-right font-semibold text-green-600">{moneda === 'USD' ? `USD ${saldo?.toLocaleString()}` : `$${saldo?.toLocaleString()}`}</td>
+                      <td className="py-1 px-2 text-right">{moneda === 'USD' ? `USD ${n.total?.toLocaleString()}` : `$${n.total?.toLocaleString()}`}</td>
+                      <td className="py-1 px-2 text-gray-500">{n.fecha?.split('T')[0]}</td>
+                      <td className="py-1 px-2 text-emerald-700 font-medium">{n.numero}</td>
+                      <td className="py-1 px-2"><span className="bg-emerald-100 text-emerald-600 rounded px-1 text-xs">NC</span></td>
+                    </tr>
+                  )
+                })}
+                {recibosFilt.length === 0 && ncFilt.length === 0 && (
+                  <tr><td colSpan={6} className="py-6 text-center text-gray-400">
+                    {!conciliacionClienteId ? 'Seleccioná un cliente' : 'Sin créditos ' + moneda}
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )
+    }
+
+    // ── Historial ────────────────────────────────────────────────────────
+    const historialCliente = conciliacionClienteId
       ? conciliacionHistorial.filter(h => h.cliente_id === conciliacionClienteId)
       : []
 
     return (
       <div>
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold text-amber-900">Conciliacion de Deuda</h1>
-        </div>
-
-        {/* Tabs Conciliar / Historial */}
-        <div className="flex gap-4 mb-4">
-          <button 
-            onClick={() => setConciliacionTab("conciliar")}
-            className={`px-4 py-2 text-sm font-medium rounded ${conciliacionTab === "conciliar" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
-          >
-            Conciliar
-          </button>
-          <button 
-            onClick={() => setConciliacionTab("historial")}
-            className={`px-4 py-2 text-sm font-medium rounded ${conciliacionTab === "historial" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
-          >
-            Historial
-          </button>
-        </div>
-
-        {conciliacionTab === "conciliar" ? (
-        <div className="bg-white rounded-lg shadow-sm border">
-          {/* Header estilo Odoo */}
-          <div className="px-3 py-2.5 border-b bg-gray-50">
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Cliente */}
-              <div className="flex items-center gap-1">
-                <label className="text-xs text-gray-500 shrink-0">Cliente</label>
-                <div className="flex items-center gap-1">
-                  <select 
-                    value={conciliacionClienteId || ""}
-                    onChange={(e) => {
-                      setConciliacionClienteId(e.target.value ? parseInt(e.target.value) : null)
-                      limpiarSeleccion()
-                    }}
-                    className="w-52 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="">Seleccionar cliente...</option>
-                    {clientes.map(c => (
-                      <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
-                    ))}
-                  </select>
-                  {clienteSeleccionado && (
-                    <button 
-                      onClick={() => { setClienteSeleccionadoId(clienteSeleccionado.id); setActiveSubmenu("ficha_cliente") }}
-                      className="p-1 text-gray-400 hover:text-blue-600 shrink-0"
-                    >
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Conciliado */}
-              <div className="flex items-center gap-1">
-                <label className="text-xs text-gray-500 shrink-0">Conciliado</label>
-                <select 
-                  value={conciliacionFiltroConciliado}
-                  onChange={(e) => setConciliacionFiltroConciliado(e.target.value as typeof conciliacionFiltroConciliado)}
-                  className="w-20 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="no">No</option>
-                  <option value="si">Si</option>
-                  <option value="todos">Todos</option>
-                </select>
-              </div>
-              {/* Balance */}
-              <div className="px-2 py-1 bg-white border rounded text-center">
-                <span className={`text-sm font-bold ${balance === 0 ? 'text-gray-800' : balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                  {formatCurrency(Math.abs(balance))}
-                </span>
-              </div>
-              {/* Opciones de marcado */}
-              <div className="flex items-center gap-3 text-xs">
-                <label className="flex items-center gap-1 cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={conciliacionSeleccionDebitos.length === 0 && conciliacionSeleccionCreditos.length === 0}
-                    onChange={limpiarSeleccion}
-                    className="w-3 h-3 rounded border-gray-300"
-                  />
-                  <span className="text-gray-600">Desmarcar</span>
-                </label>
-                <label className="flex items-center gap-1 cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={facturasFiltradas.filter(f => f.saldo > 0).length > 0 && 
-                             conciliacionSeleccionDebitos.length === facturasFiltradas.filter(f => f.saldo > 0).length}
-                    onChange={() => { seleccionarTodoDebitos(); seleccionarTodoCreditos() }}
-                    className="w-3 h-3 rounded border-gray-300"
-                  />
-                  <span className="text-gray-600">Marcar todo</span>
-                </label>
-                <label className="flex items-center gap-1 cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    onChange={marcarAutomatico}
-                    className="w-3.5 h-3.5 rounded border-gray-300"
-                  />
-                  <span className="text-gray-600">Marcar automatica</span>
-                </label>
-              </div>
-            </div>
-          </div>
-
-          {/* Panel de dos columnas estilo Odoo */}
-          <div className="flex divide-x">
-            {/* DEBITOS */}
-            <div className="flex-1 flex flex-col">
-              {/* Header Debitos */}
-              <div className="px-3 py-2 bg-red-50 border-b flex items-center justify-between">
-                <span className="text-sm font-medium text-red-800">Debitos</span>
-                <div className="flex items-center gap-3">
-                  <input 
-                    type="text" 
-                    placeholder="Filtrar por texto..." 
-                    value={conciliacionFiltroTextoDebitos}
-                    onChange={(e) => setConciliacionFiltroTextoDebitos(e.target.value)}
-                    className="px-2 py-1 text-xs border rounded w-32"
-                  />
-                  <label className="flex items-center gap-1 text-xs text-gray-600">
-                    <input 
-                      type="checkbox" 
-                      checked={conciliacionMostrarTodosDebitos}
-                      onChange={(e) => setConciliacionMostrarTodosDebitos(e.target.checked)}
-                      className="w-3 h-3 rounded"
-                    />
-                    Todos
-                  </label>
-                  <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">
-                    {facturasFiltradas.length}
-                  </span>
-                </div>
-              </div>
-              {/* Tabla Debitos */}
-              <div className="flex-1 overflow-auto max-h-64">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-white border-b">
-                    <tr className="text-gray-500">
-                      <th className="text-left py-2 px-2 font-medium">Nota de Venta</th>
-                      <th className="text-left py-2 px-2 font-medium">Comprobante</th>
-                      <th className="text-left py-2 px-2 font-medium">Condicion</th>
-                      <th className="text-left py-2 px-2 font-medium">Venc.</th>
-                      <th className="text-left py-2 px-2 font-medium">Fecha</th>
-                      <th className="text-right py-2 px-2 font-medium">Importe Or.</th>
-                      <th className="text-center py-2 px-2 font-medium">Mon.</th>
-                      <th className="text-right py-2 px-2 font-medium">Importe</th>
-                      <th className="text-center py-2 px-2 font-medium">Conc.</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {facturasFiltradas.length > 0 ? facturasFiltradas.map(f => {
-                      const seleccionado = conciliacionSeleccionDebitos.find(d => d.id === f.id && d.tipo === "factura")
-                      const esConciliada = f.saldo <= 0
-                      return (
-                        <tr 
-                          key={f.id} 
-                          className={`border-b hover:bg-gray-50 cursor-pointer ${seleccionado ? 'bg-red-50' : ''} ${esConciliada ? 'opacity-50' : ''}`}
-                          onClick={() => !esConciliada && toggleDebitoSeleccion(f)}
-                        >
-                          <td className="py-1.5 px-2">
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); /* navegar a NV */ }}
-                              className="text-orange-600 hover:underline"
-                            >
-                              {f.nota_venta_numero}
-                            </button>
-                          </td>
-                          <td className="py-1.5 px-2">
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); /* navegar a factura */ }}
-                              className="text-blue-600 hover:underline"
-                            >
-                              {f.numero}
-                            </button>
-                          </td>
-                          <td className="py-1.5 px-2 text-gray-600">{f.condicion_pago || "Contado"}</td>
-                          <td className="py-1.5 px-2 text-gray-600">{f.fecha_vencimiento ? formatDateTime(f.fecha_vencimiento).split(" ")[0] : "-"}</td>
-                          <td className="py-1.5 px-2 text-gray-600">{formatDateTime(f.fecha).split(" ")[0]}</td>
-                          <td className="py-1.5 px-2 text-right">{formatCurrency(f.total, f.moneda)}</td>
-                          <td className="py-1.5 px-2 text-center text-gray-500">{f.moneda === "USD" ? "U$D" : "$"}</td>
-                          <td className="py-1.5 px-2 text-right font-medium text-red-600">{formatCurrency(f.saldo, f.moneda)}</td>
-                          <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
-                            {!esConciliada && (
-                              <div className="flex items-center justify-center gap-1">
-                                <button className="p-0.5 text-gray-400 hover:text-blue-600">
-                                  <Search className="w-3 h-3" />
-                                </button>
-                                <input 
-                                  type="checkbox" 
-                                  checked={!!seleccionado}
-                                  onChange={() => toggleDebitoSeleccion(f)}
-                                  className="w-3.5 h-3.5 rounded border-gray-300"
-                                />
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    }) : (
-                      <tr>
-                        <td colSpan={9} className="py-8 text-center text-gray-400">
-                          {!conciliacionClienteId ? "Seleccione un cliente" : conciliacionFiltroConciliado === "si" ? "No hay facturas conciliadas" : "No hay facturas pendientes"}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* CREDITOS */}
-            <div className="flex-1 flex flex-col">
-              {/* Header Creditos */}
-              <div className="px-3 py-2 bg-blue-50 border-b flex items-center justify-between">
-                <span className="text-sm font-medium text-blue-800">Creditos</span>
-                <div className="flex items-center gap-3">
-                  <input 
-                    type="text" 
-                    placeholder="Filtrar por texto..." 
-                    value={conciliacionFiltroTextoCreditos}
-                    onChange={(e) => setConciliacionFiltroTextoCreditos(e.target.value)}
-                    className="px-2 py-1 text-xs border rounded w-32"
-                  />
-                  <label className="flex items-center gap-1 text-xs text-gray-600">
-                    <input 
-                      type="checkbox" 
-                      checked={conciliacionMostrarTodosCreditos}
-                      onChange={(e) => setConciliacionMostrarTodosCreditos(e.target.checked)}
-                      className="w-3 h-3 rounded"
-                    />
-                    Todos
-                  </label>
-                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
-                    {recibosFiltrados.filter(r => r.importe_no_conciliado > 0).length + notasCreditoFiltradas.filter(nc => nc.importe_no_conciliado > 0).length}
-                  </span>
-                </div>
-              </div>
-              {/* Tabla Creditos */}
-              <div className="flex-1 overflow-auto max-h-64">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-white border-b">
-                    <tr className="text-gray-500">
-                      <th className="text-center py-2 px-2 font-medium">Conc.</th>
-                      <th className="text-right py-2 px-2 font-medium">Importe</th>
-                      <th className="text-center py-2 px-2 font-medium">Mon.</th>
-                      <th className="text-right py-2 px-2 font-medium">Importe Or.</th>
-                      <th className="text-left py-2 px-2 font-medium">Fecha</th>
-                      <th className="text-left py-2 px-2 font-medium">Venc.</th>
-                      <th className="text-left py-2 px-2 font-medium">Comprobante</th>
-                      <th className="text-left py-2 px-2 font-medium">Nota de Venta</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(recibosFiltrados.length > 0 || notasCreditoFiltradas.length > 0) ? (
-                      <>
-                        {recibosFiltrados.map(r => {
-                          const seleccionado = conciliacionSeleccionCreditos.find(c => c.id === r.id && c.tipo === "recibo")
-                          const esConciliado = r.importe_no_conciliado <= 0
-                          return (
-                            <tr
-                              key={`recibo-${r.id}`}
-                              className={`border-b hover:bg-gray-50 cursor-pointer ${seleccionado ? 'bg-blue-50' : ''} ${esConciliado ? 'opacity-50' : ''}`}
-                              onClick={() => !esConciliado && toggleCreditoSeleccion(r)}
-                            >
-                              <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
-                                {!esConciliado && (
-                                  <div className="flex items-center justify-center gap-1">
-                                    <input
-                                      type="checkbox"
-                                      checked={!!seleccionado}
-                                      onChange={() => toggleCreditoSeleccion(r)}
-                                      className="w-3.5 h-3.5 rounded border-gray-300"
-                                    />
-                                    <button className="p-0.5 text-gray-400 hover:text-blue-600">
-                                      <Search className="w-3 h-3" />
-                                    </button>
-                                  </div>
-                                )}
-                              </td>
-                              <td className="py-1.5 px-2 text-right font-medium text-green-600">{formatCurrency(r.importe_no_conciliado, r.moneda)}</td>
-                              <td className="py-1.5 px-2 text-center text-gray-500">{r.moneda === "USD" ? "U$D" : "$"}</td>
-                              <td className="py-1.5 px-2 text-right">{formatCurrency(r.importe, r.moneda)}</td>
-                              <td className="py-1.5 px-2 text-gray-600">{formatDateTime(r.fecha).split(" ")[0]}</td>
-                              <td className="py-1.5 px-2 text-gray-600">-</td>
-                              <td className="py-1.5 px-2">
-                                <button onClick={(e) => e.stopPropagation()} className="text-blue-600 hover:underline">
-                                  {r.numero}
-                                </button>
-                              </td>
-                              <td className="py-1.5 px-2 text-gray-600">-</td>
-                            </tr>
-                          )
-                        })}
-                        {notasCreditoFiltradas.map(nc => {
-                          const seleccionado = conciliacionSeleccionCreditos.find(c => c.id === nc.id && c.tipo === "nc")
-                          const esConciliado = nc.importe_no_conciliado <= 0
-                          return (
-                          <tr
-                            key={`nc-${nc.id}`}
-                            className={`border-b hover:bg-gray-50 cursor-pointer ${seleccionado ? 'bg-emerald-100' : 'bg-emerald-50/30'} ${esConciliado ? 'opacity-50' : ''}`}
-                            onClick={() => !esConciliado && toggleCreditoSeleccion(nc)}
-                          >
-                            <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
-                              {!esConciliado && (
-                                <input
-                                  type="checkbox"
-                                  checked={!!seleccionado}
-                                  onChange={() => toggleCreditoSeleccion(nc)}
-                                  className="w-3.5 h-3.5 rounded border-gray-300 accent-emerald-600"
-                                />
-                              )}
-                            </td>
-                            <td className="py-1.5 px-2 text-right font-medium text-green-600">{formatCurrency(nc.importe_no_conciliado, nc.moneda)}</td>
-                            <td className="py-1.5 px-2 text-center text-gray-500">{nc.moneda === "USD" ? "U$D" : "$"}</td>
-                            <td className="py-1.5 px-2 text-right">{formatCurrency(nc.total, nc.moneda)}</td>
-                            <td className="py-1.5 px-2 text-gray-600">{formatDateTime(nc.fecha).split(" ")[0]}</td>
-                            <td className="py-1.5 px-2 text-gray-600">-</td>
-                            <td className="py-1.5 px-2">
-                              <span className="text-emerald-700 font-medium">{nc.numero}</span>
-                              <span className="ml-1 text-xs bg-emerald-100 text-emerald-600 rounded px-1">NC</span>
-                            </td>
-                            <td className="py-1.5 px-2 text-gray-600 text-xs truncate max-w-[120px]" title={nc.concepto}>{nc.concepto}</td>
-                          </tr>
-                          )
-                        })}
-                      </>
-                    ) : (
-                      <tr>
-                        <td colSpan={8} className="py-8 text-center text-gray-400">
-                          {conciliacionClienteId ? "No hay creditos disponibles" : "Seleccione un cliente"}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          {/* Barra inferior de acciones */}
-          <div className="p-3 border-t bg-gray-50 flex items-center justify-between">
-            <div></div>
-            <div className="flex items-center gap-3 text-xs">
-              <span className="text-gray-500">Debitos: <span className="text-red-600 font-medium">{formatCurrency(totalDebitosSeleccionados)}</span></span>
-              <span className="text-gray-500">Creditos: <span className="text-green-600 font-medium">{formatCurrency(totalCreditosSeleccionados)}</span></span>
-              {montoAConciliar > 0 && (
-                <span className="text-gray-700 font-medium">A conciliar: {formatCurrency(montoAConciliar)}</span>
-              )}
-            </div>
-            <button 
-              onClick={ejecutarConciliacion}
-              disabled={montoAConciliar <= 0}
-              className="px-4 py-1.5 text-sm bg-indigo-900 text-white rounded hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-            >
-              <CheckCircle className="w-4 h-4" /> Ejecutar Conciliacion
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-2xl font-bold text-amber-900">Conciliación de Deuda</h1>
+          <div className="flex gap-2">
+            <button onClick={() => setConciliacionTab("conciliar")}
+              className={`px-4 py-2 text-sm font-medium rounded ${conciliacionTab === "conciliar" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
+              Conciliar
+            </button>
+            <button onClick={() => { setConciliacionTab("historial"); if (conciliacionClienteId) cargarHistorialConciliacionesCliente(conciliacionClienteId) }}
+              className={`px-4 py-2 text-sm font-medium rounded ${conciliacionTab === "historial" ? "bg-white shadow text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
+              Historial
             </button>
           </div>
         </div>
+
+        {conciliacionTab === "conciliar" ? (
+          <div className="space-y-4">
+            {/* ── Encabezado: cliente + filtros ─────────────────────────── */}
+            <div className="bg-white rounded-lg shadow-sm border px-4 py-3">
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-500 font-medium">Cliente</label>
+                  <div className="flex items-center gap-1">
+                    <select value={conciliacionClienteId || ""}
+                      onChange={e => { setConciliacionClienteId(e.target.value ? parseInt(e.target.value) : null); limpiarSeleccion() }}
+                      className="w-56 border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+                      <option value="">Seleccionar cliente...</option>
+                      {clientes.map(c => <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>)}
+                    </select>
+                    {clienteSeleccionado && (
+                      <button onClick={() => { setClienteSeleccionadoId(clienteSeleccionado.id); setActiveSubmenu("ficha_cliente") }}
+                        className="p-1 text-gray-400 hover:text-blue-600"><ArrowRight className="w-3.5 h-3.5" /></button>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-500 font-medium">Conciliado</label>
+                  <select value={conciliacionFiltroConciliado}
+                    onChange={e => setConciliacionFiltroConciliado(e.target.value as typeof conciliacionFiltroConciliado)}
+                    className="border border-gray-300 rounded px-2 py-1.5 text-sm">
+                    <option value="no">No</option><option value="si">Sí</option><option value="todos">Todos</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <button onClick={limpiarSeleccion} className="flex items-center gap-1 text-gray-500 hover:text-gray-700">
+                    <input type="checkbox" readOnly checked={!haySeleccion} className="w-3.5 h-3.5 rounded" />
+                    Desmarcar
+                  </button>
+                  <button onClick={() => { marcarTodoARS(); marcarTodoUSD() }} className="flex items-center gap-1 text-gray-500 hover:text-gray-700">
+                    <input type="checkbox" readOnly checked={haySeleccion} className="w-3.5 h-3.5 rounded" />
+                    Marcar todo
+                  </button>
+                </div>
+              </div>
+
+              {/* ── Panel resumen de saldos ──────────────────────────── */}
+              {conciliacionClienteId && (
+                <div className="mt-3 grid grid-cols-2 gap-4 border-t pt-3">
+                  <div className="bg-gray-50 rounded p-3">
+                    <div className="text-xs font-semibold text-gray-600 mb-1">CC ARS</div>
+                    <div className="flex items-center gap-4 text-sm">
+                      <span className="text-red-600">Débitos: <strong>${debitoARSTotal.toLocaleString('es-AR', {minimumFractionDigits:2})}</strong></span>
+                      <span className="text-green-600">Créditos: <strong>${creditoARSTotal.toLocaleString('es-AR', {minimumFractionDigits:2})}</strong></span>
+                      <span className={`font-bold ${saldoARS > 0 ? 'text-red-700' : saldoARS < 0 ? 'text-green-700' : 'text-gray-500'}`}>
+                        Saldo pendiente: ${Math.abs(saldoARS).toLocaleString('es-AR', {minimumFractionDigits:2})}
+                        {saldoARS < 0 ? ' (crédito)' : ''}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 rounded p-3">
+                    <div className="text-xs font-semibold text-gray-600 mb-1">CC USD</div>
+                    <div className="flex items-center gap-4 text-sm">
+                      <span className="text-red-600">Débitos: <strong>USD {debitoUSDTotal.toLocaleString('es-AR', {minimumFractionDigits:2})}</strong></span>
+                      <span className="text-green-600">Créditos: <strong>USD {creditoUSDTotal.toLocaleString('es-AR', {minimumFractionDigits:2})}</strong></span>
+                      <span className={`font-bold ${saldoUSD > 0 ? 'text-red-700' : saldoUSD < 0 ? 'text-green-700' : 'text-gray-500'}`}>
+                        Saldo: USD {Math.abs(saldoUSD).toLocaleString('es-AR', {minimumFractionDigits:2})}
+                        {saldoUSD < 0 ? ' (crédito)' : ''}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── BLOQUE ARS ────────────────────────────────────────────── */}
+            <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+              <div className="px-4 py-2 bg-gray-50 border-b flex items-center justify-between">
+                <span className="font-semibold text-gray-800">Cuenta Corriente ARS</span>
+                <div className="flex items-center gap-3">
+                  <button onClick={marcarTodoARS} className="text-xs text-indigo-600 hover:underline">Marcar todo ARS</button>
+                  <span className={`text-sm font-bold ${saldoARS > 0 ? 'text-red-600' : saldoARS < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                    Saldo: ${Math.abs(saldoARS).toLocaleString('es-AR', {minimumFractionDigits:2})}
+                  </span>
+                </div>
+              </div>
+              <div className="flex divide-x">
+                {PanelDebitos({ moneda: "ARS", factsList: factsARS })}
+                {PanelCreditos({ moneda: "ARS", recibosList: recibosARS, ncList: ncARS })}
+              </div>
+              <div className="px-4 py-2 bg-gray-50 border-t flex justify-end gap-6 text-xs">
+                <span className="text-gray-500">Selec. Débitos ARS: <span className="text-red-600 font-semibold">${totalSelDebitosARS.toLocaleString('es-AR', {minimumFractionDigits:2})}</span></span>
+                <span className="text-gray-500">Selec. Créditos ARS: <span className="text-green-600 font-semibold">${totalSelCreditosARS.toLocaleString('es-AR', {minimumFractionDigits:2})}</span></span>
+              </div>
+            </div>
+
+            {/* ── BLOQUE USD ────────────────────────────────────────────── */}
+            <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+              <div className="px-4 py-2 bg-gray-50 border-b flex items-center justify-between">
+                <span className="font-semibold text-gray-800">Cuenta Corriente USD</span>
+                <div className="flex items-center gap-3">
+                  <button onClick={marcarTodoUSD} className="text-xs text-indigo-600 hover:underline">Marcar todo USD</button>
+                  <span className={`text-sm font-bold ${saldoUSD > 0 ? 'text-red-600' : saldoUSD < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                    Saldo: USD {Math.abs(saldoUSD).toLocaleString('es-AR', {minimumFractionDigits:2})}
+                  </span>
+                </div>
+              </div>
+              <div className="flex divide-x">
+                {PanelDebitos({ moneda: "USD", factsList: factsUSD })}
+                {PanelCreditos({ moneda: "USD", recibosList: recibosUSD, ncList: ncUSD })}
+              </div>
+              <div className="px-4 py-2 bg-gray-50 border-t flex justify-end gap-6 text-xs">
+                <span className="text-gray-500">Selec. Débitos USD: <span className="text-red-600 font-semibold">USD {totalSelDebitosUSD.toLocaleString('es-AR', {minimumFractionDigits:2})}</span></span>
+                <span className="text-gray-500">Selec. Créditos USD: <span className="text-green-600 font-semibold">USD {totalSelCreditosUSD.toLocaleString('es-AR', {minimumFractionDigits:2})}</span></span>
+              </div>
+            </div>
+
+            {/* ── Cotización (modo cruzado) ──────────────────────────────── */}
+            {hayMixto && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex flex-wrap items-center gap-3">
+                <span className="text-sm font-semibold text-amber-800">Conciliación cruzada USD ↔ ARS</span>
+                <span className="text-sm text-gray-600">Cotización 1 USD =</span>
+                <input
+                  type="number"
+                  value={conciliacionCotizacion || ''}
+                  onChange={e => setConciliacionCotizacion(Number(e.target.value))}
+                  className="border rounded px-2 py-1 text-sm w-32 text-right"
+                  placeholder="ej: 1000"
+                  min={0.01}
+                  step={0.01}
+                />
+                <span className="text-sm text-gray-500">ARS (blue)</span>
+                {conciliacionCotizacion > 0 && totalSelCreditosUSD > 0 && (
+                  <span className="text-xs text-gray-600 bg-white border rounded px-2 py-0.5">
+                    USD {totalSelCreditosUSD.toLocaleString('es-AR', {minimumFractionDigits:2})} = ARS {(totalSelCreditosUSD * conciliacionCotizacion).toLocaleString('es-AR', {minimumFractionDigits:2})}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* ── Botón ejecutar ─────────────────────────────────────────── */}
+            <div className="flex justify-end items-center gap-3">
+              {hayMixto && !conciliacionCotizacion && (
+                <span className="text-xs text-amber-700">Ingresá la cotización para habilitar la conciliación cruzada</span>
+              )}
+              {(hayParARS || hayParUSD || hayMixto) && (
+                <button
+                  onClick={ejecutarConciliacion}
+                  disabled={!(hayParARS || hayParUSD || (hayMixto && conciliacionCotizacion > 0)) || conciliacionEjecutando}
+                  className={`px-5 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors ${
+                    (hayParARS || hayParUSD || (hayMixto && conciliacionCotizacion > 0)) && !conciliacionEjecutando
+                      ? 'bg-indigo-900 text-white hover:bg-indigo-800 cursor-pointer'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  }`}
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  {conciliacionEjecutando ? 'Ejecutando...' : 'Ejecutar Conciliación'}
+                </button>
+              )}
+            </div>
+          </div>
         ) : (
-          /* Tab Historial */
+          /* ── Tab Historial ────────────────────────────────────────────── */
           <div className="bg-white rounded-lg shadow-sm border p-6">
-            <h3 className="font-semibold text-gray-900 mb-4">Historial de Conciliaciones</h3>
-            {/* Selector de cliente para historial */}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900">Historial de Conciliaciones</h3>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500">Moneda</label>
+                <select value={conciliacionMonedaHistorial}
+                  onChange={e => setConciliacionMonedaHistorial(e.target.value as typeof conciliacionMonedaHistorial)}
+                  className="border rounded px-2 py-1 text-xs">
+                  <option value="todos">Ver todo</option><option value="ARS">Solo ARS</option><option value="USD">Solo USD</option>
+                </select>
+              </div>
+            </div>
             <div className="mb-4">
-              <label className="block text-xs text-gray-500 mb-1">Cliente</label>
-              <select 
-                value={conciliacionClienteId || ""}
-                onChange={(e) => setConciliacionClienteId(e.target.value ? parseInt(e.target.value) : null)}
-                className="w-full max-w-md border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
+              <select value={conciliacionClienteId || ""}
+                onChange={e => { const id = e.target.value ? parseInt(e.target.value) : null; setConciliacionClienteId(id); setConciliacionSeleccionDebitos([]); setConciliacionSeleccionCreditos([]); if (id) cargarHistorialConciliacionesCliente(id) }}
+                className="w-full max-w-md border border-gray-300 rounded px-3 py-1.5 text-sm">
                 <option value="">Seleccionar cliente...</option>
-                {clientes.map(c => (
-                  <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
-                ))}
+                {clientes.map(c => <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>)}
               </select>
             </div>
             {historialCliente.length > 0 ? (
               <div className="space-y-4">
-                {historialCliente.map(h => {
-                  const esReversion = (h as any).tipo === "reversion"
-                  return (
-                  <div key={h.id} className={`border rounded-lg p-4 ${esReversion ? "border-orange-200 bg-orange-50" : ""}`}>
+                {historialCliente.map(h => (
+                  <div key={h.id} className={`border rounded-lg p-4 ${h.estado === 'cancelada' ? 'opacity-60 bg-gray-50' : ''}`}>
                     <div className="flex justify-between items-start mb-3">
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="font-medium text-gray-900">
-                            {esReversion ? "Reversión de Conciliación" : `Conciliacion #${h.id}`}
-                          </p>
-                          {esReversion && (
-                            <span className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full font-medium">
-                              Revertida
-                            </span>
-                          )}
+                          <p className="font-medium text-gray-900">Conciliación #{h.id}</p>
+                          {h.estado === 'cancelada'
+                            ? <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">Cancelada</span>
+                            : <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Activa</span>
+                          }
                         </div>
-                        <p className="text-sm text-gray-500">{formatDateTime(h.fecha)} - {h.usuario}</p>
-                        {esReversion && (h as any).motivo && (
-                          <p className="text-xs text-orange-600 mt-1">{(h as any).motivo}</p>
+                        <p className="text-sm text-gray-500">{formatDateTime(h.fecha)} — {h.usuario}</p>
+                        {h.estado === 'cancelada' && h.fecha_cancelacion && (
+                          <p className="text-xs text-red-500">Revertida el {formatDateTime(h.fecha_cancelacion)}</p>
                         )}
                       </div>
-                      <p className={`text-lg font-bold ${esReversion ? "text-orange-600" : "text-emerald-600"}`}>
-                        {esReversion ? "- " : ""}{formatCurrency(Math.abs(h.total_conciliado))}
-                      </p>
+                      <div className="flex items-center gap-3">
+                        <p className={`text-lg font-bold ${h.estado === 'cancelada' ? 'text-gray-400 line-through' : 'text-emerald-600'}`}>{formatCurrency(h.total_conciliado)}</p>
+                        {h.estado === 'activa' && (
+                          <button
+                            onClick={() => revertirConciliacion(h.id)}
+                            disabled={conciliacionRevertiendoId === h.id}
+                            className="px-3 py-1 text-xs font-medium border border-red-200 text-red-600 rounded hover:bg-red-50 disabled:opacity-50 transition-colors"
+                          >
+                            {conciliacionRevertiendoId === h.id ? 'Revirtiendo...' : 'Revertir'}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <table className="w-full text-sm">
+                    <table className="w-full text-sm border-t">
                       <thead>
-                        <tr className="bg-gray-50 border-y">
-                          <th className="text-left py-2 px-3">Debito</th>
-                          <th className="text-left py-2 px-3">Credito</th>
-                          <th className="text-right py-2 px-3">Monto</th>
-                          {!esReversion && <th className="text-center py-2 px-3">Estado</th>}
+                        <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                          <th className="py-2 px-3 text-left font-semibold">Débito</th>
+                          <th className="py-2 px-3 text-left font-semibold">Crédito</th>
+                          <th className="py-2 px-3 text-right font-semibold">Monto</th>
                         </tr>
                       </thead>
                       <tbody>
                         {h.aplicaciones.map((a, idx) => (
-                          <tr key={idx} className={`border-b ${(a as any).revertida && !esReversion ? "bg-red-50" : ""}`}>
-                            <td className={`py-2 px-3 ${(a as any).revertida && !esReversion ? "line-through text-gray-400" : "text-red-700"}`}>
-                              {a.debito_tipo} {a.debito_numero}
-                            </td>
-                            <td className={`py-2 px-3 ${(a as any).revertida && !esReversion ? "line-through text-gray-400" : "text-green-700"}`}>
-                              {a.credito_tipo} {a.credito_numero}
-                            </td>
-                            <td className={`py-2 px-3 text-right font-medium ${(a as any).revertida && !esReversion ? "line-through text-gray-400" : ""}`}>
-                              {formatCurrency(Math.abs(a.monto))}
-                            </td>
-                            {!esReversion && (
-                              <td className="py-2 px-3 text-center">
-                                {(a as any).revertida ? (
-                                  <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">Revertida</span>
-                                ) : (
-                                  <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">Activa</span>
-                                )}
-                              </td>
-                            )}
+                          <tr key={idx} className="border-b">
+                            <td className="py-2 px-3 text-red-700">{a.debito_tipo} {a.debito_numero}</td>
+                            <td className="py-2 px-3 text-green-700">{a.credito_tipo} {a.credito_numero}</td>
+                            <td className="py-2 px-3 text-right font-medium">{formatCurrency(a.monto)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  )
-                })}
+                ))}
               </div>
             ) : (
               <div className="text-center py-12 text-gray-500">
-                {conciliacionClienteId ? "No hay conciliaciones registradas para este cliente" : "Seleccione un cliente para ver su historial"}
+                {conciliacionClienteId ? "Sin conciliaciones registradas para este cliente" : "Seleccioná un cliente para ver el historial"}
               </div>
             )}
           </div>
-      )}
-    </div>
-  )
-}
+        )}
+      </div>
+    )
+  }
 
   // Popup detalle Nota de Credito (global, usado desde toma_equipo y conciliacion)
   const renderNcDetallePopup = () => ncDetallePopup && (
@@ -11053,7 +11539,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           descripcion: "Lista de precios creada"
         }]
       }
-      setListasPrecios(prev => [...prev, nuevaLista])
+      setListasPrecios(prev => [nuevaLista, ...prev])
       setSelectedListaPrecios(nuevaLista)
       setEditingListaPrecios(null)
       setCreandoListaPrecios(false)
@@ -11119,6 +11605,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setEditingVersion(nuevaVersion)
     setCreandoVersion(true)
     setModoEdicionVersion(true)
+    setNuevaLineaVersion({ costo_moneda: lista.moneda_base as "ARS" | "USD" })
     setActiveView("versiones_lista")
   }
 
@@ -11162,7 +11649,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   const guardarVersion = async () => {
-    if (!editingVersion || !editingVersion.nombre.trim()) return
+    console.log("[guardarVersion] editingVersion:", editingVersion)
+    console.log("[guardarVersion] creandoVersion:", creandoVersion)
+    if (!editingVersion || !editingVersion.nombre.trim()) {
+      console.log("[guardarVersion] ABORTANDO: editingVersion nulo o nombre vacío")
+      return
+    }
     
     const fechaActual = new Date().toISOString()
     
@@ -11184,10 +11676,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
+      console.log("[guardarVersion POST] status:", res.status, "lineas enviadas:", payload.lineas?.length ?? 0)
       if (res.ok) {
         const nuevaVersion: VersionListaPrecios = await res.json()
+        console.log("[guardarVersion POST] respuesta lineas:", nuevaVersion.lineas?.length ?? 0)
         setVersionesLista(prev => [nuevaVersion, ...prev])
         setSelectedVersion(nuevaVersion)
+      } else {
+        const errBody = await res.text()
+        console.error("[guardarVersion POST] ERROR:", res.status, errBody)
       }
       setEditingVersion(null)
       setCreandoVersion(false)
@@ -11217,11 +11714,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(versionActualizada),
       })
+      console.log("[guardarVersion PUT] id:", editingVersion.id, "status:", res.status, "lineas enviadas:", versionActualizada.lineas?.length ?? 0)
       if (res.ok) {
         const saved: VersionListaPrecios = await res.json()
+        console.log("[guardarVersion PUT] respuesta lineas:", saved.lineas?.length ?? 0)
         setVersionesLista(prev => prev.map(v => v.id === saved.id ? saved : v))
         setSelectedVersion(saved)
       } else {
+        const errBody = await res.text()
+        console.error("[guardarVersion PUT] ERROR:", res.status, errBody)
         setVersionesLista(prev => prev.map(v => v.id === editingVersion.id ? versionActualizada : v))
         setSelectedVersion(versionActualizada)
       }
@@ -11244,32 +11745,43 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   const iniciarEdicionVersion = () => {
+    console.log("[iniciarEdicionVersion] productosMaestro.length:", productosMaestro.length, "selectedVersion.lineas:", selectedVersion?.lineas?.length ?? "null")
     if (selectedVersion) {
       setEditingVersion({ ...selectedVersion })
       setModoEdicionVersion(true)
       setEditandoLineas(true)
+      const monedaLista = (listasPrecios.find(l => l.id === selectedVersion.lista_precios_id)?.moneda_base ?? "ARS") as "ARS" | "USD"
+      setNuevaLineaVersion({ costo_moneda: monedaLista })
     }
   }
 
   // Funciones para líneas de versión
   const agregarLineaVersion = () => {
+    console.log("[agregarLineaVersion] editingVersion:", editingVersion?.id ?? "NULL", "nuevaLineaVersion.producto_id:", nuevaLineaVersion.producto_id)
     const versionActual = editingVersion || selectedVersion
-    if (!versionActual || !nuevaLineaVersion.producto_id) return
+    if (!versionActual || !nuevaLineaVersion.producto_id) {
+      console.log("[agregarLineaVersion] ABORTANDO: versionActual=", !!versionActual, "producto_id=", nuevaLineaVersion.producto_id)
+      return
+    }
     
     const costoImporte = nuevaLineaVersion.costo_importe || 0
     const markupPorcentaje = nuevaLineaVersion.markup_porcentaje || 0
     const markupNominal = nuevaLineaVersion.markup_nominal || 0
-    const cotizacion = nuevaLineaVersion.cotizacion_dolar || COTIZACION_DOLAR_MOCK
     const forzarPrecio = nuevaLineaVersion.forzar_precio_pesos || false
     const precioForzado = nuevaLineaVersion.precio_forzado_ars || null
     
     // Calcular precio de venta
+    // Si forzar ARS: se guarda el precio fijo en ARS (la conversión a USD ocurre en la NV al momento de venta)
+    // Si normal: costo + markup en la moneda del costo
     let precioVenta: number
+    let precioVentaMoneda: "ARS" | "USD"
     if (forzarPrecio && precioForzado) {
-      precioVenta = precioForzado / cotizacion // Convertir a USD si la lista es USD
+      precioVenta = precioForzado
+      precioVentaMoneda = "ARS"
     } else {
       const costoConMarkup = costoImporte * (1 + markupPorcentaje / 100) + markupNominal
       precioVenta = costoConMarkup
+      precioVentaMoneda = nuevaLineaVersion.costo_moneda || "ARS"
     }
     
     const nuevaLinea: LineaListaPrecios = {
@@ -11279,13 +11791,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       producto_nombre: nuevaLineaVersion.producto_nombre || "",
       costo_moneda: nuevaLineaVersion.costo_moneda || "ARS",
       costo_importe: costoImporte,
-      cotizacion_dolar: cotizacion,
+      cotizacion_dolar: 0,
       markup_porcentaje: markupPorcentaje,
       markup_nominal: markupNominal,
       forzar_precio_pesos: forzarPrecio,
       precio_forzado_ars: precioForzado,
       precio_venta: Math.round(precioVenta * 100) / 100,
-      precio_venta_moneda: nuevaLineaVersion.precio_venta_moneda || "ARS",
+      precio_venta_moneda: precioVentaMoneda,
       iva: nuevaLineaVersion.iva ?? 21
     }
     
@@ -11301,8 +11813,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       setVersionesLista(prev => prev.map(v => v.id === versionActual.id ? versionActualizada : v))
       setSelectedVersion(versionActualizada)
     }
-    
-    setNuevaLineaVersion({})
+
+    // Preservar moneda de la lista al resetear la fila de nueva línea
+    const monedaLista = (listasPrecios.find(l => l.id === versionActual.lista_precios_id)?.moneda_base ?? "ARS") as "ARS" | "USD"
+    setNuevaLineaVersion({ costo_moneda: monedaLista })
   }
 
   const eliminarLineaVersion = (lineaId: number) => {
@@ -11340,12 +11854,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         }
         
         // Recalcular precio si cambió algo relevante
-        if (['costo_importe', 'markup_porcentaje', 'markup_nominal', 'forzar_precio_pesos', 'precio_forzado_ars', 'cotizacion_dolar'].includes(campo)) {
+        if (['costo_importe', 'markup_porcentaje', 'markup_nominal', 'forzar_precio_pesos', 'precio_forzado_ars'].includes(campo)) {
           if (lineaActualizada.forzar_precio_pesos && lineaActualizada.precio_forzado_ars) {
-            lineaActualizada.precio_venta = lineaActualizada.precio_forzado_ars / (lineaActualizada.cotizacion_dolar || COTIZACION_DOLAR_MOCK)
+            // Precio fijo en ARS: la conversión a USD se hace al momento de la venta
+            lineaActualizada.precio_venta = lineaActualizada.precio_forzado_ars
+            lineaActualizada.precio_venta_moneda = "ARS"
           } else {
             const costoConMarkup = lineaActualizada.costo_importe * (1 + lineaActualizada.markup_porcentaje / 100) + lineaActualizada.markup_nominal
             lineaActualizada.precio_venta = Math.round(costoConMarkup * 100) / 100
+            lineaActualizada.precio_venta_moneda = lineaActualizada.costo_moneda
           }
         }
         
@@ -11457,7 +11974,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             id: data.id ?? Math.max(...categoriasCliente.map(c => c.id), 0) + 1,
             seguimiento: [{ id: 1, fecha, usuario: "Max Solina", tipo: "creacion", descripcion: "Categoría creada" }]
           }
-          setCategoriasCliente(prev => [...prev, nueva])
+          setCategoriasCliente(prev => [nueva, ...prev])
           setSelectedCategoria(nueva)
         } else {
           // Actualizar en DB
@@ -11815,7 +12332,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
               {isEditing ? (
                 <select value={currentLista.tipo} onChange={(e) => setEditingListaPrecios({ ...currentLista, tipo: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
-                  {mockTiposListaPrecios.map(t => <option key={t} value={t}>{t}</option>)}
+                  {tiposListaPrecios.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               ) : (
                 <p className="text-gray-900 py-2">{currentLista.tipo}</p>
@@ -11824,9 +12341,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Moneda Base</label>
               {isEditing ? (
-                <select value={currentLista.moneda_base} onChange={(e) => setEditingListaPrecios({ ...currentLista, moneda_base: e.target.value as "ARS" | "USD" })} className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
-                  <option value="ARS">ARS - Peso Argentino</option>
-                  <option value="USD">USD - Dólar</option>
+                <select value={currentLista.moneda_base} onChange={(e) => setEditingListaPrecios({ ...currentLista, moneda_base: e.target.value as "ARS" | "USD" | "EUR" })} className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
+                  {monedas.map(m => (
+                    <option key={m.codigo} value={m.codigo}>{m.codigo} - {m.nombre}</option>
+                  ))}
                 </select>
               ) : (
                 <p className="text-gray-900 py-2">{currentLista.moneda_base}</p>
@@ -11974,7 +12492,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <div>
               <p className="text-sm text-gray-600 mb-4">Usuarios con permisos de administración de esta lista.</p>
               <div className="space-y-2">
-                {mockUsuariosVentas.map(u => (
+                {vendedores.map(u => (
                   <label key={u.id} className="flex items-center gap-2">
                     {isEditing ? (
                       <input type="checkbox" checked={currentLista.usuarios_admin.includes(u.id)}
@@ -11996,7 +12514,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <div>
               <p className="text-sm text-gray-600 mb-4">Usuarios habilitados para usar esta lista en presupuestos/ventas.</p>
               <div className="space-y-2">
-                {mockUsuariosVentas.map(u => (
+                {vendedores.map(u => (
                   <label key={u.id} className="flex items-center gap-2">
                     {isEditing ? (
                       <input type="checkbox" checked={currentLista.usuarios_habilitados.includes(u.id)}
@@ -12275,9 +12793,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <span className="mx-3 text-gray-300">|</span>
               <span className="text-gray-600">IVA: </span>
               <span className="font-medium">{listaPrecios.incluye_iva ? "Incluido" : "No incluido"}</span>
-              <span className="mx-3 text-gray-300">|</span>
-              <span className="text-gray-600">Cotización Dólar: </span>
-              <span className="font-medium">$ {COTIZACION_DOLAR_MOCK.toLocaleString('es-AR')}</span>
             </div>
           )}
 
@@ -12286,8 +12801,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-semibold text-gray-900">Líneas de Precios ({currentVersion.lineas.length})</h4>
               {!creandoVersion && !modoEdicionVersion && (
-                <button onClick={() => setEditandoLineas(!editandoLineas)} className={`flex items-center gap-1 px-2 py-1 text-xs rounded ${editandoLineas ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                  <Edit className="w-3 h-3" /> {editandoLineas ? 'Editando' : 'Editar líneas'}
+                <button onClick={iniciarEdicionVersion} className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200">
+                  <Edit className="w-3 h-3" /> Editar líneas
                 </button>
               )}
             </div>
@@ -12296,14 +12811,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <table className="w-full text-xs table-fixed">
                 <colgroup>
                   <col className="w-[18%]" />
-                  <col className="w-[18%]" />
+                  <col className="w-[22%]" />
+                  <col className="w-[9%]" />
+                  <col className="w-[9%]" />
                   <col className="w-[8%]" />
                   <col className="w-[8%]" />
-                  <col className="w-[8%]" />
-                  <col className="w-[7%]" />
-                  <col className="w-[7%]" />
                   <col className="w-[6%]" />
-                  <col className="w-[12%]" />
+                  <col className="w-[14%]" />
                   <col className="w-[6%]" />
                   {(editandoLineas || creandoVersion) && <col className="w-[2%]" />}
                 </colgroup>
@@ -12313,7 +12827,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <th className="text-left py-2 px-2 font-medium">Producto</th>
                     <th className="text-center py-2 px-2 font-medium">Mon. Costo</th>
                     <th className="text-right py-2 px-2 font-medium">Costo</th>
-                    <th className="text-right py-2 px-2 font-medium">Cotiz. USD</th>
                     <th className="text-right py-2 px-2 font-medium">Markup %</th>
                     <th className="text-right py-2 px-2 font-medium">Markup $</th>
                     <th className="text-center py-2 px-2 font-medium">Forzar $</th>
@@ -12332,14 +12845,17 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       <td className="py-1.5 px-2">
                         <select value={nuevaLineaVersion.producto_id || ""} onChange={(e) => {
                           const prod = productosMaestro.find(p => p.id === Number(e.target.value))
-                          if (prod) setNuevaLineaVersion({ ...nuevaLineaVersion, producto_id: prod.id, producto_codigo: prod.sku, producto_nombre: prod.nombre, costo_importe: prod.costo || 0 })
+                          if (prod) {
+                            const monedaDefault = (listaPrecios?.moneda_base ?? prod.moneda_costo ?? "ARS") as "ARS" | "USD"
+                            setNuevaLineaVersion({ ...nuevaLineaVersion, producto_id: prod.id, producto_codigo: prod.sku, producto_nombre: prod.nombre, costo_importe: prod.costo_manual ?? prod.costo ?? 0, costo_moneda: monedaDefault })
+                          }
                         }} className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-emerald-500">
                           <option value="">Seleccionar producto...</option>
                           {productosMaestro.map(prod => <option key={prod.id} value={prod.id}>{prod.sku} - {prod.nombre}</option>)}
                         </select>
                       </td>
                       <td className="py-1.5 px-2">
-                        <select value={nuevaLineaVersion.costo_moneda || "ARS"} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, costo_moneda: e.target.value as "ARS" | "USD" })}
+                        <select value={nuevaLineaVersion.costo_moneda || listaPrecios?.moneda_base || "ARS"} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, costo_moneda: e.target.value as "ARS" | "USD" })}
                           className="w-full px-1 py-1 border border-gray-300 rounded text-xs">
                           <option value="ARS">ARS</option>
                           <option value="USD">USD</option>
@@ -12348,10 +12864,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       <td className="py-1.5 px-2">
                         <input type="number" value={nuevaLineaVersion.costo_importe || ""} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, costo_importe: Number(e.target.value) })}
                           className="w-20 px-1 py-1 border border-gray-300 rounded text-xs text-right" placeholder="0" />
-                      </td>
-                      <td className="py-1.5 px-2">
-                        <input type="number" value={nuevaLineaVersion.cotizacion_dolar || COTIZACION_DOLAR_MOCK} onChange={(e) => setNuevaLineaVersion({ ...nuevaLineaVersion, cotizacion_dolar: Number(e.target.value) })}
-                          className="w-20 px-1 py-1 border border-gray-300 rounded text-xs text-right" />
                       </td>
                       <td className="py-1.5 px-2">
                         <input
@@ -12438,14 +12950,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                             className="w-20 px-1 py-0.5 border border-gray-300 rounded text-xs text-right" />
                         ) : (
                           formatCurrency(linea.costo_importe, linea.costo_moneda)
-                        )}
-                      </td>
-                      <td className="py-1.5 px-2 text-right">
-                        {(editandoLineas || creandoVersion) ? (
-                          <input type="number" value={linea.cotizacion_dolar} onChange={(e) => actualizarLineaVersion(linea.id, 'cotizacion_dolar', Number(e.target.value))}
-                            className="w-20 px-1 py-0.5 border border-gray-300 rounded text-xs text-right" />
-                        ) : (
-                          `$ ${linea.cotizacion_dolar.toLocaleString('es-AR')}`
                         )}
                       </td>
                       <td className="py-1.5 px-2 text-right">
@@ -12875,7 +13379,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <label className="block text-sm font-medium text-gray-700 mb-1">Término de Pago</label>
               <select name="termino_pago_id" defaultValue={editingItem?.termino_pago_id || 1}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                {mockTerminosPago.map(tp => (
+                {terminosPago.map(tp => (
                   <option key={tp.id} value={tp.id}>{tp.nombre}</option>
                 ))}
               </select>
@@ -12948,7 +13452,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             const vendedorId = parseInt(formData.get("vendedor_id") as string) || 1
             const vendedorNombre = vendedores.find(v => v.id === vendedorId)?.nombre || "Max Solina"
             const terminoPagoId = parseInt(formData.get("termino_pago_id") as string) || 1
-            const terminoPagoNombre = mockTerminosPago.find(tp => tp.id === terminoPagoId)?.nombre || "Contado Efectivo"
+            const terminoPagoNombre = terminosPago.find(tp => tp.id === terminoPagoId)?.nombre || "Contado Efectivo"
             const fechaHoy = new Date().toISOString()
             // El número y el id real los devuelve el servidor — placeholders temporales
             const nvNumeroTemp = editingItem?.numero || ""
@@ -13030,7 +13534,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             if (editingItem) {
               setNotasVenta(prev => prev.map(nv => nv.id === editingItem.id ? newNV : nv))
             } else {
-              setNotasVenta(prev => [...prev, newNV])
+              setNotasVenta(prev => [newNV, ...prev])
             }
 
             // Si es venta inmediata y la NV se persistió OK, generar OE y Remito
@@ -13147,7 +13651,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   newRemito.id = remData.id || remitoId
                 }
               } catch (_) {}
-              setRemitos(prev => [...prev, newRemito])
+              setRemitos(prev => [newRemito, ...prev])
 
               // Actualizar OE con número de remito
               setOrdenesEntrega(prev => prev.map(oe =>
@@ -13194,7 +13698,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   total: subtotal
                 }]
               }
-              setFacturas(prev => [...prev, newFactura])
+              setFacturas(prev => [newFactura, ...prev])
 
               // Actualizar Remito con número de factura
               setRemitos(prev => prev.map(r => 
@@ -13278,7 +13782,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <label className="block text-sm font-medium text-gray-700 mb-1">Término de Pago</label>
                 <select name="termino_pago_id" defaultValue={editingItem?.termino_pago_id || selectedCliente?.termino_pago_id || 1}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                  {mockTerminosPago.map(tp => (
+                  {terminosPago.map(tp => (
                     <option key={tp.id} value={tp.id}>{tp.nombre}</option>
                   ))}
                 </select>

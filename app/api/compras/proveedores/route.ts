@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   let query = supabase
     .from("proveedores")
     .select("*")
-    .order("razon_social", { ascending: true })
+    .order("id", { ascending: false })
 
   if (busqueda) {
     query = query.or(
