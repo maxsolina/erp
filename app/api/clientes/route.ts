@@ -40,6 +40,7 @@ export async function POST(request: Request) {
     ...body,
     termino_pago_id: body.termino_pago_id && body.termino_pago_id > 0 ? body.termino_pago_id : null,
     vendedor_id: body.vendedor_id && body.vendedor_id > 0 ? body.vendedor_id : null,
+    lista_precios_id: body.lista_precios_id && body.lista_precios_id > 0 ? body.lista_precios_id : null,
   }
 
   const { data, error } = await supabase

@@ -1771,9 +1771,7 @@ export default function ModuloCompras({
       id: "cfg_general",
       label: null, // ítems sueltos sin grupo
       items: [
-        { id: "tipos_gasto", label: "Tipos de Gasto" },
-        { id: "componentes_evaluacion", label: "Componentes Evaluación" },
-        { id: "rangos_precio", label: "Rangos de Precio por Rol" },
+
       ]
     },
     {
@@ -7667,8 +7665,8 @@ export default function ModuloCompras({
                           <td className="py-2 px-3 text-sm text-blue-600 font-medium">{comp.referencia}</td>
                           <td className="py-2 px-3 text-sm">{comp.fecha ? formatDate(comp.fecha) : "-"}</td>
                           <td className="py-2 px-3 text-sm">{comp.vencimiento ? formatDate(comp.vencimiento) : "-"}</td>
-                          <td className="py-2 px-3 text-sm text-right">{formatCurrency(comp.saldo_original)}</td>
-                          <td className="py-2 px-3 text-sm text-right">{formatCurrency(comp.total)}</td>
+                          <td className="py-2 px-3 text-sm text-right">{formatCurrency(comp.saldo_original, comp.moneda_comp || "ARS")}</td>
+                          <td className="py-2 px-3 text-sm text-right">{formatCurrency(comp.total, comp.moneda_comp || "ARS")}</td>
                           <td className="py-2 px-3 text-sm text-right">
                             {editable ? (
                               <input
@@ -7687,10 +7685,10 @@ export default function ModuloCompras({
                                 max={comp.saldo_original}
                               />
                             ) : (
-                              <span className="font-medium">{formatCurrency(comp.importe)}</span>
+                              <span className="font-medium">{formatCurrency(comp.importe, comp.moneda_comp || "ARS")}</span>
                             )}
                           </td>
-                          <td className="py-2 px-3 text-sm text-right">{formatCurrency(comp.saldo)}</td>
+                          <td className="py-2 px-3 text-sm text-right">{formatCurrency(comp.saldo, comp.moneda_comp || "ARS")}</td>
                           {editable && (
                             <td className="py-2 px-3">
                               <button
@@ -7743,8 +7741,8 @@ export default function ModuloCompras({
                         <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
                           <td className="py-2 px-3 text-sm text-green-600 font-medium">{comp.referencia}</td>
                           <td className="py-2 px-3 text-sm">{comp.fecha ? formatDate(comp.fecha) : "-"}</td>
-                          <td className="py-2 px-3 text-sm text-right">{formatCurrency(comp.total)}</td>
-                          <td className="py-2 px-3 text-sm text-right font-medium">{formatCurrency(comp.importe)}</td>
+                          <td className="py-2 px-3 text-sm text-right">{formatCurrency(comp.total, comp.moneda_comp || "ARS")}</td>
+                          <td className="py-2 px-3 text-sm text-right font-medium">{formatCurrency(comp.importe, comp.moneda_comp || "ARS")}</td>
                           {editable && (
                             <td className="py-2 px-3">
                               <button
@@ -9220,12 +9218,6 @@ export default function ModuloCompras({
         return renderDespachosSimples()
       case "ordenes_pago":
         return renderOrdenesPago()
-      case "tipos_gasto":
-        return renderTiposGasto()
-      case "componentes_evaluacion":
-        return renderPlaceholder("Componentes de Evaluación de Equipos")
-      case "rangos_precio":
-        return renderPlaceholder("Rangos de Precio por Rol")
       case "cat_proveedores":
         return renderCatProveedores()
       default:

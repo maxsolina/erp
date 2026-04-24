@@ -34,6 +34,7 @@ export async function PUT(
     ...rest,
     termino_pago_id: rest.termino_pago_id && rest.termino_pago_id > 0 ? rest.termino_pago_id : null,
     vendedor_id: rest.vendedor_id && rest.vendedor_id > 0 ? rest.vendedor_id : null,
+    lista_precios_id: rest.lista_precios_id && rest.lista_precios_id > 0 ? rest.lista_precios_id : null,
     updated_at: new Date().toISOString(),
   }
 

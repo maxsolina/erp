@@ -21,13 +21,31 @@ export async function GET() {
 export async function POST(req: Request) {
   const supabase = getSupabase()
   const body = await req.json()
-  const { data, error } = await supabase
-    .from("listas_precios")
-    .insert(body)
-    .select()
-    .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+
+  const baseCols = ["nombre", "moneda", "activa", "moneda_base"]
+  const extendedCols = ["incluye_iva", "no_visible", "dias_validez", "estado",
+    "usuarios_admin", "usuarios_habilitados", "observaciones_filtro"]
+
+  const buildInsert = (cols: string[]) => {
+    const ins: Record<string, unknown> = {}
+    for (const col of cols) {
+      if (col in body) ins[col] = body[col]
+    }
+    if (!ins.moneda && ins.moneda_base) ins.moneda = ins.moneda_base
+    return ins
+  }
+
+  // Intentar con todos los campos; si falla por schema cache, reintentar solo con base
+  let insert = buildInsert([...baseCols, ...extendedCols])
+  let result = await supabase.from("listas_precios").insert(insert).select().single()
+
+  if (result.error?.message?.includes("schema cache") || result.error?.message?.includes("Could not find")) {
+    insert = buildInsert(baseCols)
+    result = await supabase.from("listas_precios").insert(insert).select().single()
+  }
+
+  if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 })
+  return NextResponse.json(result.data)
 }
 
 export async function PATCH(req: Request) {
@@ -35,19 +53,29 @@ export async function PATCH(req: Request) {
   const body = await req.json()
   const { id, ...fields } = body
   if (!id) return NextResponse.json({ error: "id requerido" }, { status: 400 })
-  // Campos permitidos para actualizar
-  const allowed = ["nombre", "tipo", "moneda_base", "incluye_iva", "activa", "no_visible",
-    "dias_validez", "estado", "usuarios_admin", "usuarios_habilitados", "observaciones_filtro"]
-  const update: Record<string, unknown> = {}
-  for (const key of allowed) {
-    if (key in fields) update[key] = fields[key]
+
+  // Columnas base (siempre existen) + columnas extendidas (requieren migración 070)
+  const baseCols = ["nombre", "tipo", "moneda", "moneda_base", "activa"]
+  const extendedCols = ["incluye_iva", "no_visible", "dias_validez", "estado",
+    "usuarios_admin", "usuarios_habilitados", "observaciones_filtro"]
+
+  const buildUpdate = (cols: string[]) => {
+    const u: Record<string, unknown> = {}
+    for (const key of cols) {
+      if (key in fields) u[key] = fields[key]
+    }
+    return u
   }
-  const { data, error } = await supabase
-    .from("listas_precios")
-    .update(update)
-    .eq("id", id)
-    .select()
-    .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+
+  // Intentar con todos los campos; si falla por schema cache, reintentar solo con base
+  let update = buildUpdate([...baseCols, ...extendedCols])
+  let result = await supabase.from("listas_precios").update(update).eq("id", id).select().single()
+
+  if (result.error?.message?.includes("schema cache") || result.error?.message?.includes("Could not find")) {
+    update = buildUpdate(baseCols)
+    result = await supabase.from("listas_precios").update(update).eq("id", id).select().single()
+  }
+
+  if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 })
+  return NextResponse.json(result.data)
 }

@@ -38,10 +38,46 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
   // 4. Validar que importes asignados no superen saldos
   const debitos = (comprobantes ?? []).filter(c => c.tipo === "debito")
+  const opMoneda = op.moneda ?? "ARS"
   for (const comp of debitos) {
-    if (comp.importe > comp.saldo_original) {
+    const facMoneda = comp.moneda_comp ?? "ARS"
+    if (facMoneda !== opMoneda) {
+      // Cross-currency: convertir importe de la OP a la moneda de la factura
+      const cotiz = Number(comp.cotizacion ?? op.cotizacion ?? 0)
+      if (cotiz > 0) {
+        const importeEnMonedaFac = comp.importe / cotiz
+        if (importeEnMonedaFac > comp.saldo_original + 0.01) {
+          return NextResponse.json({
+            error: `El importe asignado a ${comp.referencia} (${comp.importe} ${opMoneda} ≈ ${importeEnMonedaFac.toFixed(2)} ${facMoneda}) supera su saldo (${comp.saldo_original} ${facMoneda})`
+          }, { status: 400 })
+        }
+      }
+      // Sin cotización disponible: no se puede validar, se permite continuar
+    } else {
+      // Misma moneda: comparación directa
+      if (comp.importe > comp.saldo_original + 0.01) {
+        return NextResponse.json({
+          error: `El importe asignado a ${comp.referencia} (${comp.importe}) supera su saldo (${comp.saldo_original})`
+        }, { status: 400 })
+      }
+    }
+  }
+
+  // 4b. Validar conciliación completa si la OP tiene medios en ARS
+  const tieneARS = (medios ?? []).some((m: Record<string, unknown>) => !m.moneda || m.moneda === "ARS")
+  if (tieneARS) {
+    const totalMediosComp = (medios ?? []).reduce((s: number, m: Record<string, unknown>) =>
+      s + Number(m.importe_comp ?? m.importe ?? 0), 0)
+    const totalDebitos = (comprobantes ?? [])
+      .filter((c: Record<string, unknown>) => c.tipo === "debito")
+      .reduce((s: number, c: Record<string, unknown>) => s + Number(c.importe ?? 0), 0)
+    const totalCreditos = (comprobantes ?? [])
+      .filter((c: Record<string, unknown>) => c.tipo === "credito")
+      .reduce((s: number, c: Record<string, unknown>) => s + Number(c.importe ?? 0), 0)
+    const noConciliado = totalMediosComp - totalDebitos + totalCreditos
+    if (noConciliado > 0.01) {
       return NextResponse.json({
-        error: `El importe asignado a ${comp.referencia} (${comp.importe}) supera su saldo (${comp.saldo_original})`
+        error: `Hay $${noConciliado.toFixed(2)} sin conciliar. La OP contiene medios en ARS y debe estar completamente conciliada antes de confirmar.`
       }, { status: 400 })
     }
   }
@@ -166,12 +202,18 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
         .single()
 
       if (fac) {
-        const nuevoSaldo = Math.max(0, (fac.saldo ?? fac.total) - comp.importe)
+        const facMonedaUpd = comp.moneda_comp ?? "ARS"
+        // Si la factura está en distinta moneda que la OP, convertir el importe
+        const importeEnMonedaFac =
+          facMonedaUpd !== opMoneda
+            ? comp.importe / Math.max(Number(comp.cotizacion ?? op.cotizacion ?? 1), 0.0001)
+            : comp.importe
+        const nuevoSaldo = Math.max(0, (fac.saldo ?? fac.total) - importeEnMonedaFac)
         await supabase
           .from("facturas_compra")
           .update({
             saldo: nuevoSaldo,
-            estado: nuevoSaldo <= 0 ? "pagada" : "pagada_parcial",
+            estado: nuevoSaldo <= 0.01 ? "pagada" : "pagada_parcial",
           })
           .eq("id", comp.factura_id)
       }

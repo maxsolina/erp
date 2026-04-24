@@ -54,41 +54,68 @@ export async function POST(req: Request) {
     lineas = [],
   } = body
 
-  // Generar número correlativo
-  const { data: lastFac } = await supabase
-    .from("facturas")
-    .select("numero")
-    .like("numero", "FAC-%")
-    .order("id", { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  // Generar número correlativo — intentar con función atómica de secuencia,
+  // fallback a MAX(numero) con retry en caso de colisión
+  async function generarNumeroFactura(): Promise<string> {
+    // Intentar usar secuencia atómica de Postgres (script 071)
+    const { data: seqData } = await supabase.rpc("next_factura_numero")
+    if (seqData) return seqData as string
 
-  const lastNum = lastFac?.numero ? parseInt(lastFac.numero.replace("FAC-", "")) || 0 : 0
-  const facturaNumero = `FAC-${String(lastNum + 1).padStart(5, "0")}`
+    // Fallback: MAX sobre columna numero (más seguro que ORDER BY id)
+    const { data: maxFac } = await supabase
+      .from("facturas")
+      .select("numero")
+      .like("numero", "FAC-%")
+      .order("numero", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const lastNum = maxFac?.numero ? parseInt(maxFac.numero.replace("FAC-", "")) || 0 : 0
+    return `FAC-${String(lastNum + 1).padStart(5, "0")}`
+  }
 
-  const { data: facData, error: facErr } = await supabase
-    .from("facturas")
-    .insert({
-      numero: facturaNumero,
-      tipo: "",
-      nota_venta_id: nota_venta_id ?? null,
-      nota_venta_numero: nota_venta_numero ?? null,
-      cliente_id: cliente_id ?? null,
-      cliente_nombre: cliente_nombre ?? null,
-      vendedor_nombre: vendedor_nombre ?? null,
-      sucursal: sucursal ?? null,
-      fecha: fecha ?? new Date().toISOString(),
-      estado,
-      moneda,
-      termino_pago: termino_pago ?? null,
-      subtotal: subtotal ?? 0,
-      descuento,
-      impuestos,
-      total: total ?? 0,
-      saldo: saldo ?? total ?? 0,
-    })
-    .select()
-    .single()
+  // Insertar con retry en caso de duplicate key (race condition)
+  let facData: any = null
+  let facErr: any = null
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const facturaNumero = await generarNumeroFactura()
+    const result = await supabase
+      .from("facturas")
+      .insert({
+        numero: facturaNumero,
+        tipo: "",
+        nota_venta_id: nota_venta_id ?? null,
+        nota_venta_numero: nota_venta_numero ?? null,
+        cliente_id: cliente_id ?? null,
+        cliente_nombre: cliente_nombre ?? null,
+        vendedor_nombre: vendedor_nombre ?? null,
+        sucursal: sucursal ?? null,
+        fecha: fecha ?? new Date().toISOString(),
+        estado,
+        moneda,
+        termino_pago: termino_pago ?? null,
+        subtotal: subtotal ?? 0,
+        descuento,
+        impuestos,
+        total: total ?? 0,
+        saldo: saldo ?? total ?? 0,
+      })
+      .select()
+      .single()
+
+    if (!result.error) {
+      facData = result.data
+      facErr = null
+      break
+    }
+    // Si no es duplicate key, no tiene sentido reintentar
+    if (!result.error.message.includes("duplicate key")) {
+      facErr = result.error
+      break
+    }
+    facErr = result.error
+    // Pequeña espera aleatoria antes del siguiente intento
+    await new Promise(r => setTimeout(r, 50 + Math.random() * 100))
+  }
 
   if (facErr) return NextResponse.json({ error: facErr.message }, { status: 500 })
 
@@ -116,7 +143,7 @@ export async function POST(req: Request) {
   // Generar asiento contable automático (atómico: si falla, se revierte la factura)
   const asientoResult = await generarAsientoFacturaVenta(supabase, {
     id: facData.id,
-    numero: facturaNumero,
+    numero: facData.numero,
     fecha: (fecha ?? new Date().toISOString()).split("T")[0],
     cliente_id: cliente_id ?? null,
     cliente_nombre: cliente_nombre ?? null,
@@ -129,14 +156,13 @@ export async function POST(req: Request) {
 
   if (!asientoResult.ok) {
     // La factura queda guardada pero sin asiento — se registra para revisión
-    console.error(`[CONTABILIDAD] Factura ${facturaNumero} creada sin asiento: ${asientoResult.error}`)
+    console.error(`[CONTABILIDAD] Factura ${facData.numero} creada sin asiento: ${asientoResult.error}`)
     return NextResponse.json({
       ...facData,
-      numero: facturaNumero,
       asiento_id: null,
       _advertencia_contable: asientoResult.error,
     })
   }
 
-  return NextResponse.json({ ...facData, numero: facturaNumero, asiento_id: asientoResult.asiento_id })
+  return NextResponse.json({ ...facData, asiento_id: asientoResult.asiento_id })
 }

@@ -19,6 +19,7 @@ export interface ClienteDB {
   pais: string
   termino_pago_id: number | null
   vendedor_id: number | null
+  lista_precios_id: number | null
   sucursal_id: number | null
   limite_credito: number
   saldo_cuenta_corriente: number

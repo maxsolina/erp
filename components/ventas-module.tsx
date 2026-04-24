@@ -418,6 +418,7 @@ interface Recibo {
   concepto: string | null
   importe: number
   importe_no_conciliado: number
+  importe_no_conciliado_ars: number
   moneda: string
   tipo_cotizacion: string | null
   cotizacion: number | null
@@ -1043,10 +1044,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     categoria_nombre: categoriasCliente.find(cat => cat.id === c.categoria_id)?.nombre ?? null,
     vendedor_id: c.vendedor_id,
     cobrador_id: null,
-    lista_precios_id: 1,
+    lista_precios_id: c.lista_precios_id ?? null,
     descuento_default: 0,
     moneda_cuenta_corriente: "ARS" as "ARS" | "USD",
-    termino_pago_id: c.termino_pago_id || 1,
+    termino_pago_id: c.termino_pago_id ?? null,
     activo: c.activo,
     es_confidencial: false,
     sucursal_origen: "Puerto Norte",
@@ -1083,10 +1084,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       categoria_nombre: catObj?.nombre ?? editingItem?.categoria_nombre ?? null,
       vendedor_id: parseInt(formData.get("vendedor_id") as string) || null,
       cobrador_id: null,
-      lista_precios_id: parseInt(formData.get("lista_precios_id") as string) || 1,
+      lista_precios_id: parseInt(formData.get("lista_precios_id") as string) || null,
       descuento_default: parseFloat(formData.get("descuento_default") as string) || 0,
       moneda_cuenta_corriente: formData.get("moneda_cuenta_corriente") as "ARS" | "USD",
-      termino_pago_id: parseInt(formData.get("termino_pago_id") as string) || 1,
+      termino_pago_id: parseInt(formData.get("termino_pago_id") as string) || null,
       activo: true, es_confidencial: false, sucursal_origen: "Puerto Norte",
       fecha_alta: editingItem?.fecha_alta || new Date().toISOString().split('T')[0],
       saldo_cuenta_corriente: editingItem?.saldo_cuenta_corriente || 0,
@@ -1105,7 +1106,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       tipo_documento: newCliente.tipo_documento, numero_documento: newCliente.numero_documento || null,
       condicion_iva: condicion, email: newCliente.email || null, telefono: newCliente.telefono || null,
       direccion: newCliente.direccion || null, ciudad: newCliente.ciudad || null, provincia: newCliente.provincia || null,
-      termino_pago_id: newCliente.termino_pago_id || null, vendedor_id: newCliente.vendedor_id || null, activo: true,
+      termino_pago_id: newCliente.termino_pago_id || null, vendedor_id: newCliente.vendedor_id || null,
+      lista_precios_id: newCliente.lista_precios_id || null, activo: true,
     }
   }
 
@@ -1271,11 +1273,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       credito_tipo: string
       credito_numero: string
       monto: number
+      debito_moneda?: string
+      credito_moneda?: string
+      cotizacion?: number | null
     }[]
     total_conciliado: number
     usuario: string
     estado: 'activa' | 'cancelada'
     fecha_cancelacion?: string | null
+    esRecibo?: boolean
+    reciboNumero?: string
   }[]>([])
   const [conciliacionTab, setConciliacionTab] = useState<"conciliar" | "historial">("conciliar")
   const [conciliacionFiltroNV, setConciliacionFiltroNV] = useState<string>("")
@@ -1303,6 +1310,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   // Cuenta corriente bimonetaria del cliente seleccionado en el recibo
   const [reciboCCResumen, setReciboCCResumen] = useState<CCResumen | null>(null)
   const [reciboCCCargando, setReciboCCCargando] = useState(false)
+  const [reciboFiltroARS, setReciboFiltroARS] = useState("")
+  const [reciboFiltroUSD, setReciboFiltroUSD] = useState("")
+  const [reciboTodosARS, setReciboTodosARS] = useState(false)
+  const [reciboTodosUSD, setReciboTodosUSD] = useState(false)
   const [reciboMontoForm, setReciboMontoForm] = useState<number>(0)
   const [reciboPrevisualizando, setReciboPrevisualizando] = useState(false)
   const [reciboCajaId, setReciboCajaId] = useState<string>("")
@@ -1369,6 +1380,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
   // Estado categoría seleccionada en form cliente
   const [formClienteCategoriaId, setFormClienteCategoriaId] = useState<number | null>(null)
+  const [formClienteListaPreciosId, setFormClienteListaPreciosId] = useState<number | null>(null)
 
   // Estados para Listas de Precios
   const [listasPrecios, setListasPrecios] = useState<ListaPrecios[]>([])
@@ -1387,6 +1399,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [listaPreciosTab, setListaPreciosTab] = useState<"versiones" | "filtros" | "usuarios_admin" | "usuarios_habilitados">("versiones")
   const [editandoLineas, setEditandoLineas] = useState(false)
   const [nuevaLineaVersion, setNuevaLineaVersion] = useState<Partial<LineaListaPrecios>>({})
+  const [errorLineaPendiente, setErrorLineaPendiente] = useState(false)
   const [modalNuevaVersionBasada, setModalNuevaVersionBasada] = useState(false)
   const [nuevaVersionBasadaForm, setNuevaVersionBasadaForm] = useState({ nombre: "", fecha_inicial: "", fecha_final: "", copiar_lineas: true })
 
@@ -1590,6 +1603,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       .then(d => { if (d?.tasa && Number(d.tasa) > 1) setSeniaCotizacionPago(Number(d.tasa)) })
       .catch(() => {})
   }, [])
+
+  // Cargar facturas/comprobantes pendientes cuando se selecciona un cliente en formulario de recibo
+  useEffect(() => {
+    if (reciboClienteIdForm && (creandoRecibo || editandoRecibo)) {
+      cargarComprobantesCliente(reciboClienteIdForm)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reciboClienteIdForm, creandoRecibo, editandoRecibo])
 
   // Cargar caja_valores al cambiar la caja seleccionada
   useEffect(() => {
@@ -1969,6 +1990,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       .then(data => { if (data?.valor) setFacturaCotizacion(Number(data.valor)) })
       .catch(() => {})
   }, [facturaMoneda])
+
+  // Derivar moneda de la lista de precios seleccionada en factura
+  useEffect(() => {
+    const lista = listasPrecios.find(lp => lp.id === facturaListaPreciosId)
+    if (lista) {
+      const m = lista.moneda_base === "USD" ? "USD" : "ARS"
+      setFacturaMoneda(m)
+    }
+  }, [facturaListaPreciosId, listasPrecios])
 
   // Cargar productos de la lista de precios seleccionada cuando cambia nvListaPreciosId
   useEffect(() => {
@@ -2634,7 +2664,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-2xl font-bold text-amber-900">Clientes</h1>
           <button 
-            onClick={() => { setEditingItem(null); setCreandoCliente(true) }}
+            onClick={() => { setEditingItem(null); setFormClienteCategoriaId(null); setFormClienteListaPreciosId(null); setCreandoCliente(true) }}
             className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 transition-colors flex items-center gap-2"
           >
             <Plus className="w-4 h-4" /> Nuevo Cliente
@@ -2897,21 +2927,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Lista de Precios por Defecto</label>
                   <select
                     name="lista_precios_id"
-                    value={
-                      formClienteCategoriaId
-                        ? (categoriasCliente.find(c => c.id === formClienteCategoriaId)?.lista_precios_defecto_id ?? editingItem?.lista_precios_id ?? 1)
-                        : (editingItem?.lista_precios_id ?? 1)
-                    }
-                    onChange={() => {}}
-                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    value={formClienteListaPreciosId ?? ""}
+                    onChange={(e) => setFormClienteListaPreciosId(e.target.value ? Number(e.target.value) : null)}
+                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
                   >
+                    <option value="">Sin lista</option>
                     {listasPrecios.map(lp => (
                       <option key={lp.id} value={lp.id}>{lp.nombre}</option>
                     ))}
                   </select>
-                  {formClienteCategoriaId && (
-                    <p className="text-xs text-emerald-600 mt-0.5">Completado por la categor��a seleccionada</p>
-                  )}
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
@@ -2944,7 +2968,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
               <button
                 type="button"
-                onClick={() => { setCreandoCliente(false); setEditingItem(null); setFormClienteCategoriaId(null) }}
+                onClick={() => { setCreandoCliente(false); setEditingItem(null); setFormClienteCategoriaId(null); setFormClienteListaPreciosId(null) }}
                 className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
               >
                 Cancelar
@@ -2993,7 +3017,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           </div>
           <div className="flex gap-2">
             <button 
-              onClick={() => { setEditingItem(selectedCliente); setCreandoCliente(true) }}
+              onClick={() => { setEditingItem(selectedCliente); setFormClienteCategoriaId(selectedCliente?.categoria_id ?? null); setFormClienteListaPreciosId(selectedCliente?.lista_precios_id ?? null); setCreandoCliente(true) }}
               className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 flex items-center gap-1"
             >
               <Edit className="w-4 h-4" /> Editar
@@ -8453,7 +8477,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <h3 className="font-semibold text-gray-900 mb-4">Cliente</h3>
               <select
                 value={facturaClienteId || ""}
-                onChange={(e) => setFacturaClienteId(e.target.value ? parseInt(e.target.value) : null)}
+                onChange={(e) => {
+                const id = e.target.value ? parseInt(e.target.value) : null
+                setFacturaClienteId(id)
+                if (id) {
+                  const cli = clientes.find(c => c.id === id)
+                  if (cli?.lista_precios_id) setFacturaListaPreciosId(cli.lista_precios_id)
+                }
+              }}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="">Seleccionar cliente...</option>
@@ -8466,17 +8497,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <div><span className="text-gray-500">Documento:</span> <span className="font-medium">{clienteSeleccionado.tipo_documento}: {clienteSeleccionado.numero_documento}</span></div>
                   <div><span className="text-gray-500">Posicion Fiscal:</span> <span className="font-medium capitalize">{clienteSeleccionado.posicion_fiscal.replace('_', ' ')}</span></div>
 
-                  <div>
+                  <div className="flex items-center gap-2">
                     <span className="text-gray-500">Lista de Precios:</span>
-                    <select
-                      value={facturaListaPreciosId}
-                      onChange={(e) => setFacturaListaPreciosId(Number(e.target.value))}
-                      className="ml-2 border border-gray-300 rounded px-2 py-1 text-sm font-medium"
-                    >
-                      {listasPrecios.filter(lp => lp.activa).map(lp => (
-                        <option key={lp.id} value={lp.id}>{lp.nombre}</option>
-                      ))}
-                    </select>
+                    <span className="font-medium">
+                      {listasPrecios.find(lp => lp.id === facturaListaPreciosId)?.nombre ?? `Lista #${facturaListaPreciosId}`}
+                    </span>
+                    <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${facturaMoneda === "USD" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>
+                      {facturaMoneda}
+                    </span>
                   </div>
                 </div>
               )}
@@ -8625,40 +8653,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           </div>
 
           <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-sm p-4">
-              <h3 className="font-semibold text-gray-900 mb-4">Moneda</h3>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Moneda</label>
-                  <select
-                    value={facturaMoneda}
-                    onChange={(e) => {
-                      const m = e.target.value as "ARS" | "USD"
-                      setFacturaMoneda(m)
-                      if (m === "ARS") setFacturaCotizacion(1)
-                    }}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                  >
-                    <option value="ARS">ARS - Peso Argentino</option>
-                    <option value="USD">USD - Dólar</option>
-                  </select>
-                </div>
-                {facturaMoneda === "USD" && (
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Cotización (ARS por USD)</label>
-                    <input
-                      type="number"
-                      value={facturaCotizacion}
-                      min={1}
-                      step={1}
-                      onChange={(e) => setFacturaCotizacion(Number(e.target.value) || 1)}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-right"
-                      placeholder="Cotización"
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
+
             <div className="bg-white rounded-lg shadow-sm p-4">
               <h3 className="font-semibold text-gray-900 mb-4">
                 Resumen {facturaMoneda !== "ARS" && <span className="text-sm font-normal text-blue-600 ml-1">en {facturaMoneda}</span>}
@@ -9273,12 +9268,21 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     <div>
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-amber-900">Facturas</h1>
-        <button
-          onClick={() => { setCreandoFactura(true); setFacturaClienteId(null); setFacturaLineas([]) }}
-          className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 transition-colors flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" /> Nueva Factura
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={recargarFacturas}
+            className="px-3 py-2 border border-gray-300 text-gray-600 rounded-md text-sm hover:bg-gray-50 flex items-center gap-1"
+            title="Recargar facturas desde la base de datos"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => { setCreandoFactura(true); setFacturaClienteId(null); setFacturaLineas([]) }}
+            className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 transition-colors flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" /> Nueva Factura
+          </button>
+        </div>
       </div>
 
       <div className="mb-4">
@@ -9379,6 +9383,38 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const supabase = createClient()
     const { data } = await supabase.from("recibos").select("*").order("created_at", { ascending: false })
     if (data) { setRecibos(data as any); setRecibosLoaded(true) }
+  }
+
+  const recargarFacturas = async () => {
+    try {
+      const res = await fetch("/api/facturas")
+      const data = await res.json()
+      if (Array.isArray(data)) {
+        setFacturas(data.map((f: any) => ({
+          id: f.id, numero: f.numero ?? "",
+          nota_venta_id: f.nota_venta_id ?? 0, nota_venta_numero: f.nota_venta_numero ?? "",
+          cliente_id: f.cliente_id ?? 0, cliente_nombre: f.cliente_nombre ?? "",
+          cliente_documento: f.cliente_documento ?? "", estado: f.estado ?? "abierta",
+          fecha: f.fecha ?? f.created_at, vendedor_nombre: f.vendedor_nombre ?? "",
+          domicilio_facturacion: f.domicilio_facturacion ?? "", moneda: f.moneda ?? "ARS",
+          tipo_cotizacion: f.tipo_cotizacion ?? "blue", cotizacion: Number(f.cotizacion) || 1,
+          termino_pago: f.termino_pago ?? "Contado", condicion_pago: f.condicion_pago ?? "",
+          fecha_vencimiento: f.fecha_vencimiento ?? "",
+          subtotal: Number(f.subtotal ?? 0), descuento: Number(f.descuento ?? 0),
+          impuestos: Number(f.impuestos ?? 0), total: Number(f.total ?? 0),
+          saldo: Number(f.saldo ?? 0), sucursal: f.sucursal ?? "",
+          lineas: (f.facturas_lineas ?? []).map((l: any) => ({
+            producto_nombre: l.producto_nombre ?? "", descripcion: l.descripcion ?? "",
+            cantidad: l.cantidad ?? 1, precio_unitario: l.precio_unitario ?? 0,
+            descuento: l.descuento ?? 0, subtotal: Number(l.subtotal ?? 0),
+          })),
+          vencimientos: (f.facturas_vencimientos ?? []).map((v: any) => ({
+            descripcion: v.descripcion ?? "", fecha: v.fecha ?? "", total: Number(v.total ?? 0),
+          })),
+          seguimiento: f.seguimiento ?? [], medios_pago_detalle: f.medios_pago_detalle ?? [],
+        })))
+      }
+    } catch { /* no bloquear */ }
   }
 
   const cargarDetalleRecibo = async (id: string) => {
@@ -9524,6 +9560,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
   const guardarRecibo = async () => {
     if (reciboGuardando) return
+
+    // Validar que haya al menos una factura asociada
+    const tieneFactura = reciboImputacionesForm.some(i => i.tipo_comprobante === "factura")
+    if (!tieneFactura) {
+      alert("No se puede crear un recibo sin una factura asociada. Agregá al menos una factura antes de guardar.")
+      return
+    }
+
     const { createClient } = await import("@/lib/supabase/client")
     const supabase = createClient()
 
@@ -9543,11 +9587,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
         lastError = new Error(error.message)
         const missingColumn = extractMissingColumn(error.message)
-        if (!error.message.includes("schema cache") || !missingColumn || !(missingColumn in currentPayload)) {
-          throw lastError
+        if (missingColumn && missingColumn in currentPayload) { delete currentPayload[missingColumn]; continue }
+        // Si el error es de tipo uuid y tenemos cliente_id, lo quitamos y reintentamos
+        if (error.message.includes("invalid input syntax for type uuid") && "cliente_id" in currentPayload) {
+          delete currentPayload["cliente_id"]; continue
         }
-
-        delete currentPayload[missingColumn]
+        throw lastError
       }
 
       throw lastError ?? new Error("No se pudo actualizar el recibo por incompatibilidad de esquema")
@@ -9563,11 +9608,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
         lastError = new Error(error.message)
         const missingColumn = extractMissingColumn(error.message)
-        if (!error.message.includes("schema cache") || !missingColumn || !(missingColumn in currentPayload)) {
-          throw lastError
+        if (missingColumn && missingColumn in currentPayload) { delete currentPayload[missingColumn]; continue }
+        // Si el error es de tipo uuid y tenemos cliente_id, lo quitamos y reintentamos
+        if (error.message.includes("invalid input syntax for type uuid") && "cliente_id" in currentPayload) {
+          delete currentPayload["cliente_id"]; continue
         }
-
-        delete currentPayload[missingColumn]
+        throw lastError
       }
 
       throw lastError ?? new Error("No se pudo crear el recibo por incompatibilidad de esquema")
@@ -9615,7 +9661,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
     setReciboGuardando(true)
     try {
-      const totalPagos = reciboPagosForm.reduce((s, p) => s + (p.importe || 0), 0)
+      const totalPagos = reciboPagosForm.reduce((s, p) => s + (p.importe_comprobante || 0), 0)
       const totalAsig = reciboImputacionesForm.reduce((s, i) => s + (i.asignacion || 0), 0)
       const suc = sucursalActiva?.nombre || ""
 
@@ -9627,7 +9673,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       if (selectedRecibo) {
         // Actualizar existente
         const payloadUpdate = {
-          cliente_id: reciboClienteIdForm,
+          cliente_id: reciboClienteIdForm ? Number(reciboClienteIdForm) : null,
           cliente_nombre: clientes.find(c => String(c.id) === String(reciboClienteIdForm))?.nombre || "",
           caja_id: reciboCajaId || null,
           caja_nombre: reciboCajasDisponibles.find(c => c.id === reciboCajaId)?.nombre || null,
@@ -9668,7 +9714,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         const payloadInsert = {
           numero,
           sucursal: suc,
-          cliente_id: reciboClienteIdForm,
+          cliente_id: reciboClienteIdForm ? Number(reciboClienteIdForm) : null,
           cliente_nombre: clienteNombre,
           caja_id: reciboCajaId || null,
           caja_nombre: reciboCajasDisponibles.find(c => c.id === reciboCajaId)?.nombre || null,
@@ -9793,21 +9839,49 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     }
 
     // Imputar comprobantes
+    const facturasActualizadas: { id: number | string; saldo: number; estado: string }[] = []
     for (const imp of reciboImputacionesForm) {
       if (imp.asignacion <= 0) continue
       const { data: factura } = await supabase.from("facturas").select("saldo, estado, total").eq("id", imp.comprobante_id).single()
       if (factura) {
-        const nuevoSaldo = (factura.saldo || 0) - imp.asignacion
+        const nuevoSaldo = Math.max(0, (factura.saldo || 0) - imp.asignacion)
+        const nuevoEstado = nuevoSaldo <= 0.01 ? "conciliada" : factura.estado
         await supabase.from("facturas").update({
-          saldo: Math.max(0, nuevoSaldo),
-          estado: nuevoSaldo <= 0.01 ? "conciliada" : factura.estado,
+          saldo: nuevoSaldo,
+          estado: nuevoEstado,
         }).eq("id", imp.comprobante_id)
+        facturasActualizadas.push({ id: imp.comprobante_id, saldo: nuevoSaldo, estado: nuevoEstado })
       }
     }
+    // Actualizar estado local de facturas para que el listado refleje cambios sin reload
+    if (facturasActualizadas.length > 0) {
+      setFacturas(prev => prev.map(f => {
+        const upd = facturasActualizadas.find(u => String(u.id) === String(f.id))
+        return upd ? { ...f, saldo: upd.saldo, estado: upd.estado as typeof f.estado } : f
+      }))
+    }
 
-    // Calcular no conciliado
-    const totalAsig = reciboImputacionesForm.reduce((s, i) => s + (i.asignacion || 0), 0)
-    const noConciliado = Math.max(0, selectedRecibo.importe - totalAsig)
+    // Calcular no conciliado en la moneda correcta
+    const hasUSDPayment = reciboPagosForm.some(p => p.moneda === 'USD')
+    let noConciliado: number
+    let noConciliadoARS: number
+    if (hasUSDPayment) {
+      // Recibo en USD: calcular saldo restante en USD
+      const totalUSDPagos = reciboPagosForm.reduce((s, p) => s + (p.moneda === 'USD' ? (p.importe || 0) : 0), 0)
+      const totalUSDAsig = reciboImputacionesForm
+        .filter(i => (i.moneda_comprobante ?? 'USD') === 'USD')
+        .reduce((s, i) => s + (i.asignacion || 0), 0)
+      noConciliado = Math.max(0, totalUSDPagos - totalUSDAsig)
+      // Porción ARS: pagos ARS directos (no cruzados) que no fueron imputados a comprobantes ARS
+      const totalARSPagosDirectos = reciboPagosForm
+        .filter(p => p.moneda === 'ARS' && !p.cotizacion_cruce)
+        .reduce((s, p) => s + (p.importe || 0), 0)
+      noConciliadoARS = Math.max(0, totalARSPagosDirectos)
+    } else {
+      const totalAsig = reciboImputacionesForm.reduce((s, i) => s + (i.asignacion || 0), 0)
+      noConciliado = Math.max(0, totalPagos - totalAsig)
+      noConciliadoARS = 0
+    }
 
     // Crear movimientos en cuenta corriente bimonetaria (partida doble por moneda)
     const casoImputacion = calcularCasoImputacion(reciboCCResumen)
@@ -9906,6 +9980,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       const { error: pubErr } = await supabase.from("recibos").update({
         estado: "publicado",
         importe_no_conciliado: noConciliado,
+        importe_no_conciliado_ars: noConciliadoARS,
         fecha_publicacion: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }).eq("id", selectedRecibo.id)
@@ -9921,6 +9996,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
       await cargarDetalleRecibo(selectedRecibo.id)
       await cargarRecibos()
+      await recargarFacturas()
     } catch (err) {
       alert("Error al confirmar recibo: " + (err as Error).message)
     } finally {
@@ -9967,20 +10043,31 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     }
 
     // Revertir imputaciones
+    const facturasRevertidas: { id: number | string; saldo: number; estado: string }[] = []
     for (const imp of reciboImputacionesForm) {
       if (imp.asignacion <= 0) continue
       const { data: factura } = await supabase.from("facturas").select("saldo, total").eq("id", imp.comprobante_id).single()
       if (factura) {
-        const saldoRestaurado = (factura.saldo || 0) + imp.asignacion
+        const saldoRestaurado = Math.min((factura.saldo || 0) + imp.asignacion, factura.total)
         await supabase.from("facturas").update({
-          saldo: Math.min(saldoRestaurado, factura.total),
+          saldo: saldoRestaurado,
           estado: "abierta",
         }).eq("id", imp.comprobante_id)
+        facturasRevertidas.push({ id: imp.comprobante_id, saldo: saldoRestaurado, estado: "abierta" })
       }
     }
+    if (facturasRevertidas.length > 0) {
+      setFacturas(prev => prev.map(f => {
+        const upd = facturasRevertidas.find(u => String(u.id) === String(f.id))
+        return upd ? { ...f, saldo: upd.saldo, estado: upd.estado as typeof f.estado } : f
+      }))
+    }
+
 
     await supabase.from("recibos").update({
       estado: "cancelado",
+      importe_no_conciliado: 0,
+      importe_no_conciliado_ars: 0,
       fecha_cancelacion: new Date().toISOString(),
       motivo_cancelacion: cancelarReciboMotivo,
     }).eq("id", selectedRecibo.id)
@@ -9996,6 +10083,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setCancelarReciboMotivo("")
     await cargarDetalleRecibo(selectedRecibo.id)
     await cargarRecibos()
+    await recargarFacturas()
   }
 
   const resetFormRecibo = () => {
@@ -10017,7 +10105,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   const seleccionRapida = () => {
-    const totalPagos = reciboPagosForm.reduce((s, p) => s + (p.importe || 0), 0)
+    const totalPagos = reciboPagosForm.reduce((s, p) => s + (p.importe_comprobante || 0), 0)
     let restante = totalPagos
     setReciboImputacionesForm(prev => prev.map(imp => {
       if (restante <= 0) return { ...imp, asignacion: 0 }
@@ -10028,7 +10116,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   const asignarPagosAFacturas = () => {
-    const totalPagos = reciboPagosForm.reduce((s, p) => s + (p.importe || 0), 0)
+    const totalPagos = reciboPagosForm.reduce((s, p) => s + (p.importe_comprobante || 0), 0)
     const marcadas = reciboImputacionesForm.filter(i => i.asignacion > 0)
     if (marcadas.length === 0) { seleccionRapida(); return }
     const totalSaldoMarcadas = marcadas.reduce((s, i) => s + i.saldo_actual, 0)
@@ -10050,7 +10138,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const esBorrador = !selectedRecibo || selectedRecibo.estado === "borrador"
     const esSoloLectura = selectedRecibo ? selectedRecibo.estado !== "borrador" : false
     const clienteSeleccionado = clientes.find(c => String(c.id) === String(reciboClienteIdForm))
-    const totalPagos = reciboPagosForm.reduce((s, p) => s + (p.importe || 0), 0)
+    const totalPagos = reciboPagosForm.reduce((s, p) => s + (p.importe_comprobante || 0), 0)
     const totalAsig = reciboImputacionesForm.reduce((s, i) => s + (i.asignacion || 0), 0)
     const noConciliado = Math.max(0, totalPagos - totalAsig)
 
@@ -10271,41 +10359,317 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             )}
 
             {/* TAB COMPROBANTES */}
-            {reciboTab === "comprobantes" && (
-              <div className="space-y-3">
-                <div className="flex gap-2 mb-2">
-                  {esBorrador && <>
-                    <button onClick={asignarPagosAFacturas} className="px-3 py-1.5 border rounded text-sm hover:bg-gray-50">Asignar pagos a las facturas</button>
-                    <button onClick={seleccionRapida} className="px-3 py-1.5 border rounded text-sm hover:bg-gray-50">Selección Rápida</button>
-                  </>}
-                </div>
-                <h4 className="text-sm font-semibold text-gray-700">Débitos</h4>
-                {reciboImputacionesForm.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead><tr className="border-b text-left text-xs text-gray-500"><th className="py-2">Referencia</th><th>Fecha</th><th>Venc.</th><th className="text-right">Saldo Mon.</th><th>Mon.</th><th className="text-right">Saldo</th><th className="text-right">Asignación</th></tr></thead>
-                      <tbody>{reciboImputacionesForm.map((imp, i) => (
-                        <tr key={i} className="border-b">
-                          <td className="py-1.5 font-medium">{imp.comprobante_referencia}</td>
-                          <td>{imp.fecha_comprobante}</td>
-                          <td>{imp.fecha_vencimiento}</td>
-                          <td className="text-right">${imp.saldo_moneda?.toLocaleString()}</td>
-                          <td>{imp.moneda_comprobante}</td>
-                          <td className="text-right">${imp.saldo_actual?.toLocaleString()}</td>
-                          <td className="text-right">{esBorrador ? (
-                            <input type="number" value={imp.asignacion} onChange={e => {
-                              const val = Math.min(Number(e.target.value), imp.saldo_actual)
-                              setReciboImputacionesForm(prev => prev.map((x, idx) => idx === i ? { ...x, asignacion: Math.max(0, val) } : x))
-                            }} className="w-24 border rounded px-2 py-1 text-sm text-right" />
-                          ) : <span>${imp.asignacion?.toLocaleString()}</span>}</td>
-                        </tr>
-                      ))}</tbody>
-                      <tfoot><tr className="border-t font-medium"><td className="py-2" colSpan={5}></td><td className="text-right">Total:</td><td className="text-right">${totalAsig.toLocaleString()}</td></tr></tfoot>
-                    </table>
+            {reciboTab === "comprobantes" && (() => {
+              const noClienteSeleccionado = !reciboClienteIdForm
+              const mkFiltro = (lista: ReciboImputacion[], filtro: string, todos: boolean) => {
+                const base = todos ? lista : lista.filter(i => i.saldo_actual > 0 || i.asignacion > 0)
+                if (!filtro.trim()) return base
+                const q = filtro.toLowerCase()
+                return base.filter(i =>
+                  i.comprobante_referencia?.toLowerCase().includes(q) ||
+                  i.fecha_vencimiento?.includes(q)
+                )
+              }
+              const impsARS = reciboImputacionesForm.filter(i => (i.moneda_comprobante || "ARS") === "ARS")
+              const impsUSD = reciboImputacionesForm.filter(i => i.moneda_comprobante === "USD")
+              const visiblesARS = mkFiltro(impsARS, reciboFiltroARS, reciboTodosARS)
+              const visiblesUSD = mkFiltro(impsUSD, reciboFiltroUSD, reciboTodosUSD)
+
+              // Macheo: al hacer click en un crédito, asigna el importe a los débitos en orden de venc.
+              const machearCredito = (pago: ReciboPago) => {
+                const monedaPago = pago.moneda as "ARS" | "USD"
+                const cotiz = reciboPagosForm.find(p => p.moneda === 'USD')?.cotizacion || reciboCotizacion || 1
+
+                // Buscar débitos en la misma moneda primero, si no hay, cruce de moneda
+                const elegibledirectos = reciboImputacionesForm
+                  .filter(i => (i.moneda_comprobante || "ARS") === monedaPago && i.saldo_actual > 0)
+                  .sort((a, b) => (a.fecha_vencimiento || "").localeCompare(b.fecha_vencimiento || ""))
+                const elegiblesCruce = reciboImputacionesForm
+                  .filter(i => (i.moneda_comprobante || "ARS") !== monedaPago && i.saldo_actual > 0)
+                  .sort((a, b) => (a.fecha_vencimiento || "").localeCompare(b.fecha_vencimiento || ""))
+
+                // Si ya está machiado (directos o cruce), desmarcar todo de ambas monedas
+                const yaMachiado = [...elegibledirectos, ...elegiblesCruce].some(i => i.asignacion > 0)
+                if (yaMachiado) {
+                  setReciboImputacionesForm(prev => prev.map(x => ({ ...x, asignacion: 0 })))
+                  return
+                }
+
+                const elegibles = elegibledirectos.length > 0 ? elegibledirectos : elegiblesCruce
+                const esCruce = elegibledirectos.length === 0 && elegiblesCruce.length > 0
+
+                // Importepago convertido a la moneda de los débitos si es cruce
+                const importeEnMonedaDebito = esCruce
+                  ? (monedaPago === "ARS" ? pago.importe / cotiz : pago.importe * cotiz)
+                  : pago.importe
+
+                let restante = importeEnMonedaDebito
+                const nuevasAsig: Record<string, number> = {}
+                for (const imp of elegibles) {
+                  if (restante <= 0) break
+                  const asig = Math.min(imp.saldo_actual, restante)
+                  nuevasAsig[imp.id] = asig
+                  restante -= asig
+                }
+                setReciboImputacionesForm(prev => prev.map(x =>
+                  x.id in nuevasAsig ? { ...x, asignacion: nuevasAsig[x.id] } : x
+                ))
+              }
+
+              // Panel de créditos (medios de pago del recibo)
+              const cotizCruce = reciboPagosForm.find(p => p.moneda === 'USD')?.cotizacion || reciboCotizacion || 1
+              const totalAsigARS = impsARS.reduce((s, i) => s + (i.asignacion || 0), 0)
+              const totalAsigUSD = impsUSD.reduce((s, i) => s + (i.asignacion || 0), 0)
+              // ARS equivalente consumido por débitos USD (cruce)
+              const totalAsigUSDenARS = totalAsigUSD * cotizCruce
+              const pagosARS = reciboPagosForm.filter(p => p.moneda === "ARS")
+              const pagosUSD = reciboPagosForm.filter(p => p.moneda === "USD")
+              const totalCreditosARS = pagosARS.reduce((s, p) => s + p.importe, 0)
+              const totalCreditosUSD = pagosUSD.reduce((s, p) => s + p.importe, 0)
+
+              const panelCreditos = (
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="px-4 py-3 border-b bg-white flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-gray-800">Créditos de este Recibo</h3>
+                    <span className="text-xs text-gray-400">Hacé click para machear con los débitos</span>
                   </div>
-                ) : <p className="text-sm text-gray-400 py-4">Seleccioná un cliente para ver sus comprobantes pendientes.</p>}
-              </div>
-            )}
+                  {reciboPagosForm.length === 0 ? (
+                    <p className="text-sm text-gray-400 px-4 py-4">Sin medios de pago cargados todavía.</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="border-b bg-gray-50">
+                          <tr className="text-xs font-semibold text-gray-600 uppercase">
+                            <th className="text-left py-2 px-3">Medio de Pago</th>
+                            <th className="text-right py-2 px-3">Importe</th>
+                            <th className="text-center py-2 px-3">Moneda</th>
+                            <th className="text-right py-2 px-3">Conciliado</th>
+                            <th className="text-right py-2 px-3">Restante</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reciboPagosForm.map((pago) => {
+                            const monedaPago = pago.moneda as "ARS" | "USD"
+                            // Conciliado directo (misma moneda) o cruce
+                            let conciliado = 0
+                            if (monedaPago === "ARS") {
+                              // Primero satisface deudas ARS; el sobrante va a deudas USD (cruce)
+                              const usadoEnARS = Math.min(pago.importe, totalAsigARS)
+                              const sobrante = Math.max(0, pago.importe - usadoEnARS)
+                              // sobrante en ARS aplicado a deuda USD: comparar con lo asignado en USD * cotiz
+                              const usadoEnCruceARS = Math.min(sobrante, totalAsigUSDenARS)
+                              conciliado = usadoEnARS + usadoEnCruceARS
+                            } else {
+                              conciliado = Math.min(pago.importe, totalAsigUSD)
+                            }
+                            const restante = Math.max(0, pago.importe - conciliado)
+                            const completo = restante < 0.01
+                            const esCruce = monedaPago === "ARS" && totalAsigARS === 0 && totalAsigUSD > 0
+                            return (
+                              <tr
+                                key={pago.id}
+                                onClick={() => esBorrador && machearCredito(pago)}
+                                className={`border-b border-gray-100 transition-colors ${esBorrador ? "cursor-pointer" : ""} ${completo ? "bg-emerald-50 hover:bg-emerald-100" : "hover:bg-indigo-50"}`}
+                              >
+                                <td className="py-2 px-3 text-sm font-medium">
+                                  <div className="flex items-center gap-2">
+                                    {completo && <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />}
+                                    {!completo && esBorrador && <span className="w-2 h-2 rounded-full bg-gray-300 inline-block" />}
+                                    {pago.valor_nombre}
+                                    {pago.tarjeta_nombre && <span className="text-xs text-gray-400">({pago.tarjeta_nombre})</span>}
+                                    {esCruce && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-semibold">cruce USD</span>}
+                                  </div>
+                                </td>
+                                <td className="py-2 px-3 text-sm text-right font-medium">{formatCurrency(pago.importe, monedaPago)}</td>
+                                <td className="py-2 px-3 text-center">
+                                  <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${monedaPago === "USD" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>{monedaPago}</span>
+                                </td>
+                                <td className="py-2 px-3 text-sm text-right text-emerald-700 font-medium">{formatCurrency(conciliado, monedaPago)}</td>
+                                <td className={`py-2 px-3 text-sm text-right font-medium ${restante > 0.01 ? "text-rose-600" : "text-gray-400"}`}>{restante > 0.01 ? formatCurrency(restante, monedaPago) : "—"}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                        <tfoot className="bg-gray-50 text-xs font-semibold text-gray-600">
+                          {totalCreditosARS > 0 && (
+                            <tr>
+                              <td className="py-2 px-3">Total ARS</td>
+                              <td className="py-2 px-3 text-right">{formatCurrency(totalCreditosARS, "ARS")}</td>
+                              <td></td>
+                              <td className="py-2 px-3 text-right text-emerald-700">{formatCurrency(Math.min(totalCreditosARS, totalAsigARS), "ARS")}</td>
+                              <td className={`py-2 px-3 text-right ${totalCreditosARS - totalAsigARS > 0.01 ? "text-rose-600" : "text-gray-400"}`}>{totalCreditosARS - totalAsigARS > 0.01 ? formatCurrency(totalCreditosARS - totalAsigARS, "ARS") : "—"}</td>
+                            </tr>
+                          )}
+                          {totalCreditosUSD > 0 && (
+                            <tr>
+                              <td className="py-2 px-3">Total USD</td>
+                              <td className="py-2 px-3 text-right">{formatCurrency(totalCreditosUSD, "USD")}</td>
+                              <td></td>
+                              <td className="py-2 px-3 text-right text-emerald-700">{formatCurrency(Math.min(totalCreditosUSD, totalAsigUSD), "USD")}</td>
+                              <td className={`py-2 px-3 text-right ${totalCreditosUSD - totalAsigUSD > 0.01 ? "text-rose-600" : "text-gray-400"}`}>{totalCreditosUSD - totalAsigUSD > 0.01 ? formatCurrency(totalCreditosUSD - totalAsigUSD, "USD") : "—"}</td>
+                            </tr>
+                          )}
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )
+
+              const toggleImp = (imp: ReciboImputacion) => {
+                const checked = imp.asignacion > 0
+                if (checked) {
+                  setReciboImputacionesForm(prev => prev.map(x =>
+                    x.id === imp.id ? { ...x, asignacion: 0 } : x
+                  ))
+                  return
+                }
+                const monedaImp = (imp.moneda_comprobante || "ARS") as "ARS" | "USD"
+                const cotiz = reciboPagosForm.find(p => p.moneda === 'USD')?.cotizacion || reciboCotizacion || 1
+                // Crédito directo en la misma moneda
+                const creditoDirecto = reciboPagosForm.filter(p => p.moneda === monedaImp).reduce((s, p) => s + p.importe, 0)
+                // Crédito cruzado: pagos ARS usables para pagar deuda USD (y viceversa)
+                const creditoCruce = monedaImp === "USD"
+                  ? reciboPagosForm.filter(p => p.moneda === "ARS").reduce((s, p) => s + p.importe / cotiz, 0)
+                  : reciboPagosForm.filter(p => p.moneda === "USD").reduce((s, p) => s + p.importe * cotiz, 0)
+                const totalCredito = creditoDirecto + creditoCruce
+                // Ya asignado a OTROS débitos de la misma moneda
+                const yaAsig = reciboImputacionesForm
+                  .filter(x => x.id !== imp.id && (x.moneda_comprobante || "ARS") === monedaImp)
+                  .reduce((s, x) => s + (x.asignacion || 0), 0)
+                const disponible = Math.max(0, totalCredito - yaAsig)
+                const asig = Math.min(imp.saldo_actual, disponible)
+                setReciboImputacionesForm(prev => prev.map(x =>
+                  x.id === imp.id ? { ...x, asignacion: asig } : x
+                ))
+              }
+
+              const renderPanel = (
+                moneda: "ARS" | "USD",
+                items: ReciboImputacion[],
+                visibles: ReciboImputacion[],
+                filtro: string,
+                setFiltro: (v: string) => void,
+                todos: boolean,
+                setTodos: (v: boolean) => void
+              ) => {
+                const totalAsigMon = items.reduce((s, i) => s + (i.asignacion || 0), 0)
+                const todosSeleccionados = visibles.length > 0 && visibles.every(i => i.asignacion > 0)
+                const algunoSeleccionado = visibles.some(i => i.asignacion > 0)
+
+                const toggleTodosVisibles = () => {
+                  const marcar = !todosSeleccionados
+                  const ids = new Set(visibles.map(i => i.id))
+                  setReciboImputacionesForm(prev => prev.map(x =>
+                    ids.has(x.id) ? { ...x, asignacion: marcar ? x.saldo_actual : 0 } : x
+                  ))
+                }
+
+                return (
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="px-4 py-3 border-b bg-white">
+                      <h3 className="text-sm font-bold text-gray-800">Cuenta Corriente {moneda}</h3>
+                    </div>
+                    <div className="bg-rose-50 border-b">
+                      <div className="flex items-center justify-between px-4 py-2">
+                        <span className="text-xs font-semibold text-rose-700">Débitos {moneda}</span>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="text"
+                            value={filtro}
+                            onChange={e => setFiltro(e.target.value)}
+                            placeholder="Filtrar..."
+                            className="text-xs border rounded px-2 py-1 w-28 bg-white"
+                          />
+                          <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none">
+                            <input type="checkbox" checked={todos} onChange={e => setTodos(e.target.checked)} className="w-3 h-3" />
+                            Todos
+                          </label>
+                          <span className="text-xs font-medium text-rose-600">{visibles.length}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="border-b bg-gray-50">
+                          <tr className="text-xs font-semibold text-gray-600 uppercase">
+                            <th className="text-left py-2 px-3">NV</th>
+                            <th className="text-left py-2 px-3">Comprobante</th>
+                            <th className="text-left py-2 px-3">Cond.</th>
+                            <th className="text-left py-2 px-3">Venc.</th>
+                            <th className="text-right py-2 px-3">Importe</th>
+                            <th className="text-right py-2 px-3">Saldo</th>
+                            <th className="text-center py-2 px-3 w-12">
+                              {esBorrador && visibles.length > 0 && (
+                                <input
+                                  type="checkbox"
+                                  checked={todosSeleccionados}
+                                  ref={el => { if (el) el.indeterminate = algunoSeleccionado && !todosSeleccionados }}
+                                  onChange={toggleTodosVisibles}
+                                  className="w-4 h-4 cursor-pointer accent-indigo-700"
+                                  title="Marcar / desmarcar todos"
+                                />
+                              )}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {noClienteSeleccionado ? (
+                            <tr><td colSpan={7} className="py-6 text-center text-sm text-gray-400">Seleccioná un cliente</td></tr>
+                          ) : visibles.length === 0 ? (
+                            <tr><td colSpan={7} className="py-6 text-center text-sm text-gray-400">Sin comprobantes pendientes en {moneda}</td></tr>
+                          ) : visibles.map((imp) => {
+                            const seleccionado = imp.asignacion > 0
+                            return (
+                              <tr
+                                key={imp.id}
+                                className={`border-b border-gray-100 cursor-pointer transition-colors ${seleccionado ? "bg-indigo-50 hover:bg-indigo-100" : "hover:bg-gray-50"}`}
+                                onClick={() => esBorrador && toggleImp(imp)}
+                              >
+                                <td className="py-2 px-3 text-xs text-gray-500">-</td>
+                                <td className="py-2 px-3 text-sm font-medium text-blue-700">{imp.comprobante_referencia}</td>
+                                <td className="py-2 px-3 text-xs text-gray-500">-</td>
+                                <td className="py-2 px-3 text-sm">{formatDate(imp.fecha_vencimiento) || "-"}</td>
+                                <td className="py-2 px-3 text-sm text-right">{formatCurrency(imp.saldo_moneda, moneda)}</td>
+                                <td className="py-2 px-3 text-sm text-right font-medium">{formatCurrency(imp.saldo_actual, moneda)}</td>
+                                <td className="py-2 px-3 text-center" onClick={e => e.stopPropagation()}>
+                                  {esBorrador ? (
+                                    <input
+                                      type="checkbox"
+                                      checked={seleccionado}
+                                      onChange={() => toggleImp(imp)}
+                                      className="w-4 h-4 cursor-pointer accent-indigo-700"
+                                    />
+                                  ) : (
+                                    seleccionado ? <span className="text-indigo-600 font-bold text-xs">{formatCurrency(imp.asignacion, moneda)}</span> : <span className="text-gray-300">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                        {items.length > 0 && (
+                          <tfoot className="bg-gray-50 font-semibold text-sm">
+                            <tr>
+                              <td colSpan={6} className="py-2 px-3 text-right text-gray-600">Total conciliado:</td>
+                              <td className="py-2 px-3 text-center text-indigo-800">{formatCurrency(totalAsigMon, moneda)}</td>
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                  </div>
+                )
+              }
+
+              return (
+                <div className="space-y-4">
+                  {panelCreditos}
+                  {renderPanel("ARS", impsARS, visiblesARS, reciboFiltroARS, setReciboFiltroARS, reciboTodosARS, setReciboTodosARS)}
+                  {renderPanel("USD", impsUSD, visiblesUSD, reciboFiltroUSD, setReciboFiltroUSD, reciboTodosUSD, setReciboTodosUSD)}
+                </div>
+              )
+            })()}
 
             {/* TAB DESCUENTOS */}
             {reciboTab === "descuentos" && <p className="text-sm text-gray-400 py-8 text-center">En desarrollo.</p>}
@@ -10334,8 +10698,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 valor_id: result.valor_id,
                 valor_nombre: result.valor_nombre,
                 tipo_valor: result.valor_tipo,
-                importe_comprobante: result.importe,
-                moneda_comprobante: result.moneda,
+                importe_comprobante: result.importe_ars ?? result.importe,
+                moneda_comprobante: "ARS",
                 importe: result.importe,
                 moneda: result.moneda,
                 es_tarjeta: esTarjeta,
@@ -10464,7 +10828,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       const supabase = createClient()
 
       const facturaUpdates: { id: number; saldoNuevo: number }[] = []
-      const reciboUpdates: { id: number; importeNoConciliadoNuevo: number }[] = []
+      const reciboUpdates: { id: number; importeNoConciliadoNuevo: number; usaARSPorcion?: boolean }[] = []
       const ncUpdates: { id: number; saldoDisponibleNuevo: number }[] = []
       const aplicaciones: typeof conciliacionHistorial[0]['aplicaciones'] = []
 
@@ -10486,8 +10850,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             if (cred.tipo === 'recibo') {
               const ru = reciboUpdates.find(u => u.id === cred.id)
               const rInfo = recibos.find(r => r.id === cred.id)
+              // Si el crédito es ARS pero el recibo es USD, usar porción ARS
+              const usaARSPorcion = moneda === 'ARS' && rInfo?.moneda === 'USD'
               if (ru) ru.importeNoConciliadoNuevo -= monto
-              else reciboUpdates.push({ id: cred.id, importeNoConciliadoNuevo: (rInfo?.importe_no_conciliado ?? 0) - monto })
+              else reciboUpdates.push({ id: cred.id, importeNoConciliadoNuevo: (usaARSPorcion ? (rInfo?.importe_no_conciliado_ars ?? 0) : (rInfo?.importe_no_conciliado ?? 0)) - monto, usaARSPorcion })
             } else {
               const nu = ncUpdates.find(u => u.id === cred.id)
               const nInfo = ajustes.find(a => a.id === cred.id)
@@ -10585,7 +10951,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         if (error) { alert('Error al actualizar factura: ' + error.message); return }
       }
       for (const u of reciboUpdates) {
-        await supabase.from('recibos').update({ importe_no_conciliado: Math.max(0, u.importeNoConciliadoNuevo) }).eq('id', u.id)
+        const rInfo = recibos.find(r => r.id === u.id)
+        // Si el crédito fue aplicado a moneda ARS desde un recibo USD, reducir porción ARS
+        const usaARSPorcion = u.usaARSPorcion ?? false
+        if (usaARSPorcion) {
+          await supabase.from('recibos').update({ importe_no_conciliado_ars: Math.max(0, u.importeNoConciliadoNuevo) }).eq('id', u.id)
+        } else {
+          await supabase.from('recibos').update({ importe_no_conciliado: Math.max(0, u.importeNoConciliadoNuevo) }).eq('id', u.id)
+        }
       }
       for (const u of ncUpdates) {
         await supabase.from('ajustes_clientes').update({ saldo_disponible: u.saldoDisponibleNuevo }).eq('id', u.id)
@@ -10596,7 +10969,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         setFacturas(prev => prev.map(f => f.id === u.id ? { ...f, saldo: s, estado: s <= 0.01 ? 'conciliada' : f.estado } : f))
       }
       for (const u of reciboUpdates) {
-        setRecibos(prev => prev.map(r => r.id === u.id ? { ...r, importe_no_conciliado: Math.max(0, u.importeNoConciliadoNuevo) } : r))
+        const usaARSPorcion = u.usaARSPorcion ?? false
+        if (usaARSPorcion) {
+          setRecibos(prev => prev.map(r => r.id === u.id ? { ...r, importe_no_conciliado_ars: Math.max(0, u.importeNoConciliadoNuevo) } : r))
+        } else {
+          setRecibos(prev => prev.map(r => r.id === u.id ? { ...r, importe_no_conciliado: Math.max(0, u.importeNoConciliadoNuevo) } : r))
+        }
       }
       for (const u of ncUpdates) {
         setAjustes(prev => prev.map(a => a.id === u.id ? { ...a, saldo_disponible: u.saldoDisponibleNuevo } : a))
@@ -10671,44 +11049,132 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       if (aplErr || !apls) { alert('Error al obtener aplicaciones: ' + aplErr?.message); return }
 
       for (const apl of apls) {
-        // Restaurar saldo de factura (débito)
-        const factura = facturas.find(f => f.numero === apl.debito_numero)
-        if (factura) {
-          const saldoRestaurado = Math.min((factura.saldo || 0) + apl.monto, factura.total)
-          await supabase.from('facturas').update({ saldo: saldoRestaurado, estado: 'abierta' }).eq('id', factura.id)
-          setFacturas(prev => prev.map(f => f.id === factura.id ? { ...f, saldo: saldoRestaurado, estado: 'abierta' } : f))
+        // Restaurar saldo de factura (débito) — buscar en DB directamente para no depender del estado local
+        if (apl.debito_numero) {
+          const { data: facDB } = await supabase.from('facturas').select('id, saldo, total').eq('numero', apl.debito_numero).maybeSingle()
+          if (facDB) {
+            const saldoRestaurado = Math.min((facDB.saldo || 0) + apl.monto, facDB.total)
+            await supabase.from('facturas').update({ saldo: saldoRestaurado, estado: 'abierta' }).eq('id', facDB.id)
+            setFacturas(prev => prev.map(f => f.id === facDB.id ? { ...f, saldo: saldoRestaurado, estado: 'abierta' } : f))
+          }
         }
 
-        // Restaurar crédito (recibo o NC)
+        // Restaurar crédito (recibo o NC) — buscar en DB directamente
         const esNC = apl.credito_tipo?.startsWith('NC')
         if (esNC) {
-          const nc = ajustes.find(a => a.numero === apl.credito_numero)
-          if (nc) {
-            const saldoRestaurado = (nc.saldo_disponible ?? nc.total ?? 0) + apl.monto
-            await supabase.from('ajustes_clientes').update({ saldo_disponible: saldoRestaurado }).eq('id', nc.id)
-            setAjustes(prev => prev.map(a => a.id === nc.id ? { ...a, saldo_disponible: saldoRestaurado } : a))
+          if (apl.credito_numero) {
+            const { data: ncDB } = await supabase.from('ajustes_clientes').select('id, saldo_disponible').eq('numero', apl.credito_numero).maybeSingle()
+            if (ncDB) {
+              const saldoRestaurado = (ncDB.saldo_disponible ?? 0) + apl.monto
+              await supabase.from('ajustes_clientes').update({ saldo_disponible: saldoRestaurado }).eq('id', ncDB.id)
+              setAjustes(prev => prev.map(a => a.id === ncDB.id ? { ...a, saldo_disponible: saldoRestaurado } : a))
+            }
           }
         } else {
-          // Extraer número limpio (credito_numero puede ser p.ej. "REC X ..." sin prefijo extra)
-          const recibo = recibos.find(r => r.numero === apl.credito_numero)
-          if (recibo) {
-            const importeRestaurado = (recibo.importe_no_conciliado || 0) + apl.monto
-            await supabase.from('recibos').update({ importe_no_conciliado: importeRestaurado }).eq('id', recibo.id)
-            setRecibos(prev => prev.map(r => r.id === recibo.id ? { ...r, importe_no_conciliado: importeRestaurado } : r))
+          if (apl.credito_numero) {
+            const { data: reciboDBArr } = await supabase.from('recibos').select('id, numero, moneda, importe_no_conciliado, importe_no_conciliado_ars').eq('numero', apl.credito_numero)
+            const reciboDB = reciboDBArr?.[0]
+            if (reciboDB) {
+              const creditoEsARSDeReciboUSD = apl.credito_moneda === 'ARS' && reciboDB.moneda === 'USD'
+              if (creditoEsARSDeReciboUSD) {
+                const importeRestaurado = (reciboDB.importe_no_conciliado_ars || 0) + apl.monto
+                await supabase.from('recibos').update({ importe_no_conciliado_ars: importeRestaurado }).eq('id', reciboDB.id)
+                setRecibos(prev => prev.map(r => r.id === reciboDB.id ? { ...r, importe_no_conciliado_ars: importeRestaurado } : r))
+              } else {
+                const importeRestaurado = (reciboDB.importe_no_conciliado || 0) + apl.monto
+                await supabase.from('recibos').update({ importe_no_conciliado: importeRestaurado }).eq('id', reciboDB.id)
+                setRecibos(prev => prev.map(r => r.id === reciboDB.id ? { ...r, importe_no_conciliado: importeRestaurado } : r))
+              }
+            }
           }
         }
       }
 
       // Marcar la conciliación como cancelada (no se elimina para conservar historial)
       const fechaCancelacion = new Date().toISOString()
+      // Intentar persistir estado en DB (requiere script 072 ejecutado en Supabase)
       const { error: updErr } = await supabase
         .from('conciliaciones_deuda')
         .update({ estado: 'cancelada', fecha_cancelacion: fechaCancelacion })
         .eq('id', concId)
-      if (updErr) { alert('Error al cancelar la conciliación: ' + updErr.message); return }
+      if (updErr && !updErr.message.includes('schema cache') && !updErr.message.includes('Could not find')) {
+        alert('Error al cancelar la conciliación: ' + updErr.message)
+        return
+      }
+      // Persistir en localStorage para sobrevivir hard refresh (hasta que script 072 esté en DB)
+      try {
+        const stored = JSON.parse(localStorage.getItem('conciliaciones_canceladas') ?? '{}')
+        stored[String(concId)] = fechaCancelacion
+        localStorage.setItem('conciliaciones_canceladas', JSON.stringify(stored))
+      } catch {}
+      const clienteIdConciliacion = conciliacionHistorial.find(h => h.id === concId)?.cliente_id
+      // Recargar pasando el override explícito para evitar stale closure sobre el estado local
+      if (clienteIdConciliacion) {
+        await cargarHistorialConciliacionesCliente(clienteIdConciliacion, { id: concId, fecha_cancelacion: fechaCancelacion })
+      } else {
+        setConciliacionHistorial(prev => prev.map(h =>
+          h.id === concId ? { ...h, estado: 'cancelada' as const, fecha_cancelacion: fechaCancelacion } : h
+        ))
+      }
+    } catch (err) {
+      alert('Error inesperado: ' + (err as Error).message)
+    } finally {
+      setConciliacionRevertiendoId(null)
+    }
+  }
 
+  const revertirImputacionesRecibo = async (reciboId: number) => {
+    if (!confirm('¿Confirmás revertir las imputaciones de este recibo? Se restaurarán los saldos de las facturas y el crédito del recibo quedará disponible nuevamente.')) return
+    setConciliacionRevertiendoId(-reciboId)
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+
+      // Traer las imputaciones del recibo
+      const { data: imps, error: impErr } = await supabase
+        .from('recibo_imputaciones')
+        .select('*')
+        .eq('recibo_id', reciboId)
+      if (impErr || !imps || imps.length === 0) { alert('No se encontraron imputaciones para revertir'); return }
+
+      for (const imp of imps) {
+        if (!imp.asignacion || imp.asignacion <= 0) continue
+        // Restaurar saldo de factura
+        const { data: fac } = await supabase.from('facturas').select('saldo, total').eq('id', imp.comprobante_id).single()
+        if (fac) {
+          const saldoRestaurado = Math.min((fac.saldo || 0) + imp.asignacion, fac.total)
+          await supabase.from('facturas').update({ saldo: saldoRestaurado, estado: 'abierta' }).eq('id', imp.comprobante_id)
+          setFacturas(prev => prev.map(f => String(f.id) === String(imp.comprobante_id) ? { ...f, saldo: saldoRestaurado, estado: 'abierta' } : f))
+        }
+      }
+
+      // Eliminar las imputaciones del recibo
+      await supabase.from('recibo_imputaciones').delete().eq('recibo_id', reciboId)
+
+      // Restaurar importe_no_conciliado del recibo al importe total de pagos en su moneda
+      const recibo = recibos.find(r => String(r.id) === String(reciboId))
+      if (recibo) {
+        const { data: pagos } = await supabase.from('recibo_pagos').select('importe, moneda, cotizacion_cruce').eq('recibo_id', reciboId)
+        const monedaRecibo = recibo.moneda ?? 'ARS'
+        const totalEnMoneda = (pagos ?? []).reduce((s: number, p: any) =>
+          p.moneda === monedaRecibo ? s + (p.importe || 0) : s, 0)
+        // Restaurar también la porción ARS para recibos mixtos
+        const totalARSDirectos = monedaRecibo === 'USD'
+          ? (pagos ?? []).reduce((s: number, p: any) =>
+              p.moneda === 'ARS' && !p.cotizacion_cruce ? s + (p.importe || 0) : s, 0)
+          : 0
+        await supabase.from('recibos').update({
+          importe_no_conciliado: totalEnMoneda,
+          importe_no_conciliado_ars: totalARSDirectos,
+        }).eq('id', reciboId)
+        setRecibos(prev => prev.map(r => String(r.id) === String(reciboId)
+          ? { ...r, importe_no_conciliado: totalEnMoneda, importe_no_conciliado_ars: totalARSDirectos }
+          : r))
+      }
+
+      // Marcar en historial como cancelada
       setConciliacionHistorial(prev => prev.map(h =>
-        h.id === concId ? { ...h, estado: 'cancelada', fecha_cancelacion: fechaCancelacion } : h
+        h.id === -reciboId ? { ...h, estado: 'cancelada' as const, fecha_cancelacion: new Date().toISOString() } : h
       ))
     } catch (err) {
       alert('Error inesperado: ' + (err as Error).message)
@@ -10717,27 +11183,84 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     }
   }
 
-  const cargarHistorialConciliacionesCliente = async (clienteId: number) => {
+  const cargarHistorialConciliacionesCliente = async (clienteId: number, cancelledOverride?: { id: number, fecha_cancelacion: string }) => {
     const { createClient } = await import('@/lib/supabase/client')
     const supabase = createClient()
-    const { data, error } = await supabase
+    const clienteNombre = clientes.find(c => c.id === clienteId)?.nombre ?? ''
+
+    // 1. Conciliaciones manuales desde conciliaciones_deuda
+    const { data: concData, error: concLoadErr } = await supabase
       .from('conciliaciones_deuda')
-      .select('id, fecha, cliente_id, total_conciliado, usuario, estado, fecha_cancelacion, conciliaciones_deuda_aplicaciones(debito_tipo, debito_numero, credito_tipo, credito_numero, monto, debito_moneda, credito_moneda, cotizacion)')
+      .select('id, fecha, cliente_id, total_conciliado, usuario, conciliaciones_deuda_aplicaciones(debito_tipo, debito_numero, credito_tipo, credito_numero, monto, debito_moneda, credito_moneda, cotizacion)')
       .eq('cliente_id', clienteId)
       .order('fecha', { ascending: false })
-    if (error || !data) return
-    const clienteNombre = clientes.find(c => c.id === clienteId)?.nombre ?? ''
-    const loaded = (data as any[]).map(c => ({
+    if (concLoadErr) console.error('[historial] error cargando conciliaciones:', concLoadErr.message)
+    // Leer cancelaciones persistidas en localStorage (fallback hasta que script 072 esté en DB)
+    let lsCancel: Record<string, string> = {}
+    try { lsCancel = JSON.parse(localStorage.getItem('conciliaciones_canceladas') ?? '{}') } catch {}
+    // Preservar estado 'cancelada' del estado local (la columna puede no existir en DB aún)
+    const estadosLocales = new Map(
+      conciliacionHistorial.filter(h => h.cliente_id === clienteId && h.estado === 'cancelada').map(h => [h.id, h])
+    )
+    const manualEntries = ((concData ?? []) as any[]).map(c => {
+      const local = estadosLocales.get(c.id as number)
+      const isOverride = cancelledOverride?.id === (c.id as number)
+      const lsFecha = lsCancel[String(c.id as number)]
+      const isCancelled = isOverride || !!lsFecha || local?.estado === 'cancelada' || c.estado === 'cancelada'
+      const cancelFecha = isOverride ? cancelledOverride!.fecha_cancelacion : (lsFecha ?? local?.fecha_cancelacion ?? c.fecha_cancelacion ?? null)
+      return {
       id: c.id as number,
       fecha: c.fecha as string,
       cliente_id: c.cliente_id as number,
       cliente_nombre: clienteNombre,
-      aplicaciones: (c.conciliaciones_deuda_aplicaciones ?? []) as { debito_tipo: string; debito_numero: string; credito_tipo: string; credito_numero: string; monto: number }[],
+      aplicaciones: (c.conciliaciones_deuda_aplicaciones ?? []) as any[],
       total_conciliado: c.total_conciliado as number,
       usuario: (c.usuario ?? '') as string,
-      estado: (c.estado ?? 'activa') as 'activa' | 'cancelada',
-      fecha_cancelacion: c.fecha_cancelacion as string | null,
-    }))
+      estado: (isCancelled ? 'cancelada' : 'activa') as 'activa' | 'cancelada',
+      fecha_cancelacion: cancelFecha as string | null,
+      esRecibo: false as const,
+      }
+    })
+
+    // 2. Imputaciones desde recibos con recibo_imputaciones
+    const { data: recibosData } = await supabase
+      .from('recibos')
+      .select('id, numero, fecha, estado, importe, moneda, recibo_imputaciones(comprobante_referencia, tipo_comprobante, moneda_comprobante, asignacion, cotizacion_actual)')
+      .eq('cliente_id', clienteId)
+      .order('fecha', { ascending: false })
+    const reciboEntries = ((recibosData ?? []) as any[])
+      .filter(r => (r.recibo_imputaciones ?? []).some((i: any) => i.asignacion > 0))
+      .map(r => {
+        const imps = (r.recibo_imputaciones ?? []).filter((i: any) => i.asignacion > 0)
+        const aplicaciones = imps.map((i: any) => ({
+          debito_tipo: i.tipo_comprobante === 'factura' ? 'Factura' : 'ND',
+          debito_numero: i.comprobante_referencia ?? '',
+          credito_tipo: 'Recibo',
+          credito_numero: r.numero ?? '',
+          monto: i.asignacion as number,
+          debito_moneda: i.moneda_comprobante ?? 'ARS',
+          credito_moneda: i.moneda_comprobante ?? 'ARS',
+          cotizacion: i.cotizacion_actual ?? null,
+        }))
+        return {
+          id: -(r.id as number),   // ID negativo para distinguir de conciliaciones_deuda
+          fecha: r.fecha as string,
+          cliente_id: clienteId,
+          cliente_nombre: clienteNombre,
+          aplicaciones,
+          total_conciliado: aplicaciones.reduce((s: number, a: any) => s + a.monto, 0) as number,
+          usuario: '',
+          estado: (r.estado === 'cancelado' ? 'cancelada' : 'activa') as 'activa' | 'cancelada',
+          fecha_cancelacion: null,
+          esRecibo: true as const,
+          reciboNumero: r.numero as string,
+        }
+      })
+
+    const loaded = [...manualEntries, ...reciboEntries].sort(
+      (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+    )
+
     setConciliacionHistorial(prev => [
       ...prev.filter(h => h.cliente_id !== clienteId),
       ...loaded,
@@ -10765,7 +11288,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const todosRecibos = conciliacionClienteId
       ? recibos.filter(r => r.cliente_id === conciliacionClienteId && r.estado === 'publicado')
       : []
-    const recibosARS = todosRecibos.filter(r => !r.moneda || r.moneda === 'ARS')
+    // Recibos ARS puros + porción ARS de recibos USD mixtos
+    const recibosARS = [
+      ...todosRecibos.filter(r => !r.moneda || r.moneda === 'ARS'),
+      ...todosRecibos
+        .filter(r => r.moneda === 'USD' && (r.importe_no_conciliado_ars ?? 0) > 0)
+        .map(r => ({ ...r, importe_no_conciliado: r.importe_no_conciliado_ars ?? 0, _esARSPorcionDeUSD: true })),
+    ]
     const recibosUSD = todosRecibos.filter(r => r.moneda === 'USD')
 
     // ── NC por moneda ────────────────────────────────────────────────────
@@ -11209,26 +11738,38 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <div className="flex justify-between items-start mb-3">
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="font-medium text-gray-900">Conciliación #{h.id}</p>
+                          {h.esRecibo
+                            ? <><span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Recibo</span><p className="font-medium text-gray-900">{h.reciboNumero}</p></>
+                            : <p className="font-medium text-gray-900">Conciliación #{h.id}</p>
+                          }
                           {h.estado === 'cancelada'
-                            ? <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">Cancelada</span>
-                            : <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Activa</span>
+                            ? <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">Cancelado</span>
+                            : <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Activo</span>
                           }
                         </div>
-                        <p className="text-sm text-gray-500">{formatDateTime(h.fecha)} — {h.usuario}</p>
+                        <p className="text-sm text-gray-500">{formatDateTime(h.fecha)}{h.usuario ? ` — ${h.usuario}` : ''}</p>
                         {h.estado === 'cancelada' && h.fecha_cancelacion && (
                           <p className="text-xs text-red-500">Revertida el {formatDateTime(h.fecha_cancelacion)}</p>
                         )}
                       </div>
                       <div className="flex items-center gap-3">
                         <p className={`text-lg font-bold ${h.estado === 'cancelada' ? 'text-gray-400 line-through' : 'text-emerald-600'}`}>{formatCurrency(h.total_conciliado)}</p>
-                        {h.estado === 'activa' && (
+                        {h.estado === 'activa' && !h.esRecibo && (
                           <button
                             onClick={() => revertirConciliacion(h.id)}
                             disabled={conciliacionRevertiendoId === h.id}
                             className="px-3 py-1 text-xs font-medium border border-red-200 text-red-600 rounded hover:bg-red-50 disabled:opacity-50 transition-colors"
                           >
                             {conciliacionRevertiendoId === h.id ? 'Revirtiendo...' : 'Revertir'}
+                          </button>
+                        )}
+                        {h.estado === 'activa' && h.esRecibo && (
+                          <button
+                            onClick={() => revertirImputacionesRecibo(Math.abs(h.id))}
+                            disabled={conciliacionRevertiendoId === -Math.abs(h.id)}
+                            className="px-3 py-1 text-xs font-medium border border-red-200 text-red-600 rounded hover:bg-red-50 disabled:opacity-50 transition-colors"
+                          >
+                            {conciliacionRevertiendoId === -Math.abs(h.id) ? 'Revirtiendo...' : 'Revertir'}
                           </button>
                         )}
                       </div>
@@ -11790,7 +12331,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           }),
         })
         const saved = await res.json()
-        const listaConId = { ...nuevaLista, id: saved.id ?? nuevaLista.id }
+        if (!res.ok || saved.error) {
+          console.error("[listas-precios] error al crear:", saved.error)
+          alert("Error al guardar la lista: " + (saved.error ?? "Error desconocido"))
+          return
+        }
+        const listaConId = { ...nuevaLista, ...saved }
         setListasPrecios(prev => [listaConId, ...prev])
         setSelectedListaPrecios(listaConId)
       } catch (e) {
@@ -11820,6 +12366,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           }),
         })
         const saved = await res.json()
+        if (!res.ok || saved.error) {
+          console.error("[listas-precios] error al actualizar:", saved.error)
+          alert("Error al guardar la lista: " + (saved.error ?? "Error desconocido"))
+          return
+        }
         const listaActualizada = { ...editingListaPrecios, ...saved }
         setListasPrecios(prev => prev.map(l => l.id === editingListaPrecios.id ? listaActualizada : l))
         setSelectedListaPrecios(listaActualizada)
@@ -11917,6 +12468,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const guardarVersion = async () => {
     console.log("[guardarVersion] editingVersion:", editingVersion)
     console.log("[guardarVersion] creandoVersion:", creandoVersion)
+    // Validar que no haya una línea pendiente sin agregar
+    if (nuevaLineaVersion.producto_id) {
+      setErrorLineaPendiente(true)
+      return
+    }
+    setErrorLineaPendiente(false)
     if (!editingVersion || !editingVersion.nombre.trim()) {
       console.log("[guardarVersion] ABORTANDO: editingVersion nulo o nombre vacío")
       return
@@ -12008,6 +12565,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setModoEdicionVersion(false)
     setEditandoLineas(false)
     setNuevaLineaVersion({})
+    setErrorLineaPendiente(false)
   }
 
   const iniciarEdicionVersion = () => {
@@ -12083,6 +12641,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     // Preservar moneda de la lista al resetear la fila de nueva línea
     const monedaLista = (listasPrecios.find(l => l.id === versionActual.lista_precios_id)?.moneda_base ?? "ARS") as "ARS" | "USD"
     setNuevaLineaVersion({ costo_moneda: monedaLista })
+    setErrorLineaPendiente(false)
   }
 
   const eliminarLineaVersion = (lineaId: number) => {
@@ -12585,23 +13144,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         {/* Formulario */}
         <div className="bg-white border border-gray-200 rounded p-6">
           {/* Campos principales */}
-          <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
               {isEditing ? (
                 <input type="text" value={currentLista.nombre} onChange={(e) => setEditingListaPrecios({ ...currentLista, nombre: e.target.value })} placeholder="Nombre de la lista" className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500" />
               ) : (
                 <p className="text-gray-900 py-2 font-medium text-lg">{currentLista.nombre}</p>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
-              {isEditing ? (
-                <select value={currentLista.tipo} onChange={(e) => setEditingListaPrecios({ ...currentLista, tipo: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
-                  {tiposListaPrecios.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              ) : (
-                <p className="text-gray-900 py-2">{currentLista.tipo}</p>
               )}
             </div>
             <div>
@@ -12618,30 +13167,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-3 gap-4 mb-6 items-end">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Días de Validez</label>
               {isEditing ? (
                 <input type="number" value={currentLista.dias_validez} onChange={(e) => setEditingListaPrecios({ ...currentLista, dias_validez: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500" min="1" />
               ) : (
                 <p className="text-gray-900 py-2">{currentLista.dias_validez} días</p>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
-              {isEditing ? (
-                <select value={currentLista.estado} onChange={(e) => setEditingListaPrecios({ ...currentLista, estado: e.target.value as ListaPrecios["estado"] })} className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500">
-                  <option value="borrador">Borrador</option>
-                  <option value="creada">Creada</option>
-                  <option value="activa">Activa</option>
-                  <option value="inactiva">Inactiva</option>
-                </select>
-              ) : (
-                <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                  currentLista.estado === 'activa' ? 'bg-green-100 text-green-800' :
-                  currentLista.estado === 'creada' ? 'bg-blue-100 text-blue-800' :
-                  currentLista.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
-                }`}>{currentLista.estado.charAt(0).toUpperCase() + currentLista.estado.slice(1)}</span>
               )}
             </div>
             <div className="flex items-center gap-4 pt-6">
@@ -12943,13 +13475,18 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         {/* Header */}
         <div className="flex items-center justify-between mb-6 bg-white border-b border-gray-200 py-3 px-4 -mx-6">
           {isEditing ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <button onClick={guardarVersion} disabled={!currentVersion.nombre.trim()} className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-1.5 rounded hover:bg-indigo-800 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
                 <Save className="w-4 h-4" /> Guardar
               </button>
               <button onClick={descartarVersion} className="flex items-center gap-2 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded border border-gray-300">
                 <X className="w-4 h-4" /> Descartar
               </button>
+              {errorLineaPendiente && (
+                <span className="text-sm text-red-600 font-medium flex items-center gap-1">
+                  ⚠ Hay una línea sin agregar — presioná <span className="font-bold text-red-700">+</span> para agregarla
+                </span>
+              )}
             </div>
           ) : (
             <BotonVolver onClick={() => { setSelectedVersion(null); setEditingVersion(null); setCreandoVersion(false); setModoEdicionVersion(false) }} />
@@ -12990,7 +13527,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         {/* Formulario */}
         <div className="bg-white border border-gray-200 rounded p-6">
           {/* Cabecera de versión */}
-          <div className="grid grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-5 gap-4 mb-6 items-end">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Precios</label>
               {isEditing && creandoVersion ? (
