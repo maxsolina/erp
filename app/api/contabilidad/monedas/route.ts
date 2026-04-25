@@ -1,3 +1,4 @@
+import { dbError } from "@/lib/api-utils"
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
@@ -27,7 +28,7 @@ export async function GET(req: Request) {
   if (soloActivos) query = query.eq("activo", true)
 
   const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
 
   // Ordenar cotizaciones de cada moneda por fecha desc
   const result = (data ?? []).map((m: any) => ({
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json(data, { status: 201 })
 }
 
@@ -98,7 +99,7 @@ export async function PATCH(req: Request) {
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json(data)
 }
 
@@ -157,6 +158,6 @@ export async function DELETE(req: Request) {
     .delete()
     .eq("id", id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json({ ok: true })
 }

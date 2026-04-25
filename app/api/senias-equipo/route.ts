@@ -1,3 +1,4 @@
+import { dbError } from "@/lib/api-utils"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 
@@ -15,7 +16,7 @@ export async function GET() {
     .from("senias_equipo")
     .select("*")
     .order("created_at", { ascending: false })
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json(data ?? [])
 }
 

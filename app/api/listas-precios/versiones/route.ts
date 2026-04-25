@@ -1,3 +1,4 @@
+import { dbError } from "@/lib/api-utils"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 
@@ -29,7 +30,7 @@ export async function GET(req: Request) {
   }
 
   const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
 
   // Mapear al formato que espera el frontend
   const result = (data ?? []).map((v: any) => ({

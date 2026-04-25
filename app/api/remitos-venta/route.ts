@@ -1,3 +1,4 @@
+import { dbError } from "@/lib/api-utils"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 
@@ -15,7 +16,7 @@ export async function GET(req: Request) {
   let query = supabase.from("remitos").select("*").order("created_at", { ascending: false })
   if (id) query = query.eq("id", Number(id))
   const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json(data ?? [])
 }
 
@@ -70,6 +71,6 @@ export async function POST(req: Request) {
     })
     .select()
     .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json({ ok: true, id: data.id, numero: data.numero })
 }

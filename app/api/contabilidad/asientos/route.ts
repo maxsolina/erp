@@ -1,3 +1,4 @@
+import { dbError } from "@/lib/api-utils"
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
@@ -46,7 +47,7 @@ export async function GET(req: Request) {
   if (fecha_hasta) query = query.lte("fecha", fecha_hasta)
 
   const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json(id ? (data?.[0] ?? null) : (data ?? []))
 }
 
@@ -221,7 +222,7 @@ export async function PATCH(req: Request) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return dbError(error)
     return NextResponse.json(data)
   }
 
@@ -287,7 +288,7 @@ export async function PATCH(req: Request) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return dbError(error)
     return NextResponse.json({ asiento: data, reversion })
   }
 
@@ -322,6 +323,6 @@ export async function PATCH(req: Request) {
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json(data)
 }

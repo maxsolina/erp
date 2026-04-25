@@ -1,3 +1,4 @@
+import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
@@ -31,7 +32,7 @@ export async function GET() {
     `)
     .order("created_at", { ascending: false })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
 
   // Resolver ubicaciones y depósitos
   const ubicacionIds = [...new Set((data ?? []).map((r: any) => r.ubicacion_id).filter(Boolean))]

@@ -1,3 +1,4 @@
+﻿import { dbError } from "@/lib/api-utils"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 
@@ -23,7 +24,7 @@ export async function GET(
     .eq("id", id)
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
 
   const { data: lineas } = await supabase
     .from("notas_venta_lineas")

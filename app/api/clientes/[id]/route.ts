@@ -1,3 +1,4 @@
+﻿import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
@@ -46,7 +47,7 @@ export async function PUT(
     .single()
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return dbError(error)
   }
 
   return NextResponse.json(data)
@@ -68,7 +69,7 @@ export async function DELETE(
     .single()
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return dbError(error)
   }
 
   return NextResponse.json(data)

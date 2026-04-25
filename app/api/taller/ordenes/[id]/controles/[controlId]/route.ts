@@ -1,3 +1,4 @@
+﻿import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
@@ -16,7 +17,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       .update(fields)
       .eq("id", controlId)
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return dbError(error)
   }
 
   // Actualizar items

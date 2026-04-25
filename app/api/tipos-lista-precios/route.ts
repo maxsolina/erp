@@ -1,3 +1,4 @@
+import { dbError } from "@/lib/api-utils"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 
@@ -15,7 +16,7 @@ export async function GET() {
     .select("id, nombre")
     .eq("activo", true)
     .order("nombre")
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json(data ?? [])
 }
 
@@ -27,6 +28,6 @@ export async function POST(req: Request) {
     .insert({ nombre: body.nombre })
     .select()
     .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json(data)
 }

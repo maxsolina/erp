@@ -1,3 +1,4 @@
+import { dbError } from "@/lib/api-utils"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 
@@ -21,7 +22,7 @@ export async function GET() {
     `)
     .eq("activo", true)
     .order("nombre")
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
 
   const result = (data ?? []).map((g: any) => ({
     id: g.id,
@@ -44,6 +45,6 @@ export async function POST(req: Request) {
     .insert({ nombre: body.nombre, banco: body.banco, tipo_movimiento: body.tipo_movimiento })
     .select()
     .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json(data)
 }

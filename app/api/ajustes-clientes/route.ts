@@ -1,3 +1,4 @@
+import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
@@ -7,7 +8,7 @@ export async function GET() {
     .from("ajustes_clientes")
     .select("*, sucursales(nombre)")
     .order("created_at", { ascending: false })
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
 
   const mapped = (data ?? []).map((a: any) => ({
     ...a,
@@ -37,6 +38,6 @@ export async function POST(req: Request) {
     .insert({ ...body, numero })
     .select()
     .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json({ ok: true, id: data.id, numero: data.numero })
 }

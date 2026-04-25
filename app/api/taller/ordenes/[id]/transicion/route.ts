@@ -1,3 +1,4 @@
+﻿import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
@@ -17,7 +18,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     p_tecnico_id: body.tecnico_id ?? null,
   })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
 
   const result = typeof data === "string" ? JSON.parse(data) : data
   if (result?.error) {

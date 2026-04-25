@@ -1,3 +1,4 @@
+import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
@@ -8,7 +9,7 @@ export async function GET() {
     .select("*, taller_equipos(nombre, marca, modelo), taller_fallas(nombre), taller_categorias_reparacion(nombre)")
     .order("equipo_id")
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
 
   // Cargar repuestos
   if (data?.length) {
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
 
   if (body.repuestos?.length && data) {
     const rows = body.repuestos.map((r: { producto_id: string; cantidad: number }) => ({

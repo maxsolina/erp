@@ -1,3 +1,4 @@
+import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
@@ -12,7 +13,7 @@ export async function GET(request: Request) {
       .select("numero")
       .order("numero", { ascending: false })
       .limit(1)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return dbError(error)
     const ultimo = data?.[0]?.numero ?? "REC-00000"
     const match = ultimo.match(/REC-(\d+)/)
     const siguiente = match ? Number(match[1]) + 1 : 1
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
     .select("*")
     .order("created_at", { ascending: false })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json(data)
 }
 
@@ -51,6 +52,6 @@ export async function POST(request: Request) {
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json(data, { status: 201 })
 }

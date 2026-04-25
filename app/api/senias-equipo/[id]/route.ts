@@ -1,3 +1,4 @@
+﻿import { dbError } from "@/lib/api-utils"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 import { generarAsientoRecibo } from "@/lib/contabilidad-asiento-factory"
@@ -214,7 +215,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       .eq("id", id)
       .select()
       .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return dbError(error)
 
     // UPDATE columnas opcionales (script 062) — se ignora el error si aún no existen
     await supabase.from("senias_equipo").update({
@@ -325,7 +326,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       .eq("id", id)
       .select()
       .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return dbError(error)
 
     // UPDATE columnas opcionales (script 062)
     await supabase.from("senias_equipo").update({
@@ -355,7 +356,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       .eq("id", id)
       .select()
       .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return dbError(error)
     return NextResponse.json({ ok: true, senia: updated })
   }
 
@@ -408,7 +409,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       .eq("id", id)
       .select()
       .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return dbError(error)
     return NextResponse.json({ ok: true, senia: updated })
   }
 
@@ -575,7 +576,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       .eq("id", id)
       .select()
       .single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return dbError(error)
     return NextResponse.json({ ok: true, senia: updated, remito_numero: remitoNumero, factura_numero: facturaNumero })
   }
 

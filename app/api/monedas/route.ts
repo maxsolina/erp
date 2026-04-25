@@ -1,3 +1,4 @@
+import { dbError } from "@/lib/api-utils"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 
@@ -19,7 +20,7 @@ export async function GET() {
     .order("es_base", { ascending: false }) // ARS (base) primero
     .order("codigo")
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json(data ?? [], {
     headers: { 'Cache-Control': 'no-store' }
   })

@@ -1,3 +1,4 @@
+import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
@@ -8,7 +9,7 @@ export async function GET() {
     .select("*, taller_areas_reparacion(nombre), taller_categorias_reparacion(nombre), taller_turnos(nombre, hora_entrada, hora_salida)")
     .order("nombre")
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
 
   // Cargar categorías secundarias
   if (data) {
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
 
   // Insertar categorías secundarias
   if (body.categorias_secundarias?.length && data) {

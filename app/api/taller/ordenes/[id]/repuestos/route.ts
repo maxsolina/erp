@@ -1,3 +1,4 @@
+﻿import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
@@ -12,7 +13,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     .eq("ot_id", id)
     .order("id")
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json(data)
 }
 
@@ -45,7 +46,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json(data, { status: 201 })
 }
 
@@ -85,7 +86,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       }
     })
     const { error } = await supabase.from("taller_ot_repuestos").insert(rows)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return dbError(error)
   }
 
   const { data } = await supabase.from("taller_ot_repuestos").select("*").eq("ot_id", id).order("id")

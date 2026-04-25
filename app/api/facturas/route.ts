@@ -1,3 +1,4 @@
+import { dbError } from "@/lib/api-utils"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 import { generarAsientoFacturaVenta } from "@/lib/contabilidad-asiento-factory"
@@ -28,7 +29,7 @@ export async function GET(req: Request) {
   else if (numero) query = query.eq("numero", numero)
 
   const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json(data ?? [])
 }
 

@@ -1,3 +1,4 @@
+﻿import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
@@ -20,7 +21,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     .eq("id", id)
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
 
   // Fallas secundarias
   const { data: fallaSec } = await supabase
@@ -113,7 +114,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
 
   if (fallas_secundarias !== undefined) {
     await supabase.from("taller_ot_fallas_secundarias").delete().eq("ot_id", id)
@@ -133,6 +134,6 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const { id } = await params
   const supabase = await createClient()
   const { error } = await supabase.from("taller_ordenes_trabajo").delete().eq("id", id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json({ ok: true })
 }

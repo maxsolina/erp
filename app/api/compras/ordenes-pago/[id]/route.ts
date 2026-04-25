@@ -1,3 +1,4 @@
+﻿import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
@@ -34,7 +35,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   opData.updated_at = new Date().toISOString()
 
   const { data, error } = await supabase.from("compras_ordenes_pago").update(opData).eq("id", id).select().single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
 
   // Reemplazar medios de pago
   if (Array.isArray(medios_pago)) {
@@ -74,6 +75,6 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   }
 
   const { error } = await supabase.from("compras_ordenes_pago").delete().eq("id", id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json({ success: true })
 }

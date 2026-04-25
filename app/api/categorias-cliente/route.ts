@@ -1,3 +1,4 @@
+import { dbError } from "@/lib/api-utils"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 
@@ -15,7 +16,7 @@ export async function GET() {
     .from("categorias_cliente")
     .select("id, nombre, descripcion, lista_precios_defecto_id, cuenta_cobrar_id, activa")
     .order("nombre")
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
 
   const cats = data ?? []
 
@@ -63,6 +64,6 @@ export async function POST(req: Request) {
     .select("id")
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json({ ok: true, id: data.id })
 }

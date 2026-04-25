@@ -1,3 +1,4 @@
+import { dbError } from "@/lib/api-utils"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 
@@ -25,7 +26,7 @@ export async function GET(req: Request) {
   if (grupoId) query = query.eq("grupo_id", grupoId)
 
   const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
 
   const result = (data ?? []).map((r: any) => ({
     ...r,

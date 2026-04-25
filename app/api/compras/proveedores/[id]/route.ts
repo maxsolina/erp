@@ -1,3 +1,4 @@
+﻿import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
@@ -14,7 +15,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   const { id } = await params
   const body = await request.json()
   const { data, error } = await supabase.from("proveedores").update(body).eq("id", id).select().single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json(data)
 }
 
@@ -22,6 +23,6 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const supabase = await createClient()
   const { id } = await params
   const { error } = await supabase.from("proveedores").delete().eq("id", id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return dbError(error)
   return NextResponse.json({ success: true })
 }
