@@ -10,6 +10,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+  // Admin necesario: generarAsientoFacturaCompra inserta en contabilidad_asientos y
+  // lee categorias_proveedor/plan_cuentas con RLS restrictivo (service_role requerido).
   const supabase = createAdminClient()
 
   // Obtener la factura de compra
@@ -127,6 +129,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+  // Admin necesario: generarAsientoReversa inserta en contabilidad_asientos con service_role.
   const supabase = createAdminClient()
 
   // Obtener número de factura

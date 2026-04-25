@@ -17,6 +17,8 @@ export async function GET() {
 // POST — crear nueva toma + ajuste_cliente + recepcion_toma
 export async function POST(req: Request) {
   const supabase = await createClient()
+  // Admin necesario: generarAsientoNCTomaEquipo inserta en contabilidad_asientos y
+  // actualiza ajustes_clientes.asiento_id desde contexto de sistema.
   const adminClient = createAdminClient()
   const body = await req.json()
 

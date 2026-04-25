@@ -7,6 +7,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const supabase = await createClient()
+  // Admin necesario: lee contabilidad_cotizaciones/monedas (RLS restrictivo cross-contexto)
+  // y generarAsientoRecepcionCircuito inserta en contabilidad_asientos con service_role.
   const adminClient = createAdminClient()
   const { id } = await params
 

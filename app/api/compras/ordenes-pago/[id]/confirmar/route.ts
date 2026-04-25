@@ -4,6 +4,8 @@ import { generarAsientoOrdenPago } from "@/lib/contabilidad-asiento-factory"
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
+  // Admin necesario: generarAsientoOrdenPago inserta en contabilidad_asientos,
+  // tabla con RLS restrictivo que requiere service_role para bypass.
   const adminClient = createAdminClient()
   const { id } = await params
 

@@ -15,6 +15,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const supabase = await createClient()
+  // Admin necesario: lee contabilidad_cotizaciones/monedas (RLS restrictivo) y
+  // actualiza productos desde contexto de sistema (sin sesión de usuario directa).
   const adminClient = createAdminClient()
   const { id } = await params
 

@@ -4,6 +4,8 @@ import { generarAsientoRecepcionTomaEquipo } from "@/lib/contabilidad-asiento-fa
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
+  // Admin necesario: generarAsientoRecepcionTomaEquipo inserta en contabilidad_asientos,
+  // tabla con RLS restrictivo que requiere service_role para bypass.
   const adminClient = createAdminClient()
   const { id } = await params
   const tomaId = parseInt(id)
