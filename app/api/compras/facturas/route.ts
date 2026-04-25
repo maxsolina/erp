@@ -41,7 +41,11 @@ export async function POST(request: Request) {
       descuento_pct: l.descuento_pct ?? 0,
       subtotal: l.subtotal ?? 0,
     }))
-    await supabase.from("compras_facturas_lineas").insert(lineasPayload)
+    const { error: lineasError } = await supabase.from("compras_facturas_lineas").insert(lineasPayload)
+    if (lineasError) {
+      await supabase.from("compras_facturas").delete().eq("id", data.id)
+      return NextResponse.json({ error: "Error al insertar lineas" }, { status: 500 })
+    }
   }
 
   return NextResponse.json(data, { status: 201 })
