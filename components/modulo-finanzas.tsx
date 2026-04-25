@@ -1650,14 +1650,26 @@ function SeccionExtractosCaja() {
     if (error || !newExt) { setErrorNuevo("Error al crear extracto"); setGuardando(false); return }
     const { data: valores } = await supabase.from("caja_valores").select("*").eq("caja_id", caja.id).eq("activo", true)
     if (valores && valores.length > 0) {
-      const filas = valores.map((v: CajaValor) => {
-        const lastS = ultimosSaldos?.find(s => s.valor_id === v.id)
-        return {
-          extracto_id: newExt.id, valor_id: v.id, valor_nombre: v.nombre,
-          valor_codigo: v.codigo, moneda: v.moneda,
-          saldo_apertura: lastS?.saldo_cierre_ingresado ?? lastS?.saldo_estimado ?? 0,
+      // Re-consultar el último extracto cerrado directamente desde DB para evitar
+      // race conditions con el estado ultimosSaldos (que puede no estar listo aún)
+      let saldosCierre: Record<string, number> = {}
+      const { data: lastExt } = await supabase
+        .from("extractos_caja").select("id")
+        .eq("caja_id", caja.id).eq("estado", "cerrado")
+        .order("fecha_cierre", { ascending: false }).limit(1)
+      if (lastExt && lastExt.length > 0) {
+        const { data: lastSaldos } = await supabase
+          .from("extracto_saldos").select("valor_id, saldo_cierre_ingresado")
+          .eq("extracto_id", lastExt[0].id)
+        for (const s of (lastSaldos || [])) {
+          saldosCierre[s.valor_id] = s.saldo_cierre_ingresado ?? 0
         }
-      })
+      }
+      const filas = valores.map((v: CajaValor) => ({
+        extracto_id: newExt.id, valor_id: v.id, valor_nombre: v.nombre,
+        valor_codigo: v.codigo, moneda: v.moneda,
+        saldo_apertura: saldosCierre[v.id] ?? 0,
+      }))
       await supabase.from("extracto_saldos").insert(filas)
     }
     setMostrarNuevo(false)

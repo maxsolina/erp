@@ -25,12 +25,26 @@ async function del(table, filter) {
 }
 
 ;(async () => {
-  // Buscar extracto por numero parcial
-  const target = "3011"
+  const target = process.argv[2]
+
+  if (target === "diag") {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/extractos_caja?select=id,numero,estado,caja_id,caja_nombre,fecha_cierre&order=numero.desc&limit=5`, { headers })
+    const extractos = await res.json()
+    console.log("Extractos recientes:", JSON.stringify(extractos, null, 2))
+    for (const ext of extractos) {
+      const r2 = await fetch(`${SUPABASE_URL}/rest/v1/extracto_saldos?extracto_id=eq.${ext.id}&select=valor_nombre,valor_id,saldo_apertura,saldo_cierre_ingresado`, { headers })
+      const saldos = await r2.json()
+      console.log(`\nSaldos ${ext.numero} (${ext.estado}):`, JSON.stringify(saldos, null, 2))
+    }
+    return
+  }
+
+  if (!target) { console.log("Uso: node script.js <numero_parcial>  o  node script.js diag"); return }
+
   const res = await fetch(`${SUPABASE_URL}/rest/v1/extractos_caja?numero=like.*${target}*&select=id,numero,estado,fecha_apertura`, { headers })
   const rows = await res.json()
   console.log("Extractos encontrados:", JSON.stringify(rows, null, 2))
-  if (!rows || rows.length === 0) { console.log("No se encontr\u00f3 extracto con numero que contenga "+target); return }
+  if (!rows || rows.length === 0) { console.log("No se encontro extracto con numero que contenga " + target); return }
   const uuid = rows[0].id
   console.log(`\nBorrando ${rows[0].numero} (${uuid})...\n`)
   await del("movimientos_caja",  `extracto_id=eq.${uuid}`)
