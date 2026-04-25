@@ -144,14 +144,14 @@ export default function LoginPage() {
             <p className="text-xs text-gray-500 text-center mb-3">Usuarios de prueba:</p>
             <div className="grid grid-cols-2 gap-2 text-xs">
               <button
-                onClick={() => { setUsername("admin"); setPassword("admin123") }}
+                onClick={() => { setUsername("admin"); setPassword("1234") }}
                 className="p-2 bg-gray-50 hover:bg-gray-100 rounded-lg text-left transition-colors"
               >
                 <span className="font-medium text-gray-700">admin</span>
                 <span className="text-gray-500 block">Administrador</span>
               </button>
               <button
-                onClick={() => { setUsername("solinamax"); setPassword("max123") }}
+                onClick={() => { setUsername("solinamax"); setPassword("1234") }}
                 className="p-2 bg-gray-50 hover:bg-gray-100 rounded-lg text-left transition-colors"
               >
                 <span className="font-medium text-gray-700">solinamax</span>

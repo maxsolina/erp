@@ -520,11 +520,16 @@ export function ERPProvider({ children }: { children: ReactNode }) {
 
   const login = async (username: string, password: string): Promise<boolean> => {
     const supabase = createClient()
-    const { data, error } = await supabase.auth.signInWithPassword({ email: username, password })
+    // Mapear username → email: si el input no parece un email, buscar en usuariosIniciales
+    const userRecord = usuarios.find(
+      u => u.username.toLowerCase() === username.toLowerCase()
+    )
+    const email = userRecord?.email ?? username
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error || !data.session) return false
 
     const matchedUser = usuarios.find(
-      u => u.email.toLowerCase() === username.toLowerCase() || u.username.toLowerCase() === username.toLowerCase()
+      u => u.email.toLowerCase() === email.toLowerCase() || u.username.toLowerCase() === username.toLowerCase()
     )
     if (matchedUser) {
       setCurrentUser({ ...matchedUser, ultimo_acceso: new Date().toISOString() })
