@@ -1683,9 +1683,11 @@ function SeccionExtractosCaja() {
       const estimado = s.saldo_estimado ?? Number(s.saldo_apertura)
       return Math.abs(fisico - estimado) > 0.01
     })
+    // Solo advertencia, no bloquear el cierre
     if (hayDiferencia) {
-      setErrorCierre("No se puede cerrar: existen diferencias entre saldos físicos y estimados. Ajuste los valores o registre los movimientos faltantes.")
-      return
+      setErrorCierre("Atención: hay diferencias entre el conteo físico y el estimado. Se registrarán los valores ingresados.")
+    } else {
+      setErrorCierre("")
     }
     setGuardando(true)
     const supabase = createClient()
@@ -2024,12 +2026,12 @@ function SeccionExtractosCaja() {
             </div>
             <div className="p-4">
               {errorCierre && (
-                <div className="mb-4 flex items-center gap-2 bg-red-50 border border-red-200 rounded-md p-3 text-red-700 text-sm">
+                <div className="mb-4 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-md p-3 text-amber-700 text-sm">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" /> {errorCierre}
                 </div>
               )}
               <p className="text-sm text-gray-600 mb-4">
-                Ingrese el conteo físico de cada valor. El extracto solo puede cerrarse si no hay diferencias.
+                Ingrese el conteo físico de cada valor. Si hay diferencias se registrarán igualmente al confirmar.
               </p>
               <table className="w-full">
                 <thead>
