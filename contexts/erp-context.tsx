@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react"
+import { createClient } from "@/lib/supabase/client"
 
 // =====================================================
 // TIPOS E INTERFACES
@@ -518,16 +519,17 @@ export function ERPProvider({ children }: { children: ReactNode }) {
   // =====================================================
 
   const login = async (username: string, password: string): Promise<boolean> => {
-    // Simular autenticación (en producción sería una llamada a API)
-    const user = usuarios.find(u => u.username.toLowerCase() === username.toLowerCase())
-    if (user && password.length >= 4) { // Simulación simple
-      setCurrentUser({
-        ...user,
-        ultimo_acceso: new Date().toISOString()
-      })
-      return true
+    const supabase = createClient()
+    const { data, error } = await supabase.auth.signInWithPassword({ email: username, password })
+    if (error || !data.session) return false
+
+    const matchedUser = usuarios.find(
+      u => u.email.toLowerCase() === username.toLowerCase() || u.username.toLowerCase() === username.toLowerCase()
+    )
+    if (matchedUser) {
+      setCurrentUser({ ...matchedUser, ultimo_acceso: new Date().toISOString() })
     }
-    return false
+    return true
   }
 
   const logout = () => {
