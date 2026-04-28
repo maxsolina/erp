@@ -16,6 +16,7 @@ import { tarjetasIniciales, gruposIniciales, recargosIniciales } from "./modulo-
 import { ModalMedioPago } from "./modal-medio-pago"
 import type { MedioPagoResult } from "./modal-medio-pago"
 import type { Tarjeta as TarjetaFinanzas, GrupoTarjeta as GrupoTarjetaFinanzas, RecargoTarjeta as RecargoTarjetaFinanzas, RecargoTarjeta } from "./modulo-finanzas"
+import CriteriosCotizador from "./criterios-cotizador"
 
 // Types para Ventas
 interface ClienteVenta {
@@ -1086,7 +1087,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       cobrador_id: null,
       lista_precios_id: parseInt(formData.get("lista_precios_id") as string) || null,
       descuento_default: parseFloat(formData.get("descuento_default") as string) || 0,
-      moneda_cuenta_corriente: formData.get("moneda_cuenta_corriente") as "ARS" | "USD",
+      moneda_cuenta_corriente: editingItem?.moneda_cuenta_corriente || "ARS",
       termino_pago_id: parseInt(formData.get("termino_pago_id") as string) || null,
       activo: true, es_confidencial: false, sucursal_origen: "Puerto Norte",
       fecha_alta: editingItem?.fecha_alta || new Date().toISOString().split('T')[0],
@@ -2228,6 +2229,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         { id: "listas_precios", label: "Listas de Precios", icon: Tag },
         { id: "versiones_lista", label: "Versiones de Lista", icon: Layers },
         { id: "categorias_cliente", label: "Categorías de Clientes", icon: Users },
+        { id: "criterios_cotizador", label: "Criterios para cotizador", icon: Smartphone },
       ]
     },
     {
@@ -2794,7 +2796,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Nombre / Razón Social *</label>
                   <input type="text" name="nombre" defaultValue={editingItem?.nombre || ""} required
-                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                    className="w-full border border-violet-500 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Nombre Fantasía</label>
@@ -2805,8 +2807,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Tipo Documento *</label>
-                  <select name="tipo_documento" defaultValue={editingItem?.tipo_documento || "DNI"}
-                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                  <select name="tipo_documento" defaultValue={editingItem?.tipo_documento || "DNI"} required
+                    className="w-full border border-violet-500 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
                     <option value="DNI">DNI</option>
                     <option value="CUIT">CUIT</option>
                     <option value="CUIL">CUIL</option>
@@ -2815,12 +2817,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Número Documento *</label>
                   <input type="text" name="numero_documento" defaultValue={editingItem?.numero_documento || ""} required
-                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                    className="w-full border border-violet-500 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Posición Fiscal *</label>
-                  <select name="posicion_fiscal" defaultValue={editingItem?.posicion_fiscal || "consumidor_final"}
-                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                  <select name="posicion_fiscal" defaultValue={editingItem?.posicion_fiscal || "consumidor_final"} required
+                    className="w-full border border-violet-500 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
                     <option value="consumidor_final">Consumidor Final</option>
                     <option value="responsable_inscripto">Responsable Inscripto</option>
                     <option value="monotributista">Monotributista</option>
@@ -2897,7 +2899,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </h3>
               <div className="grid grid-cols-3 gap-3 mb-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Categoría de Cliente</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Categoría de Cliente *</label>
                   <select
                     name="categoria_id"
                     value={formClienteCategoriaId ?? ""}
@@ -2905,9 +2907,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       const catId = e.target.value ? Number(e.target.value) : null
                       setFormClienteCategoriaId(catId)
                     }}
-                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    required
+                    className="w-full border border-violet-500 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
                   >
-                    <option value="">Sin categoría</option>
+                    <option value="">Seleccione una categoría</option>
                     {categoriasCliente.filter(c => c.activa).map(c => (
                       <option key={c.id} value={c.id}>{c.nombre}</option>
                     ))}
@@ -2924,33 +2927,26 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Lista de Precios por Defecto</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Lista de Precios por Defecto *</label>
                   <select
                     name="lista_precios_id"
                     value={formClienteListaPreciosId ?? ""}
                     onChange={(e) => setFormClienteListaPreciosId(e.target.value ? Number(e.target.value) : null)}
-                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    required
+                    className="w-full border border-violet-500 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
                   >
-                    <option value="">Sin lista</option>
+                    <option value="">Seleccione una lista</option>
                     {listasPrecios.map(lp => (
                       <option key={lp.id} value={lp.id}>{lp.nombre}</option>
                     ))}
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Descuento Default (%)</label>
                   <input type="number" name="descuento_default" defaultValue={editingItem?.descuento_default || 0} min="0" max="100" step="0.5"
                     className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Moneda CC</label>
-                  <select name="moneda_cuenta_corriente" defaultValue={editingItem?.moneda_cuenta_corriente || "ARS"}
-                    className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                    <option value="ARS">ARS</option>
-                    <option value="USD">USD</option>
-                  </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Término de Pago</label>
@@ -14053,6 +14049,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         return renderVersionesLista()
       case "categorias_cliente":
         return renderCategoriasCliente()
+      case "criterios_cotizador":
+        return <CriteriosCotizador />
       case "nc_categorias":
         return renderNcCategorias()
       default:
@@ -14081,7 +14079,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre / Razón Social *</label>
               <input type="text" name="nombre" defaultValue={editingItem?.nombre || ""} required
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                className="w-full border border-violet-500 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Fantasía</label>
@@ -14092,8 +14090,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Tipo Documento *</label>
-              <select name="tipo_documento" defaultValue={editingItem?.tipo_documento || "DNI"}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+              <select name="tipo_documento" defaultValue={editingItem?.tipo_documento || "DNI"} required
+                className="w-full border border-violet-500 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                 <option value="DNI">DNI</option>
                 <option value="CUIT">CUIT</option>
                 <option value="CUIL">CUIL</option>
@@ -14102,12 +14100,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Número Documento *</label>
               <input type="text" name="numero_documento" defaultValue={editingItem?.numero_documento || ""} required
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                className="w-full border border-violet-500 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Posición Fiscal *</label>
-              <select name="posicion_fiscal" defaultValue={editingItem?.posicion_fiscal || "consumidor_final"}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+              <select name="posicion_fiscal" defaultValue={editingItem?.posicion_fiscal || "consumidor_final"} required
+                className="w-full border border-violet-500 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                 <option value="consumidor_final">Consumidor Final</option>
                 <option value="responsable_inscripto">Responsable Inscripto</option>
                 <option value="monotributista">Monotributista</option>
@@ -14150,8 +14148,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <select
                 name="categoria_id"
                 defaultValue={editingItem?.categoria_id ?? ""}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                <option value="">Sin categoría</option>
+                required
+                className="w-full border border-violet-500 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <option value="">Seleccione una categoría</option>
                 {categoriasCliente.filter(c => c.activa).map(c => (
                   <option key={c.id} value={c.id}>{c.nombre}</option>
                 ))}
@@ -14168,16 +14167,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Precios</label>
-              <select name="lista_precios_id" defaultValue={editingItem?.lista_precios_id || 1}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Precios *</label>
+              <select name="lista_precios_id" defaultValue={editingItem?.lista_precios_id || 1} required
+                className="w-full border border-violet-500 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                     {listasPrecios.map(lp => (
                   <option key={lp.id} value={lp.id}>{lp.nombre}</option>
                 ))}
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Término de Pago</label>
               <select name="termino_pago_id" defaultValue={editingItem?.termino_pago_id || 1}
@@ -14189,17 +14188,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Descuento Default (%)</label>
-              <input type="number" name="descuento_default" step="0.01" min="0" max="100" 
+              <input type="number" name="descuento_default" step="0.01" min="0" max="100"
                 defaultValue={editingItem?.descuento_default || 0}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Moneda Cta. Cte.</label>
-              <select name="moneda_cuenta_corriente" defaultValue={editingItem?.moneda_cuenta_corriente || "ARS"}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                <option value="ARS">ARS - Pesos</option>
-                <option value="USD">USD - Dólares</option>
-              </select>
             </div>
           </div>
           <div className="flex justify-end gap-3 pt-4 border-t">
