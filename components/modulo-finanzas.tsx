@@ -946,6 +946,8 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
   const [creandoCargo, setCreandoCargo] = useState(false)
   const [formCargo, setFormCargo] = useState<Partial<CargosGrupo>>({})
   const [planCuentas, setPlanCuentas] = useState<{ id: string; codigo: string; nombre: string }[]>([])
+  const [guardando, setGuardando] = useState(false)
+  const [eliminando, setEliminando] = useState(false)
 
   useEffect(() => {
     fetch("/api/contabilidad/plan-cuentas?activo=true")
@@ -962,6 +964,8 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
 
   const guardarGrupo = async () => {
     if (!form.nombre?.trim()) return
+    if (guardando) return
+    setGuardando(true)
     try {
       if (creando) {
         // 1) Crear el grupo
@@ -993,16 +997,13 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
           if (r2.ok) {
             const completo = await r2.json()
             setGrupos(prev => [completo, ...prev])
-            setSelectedGrupo(completo)
           } else {
             const nuevo = { ...creado, tarjetas_ids: [], cargos: [] } as GrupoTarjeta
             setGrupos(prev => [nuevo, ...prev])
-            setSelectedGrupo(nuevo)
           }
         } else {
           const nuevo = { ...creado, tarjetas_ids: [], cargos: [] } as GrupoTarjeta
           setGrupos(prev => [nuevo, ...prev])
-          setSelectedGrupo(nuevo)
         }
       } else if (selectedGrupo) {
         // Edición: PUT con todos los campos del form
@@ -1025,11 +1026,15 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
         }
         const actualizado = await res.json()
         setGrupos(prev => prev.map(g => g.id === selectedGrupo.id ? actualizado : g))
-        setSelectedGrupo(actualizado)
       }
+      // Volver a la lista: cerrar el form y deseleccionar
       setCreando(false)
+      setSelectedGrupo(null)
+      setForm({})
     } catch (e) {
       alert(`Error de red: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setGuardando(false)
     }
   }
 
@@ -1069,7 +1074,9 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
 
   const eliminarGrupo = async () => {
     if (!selectedGrupo) return
+    if (eliminando) return
     if (!window.confirm(`¿Eliminar el grupo "${selectedGrupo.nombre}"? Se borrarán también sus cargos y recargos asociados.`)) return
+    setEliminando(true)
     try {
       const res = await fetch(`/api/grupos-tarjeta/${selectedGrupo.id}`, { method: "DELETE" })
       if (!res.ok) {
@@ -1082,6 +1089,8 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
       setForm({})
     } catch (e) {
       alert(`Error de red: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setEliminando(false)
     }
   }
 
@@ -1139,11 +1148,29 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
                       Activo
                     </label>
                     {creando ? (
-                      <button onClick={guardarGrupo} className="ml-auto px-3 py-1.5 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800">Crear Grupo</button>
+                      <button
+                        onClick={guardarGrupo}
+                        disabled={guardando}
+                        className="ml-auto px-3 py-1.5 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {guardando ? "Creando…" : "Crear Grupo"}
+                      </button>
                     ) : (
                       <div className="ml-auto flex gap-2">
-                        <button onClick={eliminarGrupo} className="px-3 py-1.5 text-sm border border-red-300 text-red-700 rounded-md hover:bg-red-50">Eliminar</button>
-                        <button onClick={guardarCambios} className="px-3 py-1.5 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800">Guardar</button>
+                        <button
+                          onClick={eliminarGrupo}
+                          disabled={guardando || eliminando}
+                          className="px-3 py-1.5 text-sm border border-red-300 text-red-700 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {eliminando ? "Eliminando…" : "Eliminar"}
+                        </button>
+                        <button
+                          onClick={guardarCambios}
+                          disabled={guardando || eliminando}
+                          className="px-3 py-1.5 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {guardando ? "Guardando…" : "Guardar"}
+                        </button>
                       </div>
                     )}
                   </div>
