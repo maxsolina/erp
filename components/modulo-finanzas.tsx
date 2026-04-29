@@ -945,6 +945,14 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
   const [editandoCargo, setEditandoCargo] = useState<CargosGrupo | null>(null)
   const [creandoCargo, setCreandoCargo] = useState(false)
   const [formCargo, setFormCargo] = useState<Partial<CargosGrupo>>({})
+  const [planCuentas, setPlanCuentas] = useState<{ id: string; codigo: string; nombre: string }[]>([])
+
+  useEffect(() => {
+    fetch("/api/contabilidad/plan-cuentas?activo=true")
+      .then(r => r.json())
+      .then(d => setPlanCuentas(Array.isArray(d) ? d : []))
+      .catch(() => {})
+  }, [])
 
   const abrirCrear = () => {
     setForm({ nombre: "", banco: "", tipo_movimiento: "Acreditación de Tarjeta", activo: true, tarjetas_ids: [], cargos: [] })
@@ -1085,8 +1093,17 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
         </button>
       </SectionHeader>
 
+      {/* Empty state grande cuando no hay grupos y no se está creando */}
+      {grupos.length === 0 && !creando ? (
+        <div className="bg-white rounded-lg shadow-sm border-2 border-dashed border-gray-200 py-16 px-6 text-center">
+          <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <h3 className="text-base font-semibold text-gray-700 mb-1">No hay grupos de tarjeta</h3>
+          <p className="text-sm text-gray-500 mb-4">Apretá &quot;+ Nuevo Grupo&quot; arriba para crear el primero.</p>
+        </div>
+      ) : (
       <div className="grid grid-cols-4 gap-6">
-        {/* Lista de grupos */}
+        {/* Lista de grupos — se oculta si estás creando y aún no hay ninguno */}
+        {grupos.length > 0 && (
         <div className="col-span-1 space-y-2">
           {grupos.map(g => (
             <button key={g.id} onClick={() => seleccionarGrupo(g)}
@@ -1096,11 +1113,11 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
               <Badge color={g.activo ? "emerald" : "gray"}>{g.activo ? "Activo" : "Inactivo"}</Badge>
             </button>
           ))}
-          {grupos.length === 0 && <p className="text-sm text-gray-500 text-center py-4">Sin grupos</p>}
         </div>
+        )}
 
-        {/* Detalle del grupo */}
-        <div className="col-span-3">
+        {/* Detalle del grupo — ocupa todo el ancho si la lista está oculta */}
+        <div className={grupos.length > 0 ? "col-span-3" : "col-span-4"}>
           {(selectedGrupo || creando) ? (
             <div className="bg-white rounded-lg shadow-sm border border-gray-200">
               {/* Header del grupo */}
@@ -1176,8 +1193,16 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta contable</label>
-                          <input value={formCargo.cuenta_contable || ""} onChange={e => setFormCargo(f => ({ ...f, cuenta_contable: e.target.value }))}
-                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                          <select
+                            value={formCargo.cuenta_contable || ""}
+                            onChange={e => setFormCargo(f => ({ ...f, cuenta_contable: e.target.value }))}
+                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          >
+                            <option value="">Seleccionar cuenta...</option>
+                            {planCuentas.map(c => (
+                              <option key={c.id} value={c.codigo}>{c.codigo} — {c.nombre}</option>
+                            ))}
+                          </select>
                         </div>
                       </div>
                       <div className="flex gap-2 mt-3 justify-end">
@@ -1226,6 +1251,7 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
           )}
         </div>
       </div>
+      )}
     </div>
   )
 }
