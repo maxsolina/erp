@@ -2234,12 +2234,30 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const colors: Record<string, string> = {
       borrador: "bg-gray-100 text-gray-700",
       abierta: "bg-blue-100 text-blue-700",
+      confirmada: "bg-indigo-100 text-indigo-700",
+      parcial: "bg-amber-100 text-amber-700",
+      cobrada: "bg-emerald-100 text-emerald-700",
       conciliada: "bg-green-100 text-green-700",
       cancelada: "bg-red-100 text-red-700",
       esperando_confirmacion: "bg-amber-100 text-amber-700",
       ejecucion_senia: "bg-amber-100 text-amber-700",
     }
     return colors[estado] || "bg-gray-100 text-gray-700"
+  }
+
+  const getEstadoFacturaLabel = (estado: string) => {
+    const labels: Record<string, string> = {
+      borrador: "Borrador",
+      abierta: "Abierta",
+      confirmada: "Confirmada",
+      parcial: "Parcial",
+      cobrada: "Cobrada",
+      conciliada: "Conciliada",
+      cancelada: "Cancelada",
+      esperando_confirmacion: "Esperando confirmación",
+      ejecucion_senia: "Ejecución Seña",
+    }
+    return labels[estado] || estado
   }
 
   const getPosicionFiscalLabel = (posicion: string) => {
@@ -9054,14 +9072,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             <button className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1">
               <Download className="w-4 h-4" /> Descargar PDF
             </button>
-            <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
-              selectedFactura.estado === 'pagada' ? 'bg-green-100 text-green-700' :
-              selectedFactura.estado === 'abierta' ? 'bg-blue-100 text-blue-700' :
-              selectedFactura.estado === 'vencida' ? 'bg-red-100 text-red-700' :
-              selectedFactura.estado === 'cancelada' ? 'bg-gray-100 text-gray-700' :
-              selectedFactura.estado === 'borrador' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-700'
-            }`}>
-              {selectedFactura.estado.charAt(0).toUpperCase() + selectedFactura.estado.slice(1)}
+            <span className={`px-4 py-2 rounded-full text-sm font-semibold ${getEstadoFacturaColor(selectedFactura.estado)}`}>
+              {getEstadoFacturaLabel(selectedFactura.estado)}
             </span>
           </div>
         </div>
@@ -9128,15 +9140,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </button>
               </>
             )}
-            {(selectedFactura.estado === 'abierta' || selectedFactura.estado === 'vencida') && (
+            {(selectedFactura.estado === 'abierta' || selectedFactura.estado === 'confirmada' || selectedFactura.estado === 'parcial') && (
               <>
-                <button 
+                <button
                   onClick={() => setShowCancelarFacturaModal(true)}
                   className="px-3 py-1.5 text-sm border border-gray-400 text-white rounded-md hover:bg-gray-700 flex items-center gap-1"
                 >
                   <X className="w-4 h-4" /> Cancelar
                 </button>
-                <button 
+                <button
                   onClick={() => {
                     // Precargar datos del cliente y factura en el recibo
                     setReciboClienteIdForm(selectedFactura.cliente_id)
@@ -9640,7 +9652,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             { field: "estado", label: "Estado", values: [
               { value: "borrador", label: "Borrador" },
               { value: "abierta", label: "Abierta" },
+              { value: "confirmada", label: "Confirmada" },
+              { value: "parcial", label: "Parcial" },
+              { value: "cobrada", label: "Cobrada" },
               { value: "conciliada", label: "Conciliada" },
+              { value: "cancelada", label: "Cancelada" },
             ]},
             { field: "moneda", label: "Moneda", values: [
               { value: "ARS", label: "ARS" },
@@ -9700,7 +9716,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <td className="py-3 px-4 text-sm text-blue-600">{factura.nota_venta_numero}</td>
                 <td className="py-3 px-4 text-center">
                   <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getEstadoFacturaColor(factura.estado)}`}>
-                    {factura.estado === "borrador" ? "Borrador" : factura.estado === "abierta" ? "Abierta" : factura.estado === "cancelada" ? "Cancelada" : factura.estado === "ejecucion_senia" ? "Ejecución Seña" : factura.estado === "esperando_confirmacion" ? "Esperando confirmación" : "Conciliada"}
+                    {getEstadoFacturaLabel(factura.estado)}
                   </span>
                 </td>
                 <td className="py-3 px-4 text-center text-sm font-medium">{factura.moneda}</td>
