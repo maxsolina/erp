@@ -787,20 +787,60 @@ function SeccionTarjetas({ tarjetas, setTarjetas }: { tarjetas: Tarjeta[]; setTa
     setCreando(false)
   }
 
-  const guardar = () => {
+  const guardar = async () => {
     if (!form.nombre?.trim()) return
-    if (creando) {
-      setTarjetas(prev => [{ ...form, id: Date.now() } as Tarjeta, ...prev])
-    } else if (editando) {
-      setTarjetas(prev => prev.map(t => t.id === editando.id ? { ...t, ...form } as Tarjeta : t))
+    try {
+      if (creando) {
+        const res = await fetch("/api/tarjetas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(form),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Error al crear tarjeta" }))
+          alert(`No se pudo crear la tarjeta: ${err.error}`)
+          return
+        }
+        const nueva = await res.json()
+        setTarjetas(prev => [nueva, ...prev])
+      } else if (editando) {
+        const res = await fetch(`/api/tarjetas/${editando.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(form),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Error al actualizar tarjeta" }))
+          alert(`No se pudo actualizar la tarjeta: ${err.error}`)
+          return
+        }
+        const actualizada = await res.json()
+        setTarjetas(prev => prev.map(t => t.id === editando.id ? actualizada : t))
+      }
+      setCreando(false)
+      setEditando(null)
+      setForm({})
+    } catch (e) {
+      alert(`Error de red: ${e instanceof Error ? e.message : String(e)}`)
     }
-    setCreando(false)
-    setEditando(null)
-    setForm({})
   }
 
   const cancelar = () => { setCreando(false); setEditando(null); setForm({}) }
-  const eliminar = (id: number) => setTarjetas(prev => prev.filter(t => t.id !== id))
+
+  const eliminar = async (id: number) => {
+    if (!window.confirm("¿Eliminar esta tarjeta? Esta acción no se puede deshacer.")) return
+    try {
+      const res = await fetch(`/api/tarjetas/${id}`, { method: "DELETE" })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Error al eliminar tarjeta" }))
+        alert(`No se pudo eliminar: ${err.error}`)
+        return
+      }
+      setTarjetas(prev => prev.filter(t => t.id !== id))
+    } catch (e) {
+      alert(`Error de red: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
 
   return (
     <div>
@@ -912,18 +952,77 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
     setSelectedGrupo(null)
   }
 
-  const guardarGrupo = () => {
+  const guardarGrupo = async () => {
     if (!form.nombre?.trim()) return
-    if (creando) {
-      const nuevo: GrupoTarjeta = { ...form, id: Date.now() } as GrupoTarjeta
-      setGrupos(prev => [nuevo, ...prev])
-      setSelectedGrupo(nuevo)
-    } else if (selectedGrupo) {
-      const updated = { ...selectedGrupo, ...form } as GrupoTarjeta
-      setGrupos(prev => prev.map(g => g.id === selectedGrupo.id ? updated : g))
-      setSelectedGrupo(updated)
+    try {
+      if (creando) {
+        // 1) Crear el grupo
+        const res = await fetch("/api/grupos-tarjeta", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nombre: form.nombre,
+            banco: form.banco ?? null,
+            tipo_movimiento: form.tipo_movimiento ?? null,
+          }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Error al crear grupo" }))
+          alert(`No se pudo crear el grupo: ${err.error}`)
+          return
+        }
+        const creado = await res.json()
+        // 2) Si tenía tarjetas o cargos pre-cargados, sincronizarlos via PUT
+        if ((form.tarjetas_ids?.length || form.cargos?.length)) {
+          const r2 = await fetch(`/api/grupos-tarjeta/${creado.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tarjeta_ids: form.tarjetas_ids ?? [],
+              cargos: form.cargos ?? [],
+            }),
+          })
+          if (r2.ok) {
+            const completo = await r2.json()
+            setGrupos(prev => [completo, ...prev])
+            setSelectedGrupo(completo)
+          } else {
+            const nuevo = { ...creado, tarjetas_ids: [], cargos: [] } as GrupoTarjeta
+            setGrupos(prev => [nuevo, ...prev])
+            setSelectedGrupo(nuevo)
+          }
+        } else {
+          const nuevo = { ...creado, tarjetas_ids: [], cargos: [] } as GrupoTarjeta
+          setGrupos(prev => [nuevo, ...prev])
+          setSelectedGrupo(nuevo)
+        }
+      } else if (selectedGrupo) {
+        // Edición: PUT con todos los campos del form
+        const res = await fetch(`/api/grupos-tarjeta/${selectedGrupo.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nombre: form.nombre,
+            banco: form.banco ?? null,
+            tipo_movimiento: form.tipo_movimiento ?? null,
+            activo: form.activo,
+            tarjeta_ids: form.tarjetas_ids ?? [],
+            cargos: form.cargos ?? [],
+          }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Error al actualizar grupo" }))
+          alert(`No se pudo guardar: ${err.error}`)
+          return
+        }
+        const actualizado = await res.json()
+        setGrupos(prev => prev.map(g => g.id === selectedGrupo.id ? actualizado : g))
+        setSelectedGrupo(actualizado)
+      }
+      setCreando(false)
+    } catch (e) {
+      alert(`Error de red: ${e instanceof Error ? e.message : String(e)}`)
     }
-    setCreando(false)
   }
 
   const toggleTarjeta = (id: number) => {
@@ -957,11 +1056,25 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
     setTab("tarjetas")
   }
 
-  const guardarCambios = () => {
+  // El botón "Guardar" de un grupo en edición usa la misma lógica que guardarGrupo
+  const guardarCambios = guardarGrupo
+
+  const eliminarGrupo = async () => {
     if (!selectedGrupo) return
-    const updated = { ...selectedGrupo, ...form } as GrupoTarjeta
-    setGrupos(prev => prev.map(g => g.id === selectedGrupo.id ? updated : g))
-    setSelectedGrupo(updated)
+    if (!window.confirm(`¿Eliminar el grupo "${selectedGrupo.nombre}"? Se borrarán también sus cargos y recargos asociados.`)) return
+    try {
+      const res = await fetch(`/api/grupos-tarjeta/${selectedGrupo.id}`, { method: "DELETE" })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Error al eliminar grupo" }))
+        alert(`No se pudo eliminar: ${err.error}`)
+        return
+      }
+      setGrupos(prev => prev.filter(g => g.id !== selectedGrupo.id))
+      setSelectedGrupo(null)
+      setForm({})
+    } catch (e) {
+      alert(`Error de red: ${e instanceof Error ? e.message : String(e)}`)
+    }
   }
 
   return (
@@ -1011,7 +1124,10 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
                     {creando ? (
                       <button onClick={guardarGrupo} className="ml-auto px-3 py-1.5 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800">Crear Grupo</button>
                     ) : (
-                      <button onClick={guardarCambios} className="ml-auto px-3 py-1.5 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800">Guardar</button>
+                      <div className="ml-auto flex gap-2">
+                        <button onClick={eliminarGrupo} className="px-3 py-1.5 text-sm border border-red-300 text-red-700 rounded-md hover:bg-red-50">Eliminar</button>
+                        <button onClick={guardarCambios} className="px-3 py-1.5 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800">Guardar</button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1136,19 +1252,60 @@ function SeccionRecargos({ tarjetas, grupos, recargos, setRecargos }: {
     setEditando(null)
   }
 
-  const guardar = () => {
+  const guardar = async () => {
     if (!form.tarjeta_id || !form.grupo_id) return
-    if (creando) {
-      setRecargos(prev => [{ ...form, id: Date.now() } as RecargoTarjeta, ...prev])
-    } else if (editando) {
-      setRecargos(prev => prev.map(r => r.id === editando.id ? { ...r, ...form } as RecargoTarjeta : r))
+    try {
+      if (creando) {
+        const res = await fetch("/api/recargos-tarjeta", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(form),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Error al crear recargo" }))
+          alert(`No se pudo crear el recargo: ${err.error}`)
+          return
+        }
+        const nuevo = await res.json()
+        setRecargos(prev => [nuevo, ...prev])
+      } else if (editando) {
+        const res = await fetch(`/api/recargos-tarjeta/${editando.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(form),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Error al actualizar recargo" }))
+          alert(`No se pudo actualizar: ${err.error}`)
+          return
+        }
+        const actualizado = await res.json()
+        setRecargos(prev => prev.map(r => r.id === editando.id ? actualizado : r))
+      }
+      setCreando(false)
+      setEditando(null)
+      setForm({})
+    } catch (e) {
+      alert(`Error de red: ${e instanceof Error ? e.message : String(e)}`)
     }
-    setCreando(false)
-    setEditando(null)
-    setForm({})
   }
 
   const cancelar = () => { setCreando(false); setEditando(null); setForm({}) }
+
+  const eliminar = async (id: number) => {
+    if (!window.confirm("¿Eliminar este recargo?")) return
+    try {
+      const res = await fetch(`/api/recargos-tarjeta/${id}`, { method: "DELETE" })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Error al eliminar recargo" }))
+        alert(`No se pudo eliminar: ${err.error}`)
+        return
+      }
+      setRecargos(prev => prev.filter(r => r.id !== id))
+    } catch (e) {
+      alert(`Error de red: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
 
   const tarjetaById = (id: number) => tarjetas.find(t => t.id === id)
   const grupoById = (id: number) => grupos.find(g => g.id === id)
@@ -1287,7 +1444,7 @@ function SeccionRecargos({ tarjetas, grupos, recargos, setRecargos }: {
                   <td className="py-3 px-4">
                     <div className="flex justify-end gap-2">
                       <button onClick={() => { setEditando(r); setForm({ ...r }); setCreando(false) }} className="p-1 text-gray-400 hover:text-emerald-600"><Edit className="w-4 h-4" /></button>
-                      <button onClick={() => setRecargos(prev => prev.filter(x => x.id !== r.id))} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                      <button onClick={() => eliminar(r.id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </td>
                 </tr>
