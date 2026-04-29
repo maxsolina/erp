@@ -208,6 +208,191 @@ export async function generarAsientoFacturaVenta(
   return { ok: true, asiento_id: asiento.id }
 }
 
+// ─── Factura de Venta — Asiento IVA diferido + Recargo TC ────────────────────
+// Se genera al CONFIRMAR la factura, una vez que el operador eligió los medios
+// de pago. Solo registra lo "extra" que paga el cliente al elegir tarjeta/transf:
+//
+//   DEBE   Deudores             [iva_total + recargo_total]
+//   HABER  IVA Débito Fiscal    [iva_total]
+//   HABER  Ventas Mercadería (Recargo TC) [recargo_total]
+//
+// Si iva_total y recargo_total son ambos 0 (cobro 100% efectivo), no se genera
+// asiento y se devuelve { ok: true, asiento_id: null } como señal de "no aplica".
+export async function generarAsientoIVADiferido(
+  supabase: SupabaseClient,
+  factura: {
+    id: number | string
+    numero: string
+    fecha: string
+    cliente_id?: string | null
+    cliente_nombre?: string | null
+    cliente_categoria_id?: number | null
+    sucursal?: string | null
+    moneda?: string
+    iva_total: number       // suma de IVA proporcional sobre parte facturable
+    recargo_total: number   // suma de recargos de tarjeta cobrados al cliente
+  }
+): Promise<{ ok: true; asiento_id: string | null } | { ok: false; error: string }> {
+
+  // Si no hay IVA ni recargo, no hace falta asiento (cobro 100% efectivo)
+  if (factura.iva_total <= 0.009 && factura.recargo_total <= 0.009) {
+    return { ok: true, asiento_id: null }
+  }
+
+  // 1. Mapeo de cuentas
+  const { data: mapeo, error: mapeoErr } = await supabase
+    .from("contabilidad_mapeo_cuentas")
+    .select(`
+      subtipo,
+      diario_id,
+      cuenta_debe:cuenta_debe_id(id, codigo, nombre),
+      cuenta_haber:cuenta_haber_id(id, codigo, nombre)
+    `)
+    .eq("tipo_origen", "factura_venta")
+    .eq("activo", true)
+    .in("subtipo", ["deudores", "iva_diferido", "recargo_tc"])
+
+  if (mapeoErr) return { ok: false, error: `Error al leer mapeo contable: ${mapeoErr.message}` }
+  if (!mapeo || mapeo.length === 0) {
+    return { ok: false, error: "Sin mapeo contable para factura_venta. Ejecute 081_seed_mapeo_iva_diferido.sql." }
+  }
+
+  const pm = Object.fromEntries(mapeo.map((r: any) => [r.subtipo, r]))
+  let cDeudores = pm["deudores"]?.cuenta_debe as { id: string; codigo: string; nombre: string } | null
+  const cIVA       = pm["iva_diferido"]?.cuenta_haber as { id: string; codigo: string; nombre: string } | null
+  const cRecargoTC = pm["recargo_tc"]?.cuenta_haber as { id: string; codigo: string; nombre: string } | null
+
+  // Si la categoría del cliente tiene cuenta_cobrar_id, sobreescribir deudores
+  if (factura.cliente_categoria_id) {
+    const { data: cat } = await supabase
+      .from("categorias_proveedor")
+      .select("cuenta_cobrar_id")
+      .eq("id", factura.cliente_categoria_id)
+      .maybeSingle()
+
+    if (cat?.cuenta_cobrar_id) {
+      const { data: cuentaRow } = await supabase
+        .from("contabilidad_plan_cuentas")
+        .select("id, codigo, nombre")
+        .eq("id", cat.cuenta_cobrar_id)
+        .maybeSingle()
+      if (cuentaRow?.id) {
+        cDeudores = { id: cuentaRow.id, codigo: cuentaRow.codigo, nombre: cuentaRow.nombre }
+      }
+    }
+  }
+
+  if (!cDeudores) return { ok: false, error: "Mapeo incompleto: falta 'deudores' para factura_venta." }
+  if (factura.iva_total > 0.009 && !cIVA) {
+    return { ok: false, error: "Mapeo incompleto: falta 'iva_diferido' para factura_venta. Ejecute 081_seed_mapeo_iva_diferido.sql." }
+  }
+  if (factura.recargo_total > 0.009 && !cRecargoTC) {
+    return { ok: false, error: "Mapeo incompleto: falta 'recargo_tc' para factura_venta. Ejecute 081_seed_mapeo_iva_diferido.sql." }
+  }
+
+  const diario_id: string = pm["deudores"]?.diario_id ?? pm["iva_diferido"]?.diario_id ?? pm["recargo_tc"]?.diario_id
+  if (!diario_id) return { ok: false, error: "Mapeo incompleto: falta diario_id." }
+
+  // 2. Período + sucursal
+  const fechaDate = factura.fecha.split("T")[0]
+  const { data: periodo_id } = await supabase
+    .rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate })
+
+  let sucursal_id: number | null = null
+  if (factura.sucursal) {
+    const { data: suc } = await supabase
+      .from("sucursales").select("id").eq("nombre", factura.sucursal).maybeSingle()
+    sucursal_id = suc?.id ?? null
+  }
+
+  // 3. Construir líneas
+  type Linea = {
+    cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
+    debe: number; haber: number; descripcion: string | null; orden: number
+  }
+
+  const totalDebe = Math.round((factura.iva_total + factura.recargo_total) * 100) / 100
+  const lineas: Linea[] = [
+    {
+      cuenta_id: cDeudores.id,
+      cuenta_codigo: cDeudores.codigo,
+      cuenta_nombre: cDeudores.nombre,
+      debe: totalDebe,
+      haber: 0,
+      descripcion: factura.cliente_nombre ?? null,
+      orden: 0,
+    },
+  ]
+
+  if (factura.iva_total > 0.009 && cIVA) {
+    lineas.push({
+      cuenta_id: cIVA.id,
+      cuenta_codigo: cIVA.codigo,
+      cuenta_nombre: cIVA.nombre,
+      debe: 0,
+      haber: Math.round(factura.iva_total * 100) / 100,
+      descripcion: factura.numero,
+      orden: 1,
+    })
+  }
+
+  if (factura.recargo_total > 0.009 && cRecargoTC) {
+    lineas.push({
+      cuenta_id: cRecargoTC.id,
+      cuenta_codigo: cRecargoTC.codigo,
+      cuenta_nombre: cRecargoTC.nombre,
+      debe: 0,
+      haber: Math.round(factura.recargo_total * 100) / 100,
+      descripcion: factura.numero,
+      orden: 2,
+    })
+  }
+
+  // 4. Validar partida doble
+  const sumaDebe  = lineas.reduce((s, l) => s + l.debe,  0)
+  const sumaHaber = lineas.reduce((s, l) => s + l.haber, 0)
+  if (Math.abs(sumaDebe - sumaHaber) > 0.01) {
+    return { ok: false, error: `Partida doble inválida (IVA diferido): DEBE=${sumaDebe.toFixed(2)} HABER=${sumaHaber.toFixed(2)}` }
+  }
+
+  // 5. Número correlativo
+  const { data: numero } = await supabase
+    .rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario_id, p_fecha: fechaDate })
+
+  // 6. Insertar asiento
+  const { data: asiento, error: asientoErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero:           numero ?? null,
+      diario_id,
+      periodo_id:       periodo_id ?? null,
+      fecha:            fechaDate,
+      sucursal_id,
+      concepto:         `Factura ${factura.numero} — IVA + Recargo TC`,
+      referencia:       factura.numero,
+      comprobante_tipo: "factura_iva_diferido",
+      moneda_original:  factura.moneda ?? "ARS",
+      es_manual:        false,
+      estado:           "publicado",
+    })
+    .select("id")
+    .single()
+
+  if (asientoErr) return { ok: false, error: `Error al crear asiento de IVA: ${asientoErr.message}` }
+
+  // 7. Insertar líneas
+  const { error: lineasErr } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineas.map(l => ({ ...l, asiento_id: asiento.id })))
+
+  if (lineasErr) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
+    return { ok: false, error: `Error en líneas del asiento de IVA: ${lineasErr.message}` }
+  }
+
+  return { ok: true, asiento_id: asiento.id }
+}
+
 // ─── Factura de Compra ───────────────────────────────────────────────────────
 export async function generarAsientoFacturaCompra(
   supabase: SupabaseClient,

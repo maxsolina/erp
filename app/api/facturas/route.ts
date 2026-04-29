@@ -49,11 +49,15 @@ export async function POST(req: Request) {
     termino_pago,
     subtotal,
     descuento = 0,
-    impuestos = 0,
-    total,
-    saldo,
     lineas = [],
   } = body
+
+  // Modelo "todo en negro": al crear la factura no se calcula IVA. El IVA y los
+  // recargos se generan al confirmar (POST /api/facturas/[id]/confirmar) según
+  // los medios de pago elegidos. Por eso forzamos impuestos=0 y total=subtotal.
+  const impuestos = 0
+  const total = subtotal ?? 0
+  const saldo  = total
 
   // Generar número correlativo — intentar con función atómica de secuencia,
   // fallback a MAX(numero) con retry en caso de colisión
@@ -141,7 +145,8 @@ export async function POST(req: Request) {
     await supabase.from("facturas_lineas").insert(lineasInsert)
   }
 
-  // Generar asiento contable automático (atómico: si falla, se revierte la factura)
+  // Asiento "en negro": DEBE Deudores / HABER Ventas Mercadería (por subtotal).
+  // No se discrimina IVA — eso se hace al confirmar con medios de pago.
   const asientoResult = await generarAsientoFacturaVenta(supabase, {
     id: facData.id,
     numero: facData.numero,
@@ -149,14 +154,13 @@ export async function POST(req: Request) {
     cliente_id: cliente_id ?? null,
     cliente_nombre: cliente_nombre ?? null,
     sucursal: sucursal ?? null,
-    subtotal: subtotal ?? 0,
-    impuestos,
-    total: total ?? 0,
+    subtotal,
+    impuestos: 0,
+    total,
     moneda,
   })
 
   if (!asientoResult.ok) {
-    // La factura queda guardada pero sin asiento — se registra para revisión
     console.error(`[CONTABILIDAD] Factura ${facData.numero} creada sin asiento: ${asientoResult.error}`)
     return NextResponse.json({
       ...facData,
@@ -164,6 +168,12 @@ export async function POST(req: Request) {
       _advertencia_contable: asientoResult.error,
     })
   }
+
+  // Vincular el asiento "negro" a la factura
+  await supabase
+    .from("facturas")
+    .update({ asiento_id: asientoResult.asiento_id })
+    .eq("id", facData.id)
 
   return NextResponse.json({ ...facData, asiento_id: asientoResult.asiento_id })
 }

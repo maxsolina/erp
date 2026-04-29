@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { generarAsientoReversa } from "@/lib/contabilidad-asiento-factory"
 
 function getSupabase() {
   return createClient(
@@ -11,12 +12,12 @@ function getSupabase() {
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = getSupabase()
   const { id } = await params
-  const { motivo, descripcion } = await req.json()
+  const { motivo } = await req.json().catch(() => ({ motivo: null }))
 
   // 1. Obtener la factura
   const { data: factura, error: facErr } = await supabase
     .from("facturas")
-    .select("id, numero, estado, total, subtotal, impuestos, fecha, sucursal, moneda")
+    .select("id, numero, estado, asiento_id, asiento_iva_id")
     .eq("id", id)
     .single()
 
@@ -37,97 +38,43 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: updateErr.message }, { status: 500 })
   }
 
-  // 3. Buscar el asiento original vinculado a esta factura
-  const { data: asientoOriginal } = await supabase
-    .from("contabilidad_asientos")
-    .select("id, numero, diario_id, periodo_id, fecha, lineas:contabilidad_asientos_lineas(*)")
-    .eq("comprobante_tipo", "factura")
-    .eq("referencia", factura.numero)
-    .neq("estado", "cancelado")
-    .maybeSingle()
+  const conceptoBase = `Cancelación factura ${factura.numero}${motivo ? ` — ${motivo}` : ""}`
+  const advertencias: string[] = []
+  let asientoReversaNegro: string | null = null
+  let asientoReversaIVA: string | null = null
 
-  if (!asientoOriginal) {
-    // Factura cancelada pero sin asiento original — OK, no hay reversión que hacer
-    return NextResponse.json({
-      ok: true,
-      asiento_reversion_id: null,
-      _advertencia: "Factura cancelada sin asiento de reversión (no existía asiento original)",
-    })
+  // 3. Revertir asiento "negro" (asiento 1) si existe
+  if (factura.asiento_id) {
+    const r = await generarAsientoReversa(supabase, factura.asiento_id, conceptoBase)
+    if (r.ok) asientoReversaNegro = r.asiento_id
+    else advertencias.push(`Reversa de asiento principal falló: ${r.error}`)
+  } else {
+    // Fallback: buscar por referencia (facturas creadas antes de la columna asiento_id)
+    const { data: asientoLegacy } = await supabase
+      .from("contabilidad_asientos")
+      .select("id")
+      .eq("comprobante_tipo", "factura")
+      .eq("referencia", factura.numero)
+      .is("asiento_reversion_id", null)
+      .maybeSingle()
+    if (asientoLegacy?.id) {
+      const r = await generarAsientoReversa(supabase, asientoLegacy.id, conceptoBase)
+      if (r.ok) asientoReversaNegro = r.asiento_id
+      else advertencias.push(`Reversa de asiento legacy falló: ${r.error}`)
+    }
   }
 
-  // 4. Obtener período activo para la fecha de hoy
-  const fechaHoy = new Date().toISOString().split("T")[0]
-  const { data: periodo_id } = await supabase
-    .rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaHoy })
-
-  // 5. Generar número para el asiento de reversión
-  const { data: numero } = await supabase
-    .rpc("contabilidad_generar_numero_asiento", {
-      p_diario_id: asientoOriginal.diario_id,
-      p_fecha: fechaHoy,
-    })
-
-  // 6. Crear el asiento de reversión (líneas invertidas)
-  const { data: asientoReversion, error: revErr } = await supabase
-    .from("contabilidad_asientos")
-    .insert({
-      numero:              numero ?? null,
-      diario_id:           asientoOriginal.diario_id,
-      periodo_id:          periodo_id ?? asientoOriginal.periodo_id,
-      fecha:               fechaHoy,
-      concepto:            `Cancelación ${factura.numero} — ${motivo ?? "Sin motivo"}`,
-      referencia:          factura.numero,
-      comprobante_tipo:    "cancelacion_factura",
-      asiento_reversion_id: asientoOriginal.id,
-      moneda_original:     factura.moneda ?? "ARS",
-      es_manual:           false,
-      estado:              "publicado",
-    })
-    .select("id")
-    .single()
-
-  if (revErr) {
-    return NextResponse.json({
-      ok: true,
-      asiento_reversion_id: null,
-      _advertencia: `Factura cancelada pero falló el asiento de reversión: ${revErr.message}`,
-    })
+  // 4. Revertir asiento de IVA diferido (asiento 2) si existe
+  if (factura.asiento_iva_id) {
+    const r = await generarAsientoReversa(supabase, factura.asiento_iva_id, `${conceptoBase} (IVA + Recargo)`)
+    if (r.ok) asientoReversaIVA = r.asiento_id
+    else advertencias.push(`Reversa de asiento IVA falló: ${r.error}`)
   }
-
-  // 7. Insertar líneas invertidas (debe ↔ haber)
-  const lineasReversion = (asientoOriginal.lineas as any[]).map((l: any) => ({
-    asiento_id:    asientoReversion.id,
-    cuenta_id:     l.cuenta_id,
-    cuenta_codigo: l.cuenta_codigo,
-    cuenta_nombre: l.cuenta_nombre,
-    debe:          l.haber,   // invertido
-    haber:         l.debe,    // invertido
-    descripcion:   `Rev. ${l.descripcion ?? factura.numero}`,
-    orden:         l.orden,
-  }))
-
-  const { error: lineasErr } = await supabase
-    .from("contabilidad_asientos_lineas")
-    .insert(lineasReversion)
-
-  if (lineasErr) {
-    await supabase.from("contabilidad_asientos").delete().eq("id", asientoReversion.id)
-    return NextResponse.json({
-      ok: true,
-      asiento_reversion_id: null,
-      _advertencia: `Factura cancelada pero falló al insertar líneas de reversión: ${lineasErr.message}`,
-    })
-  }
-
-  // 8. Actualizar el asiento original apuntando a su reversión
-  await supabase
-    .from("contabilidad_asientos")
-    .update({ asiento_reversion_id: asientoReversion.id })
-    .eq("id", asientoOriginal.id)
 
   return NextResponse.json({
     ok: true,
-    asiento_reversion_id: asientoReversion.id,
-    numero_reversion: numero,
+    asiento_reversa_negro_id: asientoReversaNegro,
+    asiento_reversa_iva_id: asientoReversaIVA,
+    advertencias: advertencias.length > 0 ? advertencias : undefined,
   })
 }
