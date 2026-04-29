@@ -1,6 +1,7 @@
 ﻿"use client"
 
 import React, { useState, useMemo, useRef, useEffect } from "react"
+import Link from "next/link"
 import { Search, Filter, ChevronDown, X, Plus, FileText, Truck, Package, ArrowRight, Eye, Edit, Trash2, Download, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Calendar, Tag, RefreshCw, Barcode, QrCode, Layers, ArrowLeftRight, ClipboardCheck, TrendingUp, TrendingDown, Box, Warehouse, Hash, RotateCcw, ChevronRight, MessageSquare, Star, User, Activity, BarChart3, Settings, DollarSign, Users, GripVertical } from "lucide-react"
 import OdooFilterBar, { FilterOption, GroupByOption, SavedFilter } from "./odoo-filter-bar"
 import BotonVolver from "./ui/boton-volver"
@@ -634,9 +635,19 @@ function StockListSection<T extends object>({
 
 // Component Principal
 export default function ModuloStock() {
-  const { sucursales, sucursalActiva } = useERP()
+  const { sucursales, sucursalActiva, canSee } = useERP()
+  const itemPermitidoStock = (id: string): boolean => canSee("stock", id)
   // Estados principales
-  const [activeView, setActiveView] = useState<string>("productos")
+  const [activeView, setActiveView] = useState<string>("transferencias")
+
+  // Guard: si la vista activa ya no es visible, redirige al primer item permitido
+  useEffect(() => {
+    if (itemPermitidoStock(activeView)) return
+    const fallbacks = ["transferencias", "lotes_series", "control_inventario", "cubo_stock", "config_depositos"]
+    const ok = fallbacks.find(itemPermitidoStock)
+    if (ok) setActiveView(ok)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView, canSee])
   const [searchTerm, setSearchTerm] = useState("")
 
   // OdooFilterBar states para Productos y Transferencias
@@ -1107,6 +1118,7 @@ export default function ModuloStock() {
         </div>
 
         {/* PRODUCTOS */}
+        {itemPermitidoStock("productos") && (
         <div className="mb-2">
           <button
             onClick={() => setMenuExpandido(prev => ({ ...prev, productos: !prev.productos }))}
@@ -1118,19 +1130,21 @@ export default function ModuloStock() {
           </button>
           {menuExpandido.productos && (
             <div className="ml-2">
-              <button
-                onClick={() => { setActiveView("productos"); setSelectedProducto(null) }}
-                className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeView === "productos" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
+              <Link
+                href="/productos"
+                className="w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 text-gray-600 hover:bg-gray-100"
               >
                 <Package className="w-4 h-4" />
                 Productos
                 <span className="ml-auto text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{productosCount}</span>
-              </button>
+              </Link>
             </div>
           )}
         </div>
+        )}
 
         {/* OPERACIONES */}
+        {(itemPermitidoStock("transferencias") || itemPermitidoStock("pedidos_abastecimiento")) && (
         <div className="mb-2">
           <button
             onClick={() => setMenuExpandido(prev => ({ ...prev, operaciones: !prev.operaciones }))}
@@ -1143,6 +1157,7 @@ export default function ModuloStock() {
           </button>
           {menuExpandido.operaciones && (
             <div className="ml-2">
+              {itemPermitidoStock("transferencias") && (
               <button
                 onClick={() => { setActiveView("transferencias"); setSelectedTransferencia(null); setCreandoTransferencia(false) }}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeView === "transferencias" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
@@ -1151,6 +1166,8 @@ export default function ModuloStock() {
                 Transferencias Internas
                 {transferenciasPendientes > 0 && <span className="ml-auto text-xs bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded">{transferenciasPendientes}</span>}
               </button>
+              )}
+              {itemPermitidoStock("pedidos_abastecimiento") && (
               <button
                 onClick={() => { setActiveView("pedidos_abastecimiento"); setSelectedPedido(null); setCreandoPedido(false) }}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeView === "pedidos_abastecimiento" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
@@ -1159,11 +1176,14 @@ export default function ModuloStock() {
                 Pedidos de Abastecimiento
                 {pedidosPendientes > 0 && <span className="ml-auto text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">{pedidosPendientes}</span>}
               </button>
+              )}
             </div>
           )}
         </div>
+        )}
 
         {/* TRAZABILIDAD */}
+        {(itemPermitidoStock("lotes_series") || itemPermitidoStock("lotes_stock")) && (
         <div className="mb-2">
           <button
             onClick={() => setMenuExpandido(prev => ({ ...prev, trazabilidad: !prev.trazabilidad }))}
@@ -1176,6 +1196,7 @@ export default function ModuloStock() {
           </button>
           {menuExpandido.trazabilidad && (
             <div className="ml-2">
+              {itemPermitidoStock("lotes_series") && (
               <button
                 onClick={() => { setActiveView("lotes_series"); setSelectedLote(null) }}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeView === "lotes_series" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
@@ -1184,6 +1205,8 @@ export default function ModuloStock() {
                 Lotes y Series
                 <span className="ml-auto text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{lotesSeriesCount}</span>
               </button>
+              )}
+              {itemPermitidoStock("lotes_stock") && (
               <button
                 onClick={() => { setActiveView("lotes_stock") }}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeView === "lotes_stock" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
@@ -1191,11 +1214,14 @@ export default function ModuloStock() {
                 <Layers className="w-4 h-4" />
                 IMEI en Stock
               </button>
+              )}
             </div>
           )}
         </div>
+        )}
 
         {/* CONTROL DE INVENTARIO */}
+        {(itemPermitidoStock("control_inventario") || itemPermitidoStock("ajustes_positivos") || itemPermitidoStock("ajustes_negativos")) && (
         <div className="mb-2">
           <button
             onClick={() => setMenuExpandido(prev => ({ ...prev, controlInventario: !prev.controlInventario }))}
@@ -1207,6 +1233,7 @@ export default function ModuloStock() {
           </button>
           {menuExpandido.controlInventario && (
             <div className="ml-2">
+              {itemPermitidoStock("control_inventario") && (
               <button
                 onClick={() => { setActiveView("control_inventario"); setSelectedControl(null); setCreandoControl(false) }}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeView === "control_inventario" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
@@ -1215,6 +1242,8 @@ export default function ModuloStock() {
                 Control de Inventario
                 {controlesPendientes > 0 && <span className="ml-auto text-xs bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded">{controlesPendientes}</span>}
               </button>
+              )}
+              {itemPermitidoStock("ajustes_positivos") && (
               <button
                 onClick={() => { setActiveView("ajustes_positivos") }}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeView === "ajustes_positivos" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
@@ -1222,6 +1251,8 @@ export default function ModuloStock() {
                 <TrendingUp className="w-4 h-4" />
                 Ajustes Positivos
               </button>
+              )}
+              {itemPermitidoStock("ajustes_negativos") && (
               <button
                 onClick={() => { setActiveView("ajustes_negativos") }}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeView === "ajustes_negativos" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
@@ -1229,11 +1260,14 @@ export default function ModuloStock() {
                 <TrendingDown className="w-4 h-4" />
                 Ajustes Negativos
               </button>
+              )}
             </div>
           )}
         </div>
+        )}
 
         {/* CONFIGURACIÓN */}
+        {["config_depositos","config_ubicaciones","config_categorias","config_tipos_operacion","config_posiciones","config_rutas","config_reglas"].some(itemPermitidoStock) && (
         <div className="mb-2">
           <button
             onClick={() => setMenuExpandido(prev => ({ ...prev, configuracion: !prev.configuracion }))}
@@ -1247,6 +1281,7 @@ export default function ModuloStock() {
           {menuExpandido.configuracion && (
             <div className="ml-2">
               {/* Subsección Depósito */}
+              {["config_depositos","config_ubicaciones","config_categorias","config_tipos_operacion","config_posiciones"].some(itemPermitidoStock) && (
               <div>
                 <button
                   onClick={() => setMenuExpandido(prev => ({ ...prev, configDeposito: !prev.configDeposito }))}
@@ -1257,41 +1292,53 @@ export default function ModuloStock() {
                 </button>
                 {menuExpandido.configDeposito && (
                   <div className="ml-4 border-l border-gray-200 pl-2">
+                    {itemPermitidoStock("config_depositos") && (
                     <button
                       onClick={() => { setActiveView("config_depositos") }}
                       className={`w-full text-left px-3 py-1.5 text-sm rounded-md ${activeView === "config_depositos" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
                     >
                       Depósitos
                     </button>
+                    )}
+                    {itemPermitidoStock("config_ubicaciones") && (
                     <button
                       onClick={() => { setActiveView("config_ubicaciones") }}
                       className={`w-full text-left px-3 py-1.5 text-sm rounded-md ${activeView === "config_ubicaciones" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
                     >
                       Ubicaciones
                     </button>
+                    )}
+                    {itemPermitidoStock("config_categorias") && (
                     <button
                       onClick={() => { setActiveView("config_categorias") }}
                       className={`w-full text-left px-3 py-1.5 text-sm rounded-md ${activeView === "config_categorias" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
                     >
                       Categorías de Ubicaciones
                     </button>
+                    )}
+                    {itemPermitidoStock("config_tipos_operacion") && (
                     <button
                       onClick={() => { setActiveView("config_tipos_operacion") }}
                       className={`w-full text-left px-3 py-1.5 text-sm rounded-md ${activeView === "config_tipos_operacion" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
                     >
                       Tipos de operación
                     </button>
+                    )}
+                    {itemPermitidoStock("config_posiciones") && (
                     <button
                       onClick={() => { setActiveView("config_posiciones") }}
                       className={`w-full text-left px-3 py-1.5 text-sm rounded-md ${activeView === "config_posiciones" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
                     >
                       Posiciones de Ubicaciones
                     </button>
+                    )}
                   </div>
                 )}
               </div>
+              )}
 
               {/* Subsección Rutas */}
+              {["config_rutas","config_reglas"].some(itemPermitidoStock) && (
               <div>
                 <button
                   onClick={() => setMenuExpandido(prev => ({ ...prev, configRutas: !prev.configRutas }))}
@@ -1302,26 +1349,33 @@ export default function ModuloStock() {
                 </button>
                 {menuExpandido.configRutas && (
                   <div className="ml-4 border-l border-gray-200 pl-2">
+                    {itemPermitidoStock("config_rutas") && (
                     <button
                       onClick={() => { setActiveView("config_rutas") }}
                       className={`w-full text-left px-3 py-1.5 text-sm rounded-md ${activeView === "config_rutas" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
                     >
                       Rutas
                     </button>
+                    )}
+                    {itemPermitidoStock("config_reglas") && (
                     <button
                       onClick={() => { setActiveView("config_reglas") }}
                       className={`w-full text-left px-3 py-1.5 text-sm rounded-md ${activeView === "config_reglas" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
                     >
                       Reglas
                     </button>
+                    )}
                   </div>
                 )}
               </div>
+              )}
             </div>
           )}
         </div>
+        )}
 
         {/* INFORMES */}
+        {(itemPermitidoStock("cubo_stock") || itemPermitidoStock("stock_reservado")) && (
         <div className="mb-2">
           <button
             onClick={() => setMenuExpandido(prev => ({ ...prev, informes: !prev.informes }))}
@@ -1333,6 +1387,7 @@ export default function ModuloStock() {
           </button>
           {menuExpandido.informes && (
             <div className="ml-2">
+              {itemPermitidoStock("cubo_stock") && (
               <button
                 onClick={() => { setActiveView("cubo_stock") }}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeView === "cubo_stock" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
@@ -1340,6 +1395,8 @@ export default function ModuloStock() {
                 <Activity className="w-4 h-4" />
                 Cubo de Stock
               </button>
+              )}
+              {itemPermitidoStock("stock_reservado") && (
               <button
                 onClick={() => { setActiveView("stock_reservado") }}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeView === "stock_reservado" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
@@ -1352,9 +1409,11 @@ export default function ModuloStock() {
                   </span>
                 )}
               </button>
+              )}
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   )
@@ -4779,8 +4838,6 @@ export default function ModuloStock() {
   // Render principal del contenido
   const renderContent = () => {
     switch (activeView) {
-      case "productos":
-        return renderProductos()
       case "transferencias":
         return renderTransferencias()
       case "pedidos_abastecimiento":
@@ -4814,7 +4871,8 @@ export default function ModuloStock() {
       case "stock_reservado":
         return renderStockReservado()
       default:
-        return renderProductos()
+        // Productos ahora vive en /productos (top-level). El sidebar tiene un Link.
+        return renderTransferencias()
     }
   }
 

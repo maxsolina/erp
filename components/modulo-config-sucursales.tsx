@@ -15,7 +15,7 @@ interface UsuarioSucursalRow {
   ver_nv_otras_sucursales: boolean
 }
 
-const FORM_VACIO = {
+export const FORM_SUCURSAL_VACIO = {
   codigo: "",
   nombre: "",
   direccion: "",
@@ -24,9 +24,12 @@ const FORM_VACIO = {
   activa: true,
 }
 
+// alias interno
+const FORM_VACIO = FORM_SUCURSAL_VACIO
+
 // ─── Formulario Sucursal ─────────────────────────────────────────────────────
 
-function FormSucursal({
+export function FormSucursal({
   initial,
   depositos,
   onGuardar,
@@ -136,7 +139,7 @@ function FormSucursal({
 
 // ─── Panel asignación de usuarios ────────────────────────────────────────────
 
-function PanelUsuarios({
+export function PanelUsuarios({
   sucursal,
   onClose,
 }: {

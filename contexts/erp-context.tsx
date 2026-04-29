@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
 
 // =====================================================
@@ -328,14 +328,34 @@ export interface Ticket {
 // CONTEXTO
 // =====================================================
 
+// Cambiar a `true` cuando el template del mail tenga {{ .Token }} configurado
+// y queramos forzar segundo factor por mail en cada login.
+const OTP_LOGIN_ENABLED = false
+
+export type LoginResult =
+  | { ok: true; requiresOtp: false }
+  | { ok: true; requiresOtp: true; email: string }
+  | { ok: false; reason: "invalid_credentials" | "otp_send_failed" | "network" }
+
 interface ERPContextType {
   // Usuario actual
   currentUser: Usuario | null
   setCurrentUser: (user: Usuario | null) => void
   isAuthenticated: boolean
-  login: (username: string, password: string) => Promise<boolean>
+  login: (username: string, password: string) => Promise<LoginResult>
+  verifyLoginOtp: (email: string, token: string) => Promise<boolean>
+  resendLoginOtp: (email: string) => Promise<boolean>
   logout: () => void
   changePassword: (oldPassword: string, newPassword: string) => Promise<boolean>
+
+  // Permisos del usuario logueado
+  isSuperuser: boolean
+  vistas: Record<string, boolean>
+  permisos: Record<string, Record<string, string | boolean>>
+  /** ¿Puede ver este módulo? (y opcionalmente una sub-vista). Los superusuarios ven todo. */
+  canSee: (modulo: string, subvista?: string) => boolean
+  /** Recarga los permisos desde /api/usuarios/me — útil después de un guardado. */
+  reloadPermisos: () => Promise<void>
 
   // Datos maestros
   sucursales: Sucursal[]
@@ -407,7 +427,7 @@ const sucursalesIniciales: Sucursal[] = []
 
 const usuariosIniciales: Usuario[] = [
   { id: 1, username: "admin", nombre: "Administrador", email: "admin@cellhome.com", rol: "admin", sucursal_id: 1, sucursal_nombre: "Puerto Norte", activo: true, ultimo_acceso: "2026-03-16T10:00:00" },
-  { id: 2, username: "solinamax", nombre: "Max Solina", email: "max@cellhome.com", rol: "vendedor", sucursal_id: 1, sucursal_nombre: "Puerto Norte", activo: true, ultimo_acceso: "2026-03-16T09:00:00" },
+  { id: 2, username: "solinamax", nombre: "Max Solina", email: "max.solina@gmail.com", rol: "vendedor", sucursal_id: 1, sucursal_nombre: "Puerto Norte", activo: true, ultimo_acceso: "2026-03-16T09:00:00" },
   { id: 3, username: "juanperez", nombre: "Juan Pérez", email: "juan@cellhome.com", rol: "cajero", sucursal_id: 2, sucursal_nombre: "Centro", activo: true, ultimo_acceso: "2026-03-15T18:00:00" },
 ]
 
@@ -435,6 +455,59 @@ export function ERPProvider({ children }: { children: ReactNode }) {
   // Usuario actual
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null)
   const [usuarios] = useState<Usuario[]>(usuariosIniciales)
+
+  // Permisos del usuario logueado (cargados desde /api/usuarios/me al loguearse)
+  const [isSuperuser, setIsSuperuser] = useState(false)
+  const [vistas, setVistas] = useState<Record<string, boolean>>({})
+  const [permisos, setPermisos] = useState<Record<string, Record<string, string | boolean>>>({})
+  // Si la consulta a /api/usuarios/me devuelve 404 (perfil ERP no cargado todavía),
+  // marcamos al usuario como "sin perfil" y le permitimos ver todo (compatibilidad
+  // con admin/solinamax/juanperez del array hardcodeado, hasta que se migren a DB).
+  const [sinPerfilDB, setSinPerfilDB] = useState(false)
+
+  const canSee = useCallback((modulo: string, subvista?: string): boolean => {
+    if (isSuperuser || sinPerfilDB) return true
+    if (!modulo) return false
+    if (!vistas[modulo]) return false           // módulo apagado → todo OFF
+    if (!subvista) return true                  // pregunta solo por el módulo → ON
+    const fullKey = `${modulo}.${subvista}`
+    return vistas[fullKey] !== false            // sub-vista visible salvo que esté explícitamente apagada
+  }, [isSuperuser, sinPerfilDB, vistas])
+
+  const reloadPermisos = async (): Promise<void> => {
+    try {
+      const res = await fetch("/api/usuarios/me")
+      if (res.status === 404) {
+        // Perfil ERP no encontrado → modo permisivo (ve todo) hasta que esté en la tabla
+        setSinPerfilDB(true)
+        setIsSuperuser(false)
+        setVistas({})
+        setPermisos({})
+        return
+      }
+      if (!res.ok) return
+      const me = await res.json()
+      setSinPerfilDB(false)
+      setIsSuperuser(!!me.is_superuser)
+      setVistas(me.vistas ?? {})
+      setPermisos(me.permisos ?? {})
+    } catch {
+      // ignorar
+    }
+  }
+
+  // Cuando cambia el usuario logueado, recargamos sus permisos desde DB
+  useEffect(() => {
+    if (currentUser) {
+      reloadPermisos()
+    } else {
+      setIsSuperuser(false)
+      setVistas({})
+      setPermisos({})
+      setSinPerfilDB(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id])
 
   // Datos maestros
   const [sucursales, setSucursales] = useState<Sucursal[]>(sucursalesIniciales)
@@ -518,26 +591,171 @@ export function ERPProvider({ children }: { children: ReactNode }) {
   // FUNCIONES DE AUTENTICACIÓN
   // =====================================================
 
-  const login = async (username: string, password: string): Promise<boolean> => {
-    const supabase = createClient()
-    // Mapear username → email: si el input no parece un email, buscar en usuariosIniciales
-    const userRecord = usuarios.find(
-      u => u.username.toLowerCase() === username.toLowerCase()
-    )
-    const email = userRecord?.email ?? username
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error || !data.session) return false
-
-    const matchedUser = usuarios.find(
-      u => u.email.toLowerCase() === email.toLowerCase() || u.username.toLowerCase() === username.toLowerCase()
-    )
-    if (matchedUser) {
-      setCurrentUser({ ...matchedUser, ultimo_acceso: new Date().toISOString() })
+  // Registra una fila en `usuario_sesiones` y guarda el id en sessionStorage para poder cerrarla en logout.
+  // Best-effort: si algo falla (red, RLS, perfil ERP no cargado), no bloquea el login.
+  const registrarSesionEnDB = async (): Promise<void> => {
+    try {
+      const meRes = await fetch("/api/usuarios/me")
+      if (!meRes.ok) return
+      const me = await meRes.json()
+      if (!me?.id) return
+      const sesionRes = await fetch(`/api/usuarios/${me.id}/sesiones`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_agent: typeof navigator !== "undefined" ? navigator.userAgent : "" }),
+      })
+      if (!sesionRes.ok) return
+      const data = await sesionRes.json()
+      if (data?.id && typeof window !== "undefined") {
+        sessionStorage.setItem("erp:current_session", JSON.stringify({ usuario_id: me.id, sesion_id: data.id }))
+      }
+    } catch {
+      // ignorar
     }
-    return true
+  }
+
+  const cerrarSesionEnDB = async (
+    tipo_cierre: "logout_manual" | "expirada" | "invalida" | "forzada" = "logout_manual",
+    terminada_por: "usuario" | "sistema" | "administrador" = "usuario",
+  ): Promise<void> => {
+    try {
+      if (typeof window === "undefined") return
+      const raw = sessionStorage.getItem("erp:current_session")
+      if (!raw) return
+      const { usuario_id, sesion_id } = JSON.parse(raw)
+      sessionStorage.removeItem("erp:current_session")
+      await fetch(`/api/usuarios/${usuario_id}/sesiones/${sesion_id}/cerrar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipo_cierre, terminada_por }),
+      })
+    } catch {
+      // ignorar
+    }
+  }
+
+  const login = async (username: string, password: string): Promise<LoginResult> => {
+    try {
+      const supabase = createClient()
+      // Mapear username → email:
+      //   1) Si lo que el usuario escribió contiene "@", lo tomamos como email directo.
+      //   2) Si no, buscamos primero en el array hardcodeado (admin/solinamax/juanperez).
+      //   3) Si no aparece, consultamos la tabla `usuarios` real vía /api/auth/lookup-email.
+      let email = username
+      if (!username.includes("@")) {
+        const userRecord = usuarios.find(
+          u => u.username.toLowerCase() === username.toLowerCase()
+        )
+        if (userRecord) {
+          email = userRecord.email
+        } else {
+          try {
+            const lookupRes = await fetch(`/api/auth/lookup-email?username=${encodeURIComponent(username)}`)
+            if (lookupRes.ok) {
+              const body = await lookupRes.json()
+              if (body?.email) email = body.email
+            }
+          } catch {
+            // si falla el lookup, seguimos con `email = username` y signInWithPassword va a fallar como "credenciales inválidas"
+          }
+        }
+      }
+
+      // Paso 1: validar contraseña
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error || !data.session) return { ok: false, reason: "invalid_credentials" }
+
+      // Si el OTP está apagado, le damos acceso directo (sin segundo factor).
+      if (!OTP_LOGIN_ENABLED) {
+        // 1) Intentamos primero matchear contra el array hardcodeado (admin/solinamax/juanperez)
+        let matchedUser = usuarios.find(
+          u => u.email.toLowerCase() === email.toLowerCase() || u.username.toLowerCase() === username.toLowerCase()
+        )
+
+        // 2) Si no aparece, lo buscamos en la tabla `usuarios` real vía /api/usuarios/me
+        if (!matchedUser) {
+          try {
+            const meRes = await fetch("/api/usuarios/me")
+            if (meRes.ok) {
+              const me = await meRes.json()
+              matchedUser = {
+                id: me.id,
+                username: me.username,
+                nombre: me.nombre,
+                email: me.email,
+                rol: me.is_superuser ? "admin" : "vendedor",
+                sucursal_id: me.sucursal_default_id ?? 0,
+                sucursal_nombre: me.sucursal_default_nombre ?? "",
+                activo: !!me.is_active,
+                ultimo_acceso: me.last_login_at ?? new Date().toISOString(),
+                avatar: me.avatar_url ?? undefined,
+              }
+            }
+          } catch {
+            // si no hay perfil ERP, dejamos matchedUser undefined y arriba va a quedar sin currentUser
+          }
+        }
+
+        if (matchedUser) {
+          setCurrentUser({ ...matchedUser, ultimo_acceso: new Date().toISOString() })
+        }
+        // Registrar la sesión en la tabla `usuario_sesiones` (best-effort, no bloquea el login)
+        registrarSesionEnDB().catch(() => {})
+        return { ok: true, requiresOtp: false }
+      }
+
+      // Paso 2: cerramos esa sesión — no le damos acceso al ERP hasta que verifique el OTP
+      await supabase.auth.signOut()
+
+      // Paso 3: mandamos el código de 6 dígitos al mail
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: false },
+      })
+      if (otpError) return { ok: false, reason: "otp_send_failed" }
+
+      return { ok: true, requiresOtp: true, email }
+    } catch {
+      return { ok: false, reason: "network" }
+    }
+  }
+
+  const verifyLoginOtp = async (email: string, token: string): Promise<boolean> => {
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase.auth.verifyOtp({ email, token, type: "email" })
+      if (error || !data.session) return false
+
+      const matchedUser = usuarios.find(
+        u => u.email.toLowerCase() === email.toLowerCase()
+      )
+      if (matchedUser) {
+        setCurrentUser({ ...matchedUser, ultimo_acceso: new Date().toISOString() })
+      }
+      registrarSesionEnDB().catch(() => {})
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const resendLoginOtp = async (email: string): Promise<boolean> => {
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: false },
+      })
+      return !error
+    } catch {
+      return false
+    }
   }
 
   const logout = () => {
+    cerrarSesionEnDB("logout_manual", "usuario").catch(() => {})
+    const supabase = createClient()
+    supabase.auth.signOut().catch(() => {})
     setCurrentUser(null)
   }
 
@@ -890,8 +1108,17 @@ export function ERPProvider({ children }: { children: ReactNode }) {
     setCurrentUser,
     isAuthenticated: currentUser !== null,
     login,
+    verifyLoginOtp,
+    resendLoginOtp,
     logout,
     changePassword,
+
+    // Permisos
+    isSuperuser,
+    vistas,
+    permisos,
+    canSee,
+    reloadPermisos,
 
       // Datos maestros
       sucursales,

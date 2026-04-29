@@ -2,6 +2,7 @@
 
 // Modulo de Ventas - Cell Home ERP v5
 import React, { useState, useMemo, useRef, useEffect, useCallback } from "react"
+import Link from "next/link"
 import { useClientes } from "@/hooks/use-clientes"
 import { crearCliente as apiCrearCliente, actualizarCliente as apiActualizarCliente } from "@/hooks/use-clientes"
 import type { ClienteDB } from "@/hooks/use-clientes"
@@ -443,7 +444,7 @@ interface AjusteCliente {
   numero: string
   cliente_id: number
   cliente_nombre: string
-  estado: "borrador" | "activo" | "cancelado"
+  estado: "borrador" | "activo" | "publicado" | "cancelado"
   fecha: string
   concepto: string
   moneda: "ARS" | "USD"
@@ -1149,10 +1150,29 @@ interface ModuloVentasProps {
   onNuevoCliente?: (c: ClienteVenta) => void
 }
 
-
+// Mapeo de id del sidebar de Ventas al sub-vista del catálogo (catalogo_permisos).
+const SIDEBAR_VENTAS_TO_VISTA: Record<string, string | null> = {
+  listado:             "clientes",
+  conciliacion:        "conciliacion",
+  ajustes:             "ajustes",
+  notas_venta:         "notas_venta",
+  toma_equipo:         "toma_equipo",
+  senia_equipo:        "senia_equipo",
+  ordenes_entrega:     "ordenes_entrega",
+  remitos:             "remitos",
+  facturas:            "facturas",
+  notas_debito:        "notas_debito",
+  notas_credito:       "notas_credito",
+  recibos:             "recibos",
+  listas_precios:      "listas_precios",
+  versiones_lista:     "versiones_lista",
+  categorias_cliente:  "categorias_cliente",
+  criterios_cotizador: "criterios_cotizador",
+  nc_categorias:       "nc_categorias",
+}
 
 export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: ModuloVentasProps = {}) {
-  const { sucursales, sucursalActiva, currentUser } = useERP()
+  const { sucursales, sucursalActiva, currentUser, canSee } = useERP()
   const [depositos, setDepositos] = useState<{ id: number; nombre: string; codigo: string; sucursal_id?: number | null }[]>([])
   const [ubicaciones, setUbicaciones] = useState<{ id: number; deposito_id: number; codigo: string; nombre: string }[]>([])
   useEffect(() => {
@@ -2661,6 +2681,23 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   // Render functions
+  const itemPermitido = (itemId: string): boolean => {
+    const sub = SIDEBAR_VENTAS_TO_VISTA[itemId]
+    if (sub === null || sub === undefined) return true
+    return canSee("ventas", sub)
+  }
+
+  // Si el usuario está en una vista que ya no puede ver (cambio de permisos),
+  // lo mandamos al dashboard del módulo.
+  useEffect(() => {
+    if (activeView === "dashboard") return
+    const sub = SIDEBAR_VENTAS_TO_VISTA[activeView]
+    if (sub === null || sub === undefined) return
+    if (!canSee("ventas", sub)) {
+      setActiveView("dashboard")
+    }
+  }, [activeView, canSee])
+
   const renderSidebar = () => (
     <div className="w-56 bg-white border-r border-gray-200 flex flex-col h-full">
       <div className="p-4 border-b border-gray-200">
@@ -2676,7 +2713,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       </div>
       
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {menuSections.map(section => (
+        {menuSections.map(section => {
+          const itemsVisibles = section.items.filter(it => itemPermitido(it.id))
+          if (itemsVisibles.length === 0) return null
+          return (
           <div key={section.id} className="mb-2">
             <button
               onClick={() => setMenuExpandido(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
@@ -2688,7 +2728,33 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </button>
             {menuExpandido[section.id] && (
               <div className="ml-2">
-                {section.items.map(item => (
+                {itemsVisibles.map(item => {
+                  // Items que migraron a rutas top-level (Ctrl+Click nativo)
+                  if (item.id === "listas_precios") {
+                    return (
+                      <Link
+                        key={item.id}
+                        href="/listas-precios"
+                        className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center gap-2 ${section.id === "config_notas_credito" ? "text-xs" : "text-sm"} text-gray-600 hover:bg-gray-100`}
+                      >
+                        <item.icon className={section.id === "config_notas_credito" ? "w-3.5 h-3.5" : "w-4 h-4"} />
+                        {item.label}
+                      </Link>
+                    )
+                  }
+                  if (item.id === "versiones_lista") {
+                    return (
+                      <Link
+                        key={item.id}
+                        href="/listas-precios/versiones"
+                        className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center gap-2 ${section.id === "config_notas_credito" ? "text-xs" : "text-sm"} text-gray-600 hover:bg-gray-100`}
+                      >
+                        <item.icon className={section.id === "config_notas_credito" ? "w-3.5 h-3.5" : "w-4 h-4"} />
+                        {item.label}
+                      </Link>
+                    )
+                  }
+                  return (
                   <button
                     key={item.id}
                     onClick={() => {
@@ -2701,35 +2767,23 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       setClientePanel("ficha")
                       setNcDetallePopup(null)
                       setRecDetallePopup(null)
-                      // Limpiar selección de versión al navegar a versiones desde sidebar
-                      if (item.id === "versiones_lista") {
-                        setSelectedVersion(null)
-                        setEditingVersion(null)
-                        setCreandoVersion(false)
-                        setModoEdicionVersion(false)
-                      }
-                      // Limpiar selección de lista al navegar a listas desde sidebar
-                      if (item.id === "listas_precios") {
-                        setSelectedListaPrecios(null)
-                        setEditingListaPrecios(null)
-                        setCreandoListaPrecios(false)
-                        setModoEdicionListaPrecios(false)
-                      }
                     }}
                     className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center gap-2 ${section.id === "config_notas_credito" ? "text-xs" : "text-sm"} ${
-                      activeView === item.id 
-                        ? "bg-emerald-100 text-emerald-800 font-medium" 
+                      activeView === item.id
+                        ? "bg-emerald-100 text-emerald-800 font-medium"
                         : "text-gray-600 hover:bg-gray-100"
                     }`}
                   >
                     <item.icon className={section.id === "config_notas_credito" ? "w-3.5 h-3.5" : "w-4 h-4"} />
                     {item.label}
                   </button>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
-        ))}
+          )
+        })}
       </nav>
     </div>
   )
@@ -12646,7 +12700,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       filterFields={[{field: "estado", label: "Estado"}, {field: "moneda", label: "Moneda"}]}
       actions={
         <button 
-          onClick={() => { setEditingItem(null); setModalType("ajuste"); setShowModal(true) }}
+          onClick={() => { setEditingItem(null); setCreandoAjuste(true); setAjusteLineas([]); setAjusteClienteId(null) }}
           className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 transition-colors flex items-center gap-2"
         >
           <Plus className="w-4 h-4" /> Nuevo Ajuste
@@ -12669,14 +12723,21 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           </thead>
           <tbody>
             {filtered.map(ajuste => (
-              <tr key={ajuste.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
+              <tr key={ajuste.id} onClick={() => setSelectedAjuste(ajuste)} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
                 <td className="py-3 px-4 font-mono text-sm text-emerald-700 font-medium">{ajuste.numero}</td>
                 <td className="py-3 px-4 text-sm">{ajuste.cliente_nombre}</td>
                 <td className="py-3 px-4 text-sm text-gray-600">{formatDate(ajuste.fecha)}</td>
                 <td className="py-3 px-4 text-sm text-gray-600">{ajuste.concepto}</td>
                 <td className="py-3 px-4 text-center">
-                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${ajuste.estado === "activo" ? "bg-green-100 text-green-700" : ajuste.estado === "cancelado" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-700"}`}>
-                    {ajuste.estado === "activo" ? "Activo" : ajuste.estado === "cancelado" ? "Cancelado" : "Borrador"}
+                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+                    ajuste.estado === "publicado" || ajuste.estado === "activo" ? "bg-green-100 text-green-700" :
+                    ajuste.estado === "cancelado" ? "bg-red-100 text-red-700" :
+                    "bg-gray-100 text-gray-700"
+                  }`}>
+                    {ajuste.estado === "publicado" ? "Publicado" :
+                     ajuste.estado === "activo" ? "Activo" :
+                     ajuste.estado === "cancelado" ? "Cancelado" :
+                     "Borrador"}
                   </span>
                 </td>
                 <td className="py-3 px-4 text-center text-sm font-medium">{ajuste.moneda}</td>
@@ -12728,9 +12789,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </div>
           </div>
           <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-            ajuste.estado === "activo" ? "bg-green-100 text-green-700" : ajuste.estado === "cancelado" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-600"
+            ajuste.estado === "publicado" || ajuste.estado === "activo" ? "bg-green-100 text-green-700" :
+            ajuste.estado === "cancelado" ? "bg-red-100 text-red-700" :
+            "bg-gray-100 text-gray-600"
           }`}>
-            {ajuste.estado === "activo" ? "Activa" : ajuste.estado === "cancelado" ? "Cancelada" : "Borrador"}
+            {ajuste.estado === "publicado" ? "Publicada" :
+             ajuste.estado === "activo" ? "Activa" :
+             ajuste.estado === "cancelado" ? "Cancelada" :
+             "Borrador"}
           </span>
         </div>
 
@@ -14692,6 +14758,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       case "conciliacion":
         return renderConciliacion()
       case "ajustes":
+        if (creandoAjuste) return renderCrearAjuste()
+        if (selectedAjuste) return renderFichaAjuste()
         return renderAjustes()
       case "notas_venta":
         return renderNotasVenta()
@@ -14713,10 +14781,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         return renderNotasDebitoCredito("credito")
       case "recibos":
         return renderRecibos()
-      case "listas_precios":
-        return renderListasPrecios()
-      case "versiones_lista":
-        return renderVersionesLista()
+      // listas_precios y versiones_lista migraron a /listas-precios top-level. Sidebar tiene Links.
       case "categorias_cliente":
         return renderCategoriasCliente()
       case "criterios_cotizador":
@@ -15608,23 +15673,23 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     )
   }
 
-  // Modal de Ajuste
+  // Crear Ajuste (pantalla completa, mismo patrón que Nueva Factura)
+  const [creandoAjuste, setCreandoAjuste] = useState(false)
   const [ajusteLineas, setAjusteLineas] = useState<{descripcion: string; fecha_vencimiento: string; importe: number}[]>([])
   const [ajusteClienteId, setAjusteClienteId] = useState<number | null>(null)
 
-  const renderAjusteModal = () => {
+  const cancelarCrearAjuste = () => {
+    setCreandoAjuste(false)
+    setAjusteLineas([])
+    setAjusteClienteId(null)
+  }
+
+  const renderCrearAjuste = () => {
     const totalAjuste = ajusteLineas.reduce((sum, l) => sum + l.importe, 0)
 
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-          <div className="flex items-center justify-between p-4 border-b">
-            <h2 className="text-lg font-semibold text-amber-900">Nuevo Ajuste de Cliente</h2>
-            <button onClick={() => { setShowModal(false); setAjusteLineas([]); setAjusteClienteId(null) }} className="text-gray-500 hover:text-gray-700">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          <form onSubmit={async (e) => {
+      <div>
+        <form id="form-nuevo-ajuste" onSubmit={async (e) => {
             e.preventDefault()
             const formData = new FormData(e.currentTarget)
             const cliente = clientes.find(c => c.id === ajusteClienteId)
@@ -15633,7 +15698,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               return
             }
             const tipo = (formData.get("tipo") as string) || "nota_credito"
-            const payload = {
+            const sucursalNombre = sucursalActiva?.nombre ?? ""
+            const apiPayload = {
               cliente_id: cliente.id,
               cliente_nombre: cliente.nombre,
               tipo,
@@ -15642,7 +15708,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               concepto: formData.get("concepto") as string,
               moneda: formData.get("moneda") as string,
               nota_venta_numero: null,
-              sucursal: sucursalActiva?.nombre ?? "",
+              sucursal_id: sucursalActiva?.id ?? null,
               categoria: (formData.get("categoria") as string) || null,
               lineas: ajusteLineas,
               total: totalAjuste,
@@ -15653,61 +15719,103 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               const res = await fetch("/api/ajustes-clientes", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
+                body: JSON.stringify(apiPayload),
               })
               if (res.ok) {
                 const data = await res.json()
                 idFinal = data.id
                 numeroFinal = data.numero
+              } else {
+                const errBody = await res.text()
+                console.error("[ajustes] API respondió error:", res.status, errBody)
+                alert(`No se pudo guardar el ajuste (${res.status}). Revisá la consola.`)
+                return
               }
             } catch (err) {
               console.error("[ajustes] error al persistir:", err)
+              alert("Error de red al guardar el ajuste.")
+              return
             }
             const newAjuste: AjusteCliente = {
               id: idFinal,
               numero: numeroFinal,
-              ...payload,
-              moneda: payload.moneda as "ARS" | "USD",
+              cliente_id: apiPayload.cliente_id,
+              cliente_nombre: apiPayload.cliente_nombre,
+              estado: "publicado",
+              fecha: apiPayload.fecha,
+              concepto: apiPayload.concepto,
+              moneda: apiPayload.moneda as "ARS" | "USD",
+              nota_venta_numero: null,
+              sucursal: sucursalNombre,
+              categoria: apiPayload.categoria,
+              toma_equipo_id: null,
+              es_automatica: false,
+              lineas: apiPayload.lineas,
+              total: apiPayload.total,
             }
             setAjustes(prev => [...prev, newAjuste])
-            setShowModal(false)
+            setCreandoAjuste(false)
             setAjusteLineas([])
             setAjusteClienteId(null)
-          }} className="p-4 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
-                <select value={ajusteClienteId || ""} onChange={(e) => setAjusteClienteId(parseInt(e.target.value))}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" required>
-                  <option value="">Seleccionar cliente...</option>
-                  {clientes.map(c => (
-                    <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Moneda</label>
-                <select name="moneda" defaultValue="ARS"
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                  <option value="ARS">ARS - Pesos</option>
-                  <option value="USD">USD - Dólares</option>
-                </select>
-              </div>
+          }} />
+
+        {/* Header con back + título a la izquierda, Cancelar + Guardar arriba a la derecha */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <BotonVolver onClick={cancelarCrearAjuste} variant="minimal" texto="" />
+            <div>
+              <h1 className="text-2xl font-bold text-amber-900">Nuevo Ajuste de Cliente</h1>
+              <p className="text-sm text-gray-500">Complete los datos para registrar el ajuste</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={cancelarCrearAjuste}
+              className="px-4 py-2 text-sm font-medium border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">
+              Cancelar
+            </button>
+            <button type="submit" form="form-nuevo-ajuste"
+              className="px-4 py-2 text-sm font-medium text-white bg-indigo-900 rounded-md hover:bg-indigo-800">
+              Guardar
+            </button>
+          </div>
+        </div>
+
+        {/* Cuerpo del formulario */}
+        <div className="bg-white rounded-lg shadow-sm p-6 space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
+              <select form="form-nuevo-ajuste" value={ajusteClienteId || ""} onChange={(e) => setAjusteClienteId(parseInt(e.target.value))}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" required>
+                <option value="">Seleccionar cliente...</option>
+                {clientes.map(c => (
+                  <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Concepto *</label>
-              <input type="text" name="concepto" required placeholder="Ej: Bonificación especial, Ajuste de saldo..."
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Moneda</label>
+              <select form="form-nuevo-ajuste" name="moneda" defaultValue="ARS"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <option value="ARS">ARS - Pesos</option>
+                <option value="USD">USD - Dólares</option>
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
-              <select name="categoria" className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+              <select form="form-nuevo-ajuste" name="categoria" className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                 <option value="">Sin categoría</option>
                 {ncCategorias.filter(c => c.activa).map(c => (
                   <option key={c.id} value={c.nombre}>{c.nombre}</option>
                 ))}
               </select>
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Concepto *</label>
+            <input form="form-nuevo-ajuste" type="text" name="concepto" required placeholder="Ej: Bonificación especial, Ajuste de saldo..."
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          </div>
 
             {/* Líneas */}
             <div className="border rounded-lg overflow-hidden">
@@ -15738,7 +15846,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                             updated[index].descripcion = e.target.value
                             setAjusteLineas(updated)
                           }}
-                          placeholder="Descripci��n del ajuste"
+                          placeholder="Descripción del ajuste"
                           className="w-full border border-gray-300 rounded px-2 py-1 text-sm" />
                       </td>
                       <td className="py-2 px-3">
@@ -15779,26 +15887,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </table>
             </div>
 
-            <div className="flex justify-between items-center pt-2">
-              <span className={`text-lg font-bold ${totalAjuste < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
-                Total: {formatCurrency(totalAjuste)}
-              </span>
-              <span className="text-sm text-gray-500">
-                {totalAjuste < 0 ? "(Crédito a favor del cliente)" : "(Débito al cliente)"}
-              </span>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-4 border-t">
-              <button type="button" onClick={() => { setShowModal(false); setAjusteLineas([]); setAjusteClienteId(null) }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
-                Cancelar
-              </button>
-              <button type="submit"
-                className="px-4 py-2 text-sm font-medium text-white bg-indigo-900 rounded-md hover:bg-indigo-800">
-                Crear Ajuste
-              </button>
-            </div>
-          </form>
+          <div className="flex justify-between items-center pt-2">
+            <span className={`text-lg font-bold ${totalAjuste < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+              Total: {formatCurrency(totalAjuste)}
+            </span>
+            <span className="text-sm text-gray-500">
+              {totalAjuste < 0 ? "(Crédito a favor del cliente)" : "(Débito al cliente)"}
+            </span>
+          </div>
         </div>
       </div>
     )
@@ -15815,7 +15911,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       {showModal && modalType === "cliente" && renderClienteModal()}
       {showModal && modalType === "nota_venta" && renderNotaVentaModal()}
       {showModal && modalType === "recibo" && renderReciboModal()}
-      {showModal && modalType === "ajuste" && renderAjusteModal()}
       
       {/* Popups de detalle NC y Recepción (globales) */}
       {renderNcDetallePopup()}

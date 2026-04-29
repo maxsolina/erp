@@ -9423,6 +9423,7 @@ function FinanzasListSection<T extends object>({
 export type { RecargoTarjeta as RecargoTarjetaType }
 
 export default function ModuloFinanzas() {
+  const { canSee } = useERP()
   const [activeItem, setActiveItem] = useState<string>("extractos_caja")
   const [tarjetas, setTarjetas] = useState<Tarjeta[]>([])
   const [grupos, setGrupos] = useState<GrupoTarjeta[]>([])
@@ -9436,6 +9437,19 @@ export default function ModuloFinanzas() {
   const [menuExpandido, setMenuExpandido] = useState<Record<string, boolean>>({
     bancoYCaja: true, operaciones: false, cheques: false, tarjetasConc: false, configuracion: false,
   })
+
+  // Helper: ¿el usuario tiene permiso para ver esta sub-vista de Finanzas?
+  // El item id del sidebar coincide con el sub-vista del catálogo (ej: "extractos_caja").
+  const itemPermitido = (id: string) => canSee("finanzas", id)
+
+  // Si el usuario está en una vista que ya no puede ver, lo mandamos al primer item permitido o al primero default.
+  useEffect(() => {
+    if (itemPermitido(activeItem)) return
+    const fallbacks = ["extractos_caja", "registros_caja", "ajustes_caja", "registros_banco", "depositos", "cheques_terceros", "cupones", "conceptos"]
+    const ok = fallbacks.find(itemPermitido)
+    if (ok) setActiveItem(ok)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeItem, canSee])
 
   const renderSidebar = () => (
     <div className="w-56 bg-white border-r border-gray-200 h-[calc(100vh-44px)] overflow-y-auto">
@@ -9451,6 +9465,7 @@ export default function ModuloFinanzas() {
         </div>
 
         {/* BANCO Y CAJA */}
+        {["extractos_caja","registros_caja","ajustes_caja","registros_banco","ajustes_banco","transferencias_caja","conciliacion_bancaria"].some(itemPermitido) && (
         <div className="mb-2">
           <button
             onClick={() => setMenuExpandido(prev => ({ ...prev, bancoYCaja: !prev.bancoYCaja }))}
@@ -9462,39 +9477,55 @@ export default function ModuloFinanzas() {
           </button>
           {menuExpandido.bancoYCaja && (
             <div className="ml-2">
+              {itemPermitido("extractos_caja") && (
               <button onClick={() => setActiveItem("extractos_caja")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "extractos_caja" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <Receipt className="w-4 h-4" /> Extractos de Caja
               </button>
+              )}
+              {itemPermitido("registros_caja") && (
               <button onClick={() => setActiveItem("registros_caja")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "registros_caja" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <BookOpen className="w-4 h-4" /> Registros de Caja
               </button>
+              )}
+              {itemPermitido("ajustes_caja") && (
               <button onClick={() => setActiveItem("ajustes_caja")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "ajustes_caja" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <Edit className="w-4 h-4" /> Ajustes de Caja
               </button>
+              )}
+              {itemPermitido("registros_banco") && (
               <button onClick={() => setActiveItem("registros_banco")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "registros_banco" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <Landmark className="w-4 h-4" /> Registros de Banco
               </button>
+              )}
+              {itemPermitido("ajustes_banco") && (
               <button onClick={() => setActiveItem("ajustes_banco")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "ajustes_banco" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <Edit className="w-4 h-4" /> Ajustes de Banco
               </button>
+              )}
+              {itemPermitido("transferencias_caja") && (
               <button onClick={() => setActiveItem("transferencias_caja")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "transferencias_caja" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <ArrowRightLeft className="w-4 h-4" /> Transferencias de Caja
               </button>
+              )}
+              {itemPermitido("conciliacion_bancaria") && (
               <button onClick={() => setActiveItem("conciliacion_bancaria")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "conciliacion_bancaria" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <FileCheck className="w-4 h-4" /> Conciliación Bancaria
               </button>
+              )}
             </div>
           )}
         </div>
+        )}
 
         {/* OPERACIONES FINANCIERAS */}
+        {["depositos","extracciones","transferencias_bancarias","conversion_monedas","prestamos","negociacion_cheques"].some(itemPermitido) && (
         <div className="mb-2">
           <button
             onClick={() => setMenuExpandido(prev => ({ ...prev, operaciones: !prev.operaciones }))}
@@ -9506,35 +9537,49 @@ export default function ModuloFinanzas() {
           </button>
           {menuExpandido.operaciones && (
             <div className="ml-2">
+              {itemPermitido("depositos") && (
               <button onClick={() => setActiveItem("depositos")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "depositos" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <Banknote className="w-4 h-4" /> Depósitos
               </button>
+              )}
+              {itemPermitido("extracciones") && (
               <button onClick={() => setActiveItem("extracciones")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "extracciones" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <Banknote className="w-4 h-4" /> Extracciones
               </button>
+              )}
+              {itemPermitido("transferencias_bancarias") && (
               <button onClick={() => setActiveItem("transferencias_bancarias")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "transferencias_bancarias" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <ArrowRightLeft className="w-4 h-4" /> Transferencias Bancarias
               </button>
+              )}
+              {itemPermitido("conversion_monedas") && (
               <button onClick={() => setActiveItem("conversion_monedas")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "conversion_monedas" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <RefreshCw className="w-4 h-4" /> Conversión de Monedas
               </button>
+              )}
+              {itemPermitido("prestamos") && (
               <button onClick={() => setActiveItem("prestamos")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "prestamos" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <DollarSign className="w-4 h-4" /> Préstamos
               </button>
+              )}
+              {itemPermitido("negociacion_cheques") && (
               <button onClick={() => setActiveItem("negociacion_cheques")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "negociacion_cheques" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <FileCheck className="w-4 h-4" /> Negociación de Cheques
               </button>
+              )}
             </div>
           )}
         </div>
+        )}
 
         {/* CHEQUES */}
+        {["cheques_terceros","cheques_propios"].some(itemPermitido) && (
         <div className="mb-2">
           <button
             onClick={() => setMenuExpandido(prev => ({ ...prev, cheques: !prev.cheques }))}
@@ -9546,19 +9591,25 @@ export default function ModuloFinanzas() {
           </button>
           {menuExpandido.cheques && (
             <div className="ml-2">
+              {itemPermitido("cheques_terceros") && (
               <button onClick={() => setActiveItem("cheques_terceros")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "cheques_terceros" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <FileCheck className="w-4 h-4" /> Cheques de Terceros
               </button>
+              )}
+              {itemPermitido("cheques_propios") && (
               <button onClick={() => setActiveItem("cheques_propios")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "cheques_propios" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <FileCheck className="w-4 h-4" /> Cheques Propios
               </button>
+              )}
             </div>
           )}
         </div>
+        )}
 
         {/* CONCILIACIÓN DE TARJETAS */}
+        {["cupones","conciliacion_tarjetas"].some(itemPermitido) && (
         <div className="mb-2">
           <button
             onClick={() => setMenuExpandido(prev => ({ ...prev, tarjetasConc: !prev.tarjetasConc }))}
@@ -9570,19 +9621,25 @@ export default function ModuloFinanzas() {
           </button>
           {menuExpandido.tarjetasConc && (
             <div className="ml-2">
+              {itemPermitido("cupones") && (
               <button onClick={() => setActiveItem("cupones")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "cupones" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <CreditCard className="w-4 h-4" /> Cupones
               </button>
+              )}
+              {itemPermitido("conciliacion_tarjetas") && (
               <button onClick={() => setActiveItem("conciliacion_tarjetas")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "conciliacion_tarjetas" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <FileCheck className="w-4 h-4" /> Conciliación
               </button>
+              )}
             </div>
           )}
         </div>
+        )}
 
         {/* CONFIGURACIÓN */}
+        {["conceptos","bancos_config","cajas","tarjetas","grupos","recargos","tipos_prestamos","simulador"].some(itemPermitido) && (
         <div className="mb-2">
           <button
             onClick={() => setMenuExpandido(prev => ({ ...prev, configuracion: !prev.configuracion }))}
@@ -9594,41 +9651,58 @@ export default function ModuloFinanzas() {
           </button>
           {menuExpandido.configuracion && (
             <div className="ml-2">
+              {itemPermitido("conceptos") && (
               <button onClick={() => setActiveItem("conceptos")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "conceptos" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <BookOpen className="w-4 h-4" /> Conceptos
               </button>
+              )}
+              {itemPermitido("bancos_config") && (
               <button onClick={() => setActiveItem("bancos_config")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "bancos_config" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <Landmark className="w-4 h-4" /> Bancos
               </button>
+              )}
+              {itemPermitido("cajas") && (
               <button onClick={() => setActiveItem("cajas")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "cajas" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <Wallet className="w-4 h-4" /> Cajas
               </button>
+              )}
+              {itemPermitido("tarjetas") && (
               <button onClick={() => setActiveItem("tarjetas")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "tarjetas" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <CreditCard className="w-4 h-4" /> Tarjetas
               </button>
+              )}
+              {itemPermitido("grupos") && (
               <button onClick={() => setActiveItem("grupos")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "grupos" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <Building2 className="w-4 h-4" /> Grupos de Tarjetas
               </button>
+              )}
+              {itemPermitido("recargos") && (
               <button onClick={() => setActiveItem("recargos")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "recargos" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <Percent className="w-4 h-4" /> Recargos de Tarjetas
               </button>
+              )}
+              {itemPermitido("tipos_prestamos") && (
               <button onClick={() => setActiveItem("tipos_prestamos")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "tipos_prestamos" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <DollarSign className="w-4 h-4" /> Tipos de Préstamos
               </button>
+              )}
+              {itemPermitido("simulador") && (
               <button onClick={() => setActiveItem("simulador")}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeItem === "simulador" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
                 <Calculator className="w-4 h-4" /> Simulador de Recargos
               </button>
+              )}
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   )

@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react"
+import Link from "next/link"
 import { Menu, X } from "lucide-react"
 import ModuloHome from "@/components/modulo-home"
 import ModuloVentas, { type ClienteVenta } from "@/components/ventas-module"
@@ -9,9 +10,24 @@ import ModuloStock from "@/components/modulo-stock"
 import ModuloInformes from "@/components/modulo-informes"
 import ModuloContabilidad from "@/components/modulo-contabilidad"
 import ModuloFinanzas from "@/components/modulo-finanzas"
-import ERPWrapper from "@/components/erp-wrapper"
 import ModuloConfigSucursales from "@/components/modulo-config-sucursales"
+import ModuloUsuarios from "@/components/modulo-usuarios"
 import ModuloTaller from "@/components/modulo-taller"
+import { useERP } from "@/contexts/erp-context"
+
+// Mapeo del id del topbar al "modulo" del catalogo de permisos.
+// null = siempre visible (no controlado por permisos todavía).
+const TOPBAR_TO_VISTA: Record<string, string | null> = {
+  home:         null,                  // dashboard, siempre visible
+  taller:       "servicio_tecnico",
+  ventas:       "ventas",
+  compras:      "compras",
+  finanzas:     "finanzas",
+  contabilidad: "contabilidad",
+  deposito:     "stock",
+  informes:     "reportes",
+  config:       "configuracion",
+}
 
 // Types
 interface Cliente {
@@ -502,8 +518,18 @@ const mockEtapasOT: EtapaOT[] = [
 
 // Main Component
 function CellHomeERPContent() {
+  const { canSee } = useERP()
   const [activeModule, setActiveModule] = useState("home")
   const [activeView, setActiveView] = useState("dashboard")
+
+  // Si el módulo activo deja de estar permitido (cambio de permisos), redirigimos al home.
+  useEffect(() => {
+    const v = TOPBAR_TO_VISTA[activeModule]
+    if (v !== null && v !== undefined && !canSee(v)) {
+      setActiveModule("home")
+      setActiveView("dashboard")
+    }
+  }, [activeModule, canSee])
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [configSidebarOpen, setConfigSidebarOpen] = useState(false)
   const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>([])
@@ -2536,19 +2562,24 @@ function CellHomeERPContent() {
         </div>
         {/* Desktop tabs */}
         <div className="hidden md:flex ml-6 gap-1 overflow-x-auto">
-          {["home", "taller", "ventas", "compras", "finanzas", "contabilidad", "deposito", "informes", "config"].map(mod => (
-            <button
-              key={mod}
-              onClick={() => { setActiveModule(mod); setActiveView("dashboard") }}
-              className={`px-3 py-2 text-sm rounded transition-colors whitespace-nowrap ${
-                activeModule === mod 
-                  ? "bg-white/20 text-white" 
-                  : "text-white/80 hover:bg-white/10 hover:text-white"
-              }`}
-            >
-              {mod.charAt(0).toUpperCase() + mod.slice(1)}
-            </button>
-          ))}
+          {["home", "taller", "ventas", "compras", "finanzas", "contabilidad", "deposito", "informes", "config"]
+            .filter(mod => {
+              const v = TOPBAR_TO_VISTA[mod]
+              return v === null || canSee(v)
+            })
+            .map(mod => (
+              <button
+                key={mod}
+                onClick={() => { setActiveModule(mod); setActiveView("dashboard") }}
+                className={`px-3 py-2 text-sm rounded transition-colors whitespace-nowrap ${
+                  activeModule === mod
+                    ? "bg-white/20 text-white"
+                    : "text-white/80 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                {mod.charAt(0).toUpperCase() + mod.slice(1)}
+              </button>
+            ))}
         </div>
         {/* Mobile hamburger */}
         <button
@@ -2567,19 +2598,24 @@ function CellHomeERPContent() {
             onClick={() => setMobileMenuOpen(false)}
           />
           <div className="md:hidden fixed top-11 left-0 right-0 bg-indigo-900 z-40 shadow-xl pb-3">
-            {["home", "taller", "ventas", "compras", "finanzas", "contabilidad", "deposito", "informes", "config"].map(mod => (
-              <button
-                key={mod}
-                onClick={() => { setActiveModule(mod); setActiveView("dashboard"); setMobileMenuOpen(false) }}
-                className={`w-full text-left px-5 py-3 text-sm border-b border-white/10 transition-colors ${
-                  activeModule === mod
-                    ? "bg-white/20 text-white font-medium"
-                    : "text-white/80 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                {mod.charAt(0).toUpperCase() + mod.slice(1)}
-              </button>
-            ))}
+            {["home", "taller", "ventas", "compras", "finanzas", "contabilidad", "deposito", "informes", "config"]
+              .filter(mod => {
+                const v = TOPBAR_TO_VISTA[mod]
+                return v === null || canSee(v)
+              })
+              .map(mod => (
+                <button
+                  key={mod}
+                  onClick={() => { setActiveModule(mod); setActiveView("dashboard"); setMobileMenuOpen(false) }}
+                  className={`w-full text-left px-5 py-3 text-sm border-b border-white/10 transition-colors ${
+                    activeModule === mod
+                      ? "bg-white/20 text-white font-medium"
+                      : "text-white/80 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  {mod.charAt(0).toUpperCase() + mod.slice(1)}
+                </button>
+              ))}
           </div>
         </>
       )}
@@ -2643,38 +2679,35 @@ function CellHomeERPContent() {
           <aside className={`bg-white border-r border-gray-200 fixed top-11 left-0 bottom-0 overflow-y-auto z-30 transition-transform duration-200 w-52
             ${configSidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}>
             <div className="p-4">
-              <div className="mb-6">
-                <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">General</h3>
-                <button
-                  onClick={() => { setActiveView("sucursales"); setConfigSidebarOpen(false) }}
-                  className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${activeView === "sucursales" ? "bg-indigo-100 text-indigo-800 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
-                >
-                  Sucursales
-                </button>
-              </div>
-              <div className="mb-6">
-                <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Mi Configuración</h3>
-                <button
-                  onClick={() => { setActiveView("preferencias_usuario"); setConfigSidebarOpen(false) }}
-                  className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${activeView === "preferencias_usuario" ? "bg-indigo-100 text-indigo-800 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
-                >
-                  Preferencias
-                </button>
-              </div>
+              {canSee("configuracion", "sucursales") && (
+                <div className="mb-6">
+                  <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">General</h3>
+                  <Link
+                    href="/sucursales"
+                    onClick={() => setConfigSidebarOpen(false)}
+                    className="block w-full text-left px-3 py-2 text-sm rounded-md transition-colors text-gray-600 hover:bg-gray-100"
+                  >
+                    Sucursales
+                  </Link>
+                </div>
+              )}
+              {canSee("configuracion", "usuarios") && (
+                <div className="mb-6">
+                  <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Usuarios y Permisos</h3>
+                  <Link
+                    href="/usuarios"
+                    onClick={() => setConfigSidebarOpen(false)}
+                    className="block w-full text-left px-3 py-2 text-sm rounded-md transition-colors text-gray-600 hover:bg-gray-100"
+                  >
+                    Usuarios
+                  </Link>
+                </div>
+              )}
             </div>
           </aside>
           {/* Contenido Config */}
           <main className="flex-1 p-4 md:p-6 md:ml-52 min-h-[calc(100vh-44px)]">
-            {activeView === "sucursales" && <ModuloConfigSucursales />}
-            {activeView === "preferencias_usuario" && (
-              <div className="max-w-2xl">
-                <h1 className="text-2xl font-bold text-amber-900 mb-4">Mis Preferencias</h1>
-                <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-100">
-                  <h2 className="text-sm font-semibold text-gray-700 mb-2">Caja default para cobros</h2>
-                  <p className="text-sm text-gray-500">Próximamente — vas a poder elegir tu caja por defecto para que el ERP la pre-seleccione al registrar cobros desde una factura.</p>
-                </div>
-              </div>
-            )}
+            {/* Sucursales y Usuarios migrados a sus rutas top-level. El sidebar ahora tiene Links. */}
             {activeView === "dashboard" && (
               <div className="flex items-center justify-center h-96 text-gray-400 text-sm">
                 Seleccioná una sección del menú lateral
@@ -3800,9 +3833,6 @@ function ConfigModal({ title, onClose, onSave, children }: ConfigModalProps) {
 
 // Export wrapped component with auth
 export default function CellHomeERP() {
-  return (
-    <ERPWrapper>
-      <CellHomeERPContent />
-    </ERPWrapper>
-  )
+  // El ERPProvider y el gate de auth ahora viven en app/(dashboard)/layout.tsx
+  return <CellHomeERPContent />
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useCallback, useMemo } from "react"
+import { useERP } from "@/contexts/erp-context"
 import {
   Search, Plus, X, ChevronDown, ArrowLeft, CheckCircle, Clock, AlertCircle,
   XCircle, MoreHorizontal, Edit, Trash2, Eye, Save, Settings, User, Wrench,
@@ -152,9 +153,45 @@ function CRUDTableWithFilter({
 }
 
 // ─── Componente principal ───────────────────────────────────────────────────
+// Mapeo del key del sidebar de Taller al sub-vista del catálogo (servicio_tecnico).
+const TALLER_KEY_TO_VISTA: Record<string, string | null> = {
+  dashboard:           "dashboard",
+  ordenes:             "ordenes_trabajo",
+  cat_tecnicos:        "tecnicos",
+  cat_equipos:         "equipos",
+  cat_fallas:          "fallas",
+  cfg_areas:           "areas",
+  cfg_categorias:      "categorias_reparacion",
+  cfg_tipos_ot:        "tipos_ot",
+  cfg_fallas_equipo:   "fallas_equipo",
+  cfg_turnos:          "turnos",
+  cfg_feriados:        "feriados",
+  cfg_controles:       "controles",
+  cfg_motivos_cierre:  "motivos_cierre",
+  kanban:              "kanban",
+  nueva_ot:            "ordenes_trabajo", // formulario, comparte permiso con OT
+  detalle_ot:          "ordenes_trabajo",
+}
+
 export default function ModuloTaller() {
+  const { canSee } = useERP()
+  const itemPermitidoTaller = (key: string): boolean => {
+    const sub = TALLER_KEY_TO_VISTA[key]
+    if (sub === null || sub === undefined) return true
+    return canSee("servicio_tecnico", sub)
+  }
+
   const [view, setView] = useState("dashboard")
   const [loading, setLoading] = useState(false)
+
+  // Guard: si la vista activa ya no es permitida, redirige al primer item permitido
+  useEffect(() => {
+    if (itemPermitidoTaller(view)) return
+    const fallbacks = ["dashboard", "ordenes", "kanban", "cat_tecnicos", "cfg_areas"]
+    const ok = fallbacks.find(itemPermitidoTaller)
+    if (ok) setView(ok)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, canSee])
 
   // ── Datos maestros ──
   const [areas, setAreas] = useState<TallerArea[]>([])
@@ -352,51 +389,62 @@ export default function ModuloTaller() {
   // ════════════════════════════════════════════════════════════════════════
   // SIDEBAR
   // ════════════════════════════════════════════════════════════════════════
-  const renderSidebar = () => (
+  const renderSidebar = () => {
+    const principal = [
+      { key: "dashboard", label: "Dashboard" },
+      { key: "ordenes", label: "Órdenes de Trabajo" },
+    ].filter(it => itemPermitidoTaller(it.key))
+    const catalogos = [
+      { key: "cat_tecnicos", label: "Técnicos" },
+      { key: "cat_equipos", label: "Equipos" },
+      { key: "cat_fallas", label: "Fallas" },
+    ].filter(it => itemPermitidoTaller(it.key))
+    const config = [
+      { key: "cfg_areas", label: "Áreas de Reparación" },
+      { key: "cfg_categorias", label: "Categorías Reparación" },
+      { key: "cfg_tipos_ot", label: "Tipos de OT" },
+      { key: "cfg_fallas_equipo", label: "Fallas por Equipos" },
+      { key: "cfg_turnos", label: "Turnos de Técnicos" },
+      { key: "cfg_feriados", label: "Feriados" },
+      { key: "cfg_controles", label: "Controles / Checklist" },
+      { key: "cfg_motivos_cierre", label: "Motivos de Cierre" },
+    ].filter(it => itemPermitidoTaller(it.key))
+    return (
     <div className="p-4">
+      {principal.length > 0 && (
       <div className="mb-6">
         <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Principal</h3>
-        {[
-          { key: "dashboard", label: "Dashboard" },
-          { key: "ordenes", label: "Órdenes de Trabajo" },
-        ].map(item => (
+        {principal.map(item => (
           <button key={item.key} onClick={() => setView(item.key)}
             className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${view === item.key ? "bg-indigo-100 text-indigo-800 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
             {item.label}
           </button>
         ))}
       </div>
+      )}
+      {catalogos.length > 0 && (
       <div className="mb-6">
         <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Catálogos</h3>
-        {[
-          { key: "cat_tecnicos", label: "Técnicos" },
-          { key: "cat_equipos", label: "Equipos" },
-          { key: "cat_fallas", label: "Fallas" },
-        ].map(item => (
+        {catalogos.map(item => (
           <button key={item.key} onClick={() => setView(item.key)}
             className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${view === item.key ? "bg-indigo-100 text-indigo-800 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
             {item.label}
           </button>
         ))}
       </div>
+      )}
+      {config.length > 0 && (
       <div className="mb-6">
         <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Configuración</h3>
-        {[
-          { key: "cfg_areas", label: "Áreas de Reparación" },
-          { key: "cfg_categorias", label: "Categorías Reparación" },
-          { key: "cfg_tipos_ot", label: "Tipos de OT" },
-          { key: "cfg_fallas_equipo", label: "Fallas por Equipos" },
-          { key: "cfg_turnos", label: "Turnos de Técnicos" },
-          { key: "cfg_feriados", label: "Feriados" },
-          { key: "cfg_controles", label: "Controles / Checklist" },
-          { key: "cfg_motivos_cierre", label: "Motivos de Cierre" },
-        ].map(item => (
+        {config.map(item => (
           <button key={item.key} onClick={() => setView(item.key)}
             className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${view === item.key ? "bg-indigo-100 text-indigo-800 font-medium" : "text-gray-600 hover:bg-gray-100"}`}>
             {item.label}
           </button>
         ))}
       </div>
+      )}
+      {itemPermitidoTaller("kanban") && (
       <div className="mb-6">
         <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Vistas Técnico</h3>
         <button onClick={() => setView("kanban")}
@@ -404,8 +452,10 @@ export default function ModuloTaller() {
           Kanban Técnicos
         </button>
       </div>
+      )}
     </div>
-  )
+    )
+  }
 
   // ════════════════════════════════════════════════════════════════════════
   // DASHBOARD

@@ -24,18 +24,39 @@ export async function POST(req: Request) {
   const supabase = await createClient()
   const body = await req.json()
 
-  // Generar número correlativo según tipo
-  const prefix = body.tipo === "nota_debito" ? "ND-A" : "NC-A"
+  // tipo es solo metadata del front para elegir prefijo (NC/ND).
+  // No es una columna de la tabla.
+  const tipo = body.tipo === "nota_debito" ? "nota_debito" : "nota_credito"
+  const prefix = tipo === "nota_debito" ? "ND-A" : "NC-A"
+
+  // Generar correlativo contando por prefijo de número (no por columna `tipo`)
   const { count } = await supabase
     .from("ajustes_clientes")
     .select("*", { count: "exact", head: true })
-    .eq("tipo", body.tipo ?? "nota_credito")
+    .like("numero", `${prefix}-%`)
   const seq = (count ?? 0) + 1
   const numero = `${prefix}-${String(seq).padStart(5, "0")}`
 
+  // Sólo columnas que realmente existen en la tabla
+  const insertData: Record<string, any> = {
+    numero,
+    fecha: body.fecha,
+    cliente_id: body.cliente_id,
+    cliente_nombre: body.cliente_nombre,
+    estado: body.estado ?? "publicado",
+    concepto: body.concepto,
+    moneda: body.moneda ?? "ARS",
+    categoria: body.categoria ?? null,
+    nota_venta_numero: body.nota_venta_numero ?? null,
+    toma_equipo_id: body.toma_equipo_id ?? null,
+    sucursal_id: body.sucursal_id ?? null,
+    lineas: body.lineas ?? [],
+    total: body.total ?? 0,
+  }
+
   const { data, error } = await supabase
     .from("ajustes_clientes")
-    .insert({ ...body, numero })
+    .insert(insertData)
     .select()
     .single()
   if (error) return dbError(error)

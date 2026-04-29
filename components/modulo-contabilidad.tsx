@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react"
 import ReactDOM from "react-dom"
+import { useERP } from "@/contexts/erp-context"
 import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
 import {
   BookOpen, ChevronDown, ChevronRight, Plus, Pencil, Trash2, X, Check,
@@ -2356,8 +2357,20 @@ const menuConfig = [
 // â”€â”€â”€ COMPONENTE PRINCIPAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function ModuloContabilidad() {
+  const { canSee } = useERP()
+  const itemPermitidoCont = (id: string): boolean => canSee("contabilidad", id)
+
   const [activeView, setActiveView] = useState("asientos-automaticos")
   const [expandedSections, setExpandedSections] = useState<string[]>(["asientos", "configuracion"])
+
+  // Guard: si la vista activa ya no es permitida, redirige al primer item visible
+  useEffect(() => {
+    if (itemPermitidoCont(activeView)) return
+    const fallbacks = ["asientos-automaticos", "asientos-manuales", "libro-mayor", "plan-cuentas", "anos-fiscales", "balance-general"]
+    const ok = fallbacks.find(itemPermitidoCont)
+    if (ok) setActiveView(ok)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView, canSee])
 
   const toggleSection = (id: string) =>
     setExpandedSections(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id])
@@ -2401,6 +2414,8 @@ export default function ModuloContabilidad() {
           {menuConfig.map(section => {
             const Icon = section.icon
             const expanded = expandedSections.includes(section.id)
+            const itemsVisibles = section.items.filter(it => itemPermitidoCont(it.id))
+            if (itemsVisibles.length === 0) return null
             return (
               <div key={section.id}>
                 <button onClick={() => toggleSection(section.id)}
@@ -2409,7 +2424,7 @@ export default function ModuloContabilidad() {
                   <span className="flex-1 text-left">{section.label}</span>
                   {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                 </button>
-                {expanded && section.items.map(item => (
+                {expanded && itemsVisibles.map(item => (
                   <button key={item.id} onClick={() => setActiveView(item.id)}
                     className={`w-full text-left px-4 py-1.5 text-sm transition-colors ${
                       activeView === item.id

@@ -1,6 +1,7 @@
 ﻿"use client"
 
 import React, { useState, useEffect, useMemo } from "react"
+import Link from "next/link"
 import ReactDOM from "react-dom"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Settings, Lock, Unlock, FileBox, Ship, Plane, Pencil, ChevronLeft, ChevronRight as ChevronRightIcon } from "lucide-react"
 import BotonVolver from "./ui/boton-volver"
@@ -1177,7 +1178,30 @@ export default function ModuloCompras({
     sucursalActiva,
     recargarProductos,
     currentUser,
+    canSee,
   } = useERP()
+
+  // Mapeo del id del sidebar al sub-vista del catálogo (catalogo_permisos).
+  const SIDEBAR_COMPRAS_TO_VISTA: Record<string, string | null> = {
+    proveedores:           "proveedores",
+    cta_cte_proveedores:   "cta_cte",
+    historial_proveedores: "historial",
+    conciliacion_deuda:    "conciliacion_deuda",
+    ordenes_compra:        "ordenes_compra",
+    recepciones:           "recepciones",
+    facturas_compra:       "facturas",
+    nc_compra:             "notas_credito",
+    nd_compra:             "notas_debito",
+    legajos_importacion:   "legajos_importacion",
+    despachos_simples:     "despachos_simples",
+    ordenes_pago:          "ordenes_pago",
+    cat_proveedores:       "cat_proveedores",
+  }
+  const itemPermitido = (id: string): boolean => {
+    const sub = SIDEBAR_COMPRAS_TO_VISTA[id]
+    if (sub === null || sub === undefined) return true
+    return canSee("compras", sub)
+  }
 
   // Carga inicial desde Supabase
   useEffect(() => {
@@ -1229,7 +1253,17 @@ export default function ModuloCompras({
   }, [])
 
   // Active view state
-  const [activeView, setActiveView] = useState("proveedores")
+  // Proveedores migrado a /proveedores (top-level). Default arranca en órdenes de compra.
+  const [activeView, setActiveView] = useState("ordenes_compra")
+
+  // Guard: si el usuario está en una vista que ya no puede ver, lo mandamos al primer item permitido.
+  useEffect(() => {
+    if (itemPermitido(activeView)) return
+    const fallbacks = ["proveedores", "ordenes_compra", "facturas_compra", "ordenes_pago", "cta_cte_proveedores", "historial_proveedores"]
+    const ok = fallbacks.find(itemPermitido)
+    if (ok) setActiveView(ok)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView, canSee])
   const [expandedSections, setExpandedSections] = useState<string[]>(["proveedores", "compras", "comprobantes", "pagos", "configuracion", "cfg_categorias"])
 
   // Navegación externa: ir a una recepción por número
@@ -1795,7 +1829,10 @@ export default function ModuloCompras({
   const renderSidebar = () => (
     <div className="p-3 space-y-1">
       {/* Secciones principales (Proveedores, Compras, Comprobantes, Pagos) */}
-      {menuSections.map(section => (
+      {menuSections.map(section => {
+        const itemsVisibles = section.items.filter(it => itemPermitido(it.id))
+        if (itemsVisibles.length === 0) return null
+        return (
         <div key={section.id}>
           <button
             onClick={() => toggleSection(section.id)}
@@ -1813,26 +1850,43 @@ export default function ModuloCompras({
           </button>
           {expandedSections.includes(section.id) && (
             <div className="ml-4 mt-1 space-y-1">
-              {section.items.map(item => (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveView(item.id)}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                    activeView === item.id
-                      ? "bg-orange-50 text-orange-600 font-medium"
-                      : "text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  <item.icon className="w-4 h-4" />
-                  {item.label}
-                </button>
-              ))}
+              {itemsVisibles.map(item => {
+                // Items que ya viven en rutas top-level: usar Link para Ctrl+Click nativo
+                if (item.id === "proveedores") {
+                  return (
+                    <Link
+                      key={item.id}
+                      href="/proveedores"
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      <item.icon className="w-4 h-4" />
+                      {item.label}
+                    </Link>
+                  )
+                }
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveView(item.id)}
+                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                      activeView === item.id
+                        ? "bg-orange-50 text-orange-600 font-medium"
+                        : "text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    <item.icon className="w-4 h-4" />
+                    {item.label}
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
-      ))}
+        )
+      })}
 
       {/* ── CONFIGURACIÓN ─────────────────────── */}
+      {configSubGroups.some(g => g.items.some(it => itemPermitido(it.id))) && (
       <div className="mt-3">
         <button
           onClick={() => toggleSection("configuracion")}
@@ -1851,7 +1905,10 @@ export default function ModuloCompras({
 
         {expandedSections.includes("configuracion") && (
           <div className="ml-4 mt-1 space-y-0.5">
-            {configSubGroups.map(group => (
+            {configSubGroups.map(group => {
+              const itemsVisibles = group.items.filter(it => itemPermitido(it.id))
+              if (itemsVisibles.length === 0) return null
+              return (
               <div key={group.id}>
                 {/* Sub-grupo con label (ej: Categorías) */}
                 {group.label ? (
@@ -1869,7 +1926,7 @@ export default function ModuloCompras({
                     </button>
                     {expandedSections.includes(group.id) && (
                       <div className="ml-5 space-y-0.5">
-                        {group.items.map(item => (
+                        {itemsVisibles.map(item => (
                           <button
                             key={item.id}
                             onClick={() => setActiveView(item.id)}
@@ -1888,7 +1945,7 @@ export default function ModuloCompras({
                 ) : (
                   /* Ítems sueltos (sin sub-grupo) */
                   <div className="space-y-0.5">
-                    {group.items.map(item => (
+                    {itemsVisibles.map(item => (
                       <button
                         key={item.id}
                         onClick={() => setActiveView(item.id)}
@@ -1904,10 +1961,12 @@ export default function ModuloCompras({
                   </div>
                 )}
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
+      )}
     </div>
   )
 
@@ -9194,8 +9253,7 @@ export default function ModuloCompras({
   // =====================================================
   const renderContent = () => {
     switch (activeView) {
-      case "proveedores":
-        return renderProveedores()
+      // case "proveedores": migrado a /proveedores top-level. Sidebar tiene Link.
       case "cta_cte_proveedores":
         return renderCtaCteProveedores()
       case "historial_proveedores":

@@ -1,13 +1,14 @@
 "use client"
 
-import { ERPProvider, useERP } from "@/contexts/erp-context"
-import LoginPage from "@/components/login-page"
+import { useERP } from "@/contexts/erp-context"
+import { useRouter } from "next/navigation"
+import { useEffect, useRef, useState, type ReactNode } from "react"
+import { Building2, ChevronDown, Check, Ticket } from "lucide-react"
 import UserMenu from "@/components/user-menu"
 import ModuloTickets from "@/components/modulo-tickets"
-import { ReactNode, useState, useRef, useEffect } from "react"
-import { Ticket, Building2, ChevronDown, Check } from "lucide-react"
 
-// Selector de sucursal activa
+// ─── Selector de sucursal activa (idéntico al que estaba en erp-wrapper.tsx) ─
+
 function SucursalSelector() {
   const { sucursales, sucursalActiva, setSucursalActiva } = useERP()
   const [open, setOpen] = useState(false)
@@ -53,21 +54,26 @@ function SucursalSelector() {
   )
 }
 
-// Componente interno que usa el contexto
-function ERPContent({ children }: { children: ReactNode }) {
-  const { isAuthenticated, currentUser } = useERP()
+// ─── AuthGate: si no hay sesión, redirige a /login ───────────────────────────
+
+function DashboardShell({ children }: { children: ReactNode }) {
+  const { isAuthenticated } = useERP()
+  const router = useRouter()
   const [showTicketsModule, setShowTicketsModule] = useState(false)
 
-  // Si no está autenticado, mostrar login
-  if (!isAuthenticated) {
-    return <LoginPage />
-  }
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.replace("/login")
+    }
+  }, [isAuthenticated, router])
 
-  // Si está en el módulo de tickets
+  // Mientras el redirect está en vuelo no renderizamos nada para evitar el flash del shell
+  if (!isAuthenticated) return null
+
+  // Modo "Tickets" — atajo del topbar (puede sobrevivir hasta que migremos Tickets a su propia ruta)
   if (showTicketsModule) {
     return (
       <div className="min-h-screen bg-gray-50">
-        {/* Top bar */}
         <nav className="fixed top-0 left-0 right-0 h-11 bg-gray-900 flex items-center justify-between px-4 z-50">
           <div className="flex items-center gap-4">
             <button
@@ -87,10 +93,9 @@ function ERPContent({ children }: { children: ReactNode }) {
     )
   }
 
-  // Renderizar el ERP con el user menu inyectado
   return (
     <div className="relative">
-      {/* Inyectar el selector de sucursal y user menu en el top bar existente */}
+      {/* Widgets inyectados sobre el topbar existente del monolito */}
       <div className="fixed top-0 right-4 h-11 flex items-center z-[60] gap-1">
         <SucursalSelector />
         <div className="w-px h-5 bg-white/20 mx-1" />
@@ -108,11 +113,7 @@ function ERPContent({ children }: { children: ReactNode }) {
   )
 }
 
-// Provider wrapper
-export default function ERPWrapper({ children }: { children: ReactNode }) {
-  return (
-    <ERPProvider>
-      <ERPContent>{children}</ERPContent>
-    </ERPProvider>
-  )
+export default function DashboardLayout({ children }: { children: ReactNode }) {
+  // ERPProvider vive en app/layout.tsx (root) — acá solo agregamos el shell con auth gate
+  return <DashboardShell>{children}</DashboardShell>
 }
