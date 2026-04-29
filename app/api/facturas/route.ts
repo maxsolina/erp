@@ -21,7 +21,8 @@ export async function GET(req: Request) {
     .select(`
       *,
       facturas_lineas(*),
-      facturas_vencimientos(*)
+      facturas_vencimientos(*),
+      factura_medios_pago(*, tarjeta:tarjeta_id(id, nombre, tipo))
     `)
     .order("created_at", { ascending: false })
 

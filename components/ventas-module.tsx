@@ -340,10 +340,11 @@ interface Factura {
   seguimiento?: SeguimientoEntry[]
   medios_pago_detalle?: {
     medio: string
-    tarjeta_nombre?: string
+    tarjeta_nombre?: string | null
     cuotas?: number
     grupo_nombre?: string
     monto_base: number
+    iva?: number
     recargo_pct?: number
     importe_recargo?: number
     cargos?: { nombre: string; pct: number; importe: number }[]
@@ -2026,7 +2027,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               total: Number(v.total ?? 0),
             })),
             seguimiento: f.seguimiento ?? [],
-            medios_pago_detalle: f.medios_pago_detalle ?? [],
+            medios_pago_detalle: (f.factura_medios_pago ?? []).map((mp: any) => ({
+              medio: mp.medio,
+              tarjeta_nombre: mp.tarjeta?.nombre ?? null,
+              cuotas: mp.cuotas ?? undefined,
+              monto_base: Number(mp.monto_base ?? 0),
+              iva: Number(mp.iva_calculado ?? 0),
+              total_recargo: Number(mp.recargo ?? 0),
+              total_acreditar: Number(mp.monto_total ?? 0),
+            })),
           })))
         }
       })
@@ -7111,7 +7120,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               vencimientos: (f.facturas_vencimientos ?? []).map((v: any) => ({
                 descripcion: v.descripcion ?? "", fecha: v.fecha ?? "", total: Number(v.total ?? 0),
               })),
-              seguimiento: f.seguimiento ?? [], medios_pago_detalle: f.medios_pago_detalle ?? [],
+              seguimiento: f.seguimiento ?? [],
+              medios_pago_detalle: (f.factura_medios_pago ?? []).map((mp: any) => ({
+                medio: mp.medio,
+                tarjeta_nombre: mp.tarjeta?.nombre ?? null,
+                cuotas: mp.cuotas ?? undefined,
+                monto_base: Number(mp.monto_base ?? 0),
+                iva: Number(mp.iva_calculado ?? 0),
+                total_recargo: Number(mp.recargo ?? 0),
+                total_acreditar: Number(mp.monto_total ?? 0),
+              })),
             })))
           }).catch(() => {})
           fetch("/api/ordenes-entrega").then(r => r.json()).then(d => {
@@ -9238,27 +9256,35 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         <span>Monto abonado:</span>
                         <span>{formatCurrency(mp.monto_base, selectedFactura.moneda)}</span>
                       </div>
+                      {(mp.iva ?? 0) > 0 && (
+                        <div className="flex justify-between text-gray-500">
+                          <span>IVA proporcional:</span>
+                          <span>+ {formatCurrency(mp.iva ?? 0, selectedFactura.moneda)}</span>
+                        </div>
+                      )}
                       {(mp.recargo_pct ?? 0) > 0 && (
                         <div className="flex justify-between text-gray-500">
                           <span>Recargo ({mp.recargo_pct}%):</span>
-                          <span>{formatCurrency(mp.importe_recargo ?? 0, selectedFactura.moneda)}</span>
+                          <span>+ {formatCurrency(mp.importe_recargo ?? 0, selectedFactura.moneda)}</span>
                         </div>
                       )}
                       {mp.cargos?.map((c, j) => (
                         <div key={j} className="flex justify-between text-gray-500">
                           <span>{c.nombre} ({c.pct}%):</span>
-                          <span>{formatCurrency(c.importe, selectedFactura.moneda)}</span>
+                          <span>+ {formatCurrency(c.importe, selectedFactura.moneda)}</span>
                         </div>
                       ))}
-                      {mp.total_recargo > 0 && (
+                      {(mp.total_recargo > 0 || (mp.iva ?? 0) > 0) && (
                         <>
                           <div className="border-t border-gray-200 my-1" />
-                          <div className="flex justify-between text-amber-700 font-semibold">
-                            <span>Total recargo:</span>
-                            <span>{formatCurrency(mp.total_recargo, selectedFactura.moneda)}</span>
-                          </div>
+                          {mp.total_recargo > 0 && (
+                            <div className="flex justify-between text-amber-700 font-semibold">
+                              <span>Total recargo:</span>
+                              <span>+ {formatCurrency(mp.total_recargo, selectedFactura.moneda)}</span>
+                            </div>
+                          )}
                           <div className="flex justify-between font-bold text-gray-800">
-                            <span>Total acreditado:</span>
+                            <span>Total a acreditar:</span>
                             <span>{formatCurrency(mp.total_acreditar, selectedFactura.moneda)}</span>
                           </div>
                         </>
@@ -9733,7 +9759,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           vencimientos: (f.facturas_vencimientos ?? []).map((v: any) => ({
             descripcion: v.descripcion ?? "", fecha: v.fecha ?? "", total: Number(v.total ?? 0),
           })),
-          seguimiento: f.seguimiento ?? [], medios_pago_detalle: f.medios_pago_detalle ?? [],
+          seguimiento: f.seguimiento ?? [],
+          medios_pago_detalle: (f.factura_medios_pago ?? []).map((mp: any) => ({
+            medio: mp.medio,
+            tarjeta_nombre: mp.tarjeta?.nombre ?? null,
+            cuotas: mp.cuotas ?? undefined,
+            monto_base: Number(mp.monto_base ?? 0),
+            iva: Number(mp.iva_calculado ?? 0),
+            total_recargo: Number(mp.recargo ?? 0),
+            total_acreditar: Number(mp.monto_total ?? 0),
+          })),
         })))
       }
     } catch { /* no bloquear */ }
