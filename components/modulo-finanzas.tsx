@@ -1072,26 +1072,38 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
   // El botón "Guardar" de un grupo en edición usa la misma lógica que guardarGrupo
   const guardarCambios = guardarGrupo
 
-  const eliminarGrupo = async () => {
-    if (!selectedGrupo) return
+  const eliminarGrupo = async (g?: GrupoTarjeta) => {
+    const objetivo = g ?? selectedGrupo
+    if (!objetivo) return
     if (eliminando) return
-    if (!window.confirm(`¿Eliminar el grupo "${selectedGrupo.nombre}"? Se borrarán también sus cargos y recargos asociados.`)) return
+    if (!window.confirm(`¿Eliminar el grupo "${objetivo.nombre}"? Se borrarán también sus cargos y recargos asociados.`)) return
     setEliminando(true)
     try {
-      const res = await fetch(`/api/grupos-tarjeta/${selectedGrupo.id}`, { method: "DELETE" })
+      const res = await fetch(`/api/grupos-tarjeta/${objetivo.id}`, { method: "DELETE" })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Error al eliminar grupo" }))
         alert(`No se pudo eliminar: ${err.error}`)
         return
       }
-      setGrupos(prev => prev.filter(g => g.id !== selectedGrupo.id))
-      setSelectedGrupo(null)
-      setForm({})
+      setGrupos(prev => prev.filter(x => x.id !== objetivo.id))
+      if (selectedGrupo?.id === objetivo.id) {
+        setSelectedGrupo(null)
+        setForm({})
+      }
     } catch (e) {
       alert(`Error de red: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setEliminando(false)
     }
+  }
+
+  const cancelarEdicion = () => {
+    setCreando(false)
+    setSelectedGrupo(null)
+    setForm({})
+    setCreandoCargo(false)
+    setEditandoCargo(null)
+    setFormCargo({})
   }
 
   return (
@@ -1102,183 +1114,203 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
         </button>
       </SectionHeader>
 
-      {/* Empty state grande cuando no hay grupos y no se está creando */}
-      {grupos.length === 0 && !creando ? (
-        <div className="bg-white rounded-lg shadow-sm border-2 border-dashed border-gray-200 py-16 px-6 text-center">
-          <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <h3 className="text-base font-semibold text-gray-700 mb-1">No hay grupos de tarjeta</h3>
-          <p className="text-sm text-gray-500 mb-4">Apretá &quot;+ Nuevo Grupo&quot; arriba para crear el primero.</p>
-        </div>
-      ) : (
-      <div className="grid grid-cols-4 gap-6">
-        {/* Lista de grupos — se oculta si estás creando y aún no hay ninguno */}
-        {grupos.length > 0 && (
-        <div className="col-span-1 space-y-2">
-          {grupos.map(g => (
-            <button key={g.id} onClick={() => seleccionarGrupo(g)}
-              className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${selectedGrupo?.id === g.id && !creando ? "bg-emerald-50 border-emerald-300 text-emerald-900" : "bg-white border-gray-200 hover:border-gray-300"}`}>
-              <div className="font-medium text-sm">{g.nombre}</div>
-              <div className="text-xs text-gray-500 mt-0.5">{g.banco}</div>
-              <Badge color={g.activo ? "emerald" : "gray"}>{g.activo ? "Activo" : "Inactivo"}</Badge>
-            </button>
-          ))}
-        </div>
-        )}
-
-        {/* Detalle del grupo — ocupa todo el ancho si la lista está oculta */}
-        <div className={grupos.length > 0 ? "col-span-3" : "col-span-4"}>
-          {(selectedGrupo || creando) ? (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-              {/* Header del grupo */}
-              <div className="p-4 border-b bg-gray-50 rounded-t-lg">
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Nombre</label>
-                    <input value={form.nombre || ""} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
-                      className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Banco</label>
-                    <input value={form.banco || ""} onChange={e => setForm(f => ({ ...f, banco: e.target.value }))}
-                      className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
-                  </div>
-                  <div className="flex items-end gap-3">
-                    <label className="flex items-center gap-2 text-sm mb-1.5">
-                      <input type="checkbox" checked={form.activo ?? true} onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))} className="rounded" />
-                      Activo
-                    </label>
-                    {creando ? (
-                      <button
-                        onClick={guardarGrupo}
-                        disabled={guardando}
-                        className="ml-auto px-3 py-1.5 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {guardando ? "Creando…" : "Crear Grupo"}
-                      </button>
-                    ) : (
-                      <div className="ml-auto flex gap-2">
-                        <button
-                          onClick={eliminarGrupo}
-                          disabled={guardando || eliminando}
-                          className="px-3 py-1.5 text-sm border border-red-300 text-red-700 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {eliminando ? "Eliminando…" : "Eliminar"}
-                        </button>
-                        <button
-                          onClick={guardarCambios}
-                          disabled={guardando || eliminando}
-                          className="px-3 py-1.5 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {guardando ? "Guardando…" : "Guardar"}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
+      {/* Form inline (creando o editando) — arriba de la tabla */}
+      {(creando || selectedGrupo) && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg mb-6 overflow-hidden">
+          <div className="p-4 border-b border-emerald-200 bg-white">
+            <h3 className="font-semibold text-emerald-900 mb-4">
+              {creando ? "Nuevo Grupo" : `Editar grupo: ${selectedGrupo?.nombre ?? ""}`}
+            </h3>
+            <div className="grid grid-cols-4 gap-4">
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Nombre</label>
+                <input value={form.nombre || ""} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
               </div>
-
-              {/* Tabs */}
-              <div className="flex border-b">
-                {(["tarjetas", "cargos"] as const).map(t => (
-                  <button key={t} onClick={() => setTab(t)}
-                    className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${tab === t ? "border-emerald-600 text-emerald-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
-                    {t === "tarjetas" ? "Tarjetas" : "Cargos"}
-                  </button>
-                ))}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Banco</label>
+                <input value={form.banco || ""} onChange={e => setForm(f => ({ ...f, banco: e.target.value }))}
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
               </div>
-
-              {tab === "tarjetas" && (
-                <div className="p-4">
-                  <p className="text-xs text-gray-500 mb-3">Seleccioná las tarjetas asociadas a este grupo:</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {tarjetas.map(t => (
-                      <label key={t.id} className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${(form.tarjetas_ids || []).includes(t.id) ? "bg-emerald-50 border-emerald-300" : "border-gray-200 hover:border-gray-300"}`}>
-                        <input type="checkbox" checked={(form.tarjetas_ids || []).includes(t.id)} onChange={() => toggleTarjeta(t.id)} className="rounded" />
-                        <span className="text-sm">{t.nombre}</span>
-                        <Badge color={t.tipo === "credito" ? "blue" : "emerald"}>{t.tipo === "credito" ? "C" : "D"}</Badge>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {tab === "cargos" && (
-                <div className="p-4">
-                  {(creandoCargo || editandoCargo) && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                      <div className="grid grid-cols-4 gap-3">
-                        <div className="col-span-2">
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Nombre del cargo</label>
-                          <input value={formCargo.nombre || ""} onChange={e => setFormCargo(f => ({ ...f, nombre: e.target.value }))}
-                            placeholder="Ej: Comisión, IVA, Retención IIBB"
-                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Arancel %</label>
-                          <input type="number" step="0.01" value={formCargo.arancel ?? ""} onChange={e => setFormCargo(f => ({ ...f, arancel: parseFloat(e.target.value) }))}
-                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta contable</label>
-                          <select
-                            value={formCargo.cuenta_contable || ""}
-                            onChange={e => setFormCargo(f => ({ ...f, cuenta_contable: e.target.value }))}
-                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                          >
-                            <option value="">Seleccionar cuenta...</option>
-                            {planCuentas.map(c => (
-                              <option key={c.id} value={c.codigo}>{c.codigo} — {c.nombre}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 mt-3 justify-end">
-                        <button onClick={() => { setCreandoCargo(false); setEditandoCargo(null); setFormCargo({}) }} className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50">Cancelar</button>
-                        <button onClick={guardarCargo} className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">Guardar cargo</button>
-                      </div>
-                    </div>
-                  )}
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
-                        <th className="text-left py-2 px-3">Nombre</th>
-                        <th className="text-right py-2 px-3">Arancel %</th>
-                        <th className="text-left py-2 px-3">Cuenta Contable</th>
-                        <th className="py-2 px-3"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(form.cargos || []).map(c => (
-                        <tr key={c.id} className="border-b">
-                          <td className="py-2 px-3 font-medium">{c.nombre}</td>
-                          <td className="py-2 px-3 text-right font-mono">{formatPct(c.arancel)}</td>
-                          <td className="py-2 px-3 text-gray-500">{c.cuenta_contable}</td>
-                          <td className="py-2 px-3">
-                            <div className="flex justify-end gap-1">
-                              <button onClick={() => { setEditandoCargo(c); setFormCargo({ ...c }); setCreandoCargo(false) }} className="p-1 text-gray-400 hover:text-blue-600"><Edit className="w-3.5 h-3.5" /></button>
-                              <button onClick={() => eliminarCargo(c.id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {(form.cargos || []).length === 0 && <p className="text-sm text-gray-500 text-center py-4">Sin cargos configurados</p>}
-                  <button onClick={() => { setCreandoCargo(true); setEditandoCargo(null); setFormCargo({ tipo: "Gasto", es_porcentaje: true }) }}
-                    className="mt-3 flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800">
-                    <Plus className="w-4 h-4" /> Agregar cargo
-                  </button>
-                </div>
-              )}
+              <div className="flex items-end">
+                <label className="flex items-center gap-2 text-sm mb-1.5">
+                  <input type="checkbox" checked={form.activo ?? true} onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))} className="rounded" />
+                  Activo
+                </label>
+              </div>
             </div>
-          ) : (
-            <div className="flex items-center justify-center h-48 text-gray-400 text-sm border-2 border-dashed border-gray-200 rounded-lg">
-              Seleccioná un grupo para editarlo o creá uno nuevo
+          </div>
+
+          {/* Tabs */}
+          <div className="flex border-b border-emerald-200 bg-white">
+            {(["tarjetas", "cargos"] as const).map(t => (
+              <button key={t} onClick={() => setTab(t)}
+                className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${tab === t ? "border-emerald-600 text-emerald-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
+                {t === "tarjetas" ? "Tarjetas" : "Cargos"}
+              </button>
+            ))}
+          </div>
+
+          {tab === "tarjetas" && (
+            <div className="p-4 bg-white">
+              <p className="text-xs text-gray-500 mb-3">Seleccioná las tarjetas asociadas a este grupo:</p>
+              {tarjetas.length === 0 ? (
+                <p className="text-sm text-gray-400 italic">No hay tarjetas cargadas. Andá a la sección Tarjetas para crear.</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {tarjetas.map(t => (
+                    <label key={t.id} className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${(form.tarjetas_ids || []).includes(t.id) ? "bg-emerald-50 border-emerald-300" : "border-gray-200 hover:border-gray-300"}`}>
+                      <input type="checkbox" checked={(form.tarjetas_ids || []).includes(t.id)} onChange={() => toggleTarjeta(t.id)} className="rounded" />
+                      <span className="text-sm">{t.nombre}</span>
+                      <Badge color={t.tipo === "credito" ? "blue" : "emerald"}>{t.tipo === "credito" ? "C" : "D"}</Badge>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           )}
+
+          {tab === "cargos" && (
+            <div className="p-4 bg-white">
+              {(creandoCargo || editandoCargo) && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Nombre del cargo</label>
+                      <input value={formCargo.nombre || ""} onChange={e => setFormCargo(f => ({ ...f, nombre: e.target.value }))}
+                        placeholder="Ej: Comisión, IVA, Retención IIBB"
+                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Arancel %</label>
+                      <input type="number" step="0.01" value={formCargo.arancel ?? ""} onChange={e => setFormCargo(f => ({ ...f, arancel: parseFloat(e.target.value) }))}
+                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta contable</label>
+                      <select
+                        value={formCargo.cuenta_contable || ""}
+                        onChange={e => setFormCargo(f => ({ ...f, cuenta_contable: e.target.value }))}
+                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      >
+                        <option value="">Seleccionar cuenta...</option>
+                        {planCuentas.map(c => (
+                          <option key={c.id} value={c.codigo}>{c.codigo} — {c.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-3 justify-end">
+                    <button onClick={() => { setCreandoCargo(false); setEditandoCargo(null); setFormCargo({}) }} className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50">Cancelar</button>
+                    <button onClick={guardarCargo} className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">Guardar cargo</button>
+                  </div>
+                </div>
+              )}
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                    <th className="text-left py-2 px-3">Nombre</th>
+                    <th className="text-right py-2 px-3">Arancel %</th>
+                    <th className="text-left py-2 px-3">Cuenta Contable</th>
+                    <th className="py-2 px-3"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(form.cargos || []).map(c => (
+                    <tr key={c.id} className="border-b">
+                      <td className="py-2 px-3 font-medium">{c.nombre}</td>
+                      <td className="py-2 px-3 text-right font-mono">{formatPct(c.arancel)}</td>
+                      <td className="py-2 px-3 text-gray-500">{c.cuenta_contable}</td>
+                      <td className="py-2 px-3">
+                        <div className="flex justify-end gap-1">
+                          <button onClick={() => { setEditandoCargo(c); setFormCargo({ ...c }); setCreandoCargo(false) }} className="p-1 text-gray-400 hover:text-blue-600"><Edit className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => eliminarCargo(c.id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {(form.cargos || []).length === 0 && <p className="text-sm text-gray-500 text-center py-4">Sin cargos configurados</p>}
+              <button onClick={() => { setCreandoCargo(true); setEditandoCargo(null); setFormCargo({ tipo: "Gasto", es_porcentaje: true }) }}
+                className="mt-3 flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800">
+                <Plus className="w-4 h-4" /> Agregar cargo
+              </button>
+            </div>
+          )}
+
+          {/* Botones acción del form */}
+          <div className="flex items-center gap-2 px-4 py-3 bg-emerald-50 border-t border-emerald-200">
+            <button
+              onClick={cancelarEdicion}
+              disabled={guardando || eliminando}
+              className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancelar
+            </button>
+            <div className="ml-auto flex gap-2">
+              {!creando && selectedGrupo && (
+                <button
+                  onClick={() => eliminarGrupo()}
+                  disabled={guardando || eliminando}
+                  className="px-3 py-1.5 text-sm border border-red-300 text-red-700 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {eliminando ? "Eliminando…" : "Eliminar"}
+                </button>
+              )}
+              <button
+                onClick={guardarGrupo}
+                disabled={guardando || eliminando}
+                className="px-3 py-1.5 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {guardando ? (creando ? "Creando…" : "Guardando…") : (creando ? "Crear Grupo" : "Guardar")}
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
       )}
+
+      {/* Tabla de grupos */}
+      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="bg-gray-50 border-b-2 border-gray-200 text-xs font-semibold text-gray-500 uppercase">
+              <th className="text-left py-3 px-4">Nombre</th>
+              <th className="text-left py-3 px-4">Banco</th>
+              <th className="text-center py-3 px-4">Tarjetas</th>
+              <th className="text-center py-3 px-4">Cargos</th>
+              <th className="text-center py-3 px-4">Estado</th>
+              <th className="py-3 px-4"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {grupos.map(g => (
+              <tr key={g.id} className="border-b border-gray-100 hover:bg-gray-50">
+                <td className="py-3 px-4 font-medium text-sm flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-gray-400" /> {g.nombre}
+                </td>
+                <td className="py-3 px-4 text-sm text-gray-600">{g.banco || "-"}</td>
+                <td className="py-3 px-4 text-center text-sm">{g.tarjetas_ids?.length ?? 0}</td>
+                <td className="py-3 px-4 text-center text-sm">{g.cargos?.length ?? 0}</td>
+                <td className="py-3 px-4 text-center">
+                  <Badge color={g.activo ? "emerald" : "gray"}>{g.activo ? "Activo" : "Inactivo"}</Badge>
+                </td>
+                <td className="py-3 px-4">
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => seleccionarGrupo(g)} className="p-1 text-gray-400 hover:text-emerald-600"><Edit className="w-4 h-4" /></button>
+                    <button onClick={() => eliminarGrupo(g)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {grupos.length === 0 && (
+          <div className="text-center py-12 text-gray-500 text-sm">
+            No hay grupos configurados. Apretá &quot;+ Nuevo Grupo&quot; para crear el primero.
+          </div>
+        )}
+      </div>
     </div>
   )
 }
