@@ -8631,13 +8631,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
                   <span className="text-gray-500">Subtotal (precio contado):</span>
                   <span className="text-right tabular-nums">{formatCurrency(subtotal, "USD")}</span>
-                  <span className="text-right tabular-nums text-gray-400">{formatCurrency(subtotal * facturaCotizacion, "ARS")}</span>
+                  <span className="text-right tabular-nums text-xs">{formatCurrency(subtotal * facturaCotizacion, "ARS")}</span>
 
                   {prevRecargosConfirmados && prevRecargosConfirmados.desglose.map((d, i) => (
                     <React.Fragment key={i}>
                       <span className="text-amber-700">{d.nombre}:</span>
                       <span className="text-right tabular-nums text-amber-700">+ {formatCurrency(d.importe, "USD")}</span>
-                      <span className="text-right tabular-nums text-amber-600/70">+ {formatCurrency(d.importe * facturaCotizacion, "ARS")}</span>
+                      <span className="text-right tabular-nums text-amber-700 text-xs">+ {formatCurrency(d.importe * facturaCotizacion, "ARS")}</span>
                     </React.Fragment>
                   ))}
 
@@ -8645,13 +8645,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <>
                       <span className="text-amber-700 font-medium">Total recargos:</span>
                       <span className="text-right tabular-nums text-amber-700 font-medium">+ {formatCurrency(prevRecargosConfirmados.totalRecargos, "USD")}</span>
-                      <span className="text-right tabular-nums text-amber-600/70 font-medium">+ {formatCurrency(prevRecargosConfirmados.totalRecargos * facturaCotizacion, "ARS")}</span>
+                      <span className="text-right tabular-nums text-amber-700 font-medium text-xs">+ {formatCurrency(prevRecargosConfirmados.totalRecargos * facturaCotizacion, "ARS")}</span>
                     </>
                   )}
 
                   <span className="font-bold text-base pt-2 border-t mt-1">Total:</span>
                   <span className="text-right tabular-nums text-emerald-700 font-bold text-base pt-2 border-t mt-1">{formatCurrency(subtotal + (prevRecargosConfirmados?.totalRecargos || 0), "USD")}</span>
-                  <span className="text-right tabular-nums text-emerald-700 font-bold text-base pt-2 border-t mt-1">{formatCurrency((subtotal + (prevRecargosConfirmados?.totalRecargos || 0)) * facturaCotizacion, "ARS")}</span>
+                  <span className="text-right tabular-nums text-emerald-700 font-bold text-sm pt-2 border-t mt-1">{formatCurrency((subtotal + (prevRecargosConfirmados?.totalRecargos || 0)) * facturaCotizacion, "ARS")}</span>
                 </div>
                 <p className="text-xs text-gray-400 mt-2 text-right">Cotización aplicada: 1 USD = ${facturaCotizacion.toLocaleString("es-AR")} (blue)</p>
               </div>
