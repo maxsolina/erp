@@ -80,6 +80,7 @@ interface ListaPrecios {
   no_visible: boolean
   dias_validez: number
   estado: "borrador" | "creada" | "activa" | "inactiva"
+  tipo_cotizacion: "oficial" | "blue" | "ccl" | "mep" | "divisa" | "billete"
   usuarios_admin: number[]
   usuarios_habilitados: number[]
   observaciones_filtro: string
@@ -308,7 +309,7 @@ interface Factura {
   cliente_id: number
   cliente_nombre: string
   cliente_documento: string
-  estado: "borrador" | "abierta" | "conciliada" | "esperando_confirmacion" | "ejecucion_senia"
+  estado: "borrador" | "abierta" | "confirmada" | "parcial" | "cobrada" | "conciliada" | "cancelada" | "esperando_confirmacion" | "ejecucion_senia"
   fecha: string
   vendedor_nombre: string
   domicilio_facturacion: string
@@ -1372,6 +1373,24 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       .catch(() => {})
   }, [])
 
+  // Cargar últimas cotizaciones USD por tipo (todas en una sola query, agrupando)
+  useEffect(() => {
+    fetch('/api/contabilidad/cotizaciones?moneda_codigo=USD')
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: any[]) => {
+        if (!Array.isArray(rows)) return
+        const byTipo: Record<string, number> = {}
+        // rows ya viene ordenado por fecha desc, id desc → la primera ocurrencia de cada tipo es la última
+        for (const r of rows) {
+          if (r?.tipo && byTipo[r.tipo] === undefined) {
+            byTipo[r.tipo] = Number(r.tasa ?? r.valor ?? 0)
+          }
+        }
+        setCotizacionesUsdPorTipo(byTipo)
+      })
+      .catch(() => {})
+  }, [])
+
   // Estados para Categorías de Clientes
   const [selectedCategoria, setSelectedCategoria] = useState<CategoriaCliente | null>(null)
   const [editingCategoria, setEditingCategoria] = useState<CategoriaCliente | null>(null)
@@ -1396,6 +1415,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [modoEdicionVersion, setModoEdicionVersion] = useState(false)
   const [listaPreciosSearchText, setListaPreciosSearchText] = useState("")
   const [versionSearchText, setVersionSearchText] = useState("")
+  // Toggles "mostrar archivadas" — patrón Odoo: por default solo activos
+  const [mostrarInactivasListas, setMostrarInactivasListas] = useState(false)
+  const [mostrarInactivasVersiones, setMostrarInactivasVersiones] = useState(false)
   const [versionFilterLista, setVersionFilterLista] = useState<number | null>(null)
   const [listaPreciosTab, setListaPreciosTab] = useState<"versiones" | "filtros" | "usuarios_admin" | "usuarios_habilitados">("versiones")
   const [editandoLineas, setEditandoLineas] = useState(false)
@@ -1471,13 +1493,39 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [facturaProductoSearchText, setFacturaProductoSearchText] = useState("")
   
   // Estados para Toma de Equipo en Parte de Pago
-  const [modelosEquipoDB, setModelosEquipoDB] = useState<{id: number; nombre: string; precioBase: number}[]>([])
+  // ── Modelos cotizables: vienen de cotizador_modelos con FK a productos ─────
+  const [cotizadorModelos, setCotizadorModelos] = useState<{
+    id: string                  // cotizador_modelos.id (UUID)
+    producto_id: number
+    producto_nombre: string
+    valor_base_usd: number
+  }[]>([])
+  const [cotizadorCategorias, setCotizadorCategorias] = useState<{
+    id: string; nombre: string; orden: number; accion: "descuento" | "whatsapp" | "cartel_sistema"
+  }[]>([])
+  const [cotizadorCriteriosByModelo, setCotizadorCriteriosByModelo] = useState<Record<string, {
+    id: string; categoria_id: string; etiqueta: string; descuento_usd: number; descuento_porcentaje: number | null
+  }[]>>({})
+  const [cotizacionUsdBlue, setCotizacionUsdBlue] = useState<number>(0)
+  // Cotizaciones USD por tipo (oficial/blue/ccl/mep/divisa/billete) — para que cada lista de precios
+  // use la suya según el campo tipo_cotizacion. Se cargan una vez al montar.
+  const [cotizacionesUsdPorTipo, setCotizacionesUsdPorTipo] = useState<Record<string, number>>({})
+
   const [tomaEquipoPaso, setTomaEquipoPaso] = useState(1)
   const [tomaEquipoClienteId, setTomaEquipoClienteId] = useState<number | null>(null)
-  const [tomaEquipoModeloId, setTomaEquipoModeloId] = useState<number | null>(null)
-  const [tomaEquipoPrecioBase, setTomaEquipoPrecioBase] = useState(0)
-  const [tomaEquipoPrecioFinal, setTomaEquipoPrecioFinal] = useState(0)
-  const [tomaEquipoComponentes, setTomaEquipoComponentes] = useState<{id: number; nombre: string; estado: string; descuento: number}[]>([])
+  const [tomaEquipoModeloId, setTomaEquipoModeloId] = useState<string | null>(null)  // cotizador_modelos.id (UUID)
+  const [tomaEquipoPrecioBaseUsd, setTomaEquipoPrecioBaseUsd] = useState(0)
+  const [tomaEquipoPrecioFinalUsd, setTomaEquipoPrecioFinalUsd] = useState(0)
+  // Una entrada por categoria. criterio_id=null para whatsapp; whatsapp_flag indica si tiene daño.
+  const [tomaEquipoEvaluacion, setTomaEquipoEvaluacion] = useState<{
+    categoria_id: string
+    categoria_nombre: string
+    accion: "descuento" | "whatsapp" | "cartel_sistema"
+    criterio_id: string | null
+    etiqueta: string
+    descuento_usd: number
+    whatsapp_flag: boolean
+  }[]>([])
   const [tomaEquipoCreando, setTomaEquipoCreando] = useState(false)
   const [guardandoToma, setGuardandoToma] = useState(false)
   const [tomasEquipo, setTomasEquipo] = useState<{
@@ -1633,26 +1681,56 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seniaCajaId])
 
-  // Cargar modelos de equipo desde la lista "Toma de Equipos" (versiones)
+  // Cargar configuración del cotizador: modelos + categorías + criterios + cotización blue
   useEffect(() => {
-    fetch("/api/listas-precios")
-      .then(r => r.json())
-      .then((listas: any[]) => {
-        const lista = listas.find((l: any) => l.nombre === "Toma de Equipos")
-        if (!lista) return
-        return fetch(`/api/listas-precios/versiones?lista_id=${lista.id}`)
-          .then(r => r.json())
-          .then((versiones: any[]) => {
-            if (!Array.isArray(versiones) || versiones.length === 0) return
-            // Priorizar versión activa, sino la primera disponible
-            const version = versiones.find((v: any) => v.activa) ?? versiones[0]
-            const lineas = version.lineas ?? []
-            setModelosEquipoDB(lineas.map((l: any) => ({
-              id: l.producto_id,
-              nombre: l.producto_nombre,
-              precioBase: l.precio_forzado_ars ?? l.precio_venta ?? 0,
-            })))
+    Promise.all([
+      fetch("/api/cotizador/modelos").then(r => r.json()),
+      fetch("/api/cotizador/categorias").then(r => r.json()),
+      fetch("/api/cotizador/criterios").then(r => r.json()),
+      fetch("/api/contabilidad/cotizaciones?moneda_codigo=USD&tipo=blue&latest=true").then(r => r.json()),
+    ])
+      .then(([modelosResp, categorias, criterios, cotiz]) => {
+        const modelos = (Array.isArray(modelosResp) ? modelosResp : [])
+          .filter((m: any) => m.activo)
+          .map((m: any) => ({
+            id: m.id,
+            producto_id: m.producto_id,
+            producto_nombre: m.producto?.nombre ?? `#${m.producto_id}`,
+            valor_base_usd: Number(m.valor_base_usd),
+          }))
+        setCotizadorModelos(modelos)
+
+        const cats = (Array.isArray(categorias) ? categorias : [])
+          .filter((c: any) => c.activo)
+          .sort((a: any, b: any) => a.orden - b.orden)
+        setCotizadorCategorias(cats)
+
+        const byModelo: Record<string, any[]> = {}
+        // Index modelos por id para resolver valor_base
+        const modeloPorId: Record<string, number> = {}
+        for (const m of modelos) modeloPorId[m.id] = m.valor_base_usd
+        for (const c of (Array.isArray(criterios) ? criterios : [])) {
+          if (!c.activo) continue
+          if (!byModelo[c.modelo_id]) byModelo[c.modelo_id] = []
+          // Si es porcentual dinámico, recalcular el USD efectivo desde el valor_base actual del modelo
+          const pct = c.descuento_porcentaje !== null && c.descuento_porcentaje !== undefined ? Number(c.descuento_porcentaje) : null
+          const base = modeloPorId[c.modelo_id] ?? 0
+          const usdEfectivo = pct !== null ? Number(((base * pct) / 100).toFixed(2)) : Number(c.descuento_usd)
+          byModelo[c.modelo_id].push({
+            id: c.id,
+            categoria_id: c.categoria_id,
+            etiqueta: c.etiqueta,
+            descuento_usd: usdEfectivo,
+            descuento_porcentaje: pct,
           })
+        }
+        // Ordenar opciones por descuento ascendente (Impecable=0 primero)
+        for (const mid of Object.keys(byModelo)) {
+          byModelo[mid].sort((a, b) => a.descuento_usd - b.descuento_usd)
+        }
+        setCotizadorCriteriosByModelo(byModelo)
+
+        if (cotiz?.tasa) setCotizacionUsdBlue(Number(cotiz.tasa))
       })
       .catch(console.error)
   }, [])
@@ -1944,6 +2022,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             // Normalizar campos que la DB devuelve con nombres distintos
             moneda_base: l.moneda_base ?? l.moneda ?? "ARS",
             estado: l.estado ?? (l.activa ? "activa" : "borrador"),
+            tipo_cotizacion: l.tipo_cotizacion ?? "blue",
           }))
           setListasPrecios(mapeadas)
         }
@@ -3862,8 +3941,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     }
 
     const subtotalValido = lineasValidas.reduce((sum, l) => sum + Number(l.subtotal ?? 0), 0)
-    const impuestosValido = lineasValidas.reduce((sum, l) => sum + Number(l.subtotal ?? 0) * ((l.iva ?? 0) / 100), 0)
-    const totalValido = subtotalValido + impuestosValido
+    // Todos los precios de las listas incluyen IVA. Para fines contables/factura,
+    // se desagrega el IVA desde el precio con-IVA usando la tasa de cada línea.
+    const impuestosValido = lineasValidas.reduce((sum, l) => {
+      const tasa = (l.iva ?? 0) / 100
+      const neto = Number(l.subtotal ?? 0) / (1 + tasa)
+      return sum + (Number(l.subtotal ?? 0) - neto)
+    }, 0)
+    const totalValido = subtotalValido
 
     // Si estamos editando, usamos los datos existentes
     const existingNV = editingNVId ? notasVenta.find(nv => nv.id === editingNVId) : null
@@ -4227,6 +4312,10 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const total = subtotal
     const deposito = depositos.find(d => d.id === nvDepositoId)
     const ubicacion = ubicaciones.find(u => u.id === nvUbicacionId)
+    // Moneda de la lista de precios → determina moneda del comprobante
+    const listaSelPrev = listasPrecios.find(l => l.id === nvListaPreciosId)
+    const monedaPrev = listaSelPrev?.moneda_base ?? "ARS"
+    const esUsdPrev = monedaPrev === "USD"
 
     return (
       <div>
@@ -4348,35 +4437,52 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </tr>
               </thead>
               <tbody>
-                {lineasValidas.map((linea, index) => (
-                  <tr key={index} className="border-b">
-                    <td className="py-2">
-                      <div className="font-medium">{linea.producto_nombre}</div>
-                      {linea.series_seleccionadas && linea.series_seleccionadas.length > 0 && (
-                        <div className="text-xs text-gray-500">IMEI: {linea.series_seleccionadas.map(s => typeof s === "string" ? s : s.serie).join(", ")}</div>
-                      )}
-                    </td>
-                    <td className="py-2 text-center">{linea.cantidad}</td>
-                    <td className="py-2 text-right">{formatCurrency(linea.precio_unitario)}</td>
-                    <td className="py-2 text-center">{linea.descuento}%</td>
-                    <td className="py-2 text-right font-medium">{formatCurrency(linea.subtotal)}</td>
-                  </tr>
-                ))}
+                {lineasValidas.map((linea, index) => {
+                  const precioPrim = esUsdPrev ? (linea.precio_unitario_usd ?? linea.precio_unitario) : (linea.precio_unitario_ars ?? linea.precio_unitario)
+                  const subtotalPrim = precioPrim * linea.cantidad * (1 - linea.descuento / 100)
+                  return (
+                    <tr key={index} className="border-b">
+                      <td className="py-2">
+                        <div className="font-medium">{linea.producto_nombre}</div>
+                        {linea.series_seleccionadas && linea.series_seleccionadas.length > 0 && (
+                          <div className="text-xs text-gray-500">IMEI: {linea.series_seleccionadas.map(s => typeof s === "string" ? s : s.serie).join(", ")}</div>
+                        )}
+                      </td>
+                      <td className="py-2 text-center">{linea.cantidad}</td>
+                      <td className="py-2 text-right">{formatCurrency(precioPrim, monedaPrev)}</td>
+                      <td className="py-2 text-center">{linea.descuento}%</td>
+                      <td className="py-2 text-right font-medium">{formatCurrency(subtotalPrim, monedaPrev)}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
 
           {/* Totales */}
           <div className="flex justify-end">
-            <div className="w-64 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Subtotal:</span>
-                <span>{formatCurrency(subtotal)}</span>
-              </div>
-              <div className="flex justify-between text-lg font-bold pt-2 border-t">
-                <span>Total:</span>
-                <span className="text-emerald-700">{formatCurrency(total)}</span>
-              </div>
+            <div className="w-72 space-y-2 text-sm">
+              {(() => {
+                const subtotalPrim = lineasValidas.reduce((s, l) => s + (esUsdPrev ? (l.precio_unitario_usd ?? l.precio_unitario) : (l.precio_unitario_ars ?? l.precio_unitario)) * l.cantidad * (1 - l.descuento / 100), 0)
+                const subtotalAry = lineasValidas.reduce((s, l) => s + (l.precio_unitario_ars ?? l.precio_unitario) * l.cantidad * (1 - l.descuento / 100), 0)
+                return (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Subtotal:</span>
+                      <span>{formatCurrency(subtotalPrim, monedaPrev)}</span>
+                    </div>
+                    <div className="flex justify-between text-lg font-bold pt-2 border-t">
+                      <span>Total:</span>
+                      <div className="text-right">
+                        <div className="text-emerald-700">
+                          {monedaPrev === "USD" ? formatCurrency(subtotalPrim, "USD") : `ARS ${formatCurrency(subtotalPrim, "ARS")}`}
+                        </div>
+                        {esUsdPrev && <div className="text-xs text-gray-400 font-normal">ARS {formatCurrency(subtotalAry, "ARS")}</div>}
+                      </div>
+                    </div>
+                  </>
+                )
+              })()}
             </div>
           </div>
         </div>
@@ -4387,8 +4493,20 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   // Vista de Crear Nota de Venta (pantalla completa, no modal)
   const renderCrearNV = () => {
     const selectedCliente = clientes.find(c => c.id === nvClienteId)
-  const subtotal = nvLineas.reduce((sum, l) => sum + l.subtotal, 0)
+  // Moneda del comprobante: viene de la lista de precios seleccionada
+  const listaSelForm = listasPrecios.find(l => l.id === nvListaPreciosId)
+  const monedaForm = listaSelForm?.moneda_base ?? "ARS"
+  const esUsdForm = monedaForm === "USD"
+  // Subtotal calculado dinámicamente en la moneda del comprobante
+  // (linea.subtotal está siempre en ARS por cómo el dropdown retorna precio_unitario; recalculamos)
+  const subtotalEnMoneda = (l: any) =>
+    (esUsdForm ? (l.precio_unitario_usd ?? 0) : (l.precio_unitario_ars ?? l.precio_unitario ?? 0)) * l.cantidad * (1 - l.descuento / 100)
+  const subtotal = nvLineas.reduce((s, l) => s + subtotalEnMoneda(l), 0)
   const total = subtotal
+  // Subtotal/total en ARS (referencia) cuando la lista es USD
+  const subtotalArsRef = esUsdForm
+    ? nvLineas.reduce((s, l) => s + (l.precio_unitario_ars ?? 0) * l.cantidad * (1 - l.descuento / 100), 0)
+    : 0
   
   // Si estamos en previsualización, mostrar vista previa
     if (nvPrevisualizando) {
@@ -4465,6 +4583,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </div>
             </div>
 
+            {/* Banner de aviso si no hay cliente */}
+            {!nvClienteId && (
+              <div className="bg-amber-50 border border-amber-300 rounded p-3 text-sm text-amber-800 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                Seleccioná un cliente arriba para habilitar la lista de precios, ubicación y productos.
+              </div>
+            )}
+
+            {/* Bloque deshabilitado hasta que haya cliente */}
+            <div className={!nvClienteId ? "space-y-6 opacity-50 pointer-events-none select-none" : "contents"}>
             {/* Lista de Precios */}
             <div className="bg-white rounded-lg shadow-sm p-4">
               <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
@@ -4479,20 +4607,24 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
                     <option value="">Seleccionar lista...</option>
-                    {listasPrecios.filter(l => l.activa || l.estado === "activa" || l.estado === "creada" || l.estado === "confirmada").map(l => (
+                    {listasPrecios.filter(l => l.activa !== false).map(l => (
                       <option key={l.id} value={l.id}>{l.nombre}</option>
                     ))}
                   </select>
                 </div>
                 <div className="text-sm text-gray-500">
-                  {nvListaPreciosId && (
-                    <span>
-                      {productosNVCargando
-                        ? "Cargando productos..."
-                        : `${productosNV.length} producto${productosNV.length !== 1 ? "s" : ""} en esta lista`
-                      }
-                    </span>
-                  )}
+                  {nvListaPreciosId && (() => {
+                    const listaSel = listasPrecios.find(l => l.id === nvListaPreciosId)
+                    const moneda = listaSel?.moneda_base ?? "ARS"
+                    return (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500">Moneda:</span>
+                        <span className="px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800" title="Determina la moneda de la NV, OE, REM y FAC">
+                          {moneda}
+                        </span>
+                      </div>
+                    )
+                  })()}
                   {!nvListaPreciosId && (
                     <span className="text-amber-600">Seleccione una lista para agregar productos</span>
                   )}
@@ -4708,7 +4840,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         />
                       </td>
                       <td className="py-1 px-2 text-right font-medium text-sm">
-                        {formatCurrency(linea.subtotal)}
+                        {formatCurrency(subtotalEnMoneda(linea), monedaForm)}
                       </td>
                       <td className="py-1 px-1">
                         <button
@@ -4812,6 +4944,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </div>
               </div>
             )}
+            </div>
           </div>
 
           {/* Columna derecha - Resumen y acciones */}
@@ -4855,12 +4988,17 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Subtotal:</span>
-                  <span className="font-medium">{formatCurrency(subtotal)}</span>
+                  <span className="font-medium">{formatCurrency(subtotal, monedaForm)}</span>
                 </div>
                 <div className="border-t pt-3">
                   <div className="flex justify-between text-lg font-bold">
                     <span>Total:</span>
-                    <span className="text-emerald-700">{formatCurrency(total)}</span>
+                    <div className="text-right">
+                      <div className="text-emerald-700">{formatCurrency(total, monedaForm)}</div>
+                      {esUsdForm && (
+                        <div className="text-xs text-gray-400 font-normal">ARS {formatCurrency(subtotalArsRef, "ARS")}</div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -5545,58 +5683,37 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     )
   }
 
-  // Toma de Equipo en Parte de Pago — cargado desde la lista "Toma de Equipos" en la DB
-  const modelosEquipo = modelosEquipoDB
+  // ── Modelos cotizables: filtrar los que tienen criterios completos ────────
+  // Un modelo es "cotizable" si para cada categoría con accion='descuento' o
+  // 'cartel_sistema' tiene al menos una opción con descuento_usd=0 (Impecable).
+  const modelosCotizables = useMemo(() => {
+    const catsRequeridas = cotizadorCategorias.filter(c => c.accion === "descuento" || c.accion === "cartel_sistema")
+    return cotizadorModelos.filter(m => {
+      const criterios = cotizadorCriteriosByModelo[m.id] ?? []
+      return catsRequeridas.every(cat =>
+        criterios.some(cr => cr.categoria_id === cat.id && Number(cr.descuento_usd) === 0)
+      )
+    })
+  }, [cotizadorModelos, cotizadorCategorias, cotizadorCriteriosByModelo])
 
-  const componentesEvaluacion = [
-    { id: 1, nombre: "Pantalla", tipo: "dropdown", estados: [
-      { estado: "Buena", descuento: 0 },
-      { estado: "Rayada leve", descuento: 15000 },
-      { estado: "Rayada grave", descuento: 40000 },
-      { estado: "Rota", descuento: 80000 },
-    ]},
-    { id: 2, nombre: "Batería", tipo: "dropdown", estados: [
-      { estado: "Buena (80%+)", descuento: 0 },
-      { estado: "Desgastada (60-80%)", descuento: 25000 },
-      { estado: "Mala (<60%)", descuento: 45000 },
-    ]},
-    { id: 3, nombre: "Cámara Trasera", tipo: "dropdown", estados: [
-      { estado: "Funciona correctamente", descuento: 0 },
-      { estado: "Falla menor", descuento: 20000 },
-      { estado: "No funciona", descuento: 50000 },
-    ]},
-    { id: 4, nombre: "Cámara Frontal", tipo: "dropdown", estados: [
-      { estado: "Funciona correctamente", descuento: 0 },
-      { estado: "No funciona", descuento: 30000 },
-    ]},
-    { id: 5, nombre: "Carcasa", tipo: "dropdown", estados: [
-      { estado: "Buena", descuento: 0 },
-      { estado: "Rayada", descuento: 20000 },
-      { estado: "Golpeada", descuento: 35000 },
-    ]},
-    { id: 6, nombre: "Botones", tipo: "checkbox", estados: [
-      { estado: "Funcionan", descuento: 0 },
-      { estado: "Alguno falla", descuento: 15000 },
-    ]},
-    { id: 7, nombre: "Altavoz", tipo: "checkbox", estados: [
-      { estado: "Funciona", descuento: 0 },
-      { estado: "Falla", descuento: 20000 },
-    ]},
-    { id: 8, nombre: "Micrófono", tipo: "checkbox", estados: [
-      { estado: "Funciona", descuento: 0 },
-      { estado: "Falla", descuento: 20000 },
-    ]},
-  ]
-
-  const calcularDescuentosCombinados = (descuentos: number[]) => {
-    // Lógica decreciente: a más daños, menor descuento proporcional por item
-    const total = descuentos.reduce((sum, d) => sum + d, 0)
-    const cantidadDanos = descuentos.filter(d => d > 0).length
-    if (cantidadDanos <= 1) return total
-    if (cantidadDanos === 2) return Math.round(total * 0.9) // 10% menos
-    if (cantidadDanos === 3) return Math.round(total * 0.8) // 20% menos
-    return Math.round(total * 0.7) // 30% menos para 4+ daños
-  }
+  // ── Cálculo del precio según la spec ──────────────────────────────────────
+  // 1. Si alguna categoría 'cartel_sistema' tiene descuento>0 → -50% primero
+  // 2. Sumar descuentos de categorías 'descuento' y 'whatsapp' (cuando tienen criterio seleccionado en ERP)
+  // 3. Sin bonificación por múltiples daños
+  // Nota: whatsapp con flag (sin criterios) no descuenta — solo es referencia visual
+  const calcularPrecioFinalUsd = useCallback((
+    base: number,
+    eval_: typeof tomaEquipoEvaluacion
+  ): { final: number; descuentoTotal: number; aplicaCartel: boolean } => {
+    const aplicaCartel = eval_.some(e => e.accion === "cartel_sistema" && e.descuento_usd > 0)
+    const baseAjustada = aplicaCartel ? base * 0.5 : base
+    const descuentosNominales = eval_
+      .filter(e => e.accion !== "cartel_sistema" && e.criterio_id)  // descuento + whatsapp con criterio
+      .reduce((s, e) => s + Number(e.descuento_usd || 0), 0)
+    const final = Math.max(0, baseAjustada - descuentosNominales)
+    const descuentoTotal = base - final
+    return { final: Number(final.toFixed(2)), descuentoTotal: Number(descuentoTotal.toFixed(2)), aplicaCartel }
+  }, [])
 
   const handleCancelarTE = async () => {
     if (!selectedToma) return
@@ -5624,7 +5741,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     if (!selectedToma) return null
     const fechaObj = new Date(selectedToma.fecha)
     const fechaHora = fechaObj.toLocaleDateString('es-AR') + ' ' + fechaObj.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
-    const operacionEnCurso = selectedToma.estado_recepcion !== 'recibido'
+    const operacionEnCurso = selectedToma.estado !== 'cancelado' && selectedToma.estado_recepcion !== 'recibido' && selectedToma.estado_recepcion !== 'cancelado'
 
     return (
       <div>
@@ -5669,9 +5786,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <div className="flex justify-between"><span className="text-gray-500">Fecha y Hora</span><span className="font-medium">{fechaHora}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">Cliente</span><span className="font-medium">{selectedToma.cliente_nombre}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">Equipo</span><span className="font-medium">{selectedToma.modelo_equipo}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Precio Base</span><span className="font-medium">{formatCurrency(selectedToma.precio_base)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Descuentos</span><span className="font-medium text-red-600">-{formatCurrency(selectedToma.descuentos)}</span></div>
-              <div className="flex justify-between border-t pt-3"><span className="text-gray-700 font-semibold">Precio Final Acordado</span><span className="font-bold text-emerald-600 text-base">{formatCurrency(selectedToma.precio_final)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Valor Base</span><span className="font-medium">USD {Number(selectedToma.precio_base).toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Descuentos</span><span className="font-medium text-red-600">-USD {Number(selectedToma.descuentos).toFixed(2)}</span></div>
+              <div className="flex justify-between border-t pt-3"><span className="text-gray-700 font-semibold">Precio Final Acordado</span><span className="font-bold text-emerald-600 text-base">USD {Number(selectedToma.precio_final).toFixed(2)}</span></div>
             </div>
           </div>
 
@@ -5679,19 +5796,27 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <div className="bg-white rounded-lg border p-5">
             <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Evaluación del Equipo</h3>
             <div className="space-y-2">
-              {selectedToma.evaluacion.map((ev, i) => (
-                <div key={i} className="flex items-center justify-between text-sm py-1.5 border-b border-gray-50 last:border-0">
-                  <span className="text-gray-600">{ev.componente}</span>
-                  <div className="flex items-center gap-3">
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                      ['Buena', 'Excelente', 'Funciona', 'Funcionan', 'Funciona correctamente'].includes(ev.estado) ? 'bg-green-100 text-green-700' :
-                      ['Desgastada', 'Regular', 'Rayada'].includes(ev.estado) ? 'bg-amber-100 text-amber-700' :
-                      'bg-red-100 text-red-700'
-                    }`}>{ev.estado}</span>
-                    {ev.descuento > 0 && <span className="text-red-600 text-xs">-{formatCurrency(ev.descuento)}</span>}
+              {selectedToma.evaluacion.map((ev: any, i: number) => {
+                // Compat con formato legacy {componente, estado, descuento} y nuevo {categoria, etiqueta, descuento_usd, accion, whatsapp_flag}
+                const nombre = ev.categoria ?? ev.componente ?? "—"
+                const etiqueta = ev.etiqueta ?? ev.estado ?? "—"
+                const descUsd = Number(ev.descuento_usd ?? ev.descuento ?? 0)
+                const whatsappFlag = ev.whatsapp_flag === true
+                const esOk = descUsd === 0 && !whatsappFlag
+                return (
+                  <div key={i} className="flex items-center justify-between text-sm py-1.5 border-b border-gray-50 last:border-0">
+                    <span className="text-gray-600">{nombre}</span>
+                    <div className="flex items-center gap-3">
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        esOk ? 'bg-green-100 text-green-700' :
+                        whatsappFlag ? 'bg-amber-100 text-amber-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>{etiqueta}</span>
+                      {descUsd > 0 && <span className="text-red-600 text-xs">-USD {descUsd.toFixed(2)}</span>}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>
@@ -5730,9 +5855,27 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <div className="flex justify-between"><span className="text-gray-500">Concepto</span><span className="font-medium">Toma de equipo: {selectedToma.modelo_equipo}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Importe</span><span className="font-bold text-emerald-600">{formatCurrency(selectedToma.precio_final)}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Estado</span>
-                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Publicada</span>
+                  {(() => {
+                    const ncReal = ajustes.find(a => a.numero === selectedToma.nota_credito_numero)
+                    const estadoNc = ncReal?.estado ?? "activo"
+                    const isPublicada = estadoNc === "publicado" || estadoNc === "activo"
+                    const isCancelada = estadoNc === "cancelado"
+                    return (
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        isCancelada ? 'bg-red-100 text-red-700' :
+                        isPublicada ? 'bg-green-100 text-green-700' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {isCancelada ? "Cancelada" :
+                         estadoNc === "publicado" ? "Publicada" :
+                         estadoNc === "activo" ? "Activa" : "Borrador"}
+                      </span>
+                    )
+                  })()}
                 </div>
-                <p className="text-xs text-gray-400 pt-2 border-t">Este crédito fue acreditado en la cuenta corriente del cliente.</p>
+                {selectedToma.estado === "cancelado"
+                  ? <p className="text-xs text-red-500 pt-2 border-t">Esta NC fue revertida con un asiento de reversa.</p>
+                  : <p className="text-xs text-gray-400 pt-2 border-t">Este crédito fue acreditado en la cuenta corriente del cliente.</p>}
               </div>
             ) : (
               <p className="text-sm text-gray-400">Sin nota de crédito generada</p>
@@ -5841,36 +5984,62 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
   const renderCrearTomaEquipo = () => {
     const clienteSeleccionado = clientes.find(c => c.id === tomaEquipoClienteId)
-    const modeloSeleccionado = modelosEquipo.find(m => m.id === tomaEquipoModeloId)
-    const totalDescuentos = calcularDescuentosCombinados(tomaEquipoComponentes.map(c => c.descuento))
-    const precioSugerido = tomaEquipoPrecioBase - totalDescuentos
-    
-    // Rango permitido para el rol (simulado: vendedor puede +/- 10%)
-    const rangoMin = Math.round(precioSugerido * 0.9)
-    const rangoMax = Math.round(precioSugerido * 1.1)
+    const modeloSeleccionado = cotizadorModelos.find(m => m.id === tomaEquipoModeloId)
+    const criteriosDelModelo = tomaEquipoModeloId ? (cotizadorCriteriosByModelo[tomaEquipoModeloId] ?? []) : []
+    const { final: precioCalculadoUsd, descuentoTotal: descuentoTotalUsd, aplicaCartel } =
+      calcularPrecioFinalUsd(tomaEquipoPrecioBaseUsd, tomaEquipoEvaluacion)
+    const precioFinalUsdEditable = tomaEquipoPrecioFinalUsd > 0 ? tomaEquipoPrecioFinalUsd : precioCalculadoUsd
+    const precioFinalArs = cotizacionUsdBlue > 0 ? precioFinalUsdEditable * cotizacionUsdBlue : 0
+    const tieneFlagWhatsapp = tomaEquipoEvaluacion.some(e => e.accion === "whatsapp" && e.whatsapp_flag)
+    // Rango de tolerancia ±20% sobre el precio sugerido
+    const rangoMinUsd = Number((precioCalculadoUsd * 0.8).toFixed(2))
+    const rangoMaxUsd = Number((precioCalculadoUsd * 1.2).toFixed(2))
+    const fueraDeRango = precioCalculadoUsd > 0 && (precioFinalUsdEditable < rangoMinUsd || precioFinalUsdEditable > rangoMaxUsd)
 
     const resetForm = () => {
       setTomaEquipoPaso(1)
       setTomaEquipoClienteId(null)
       setTomaEquipoModeloId(null)
-      setTomaEquipoPrecioBase(0)
-      setTomaEquipoPrecioFinal(0)
-      setTomaEquipoComponentes([])
+      setTomaEquipoPrecioBaseUsd(0)
+      setTomaEquipoPrecioFinalUsd(0)
+      setTomaEquipoEvaluacion([])
       setTomaEquipoCreando(false)
+    }
+
+    // Inicializa la evaluación con la opción default por categoría (Impecable / sin daño)
+    const inicializarEvaluacion = (modeloId: string) => {
+      const criterios = cotizadorCriteriosByModelo[modeloId] ?? []
+      const evalInicial = cotizadorCategorias.map(cat => {
+        const opcionesCat = criterios.filter(c => c.categoria_id === cat.id).sort((a, b) => a.descuento_usd - b.descuento_usd)
+
+        // whatsapp SIN criterios cargados → fallback a checkbox
+        if (cat.accion === "whatsapp" && opcionesCat.length === 0) {
+          return {
+            categoria_id: cat.id, categoria_nombre: cat.nombre, accion: cat.accion,
+            criterio_id: null, etiqueta: "Sin daño", descuento_usd: 0, whatsapp_flag: false,
+          }
+        }
+        // Cualquier categoría con criterios → tomar el primero (Impecable / descuento más bajo)
+        const impecable = opcionesCat.find(c => Number(c.descuento_usd) === 0) ?? opcionesCat[0]
+        return {
+          categoria_id: cat.id, categoria_nombre: cat.nombre, accion: cat.accion,
+          criterio_id: impecable?.id ?? null,
+          etiqueta: impecable?.etiqueta ?? "—",
+          descuento_usd: Number(impecable?.descuento_usd ?? 0),
+          whatsapp_flag: false,
+        }
+      })
+      setTomaEquipoEvaluacion(evalInicial)
     }
 
     const handleConfirmar = async () => {
       if (!clienteSeleccionado || !modeloSeleccionado || guardandoToma) return
+      if (!cotizacionUsdBlue || cotizacionUsdBlue <= 0) {
+        alert("No hay cotización USD blue del día. Cargá una en Contabilidad → Cotizaciones antes de confirmar.")
+        return
+      }
       setGuardandoToma(true)
 
-      const ahora = new Date().toISOString()
-      const precioFinal = tomaEquipoPrecioFinal || precioSugerido
-
-      // ── Persistir en Supabase (genera número, NC y recepción en el servidor) ──
-      let tomaId: number | null = null
-      let numero = ""
-      let recepcionNumero = ""
-      let notaCreditoNumero = ""
       try {
         const res = await fetch("/api/tomas-equipo", {
           method: "POST",
@@ -5878,116 +6047,48 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           body: JSON.stringify({
             cliente_id: clienteSeleccionado.id,
             cliente_nombre: clienteSeleccionado.nombre,
-            modelo_equipo: modeloSeleccionado.nombre,
-            producto_id: tomaEquipoModeloId,
-            precio_base: tomaEquipoPrecioBase,
-            descuentos: totalDescuentos,
-            precio_final: precioFinal,
+            modelo_equipo: modeloSeleccionado.producto_nombre,
+            producto_id: modeloSeleccionado.producto_id,
+            precio_base_usd: tomaEquipoPrecioBaseUsd,
+            descuentos_usd: descuentoTotalUsd,
+            precio_final_usd: precioFinalUsdEditable,
+            cotizacion: cotizacionUsdBlue,
             sucursal_id: sucursalActiva?.id ?? null,
-            evaluacion: tomaEquipoComponentes.map(c => ({
-              componente: c.nombre,
-              estado: c.estado,
-              descuento: c.descuento,
+            evaluacion: tomaEquipoEvaluacion.map(e => ({
+              categoria_id: e.categoria_id,
+              categoria: e.categoria_nombre,
+              accion: e.accion,
+              criterio_id: e.criterio_id,
+              etiqueta: e.etiqueta,
+              descuento_usd: e.descuento_usd,
+              whatsapp_flag: e.whatsapp_flag,
             })),
           }),
         })
-        if (res.ok) {
-          const data = await res.json()
-          tomaId = data.id
-          numero = data.numero
-          recepcionNumero = data.recepcion_numero
-          notaCreditoNumero = data.nota_credito_numero
-          if (data._asiento_nc_error) {
-            console.warn("[tomas-equipo] asiento NC no generado:", data._asiento_nc_error)
-            alert(`⚠️ Toma registrada, pero el asiento contable de la NC no se generó:\n${data._asiento_nc_error}`)
-          }
+        const data = await res.json()
+        if (!res.ok) {
+          alert(data.error ?? "Error al crear la toma")
+          setGuardandoToma(false)
+          return
         }
+        if (data._asiento_nc_error) {
+          alert(`⚠️ Toma registrada, pero el asiento contable de la NC no se generó:\n${data._asiento_nc_error}`)
+        }
+        // Refrescar lista de tomas desde el servidor
+        const updated = await fetch("/api/tomas-equipo")
+        if (updated.ok) {
+          const tomas = await updated.json()
+          setTomasEquipo(tomas)
+          const tomaCreada = tomas.find((t: any) => t.id === data.id)
+          if (tomaCreada) setSelectedToma(tomaCreada)
+        }
+        resetForm()
       } catch (err) {
         console.error("[tomas-equipo] error al persistir:", err)
+        alert("Error de red al crear la toma")
+      } finally {
+        setGuardandoToma(false)
       }
-
-      // Fallback local si la API falla
-      if (!numero) {
-        const seq = tomasEquipo.length + 1
-        numero = `TE-${String(seq).padStart(5, "0")}`
-        recepcionNumero = `REC-TE-${String(seq).padStart(5, "0")}`
-        notaCreditoNumero = `NC-A-${String(seq).padStart(5, "0")}`
-      }
-
-      const nuevaToma = {
-        id: tomaId ?? Date.now(),
-        numero,
-        fecha: ahora,
-        cliente_id: clienteSeleccionado.id,
-        cliente_nombre: clienteSeleccionado.nombre,
-        modelo_equipo: modeloSeleccionado.nombre,
-        precio_base: tomaEquipoPrecioBase,
-        descuentos: totalDescuentos,
-        precio_final: precioFinal,
-        estado: "confirmado" as const,
-        estado_recepcion: "pendiente" as const,
-        recepcion_numero: recepcionNumero,
-        nota_credito_numero: notaCreditoNumero,
-        evaluacion: tomaEquipoComponentes.map(c => ({
-          componente: c.nombre,
-          estado: c.estado,
-          descuento: c.descuento,
-        })),
-      }
-
-      // Nota de crédito en el state local de ajustes
-      const nuevaNC: AjusteCliente = {
-        id: Date.now(),
-        numero: notaCreditoNumero,
-        cliente_id: clienteSeleccionado.id,
-        cliente_nombre: clienteSeleccionado.nombre,
-        estado: "publicado",
-        fecha: ahora,
-        concepto: `Nota de Crédito — Toma de equipo: ${modeloSeleccionado.nombre}`,
-        moneda: "ARS",
-        nota_venta_numero: null,
-        sucursal: sucursalActiva?.nombre ?? "",
-        categoria: "Equipos en parte de pago",
-        lineas: [{
-          descripcion: `Toma de equipo usado: ${modeloSeleccionado.nombre}`,
-          fecha_vencimiento: ahora,
-          importe: precioFinal,
-        }],
-        total: precioFinal,
-      }
-      setAjustes(prev => [...prev, nuevaNC])
-
-      // Movimiento de cuenta corriente del cliente
-      const saldoActual = movimientosCC
-        .filter(m => m.cliente_id === clienteSeleccionado.id)
-        .reduce((s, m) => m.tipo === "debito" ? s + m.importe : s - m.importe, 0)
-      const nuevoMovimiento: MovimientoCuentaCorriente = {
-        id: Date.now() + 1,
-        cliente_id: clienteSeleccionado.id,
-        fecha: ahora,
-        tipo: "credito",
-        concepto: `Nota de Crédito ${notaCreditoNumero} — Toma equipo: ${modeloSeleccionado.nombre}`,
-        documento_tipo: "nota_credito",
-        documento_numero: notaCreditoNumero,
-        documento_id: nuevaNC.id,
-        moneda: "ARS",
-        importe: precioFinal,
-        saldo_posterior: Math.max(0, saldoActual - precioFinal),
-      }
-      setMovimientosCC(prev => [...prev, nuevoMovimiento])
-
-      // Actualizar saldo del cliente
-      setClientes(prev => prev.map(c =>
-        c.id === clienteSeleccionado.id
-          ? { ...c, saldo_cuenta_corriente: Math.max(0, (c.saldo_cuenta_corriente || 0) - precioFinal) }
-          : c
-      ))
-
-      setTomasEquipo(prev => [...prev, nuevaToma])
-      // Abrir la ficha de la toma recién creada en lugar de volver al listado
-      resetForm()
-      setSelectedToma(nuevaToma)
-      setGuardandoToma(false)
     }
 
     return (
@@ -6090,31 +6191,34 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           {tomaEquipoPaso === 2 && (
             <div>
               <h2 className="text-lg font-semibold mb-4">Seleccione el Modelo de Equipo</h2>
-              <p className="text-sm text-gray-500 mb-6">Elija el modelo desde la lista de equipos disponibles para toma.</p>
-              
+              <p className="text-sm text-gray-500 mb-6">Solo se muestran modelos con criterios de evaluación completos.</p>
+
+              {modelosCotizables.length === 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded p-3 text-sm text-amber-700 mb-4 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  No hay modelos cotizables. Configurá modelos y criterios en Ventas → Configuración → Criterios para cotizador.
+                </div>
+              )}
+
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Modelo de Equipo</label>
                   <select
                     value={tomaEquipoModeloId || ""}
                     onChange={(e) => {
-                      const modelo = modelosEquipo.find(m => m.id === Number(e.target.value))
-                      setTomaEquipoModeloId(Number(e.target.value))
-                      setTomaEquipoPrecioBase(modelo?.precioBase || 0)
-                      setTomaEquipoPrecioFinal(modelo?.precioBase || 0)
-                      // Inicializar componentes con estado "Buena" por defecto
-                      setTomaEquipoComponentes(componentesEvaluacion.map(c => ({
-                        id: c.id,
-                        nombre: c.nombre,
-                        estado: c.estados[0].estado,
-                        descuento: 0
-                      })))
+                      const id = e.target.value
+                      const modelo = cotizadorModelos.find(m => m.id === id)
+                      setTomaEquipoModeloId(id || null)
+                      setTomaEquipoPrecioBaseUsd(modelo?.valor_base_usd || 0)
+                      // No pre-fill del precio final — queda 0 y el input muestra el sugerido (precio_base − descuentos)
+                      setTomaEquipoPrecioFinalUsd(0)
+                      if (id) inicializarEvaluacion(id)
                     }}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
                   >
                     <option value="">Seleccionar modelo...</option>
-                    {modelosEquipo.map(m => (
-                      <option key={m.id} value={m.id}>{m.nombre} - Precio base: {formatCurrency(m.precioBase)}</option>
+                    {modelosCotizables.map(m => (
+                      <option key={m.id} value={m.id}>{m.producto_nombre} — USD {m.valor_base_usd.toFixed(2)}</option>
                     ))}
                   </select>
                 </div>
@@ -6124,8 +6228,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <div className="flex items-center gap-3">
                       <Smartphone className="w-10 h-10 text-emerald-600" />
                       <div>
-                        <p className="font-semibold text-emerald-900">{modeloSeleccionado.nombre}</p>
-                        <p className="text-sm text-emerald-700">Precio base de toma: <span className="font-bold">{formatCurrency(modeloSeleccionado.precioBase)}</span></p>
+                        <p className="font-semibold text-emerald-900">{modeloSeleccionado.producto_nombre}</p>
+                        <p className="text-sm text-emerald-700">Valor base: <span className="font-bold">USD {modeloSeleccionado.valor_base_usd.toFixed(2)}</span></p>
+                        {cotizacionUsdBlue > 0 && (
+                          <p className="text-xs text-emerald-600">≈ {formatCurrency(modeloSeleccionado.valor_base_usd * cotizacionUsdBlue)} (cotización blue: ${cotizacionUsdBlue.toFixed(2)})</p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -6133,10 +6240,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               </div>
 
               <div className="flex justify-between mt-8">
-                <button
-                  onClick={() => setTomaEquipoPaso(1)}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2"
-                >
+                <button onClick={() => setTomaEquipoPaso(1)} className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2">
                   <ArrowLeft className="w-4 h-4" /> Anterior
                 </button>
                 <button
@@ -6154,29 +6258,57 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           {tomaEquipoPaso === 3 && (
             <div>
               <h2 className="text-lg font-semibold mb-4">Evaluación del Estado del Equipo</h2>
-              <p className="text-sm text-gray-500 mb-6">Evalúe cada componente del equipo. Los descuentos se calculan automáticamente.</p>
-              
+              <p className="text-sm text-gray-500 mb-6">Evalúe cada categoría según el estado real del equipo. Los descuentos se aplican en USD.</p>
+
               <div className="grid grid-cols-2 gap-4 mb-6">
-                {componentesEvaluacion.map(comp => {
-                  const compState = tomaEquipoComponentes.find(c => c.id === comp.id)
+                {tomaEquipoEvaluacion.map((ev, idx) => {
+                  const opciones = criteriosDelModelo.filter(c => c.categoria_id === ev.categoria_id)
+
+                  // whatsapp SIN criterios cargados → checkbox fallback (web behavior)
+                  if (ev.accion === "whatsapp" && opciones.length === 0) {
+                    return (
+                      <div key={ev.categoria_id} className="border rounded-lg p-3">
+                        <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={ev.whatsapp_flag}
+                            onChange={(e) => {
+                              const next = [...tomaEquipoEvaluacion]
+                              next[idx] = { ...ev, whatsapp_flag: e.target.checked, etiqueta: e.target.checked ? "Con daño (sin criterios cargados)" : "Sin daño" }
+                              setTomaEquipoEvaluacion(next)
+                              setTomaEquipoPrecioFinalUsd(0)
+                            }}
+                          />
+                          ¿Tiene daño en {ev.categoria_nombre}?
+                        </label>
+                        {ev.whatsapp_flag && (
+                          <p className="text-xs text-amber-600 mt-1.5">Cargá criterios para esta categoría en Configuración para poder aplicar descuento.</p>
+                        )}
+                      </div>
+                    )
+                  }
+                  // Cualquier categoría con criterios cargados (incluido whatsapp) → dropdown
                   return (
-                    <div key={comp.id} className="border rounded-lg p-3">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">{comp.nombre}</label>
+                    <div key={ev.categoria_id} className="border rounded-lg p-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        {ev.categoria_nombre}
+                        {ev.accion === "cartel_sistema" && <span className="ml-2 text-xs text-amber-600">(-50% si aplica)</span>}
+                      </label>
                       <select
-                        value={compState?.estado || comp.estados[0].estado}
+                        value={ev.criterio_id ?? ""}
                         onChange={(e) => {
-                          const estadoSel = comp.estados.find(es => es.estado === e.target.value)
-                          setTomaEquipoComponentes(prev => prev.map(c => 
-                            c.id === comp.id 
-                              ? { ...c, estado: e.target.value, descuento: estadoSel?.descuento || 0 }
-                              : c
-                          ))
+                          const opt = opciones.find(o => o.id === e.target.value)
+                          if (!opt) return
+                          const next = [...tomaEquipoEvaluacion]
+                          next[idx] = { ...ev, criterio_id: opt.id, etiqueta: opt.etiqueta, descuento_usd: Number(opt.descuento_usd) }
+                          setTomaEquipoEvaluacion(next)
+                          setTomaEquipoPrecioFinalUsd(0)  // re-trackear el sugerido al cambiar evaluación
                         }}
                         className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
                       >
-                        {comp.estados.map(es => (
-                          <option key={es.estado} value={es.estado}>
-                            {es.estado} {es.descuento > 0 ? `(-${formatCurrency(es.descuento)})` : ''}
+                        {opciones.map(o => (
+                          <option key={o.id} value={o.id}>
+                            {o.etiqueta}{o.descuento_usd > 0 ? ` (-USD ${o.descuento_usd.toFixed(2)})` : ""}
                           </option>
                         ))}
                       </select>
@@ -6185,63 +6317,82 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 })}
               </div>
 
-              {/* Panel de Resumen de Precio */}
+              {/* Panel de Resumen */}
               <div className="bg-gray-50 rounded-lg p-4 border">
-                <h3 className="font-semibold text-gray-900 mb-3">Resumen de Valorización</h3>
+                <h3 className="font-semibold text-gray-900 mb-3">Resumen de Valorización (USD)</h3>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span>Precio base:</span>
-                    <span className="font-medium">{formatCurrency(tomaEquipoPrecioBase)}</span>
+                    <span>Valor base:</span>
+                    <span className="font-medium">USD {tomaEquipoPrecioBaseUsd.toFixed(2)}</span>
                   </div>
-                  {tomaEquipoComponentes.filter(c => c.descuento > 0).map(c => (
-                    <div key={c.id} className="flex justify-between text-red-600">
-                      <span>- {c.nombre} ({c.estado}):</span>
-                      <span>-{formatCurrency(c.descuento)}</span>
-                    </div>
-                  ))}
-                  {tomaEquipoComponentes.filter(c => c.descuento > 0).length > 1 && (
-                    <div className="flex justify-between text-emerald-600 text-xs">
-                      <span>Bonificación por múltiples daños:</span>
-                      <span>+{formatCurrency(tomaEquipoComponentes.reduce((s, c) => s + c.descuento, 0) - totalDescuentos)}</span>
+                  {aplicaCartel && (
+                    <div className="flex justify-between text-amber-700">
+                      <span>⚠️ Cartel de sistema (-50%):</span>
+                      <span>-USD {(tomaEquipoPrecioBaseUsd * 0.5).toFixed(2)}</span>
                     </div>
                   )}
+                  {tomaEquipoEvaluacion.filter(e => e.accion !== "cartel_sistema" && e.criterio_id && e.descuento_usd > 0).map(e => (
+                    <div key={e.categoria_id} className="flex justify-between text-red-600">
+                      <span>- {e.categoria_nombre} ({e.etiqueta}):</span>
+                      <span>-USD {e.descuento_usd.toFixed(2)}</span>
+                    </div>
+                  ))}
                   <div className="border-t pt-2 mt-2 flex justify-between font-bold text-lg">
                     <span>Precio sugerido:</span>
-                    <span className="text-emerald-600">{formatCurrency(precioSugerido)}</span>
+                    <span className="text-emerald-600">USD {precioCalculadoUsd.toFixed(2)}</span>
                   </div>
+                  {cotizacionUsdBlue > 0 && (
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Equivalente ARS @ {cotizacionUsdBlue.toFixed(2)}:</span>
+                      <span>{formatCurrency(precioCalculadoUsd * cotizacionUsdBlue)}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-4">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Precio Final (Rango: {formatCurrency(rangoMin)} - {formatCurrency(rangoMax)})
+                    Precio Final acordado (USD)
+                    {precioCalculadoUsd > 0 && (
+                      <span className="ml-2 text-xs font-normal text-gray-500">
+                        Rango ±20%: USD {rangoMinUsd.toFixed(2)} – USD {rangoMaxUsd.toFixed(2)}
+                      </span>
+                    )}
                   </label>
                   <input
-                    type="number"
-                    value={tomaEquipoPrecioFinal || precioSugerido}
-                    onChange={(e) => setTomaEquipoPrecioFinal(Number(e.target.value))}
+                    type="number" step="0.01" min="0"
+                    value={tomaEquipoPrecioFinalUsd || precioCalculadoUsd}
+                    onChange={(e) => setTomaEquipoPrecioFinalUsd(Number(e.target.value))}
                     className={`w-full px-3 py-2 border rounded-lg focus:ring-2 ${
-                      (tomaEquipoPrecioFinal || precioSugerido) < rangoMin || (tomaEquipoPrecioFinal || precioSugerido) > rangoMax
+                      fueraDeRango
                         ? 'border-red-500 focus:ring-red-500'
-                        : 'focus:ring-emerald-500'
+                        : 'border-gray-300 focus:ring-emerald-500'
                     }`}
                   />
-                  {((tomaEquipoPrecioFinal || precioSugerido) < rangoMin || (tomaEquipoPrecioFinal || precioSugerido) > rangoMax) && (
-                    <p className="text-red-500 text-xs mt-1">Precio fuera del rango permitido. Requiere aprobación del supervisor.</p>
+                  {fueraDeRango ? (
+                    <p className="text-red-600 text-xs mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      Precio fuera del rango permitido (±20%). Requiere aprobación del supervisor.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-1">El operador puede ajustar el precio final si negocia con el cliente.</p>
                   )}
                 </div>
               </div>
 
+              {tieneFlagWhatsapp && (
+                <div className="bg-amber-50 border border-amber-200 rounded p-3 text-sm text-amber-800 mt-4 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <div>
+                    El equipo tiene daños que requieren evaluación presencial. El precio final puede ajustarse después de la inspección física.
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-between mt-8">
-                <button
-                  onClick={() => setTomaEquipoPaso(2)}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2"
-                >
+                <button onClick={() => setTomaEquipoPaso(2)} className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2">
                   <ArrowLeft className="w-4 h-4" /> Anterior
                 </button>
-                <button
-                  onClick={() => setTomaEquipoPaso(4)}
-                  className="px-6 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 flex items-center gap-2"
-                >
+                <button onClick={() => setTomaEquipoPaso(4)} className="px-6 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 flex items-center gap-2">
                   Siguiente <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -6252,77 +6403,86 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           {tomaEquipoPaso === 4 && (
             <div>
               <h2 className="text-lg font-semibold mb-4">Confirmación de la Operación</h2>
-              <p className="text-sm text-gray-500 mb-6">Revise los datos antes de confirmar. Se generará una recepción de compra y una nota de crédito.</p>
-              
+              <p className="text-sm text-gray-500 mb-6">Revise los datos antes de confirmar. Se generará una recepción de compra y una nota de crédito en USD.</p>
+
+              {(!cotizacionUsdBlue || cotizacionUsdBlue <= 0) && (
+                <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700 mb-4 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  No hay cotización USD blue del día. Cargá una en Contabilidad → Cotizaciones antes de confirmar.
+                </div>
+              )}
+
               <div className="space-y-4">
-                {/* Resumen Cliente */}
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h3 className="font-semibold text-gray-900 mb-2">Cliente</h3>
                   <p className="text-sm">{clienteSeleccionado?.codigo} - {clienteSeleccionado?.nombre}</p>
                   <p className="text-sm text-gray-500">{clienteSeleccionado?.tipo_documento}: {clienteSeleccionado?.numero_documento}</p>
                 </div>
 
-                {/* Resumen Equipo */}
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h3 className="font-semibold text-gray-900 mb-2">Equipo</h3>
-                  <p className="text-sm font-medium">{modeloSeleccionado?.nombre}</p>
+                  <p className="text-sm font-medium">{modeloSeleccionado?.producto_nombre}</p>
                   <div className="mt-2 space-y-1">
-                    {tomaEquipoComponentes.map(c => (
-                      <div key={c.id} className="flex justify-between text-xs">
-                        <span className="text-gray-500">{c.nombre}:</span>
-                        <span className={c.descuento > 0 ? 'text-red-600' : 'text-emerald-600'}>
-                          {c.estado} {c.descuento > 0 && `(-${formatCurrency(c.descuento)})`}
+                    {tomaEquipoEvaluacion.map(e => (
+                      <div key={e.categoria_id} className="flex justify-between text-xs">
+                        <span className="text-gray-500">{e.categoria_nombre}:</span>
+                        <span className={e.descuento_usd > 0 || e.whatsapp_flag ? 'text-red-600' : 'text-emerald-600'}>
+                          {e.etiqueta}{e.descuento_usd > 0 ? ` (-USD ${e.descuento_usd.toFixed(2)})` : ""}
                         </span>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Resumen Financiero */}
                 <div className="bg-emerald-50 rounded-lg p-4">
                   <h3 className="font-semibold text-emerald-900 mb-2">Resumen Financiero</h3>
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
-                      <span>Precio base:</span>
-                      <span>{formatCurrency(tomaEquipoPrecioBase)}</span>
+                      <span>Valor base:</span>
+                      <span>USD {tomaEquipoPrecioBaseUsd.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-red-600">
                       <span>Descuentos aplicados:</span>
-                      <span>-{formatCurrency(totalDescuentos)}</span>
+                      <span>-USD {descuentoTotalUsd.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between font-bold text-lg pt-2 border-t border-emerald-200">
                       <span>Precio Final Acordado:</span>
-                      <span className="text-emerald-700">{formatCurrency(tomaEquipoPrecioFinal || precioSugerido)}</span>
+                      <span className="text-emerald-700">USD {precioFinalUsdEditable.toFixed(2)}</span>
                     </div>
+                    {cotizacionUsdBlue > 0 && (
+                      <div className="flex justify-between text-xs text-gray-600 pt-1">
+                        <span>Equivalente ARS @ blue {cotizacionUsdBlue.toFixed(2)}:</span>
+                        <span className="font-medium">{formatCurrency(precioFinalArs)}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Comprobantes a Generar */}
                 <div className="bg-blue-50 rounded-lg p-4">
                   <h3 className="font-semibold text-blue-900 mb-2">Comprobantes a Generar</h3>
                   <div className="space-y-2 text-sm">
                     <div className="flex items-center gap-2">
                       <Package className="w-4 h-4 text-blue-600" />
-                      <span>Recepción de Compra (Módulo Compras)</span>
+                      <span>Recepción de Compra (pendiente de recepción física)</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <CreditCard className="w-4 h-4 text-blue-600" />
-                      <span>Nota de Crédito por {formatCurrency(tomaEquipoPrecioFinal || precioSugerido)} (Cuenta Corriente)</span>
+                      <span>Nota de Crédito por USD {precioFinalUsdEditable.toFixed(2)} en CC del cliente</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-blue-700 pl-6">
+                      <span>+ asiento contable en ARS al cambio del día (blue)</span>
                     </div>
                   </div>
                 </div>
               </div>
 
               <div className="flex justify-between mt-8">
-                <button
-                  onClick={() => setTomaEquipoPaso(3)}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2"
-                >
+                <button onClick={() => setTomaEquipoPaso(3)} className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2">
                   <ArrowLeft className="w-4 h-4" /> Anterior
                 </button>
                 <button
                   onClick={handleConfirmar}
-                  disabled={guardandoToma}
+                  disabled={guardandoToma || !cotizacionUsdBlue || cotizacionUsdBlue <= 0}
                   className="px-6 py-2 bg-indigo-900 text-white rounded-lg hover:bg-indigo-800 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <CheckCircle className="w-4 h-4" /> {guardandoToma ? "Procesando..." : "Confirmar Operación"}
@@ -7654,7 +7814,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <th className="text-right py-3 px-4">Precio Base</th>
                 <th className="text-right py-3 px-4">Descuentos</th>
                 <th className="text-right py-3 px-4">Precio Final</th>
-                <th className="text-center py-3 px-4">Operaci��n</th>
+                <th className="text-center py-3 px-4">Operación</th>
                 <th className="text-center py-3 px-4">Recepción</th>
                 <th className="text-center py-3 px-4">Estado</th>
               </tr>
@@ -7669,7 +7829,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 const fechaObj = new Date(toma.fecha)
                 const fecha = fechaObj.toLocaleDateString('es-AR')
                 const hora = fechaObj.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
-                const operacionEnCurso = toma.estado_recepcion !== 'recibido'
+                // Una toma cancelada o ya recibida no está "en curso"
+                const operacionEnCurso = toma.estado !== 'cancelado' && toma.estado_recepcion !== 'recibido' && toma.estado_recepcion !== 'cancelado'
                 return (
                   <tr key={toma.id} onClick={() => setSelectedToma(toma)} className="border-b hover:bg-gray-50 cursor-pointer">
                     <td className="py-3 px-4 font-medium text-emerald-700">{toma.numero}</td>
@@ -7684,9 +7845,11 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <td className="py-3 px-4 text-sm text-right font-semibold text-emerald-600">{formatCurrency(toma.precio_final)}</td>
                     <td className="py-3 px-4 text-center">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        operacionEnCurso ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                        toma.estado === 'cancelado' ? 'bg-red-100 text-red-700' :
+                        operacionEnCurso ? 'bg-blue-100 text-blue-700' :
+                        'bg-green-100 text-green-700'
                       }`}>
-                        {operacionEnCurso ? 'En curso' : 'Finalizada'}
+                        {toma.estado === 'cancelado' ? 'Cancelada' : operacionEnCurso ? 'En curso' : 'Finalizada'}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-center">
@@ -8029,7 +8192,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
     const lineasValidas = facturaLineas.filter(l => l.producto_nombre.trim() !== "")
     const subtotal = lineasValidas.reduce((sum, l) => sum + l.subtotal, 0)
-    const total = subtotal * 1.21
+    // Todos los precios incluyen IVA → total = subtotal
+    const total = subtotal
     
     if (!clienteSeleccionado || lineasValidas.length === 0) {
       alert("Debe seleccionar un cliente y agregar al menos un producto")
@@ -8554,10 +8718,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                                   p.sku.toLowerCase().includes(facturaProductoSearchText.toLowerCase())
                                 )
                                 .map(p => {
-                                  // Buscar precio en la versión activa (o confirmada) de la lista seleccionada
+                                  // Buscar precio en la versión activa y vigente de la lista seleccionada
+                                  const hoyIso = new Date().toISOString().split("T")[0]
                                   const versionActiva = versionesLista
                                     .filter(v => v.lista_precios_id === facturaListaPreciosId)
-                                    .find(v => v.activa || v.estado === "activa" || v.estado === "confirmada")
+                                    .filter(v => v.activa !== false)
+                                    .filter(v => v.fecha_inicial <= hoyIso && (!v.fecha_final || v.fecha_final >= hoyIso))
+                                    .sort((a, b) => b.fecha_inicial.localeCompare(a.fecha_inicial))[0]
                                   const lineaVersion = versionActiva?.lineas?.find(l => l.producto_id === p.id)
                                   const precioLista = lineaVersion?.precio_venta ?? p.precio_venta
                                   return (
@@ -8963,133 +9130,99 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </div>
           </div>
 
-          {/* Bloque Medios de Pago */}
+          {/* Bloque Medios de Pago — solo en estado "abierta" */}
+          {selectedFactura.estado === "abierta" && (
           <BloquesMediosPago
             key={selectedFactura.id}
             factura={selectedFactura}
-            onConfirmarCobro={(lineasPago, totalConRecargos, totalRecargos) => {
-              const fechaHoy = new Date().toISOString()
-              // Generar un movimiento por cada línea de pago
-              const nuevosMovimientos: MovimientoCuentaCorriente[] = lineasPago
+            tarjetas={tarjetasIniciales}
+            grupos={gruposIniciales}
+            recargos={recargosIniciales}
+            textoBoton="Confirmar factura (calcula IVA + recargos)"
+            textoConfirmado="Factura confirmada. Para registrar el cobro, generá un Recibo desde Ventas."
+            onConfirmarCobro={async (lineasPago) => {
+              // Modelo "todo en negro": al confirmar la factura llamamos al endpoint
+              // que calcula IVA proporcional + recargo según los medios elegidos y
+              // genera el segundo asiento contable. La factura queda "confirmada"
+              // con saldo = total_final. El COBRO real (descuento de saldo cliente,
+              // movimientos en cuenta corriente) se registra después con un Recibo.
+              const medios = lineasPago
                 .filter(l => l.monto > 0)
-                .map((l, i) => {
-                  const esTarjeta = l.medio === "tarjeta"
-                  const tarjetaInfo = tarjetasIniciales.find(t => t.id === l.tarjeta_id)
-                  const recCalc = esTarjeta && l.tarjeta_id
-                    ? (() => {
-                        const hoy = new Date()
-                        const diasKeys = ["dom","lun","mar","mie","jue","vie","sab"] as const
-                        const diaKey = diasKeys[hoy.getDay()]
-                        const rec = recargosIniciales.find(r =>
-                          r.tarjeta_id === l.tarjeta_id && r.activo &&
-                          (l.cuotas||1) >= r.desde_cuota && (l.cuotas||1) <= r.hasta_cuota && r.dias[diaKey]
-                        )
-                        return rec
-                      })()
-                    : null
-                  const importeRecargo = recCalc ? l.monto * (recCalc.recargo_pct / 100) : 0
-                  const grupo = recCalc ? gruposIniciales.find(g => g.id === recCalc.grupo_id) : null
-                  const cargosImporte = grupo ? grupo.cargos.reduce((s, c) => s + l.monto * (c.arancel / 100), 0) : 0
-                  const totalLinea = l.monto + importeRecargo + cargosImporte
-                  const saldoAnterior = clientes.find(c => c.id === selectedFactura.cliente_id)?.saldo_cuenta_corriente || 0
-
-                  return {
-                    id: movimientosCC.length + i + 1,
-                    cliente_id: selectedFactura.cliente_id,
-                    fecha: fechaHoy,
-                    tipo: "credito" as const,
-                    concepto: esTarjeta
-                      ? `Pago con tarjeta �� ${tarjetaInfo?.nombre} ${l.cuotas && l.cuotas > 1 ? `${l.cuotas} cuotas` : "1 cuota"}`
-                      : l.medio === "transferencia" ? "Pago por transferencia" : "Pago en efectivo",
-                    documento_tipo: "recibo" as const,
-                    documento_numero: selectedFactura.numero,
-                    documento_id: selectedFactura.id,
-                    moneda: selectedFactura.moneda,
-                    importe: totalLinea,
-                    saldo_posterior: saldoAnterior - totalLinea,
-                    // Campos bancarización
-                    bancarizado: esTarjeta || l.medio === "transferencia",
-                    tarjeta_nombre: tarjetaInfo?.nombre,
-                    cuotas: l.cuotas,
-                    monto_base: l.monto,
-                    recargo_aplicado: importeRecargo + cargosImporte,
-                  } as MovimientoCuentaCorriente
-                })
-              setMovimientosCC(prev => [...prev, ...nuevosMovimientos])
-              // Construir desglose detallado por medio de pago
-              const medioPagoDetalle = lineasPago.filter(l => l.monto > 0).map(l => {
-                const esTarjeta = l.medio === "tarjeta"
-                const tarjetaInfo = tarjetasIniciales.find(t => t.id === l.tarjeta_id)
-                if (!esTarjeta) {
+                .map(l => {
+                  let recargo_pct = 0
+                  if (l.medio === "tarjeta" && l.tarjeta_id) {
+                    const hoy = new Date()
+                    const diasKeys = ["dom","lun","mar","mie","jue","vie","sab"] as const
+                    const diaKey = diasKeys[hoy.getDay()]
+                    const rec = recargosIniciales.find(r =>
+                      r.tarjeta_id === l.tarjeta_id && r.activo &&
+                      (l.cuotas||1) >= r.desde_cuota && (l.cuotas||1) <= r.hasta_cuota && r.dias[diaKey]
+                    )
+                    recargo_pct = rec?.recargo_pct ?? 0
+                  }
                   return {
                     medio: l.medio,
-                    monto_base: l.monto,
-                    total_recargo: 0,
-                    total_acreditar: l.monto,
+                    monto: l.monto,
+                    tarjeta_id: l.medio === "tarjeta" ? l.tarjeta_id : undefined,
+                    cuotas: l.medio === "tarjeta" ? (l.cuotas ?? 1) : undefined,
+                    recargo_pct,
                   }
+                })
+
+              try {
+                const res = await fetch(`/api/facturas/${selectedFactura.id}/confirmar`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ medios }),
+                })
+                if (!res.ok) {
+                  const err = await res.json().catch(() => ({ error: "Error al confirmar factura" }))
+                  alert(`No se pudo confirmar la factura: ${err.error}`)
+                  return
                 }
-                const hoy = new Date()
-                const diasKeys = ["dom","lun","mar","mie","jue","vie","sab"] as const
-                const diaKey = diasKeys[hoy.getDay()]
-                const rec = recargosIniciales.find(r =>
-                  r.tarjeta_id === l.tarjeta_id && r.activo &&
-                  (l.cuotas||1) >= r.desde_cuota && (l.cuotas||1) <= r.hasta_cuota && r.dias[diaKey]
+                const result = await res.json()
+
+                // Construir desglose visual de medios para mostrar en el detalle
+                const medioPagoDetalle = (result.medios as Array<{
+                  medio: string; tarjeta_id: number | null; cuotas: number | null
+                  monto_base: number; iva_calculado: number; recargo: number; monto_total: number
+                }>).map(m => {
+                  const tarjetaInfo = m.tarjeta_id ? tarjetasIniciales.find(t => t.id === m.tarjeta_id) : null
+                  return {
+                    medio: m.medio,
+                    tarjeta_nombre: tarjetaInfo?.nombre,
+                    cuotas: m.cuotas ?? undefined,
+                    monto_base: m.monto_base,
+                    iva: m.iva_calculado,
+                    total_recargo: m.recargo,
+                    total_acreditar: m.monto_total,
+                  }
+                })
+
+                const facturaActualizada = {
+                  ...selectedFactura,
+                  estado: "confirmada" as const,
+                  impuestos: result.iva_total,
+                  total: result.total_final,
+                  saldo: result.total_final,
+                  medios_pago_detalle: medioPagoDetalle,
+                }
+                setFacturas(prev => prev.map(f => f.id === selectedFactura.id ? facturaActualizada : f))
+                setSelectedFactura(facturaActualizada)
+
+                alert(
+                  `Factura confirmada.\n` +
+                  `IVA: $${result.iva_total.toFixed(2)} · Recargo: $${result.recargo_total.toFixed(2)}\n` +
+                  `Total final: $${result.total_final.toFixed(2)}\n\n` +
+                  `Para registrar el cobro, generá un Recibo desde el módulo de Ventas.`
                 )
-                const grupo = rec ? gruposIniciales.find(g => g.id === rec.grupo_id) : null
-                const importeRecargo = rec ? l.monto * (rec.recargo_pct / 100) : 0
-                const cargos = grupo ? grupo.cargos.map(c => ({
-                  nombre: c.nombre,
-                  pct: c.arancel,
-                  importe: l.monto * (c.arancel / 100)
-                })) : []
-                const totalCargos = cargos.reduce((s, c) => s + c.importe, 0)
-                const totalRecargo = importeRecargo + totalCargos
-                return {
-                  medio: "tarjeta",
-                  tarjeta_nombre: tarjetaInfo?.nombre,
-                  cuotas: l.cuotas,
-                  grupo_nombre: grupo?.nombre,
-                  monto_base: l.monto,
-                  recargo_pct: rec?.recargo_pct,
-                  importe_recargo: importeRecargo,
-                  cargos,
-                  total_recargo: totalRecargo,
-                  total_acreditar: l.monto + totalRecargo,
-                }
-              })
-              // Actualizar total de factura sumando recargos (si aún no fueron aplicados)
-              const totalFinalConRecargos = selectedFactura.subtotal + totalRecargos
-              const nuevoSaldo = Math.max(0, totalFinalConRecargos - totalConRecargos)
-              const nuevoEstado: Factura["estado"] = nuevoSaldo <= 0 ? "conciliada" : "abierta"
-              setFacturas(prev => prev.map(f =>
-                f.id === selectedFactura.id
-                  ? {
-                      ...f,
-                      impuestos: totalRecargos,
-                      total: totalFinalConRecargos,
-                      saldo: nuevoSaldo,
-                      estado: nuevoEstado,
-                      medios_pago_detalle: medioPagoDetalle,
-                    }
-                  : f
-              ))
-              setSelectedFactura(prev => prev ? {
-                ...prev,
-                impuestos: totalRecargos,
-                total: totalFinalConRecargos,
-                saldo: nuevoSaldo,
-                estado: nuevoEstado,
-                medios_pago_detalle: medioPagoDetalle,
-              } : prev)
-              // Actualizar saldo del cliente con el total real pagado (base + recargos)
-              setClientes(prev => prev.map(c =>
-                c.id === selectedFactura.cliente_id
-                  ? { ...c, saldo_cuenta_corriente: c.saldo_cuenta_corriente - totalConRecargos }
-                  : c
-              ))
+              } catch (e) {
+                alert(`Error de red al confirmar factura: ${e instanceof Error ? e.message : String(e)}`)
+              }
             }}
             onEstadoPagoChange={(estado) => setFichaEstadoPago(estado)}
           />
+          )}
 
           {/* Seguimiento */}
           <SeguimientoPanel seguimiento={selectedFactura.seguimiento || []} />
@@ -11295,7 +11428,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
     // ── NC por moneda ────────────────────────────────────────────────────
     const todasNC = conciliacionClienteId
-      ? ajustes.filter(a => a.cliente_id === conciliacionClienteId && a.estado === 'publicado' && a.numero.startsWith('NC-'))
+      ? ajustes.filter(a => a.cliente_id === conciliacionClienteId && (a.estado === 'publicado' || a.estado === 'activo') && a.numero.startsWith('NC-'))
       : []
     const ncARS = todasNC.filter(a => !a.moneda || a.moneda === 'ARS')
     const ncUSD = todasNC.filter(a => a.moneda === 'USD')
@@ -12252,9 +12385,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     <td className="py-3 px-4 text-sm text-gray-600">{nota.sucursal}</td>
                     <td className="py-3 px-4 text-center">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
-                        nota.estado === "publicado" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+                        nota.estado === "publicado" || nota.estado === "activo" ? "bg-green-100 text-green-700" :
+                        nota.estado === "cancelado" ? "bg-red-100 text-red-700" :
+                        "bg-gray-100 text-gray-600"
                       }`}>
-                        {nota.estado === "publicado" ? "Publicada" : "Borrador"}
+                        {nota.estado === "publicado" ? "Publicada" :
+                         nota.estado === "activo" ? "Activa" :
+                         nota.estado === "cancelado" ? "Cancelada" :
+                         "Borrador"}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-center text-sm font-medium">{nota.moneda}</td>
@@ -12980,21 +13118,34 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   const renderListaListasPrecios = () => {
+    // Solo ocultar las que tienen activa=false explícito; null/undefined = activas (legacy)
+    const dataListasFiltrada = mostrarInactivasListas ? listasPrecios : listasPrecios.filter(l => l.activa !== false)
     return (
       <VentasListSection
         title="Listas de Precios"
         moduleName="listas_precios"
-        data={listasPrecios}
+        data={dataListasFiltrada}
         searchFields={["nombre", "tipo"]}
         filterFields={[{field: "tipo", label: "Tipo"}, {field: "moneda", label: "Moneda"}, {field: "estado", label: "Estado"}]}
         actions={
-          <button 
-            onClick={crearNuevaListaPrecios}
-            className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-1.5 rounded hover:bg-indigo-800 transition-colors text-sm font-medium"
-          >
-            <Plus className="w-4 h-4" />
-            Crear
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setMostrarInactivasListas(v => !v)}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded text-sm border transition-colors ${
+                mostrarInactivasListas ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+              title="Incluir listas archivadas"
+            >
+              {mostrarInactivasListas ? "Ocultar archivadas" : "Mostrar archivadas"}
+            </button>
+            <button
+              onClick={crearNuevaListaPrecios}
+              className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-1.5 rounded hover:bg-indigo-800 transition-colors text-sm font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              Crear
+            </button>
+          </div>
         }
       >
         {(filtered) => (
@@ -13005,7 +13156,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <th className="text-left py-3 px-4 font-medium">Nombre</th>
                 <th className="text-center py-3 px-4 font-medium">Tipo</th>
                 <th className="text-center py-3 px-4 font-medium">Moneda</th>
-                <th className="text-center py-3 px-4 font-medium">IVA Inc.</th>
                 <th className="text-center py-3 px-4 font-medium">Días Validez</th>
                 <th className="text-center py-3 px-4 font-medium">Estado</th>
                 <th className="text-center py-3 px-4 font-medium">Versiones</th>
@@ -13042,13 +13192,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         {lista.moneda_base}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-center">
-                      {lista.incluye_iva ? (
-                        <CheckCircle className="w-4 h-4 text-green-500 mx-auto" />
-                      ) : (
-                        <X className="w-4 h-4 text-gray-400 mx-auto" />
-                      )}
-                    </td>
                     <td className="py-3 px-4 text-center text-sm">{lista.dias_validez}</td>
                     <td className="py-3 px-4 text-center">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
@@ -13066,7 +13209,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               })}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-gray-500">
+                  <td colSpan={6} className="py-8 text-center text-gray-500">
                     No se encontraron listas de precios
                   </td>
                 </tr>
@@ -13137,6 +13280,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           </div>
         </div>
 
+        {/* Banner Archivada (solo si activa=false explícito) */}
+        {currentLista.activa === false && (
+          <div className="bg-amber-50 border border-amber-300 rounded p-3 mb-4 text-sm text-amber-800 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>Esta lista está <strong>archivada</strong> y no aparece en los formularios de venta. Reactivala marcando "Activa" en el formulario.</span>
+          </div>
+        )}
+
         {/* Formulario */}
         <div className="bg-white border border-gray-200 rounded p-6">
           {/* Campos principales */}
@@ -13172,12 +13323,31 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <p className="text-gray-900 py-2">{currentLista.dias_validez} días</p>
               )}
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1" title="Cotización a aplicar al convertir USD↔ARS en los comprobantes que usen esta lista">Tipo de Cotización</label>
+              {isEditing ? (
+                <select
+                  value={currentLista.tipo_cotizacion ?? "blue"}
+                  onChange={(e) => setEditingListaPrecios({ ...currentLista, tipo_cotizacion: e.target.value as ListaPrecios["tipo_cotizacion"] })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                >
+                  <option value="oficial">Oficial</option>
+                  <option value="blue">Blue</option>
+                  <option value="ccl">CCL</option>
+                  <option value="mep">MEP</option>
+                  <option value="divisa">Divisa</option>
+                  <option value="billete">Billete</option>
+                </select>
+              ) : (
+                <p className="text-gray-900 py-2 capitalize">{currentLista.tipo_cotizacion ?? "blue"}</p>
+              )}
+            </div>
             <div className="flex items-center gap-4 pt-6">
               {isEditing ? (
                 <>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={currentLista.incluye_iva} onChange={(e) => setEditingListaPrecios({ ...currentLista, incluye_iva: e.target.checked })} className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500" />
-                    <span className="text-sm text-gray-700">Incluye IVA</span>
+                    <input type="checkbox" checked={currentLista.activa} onChange={(e) => setEditingListaPrecios({ ...currentLista, activa: e.target.checked })} className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500" />
+                    <span className="text-sm text-gray-700">Activa</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={currentLista.no_visible} onChange={(e) => setEditingListaPrecios({ ...currentLista, no_visible: e.target.checked })} className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500" />
@@ -13186,8 +13356,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </>
               ) : (
                 <>
-                  <span className="text-sm text-gray-600">
-                    {currentLista.incluye_iva ? <span className="text-green-600">IVA incluido</span> : <span className="text-gray-400">IVA no incluido</span>}
+                  <span className={`text-sm ${currentLista.activa !== false ? 'text-green-600' : 'text-gray-400'}`}>
+                    {currentLista.activa !== false ? "Activa" : "Archivada"}
                   </span>
                   {currentLista.no_visible && <span className="text-sm text-gray-400">(No visible)</span>}
                 </>
@@ -13231,7 +13401,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       <th className="text-left py-2 px-3 font-medium">Nombre</th>
                       <th className="text-center py-2 px-3 font-medium">Fecha Inicial</th>
                       <th className="text-center py-2 px-3 font-medium">Fecha Final</th>
-                      <th className="text-center py-2 px-3 font-medium">Estado</th>
                       <th className="text-center py-2 px-3 font-medium">Líneas</th>
                       <th className="text-center py-2 px-3 font-medium">Última Actualización</th>
                       <th className="w-10"></th>
@@ -13244,14 +13413,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                         <td className="py-2 px-3 font-medium text-gray-900">{version.nombre}</td>
                         <td className="py-2 px-3 text-center text-gray-600">{new Date(version.fecha_inicial).toLocaleDateString("es-AR")}</td>
                         <td className="py-2 px-3 text-center text-gray-600">{version.fecha_final ? new Date(version.fecha_final).toLocaleDateString("es-AR") : "-"}</td>
-                        <td className="py-2 px-3 text-center">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        version.estado === 'activa' ? 'bg-green-100 text-green-800' :
-                        version.estado === 'confirmada' ? 'bg-blue-100 text-blue-800' :
-                        version.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
-                        }`}>{version.estado === 'confirmada' ? 'Confirmada' : version.estado.charAt(0).toUpperCase() + version.estado.slice(1)}</span>
-
-                        </td>
                         <td className="py-2 px-3 text-center text-gray-600">{version.lineas.length}</td>
                         <td className="py-2 px-3 text-center text-gray-500 text-xs">{new Date(version.ultima_actualizacion).toLocaleString("es-AR")}</td>
                         <td className="py-2 px-3">
@@ -13262,7 +13423,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       </tr>
                     ))}
                     {versionesDeLista.length === 0 && (
-                      <tr><td colSpan={7} className="py-8 text-center text-gray-500">No hay versiones para esta lista</td></tr>
+                      <tr><td colSpan={6} className="py-8 text-center text-gray-500">No hay versiones para esta lista</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -13382,18 +13543,31 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   const renderListaVersiones = () => {
+    // Solo ocultar las que tienen activa=false explícito; null/undefined = activas (legacy)
+    const dataVersionesFiltrada = mostrarInactivasVersiones ? versionesLista : versionesLista.filter(v => v.activa !== false)
     return (
       <VentasListSection
         title="Versiones de Lista de Precios"
         moduleName="versiones_lista"
-        data={versionesLista}
+        data={dataVersionesFiltrada}
         searchFields={["nombre", "lista_precios_nombre"]}
-        filterFields={[{field: "lista_precios_nombre", label: "Lista"}, {field: "estado", label: "Estado"}]}
+        filterFields={[{field: "lista_precios_nombre", label: "Lista"}]}
         actions={
-          <button onClick={() => crearNuevaVersion()} disabled={listasPrecios.length === 0}
-            className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-1.5 rounded hover:bg-indigo-800 transition-colors text-sm font-medium disabled:opacity-50">
-            <Plus className="w-4 h-4" /> Crear
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setMostrarInactivasVersiones(v => !v)}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded text-sm border transition-colors ${
+                mostrarInactivasVersiones ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+              title="Incluir versiones archivadas"
+            >
+              {mostrarInactivasVersiones ? "Ocultar archivadas" : "Mostrar archivadas"}
+            </button>
+            <button onClick={() => crearNuevaVersion()} disabled={listasPrecios.length === 0}
+              className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-1.5 rounded hover:bg-indigo-800 transition-colors text-sm font-medium disabled:opacity-50">
+              <Plus className="w-4 h-4" /> Crear
+            </button>
+          </div>
         }
       >
         {(filtered) => (
@@ -13405,7 +13579,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <th className="text-left py-3 px-4 font-medium">Versión</th>
                 <th className="text-center py-3 px-4 font-medium">Fecha Inicial</th>
                 <th className="text-center py-3 px-4 font-medium">Fecha Final</th>
-                <th className="text-center py-3 px-4 font-medium">Estado</th>
                 <th className="text-center py-3 px-4 font-medium">Líneas</th>
                 <th className="text-center py-3 px-4 font-medium">Última Actualización</th>
               </tr>
@@ -13418,20 +13591,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <td className="py-3 px-4 font-medium text-gray-900">{version.nombre}</td>
                   <td className="py-3 px-4 text-center text-gray-600">{new Date(version.fecha_inicial).toLocaleDateString("es-AR")}</td>
                   <td className="py-3 px-4 text-center text-gray-600">{version.fecha_final ? new Date(version.fecha_final).toLocaleDateString("es-AR") : "-"}</td>
-                  <td className="py-3 px-4 text-center">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        version.estado === 'activa' ? 'bg-green-100 text-green-800' :
-                        version.estado === 'confirmada' ? 'bg-blue-100 text-blue-800' :
-                        version.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
-                        }`}>{version.estado === 'confirmada' ? 'Confirmada' : version.estado.charAt(0).toUpperCase() + version.estado.slice(1)}</span>
-
-                  </td>
                   <td className="py-3 px-4 text-center text-gray-600">{version.lineas.length}</td>
                   <td className="py-3 px-4 text-center text-gray-500 text-xs">{new Date(version.ultima_actualizacion).toLocaleString("es-AR")}</td>
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={7} className="py-8 text-center text-gray-500">No se encontraron versiones</td></tr>
+                <tr><td colSpan={6} className="py-8 text-center text-gray-500">No se encontraron versiones</td></tr>
               )}
             </tbody>
           </table>
@@ -13489,19 +13654,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           )}
 
           <div className="flex items-center gap-2">
-            {!isEditing && !creandoVersion && currentVersion.estado === "borrador" && (
-              <button
-                onClick={() => {
-                  const updated = { ...currentVersion, estado: "confirmada" as const, ultima_actualizacion: new Date().toISOString() }
-                  setVersionesLista(prev => prev.map(v => v.id === updated.id ? updated : v))
-                  setSelectedVersion(updated)
-                  setEditingVersion(null)
-                }}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 transition-colors font-medium"
-              >
-                <CheckCircle className="w-4 h-4" /> Confirmar Lista
-              </button>
-            )}
             {!isEditing && !creandoVersion && (
               <button onClick={iniciarEdicionVersion} className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">
                 <Edit className="w-4 h-4" /> Editar
@@ -13520,10 +13672,18 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           </div>
         </div>
 
+        {/* Banner Archivada (solo si activa=false explícito) */}
+        {currentVersion.activa === false && (
+          <div className="bg-amber-50 border border-amber-300 rounded p-3 mb-4 text-sm text-amber-800 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>Esta versión está <strong>archivada</strong> y no aparece en los formularios. Reactivala marcando "Activa" abajo.</span>
+          </div>
+        )}
+
         {/* Formulario */}
         <div className="bg-white border border-gray-200 rounded p-6">
           {/* Cabecera de versión */}
-          <div className="grid grid-cols-5 gap-4 mb-6 items-end">
+          <div className="grid grid-cols-4 gap-4 mb-6 items-end">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Precios</label>
               {isEditing && creandoVersion ? (
@@ -13564,34 +13724,23 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <p className="text-gray-900 py-2">{currentVersion.fecha_final ? new Date(currentVersion.fecha_final).toLocaleDateString("es-AR") : "Sin fecha fin"}</p>
               )}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
-              {isEditing ? (
-                <select value={currentVersion.estado} onChange={(e) => setEditingVersion({ ...currentVersion, estado: e.target.value as VersionListaPrecios["estado"] })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500">
-                  <option value="borrador">Borrador</option>
-                  <option value="confirmada">Confirmada</option>
-                  <option value="activa">Activa</option>
-                  <option value="cerrada">Cerrada</option>
-                </select>
-              ) : (
-                <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                  currentVersion.estado === 'activa' ? 'bg-green-100 text-green-800' :
-                  currentVersion.estado === 'confirmada' ? 'bg-blue-100 text-blue-800' :
-                  currentVersion.estado === 'borrador' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
-                }`}>{currentVersion.estado.charAt(0).toUpperCase() + currentVersion.estado.slice(1)}</span>
-              )}
-            </div>
           </div>
 
-          {/* Info de la Lista Padre */}
+          {/* Info de la Lista Padre + Activa */}
           {listaPrecios && (
-            <div className="bg-gray-50 rounded p-3 mb-4 text-sm">
-              <span className="text-gray-600">Moneda: </span>
-              <span className="font-medium">{listaPrecios.moneda_base}</span>
-              <span className="mx-3 text-gray-300">|</span>
-              <span className="text-gray-600">IVA: </span>
-              <span className="font-medium">{listaPrecios.incluye_iva ? "Incluido" : "No incluido"}</span>
+            <div className="bg-gray-50 rounded p-3 mb-4 text-sm flex items-center gap-3 flex-wrap">
+              <span><span className="text-gray-600">Moneda: </span><span className="font-medium">{listaPrecios.moneda_base}</span></span>
+              <span className="text-gray-300">|</span>
+              {isEditing ? (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={currentVersion.activa} onChange={(e) => setEditingVersion({ ...currentVersion, activa: e.target.checked })} className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500" />
+                  <span className="text-sm text-gray-700">Activa</span>
+                </label>
+              ) : (
+                <span className={`text-sm font-medium ${currentVersion.activa !== false ? 'text-green-600' : 'text-gray-400'}`}>
+                  {currentVersion.activa !== false ? "Activa" : "Archivada"}
+                </span>
+              )}
             </div>
           )}
 
@@ -13748,7 +13897,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           <input type="number" value={linea.costo_importe} onChange={(e) => actualizarLineaVersion(linea.id, 'costo_importe', Number(e.target.value))}
                             className="w-20 px-1 py-0.5 border border-gray-300 rounded text-xs text-right" />
                         ) : (
-                          formatCurrency(linea.costo_importe, linea.costo_moneda)
+                          <>
+                            <div>{formatCurrency(linea.costo_importe, linea.costo_moneda)}</div>
+                            {linea.costo_moneda === "USD" && listaPrecios?.moneda_base === "ARS" && (() => {
+                              const tipo = listaPrecios?.tipo_cotizacion ?? "blue"
+                              const cotiz = linea.cotizacion_dolar > 0 ? linea.cotizacion_dolar : (cotizacionesUsdPorTipo[tipo] ?? cotizacionUsdBlue)
+                              return cotiz > 0 ? (
+                                <div className="text-[10px] text-gray-400 leading-tight">≈ {formatCurrency(linea.costo_importe * cotiz, "ARS")} ({tipo})</div>
+                              ) : null
+                            })()}
+                          </>
                         )}
                       </td>
                       <td className="py-1.5 px-2 text-right">
@@ -13802,7 +13960,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                           linea.forzar_precio_pesos && linea.precio_forzado_ars ? (
                             <span className="text-amber-700">{formatPrecioForzadoARS(linea.precio_forzado_ars)}</span>
                           ) : (
-                            <span className="text-emerald-700">{formatCurrency(linea.precio_venta, linea.precio_venta_moneda)}</span>
+                            <>
+                              <div className="text-emerald-700">{formatCurrency(linea.precio_venta, linea.precio_venta_moneda)}</div>
+                              {linea.precio_venta_moneda === "USD" && listaPrecios?.moneda_base === "ARS" && (() => {
+                                const tipo = listaPrecios?.tipo_cotizacion ?? "blue"
+                                const cotiz = linea.cotizacion_dolar > 0 ? linea.cotizacion_dolar : (cotizacionesUsdPorTipo[tipo] ?? cotizacionUsdBlue)
+                                return cotiz > 0 ? (
+                                  <div className="text-[10px] text-gray-400 leading-tight font-normal">≈ {formatCurrency(linea.precio_venta * cotiz, "ARS")} ({tipo})</div>
+                                ) : null
+                              })()}
+                            </>
                           )
                         )}
                       </td>
@@ -14215,9 +14382,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   
   const renderNotaVentaModal = () => {
     const selectedCliente = clientes.find(c => c.id === nvClienteId)
+    // Todos los precios incluyen IVA. Se desagrega para impuestos, total = subtotal.
     const subtotal = nvLineas.reduce((sum, l) => sum + Number(l.subtotal ?? 0), 0)
-    const impuestos = nvLineas.reduce((sum, l) => sum + Number(l.subtotal ?? 0) * ((l.iva ?? 0) / 100), 0)
-    const total = subtotal + impuestos
+    const impuestos = nvLineas.reduce((sum, l) => {
+      const tasa = (l.iva ?? 0) / 100
+      const neto = Number(l.subtotal ?? 0) / (1 + tasa)
+      return sum + (Number(l.subtotal ?? 0) - neto)
+    }, 0)
+    const total = subtotal
 
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

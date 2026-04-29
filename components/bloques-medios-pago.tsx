@@ -65,6 +65,10 @@ interface BloquesMediosPagoProps {
   tarjetas: TarjetaFinanzas[]
   grupos: GrupoTarjeta[]
   recargos: RecargoTarjetaFinanzas[]
+  /** Texto del botón principal. Default: "Confirmar cobro y registrar en cuenta corriente" */
+  textoBoton?: string
+  /** Texto del mensaje post-confirmación. Default: "Cobro registrado — movimientos generados en cuenta corriente." */
+  textoConfirmado?: string
   onConfirmarCobro?: (lineas: LineaPago[], totalConRecargos: number, totalRecargos: number) => void
   onCobroConfirmado?: (totalRecargos: number, desglose: { nombre: string; importe: number }[]) => void
   onEstadoPagoChange?: (estado: { cobrado: boolean; tieneLineas: boolean; diferenciaOk: boolean }) => void
@@ -80,6 +84,8 @@ export default function BloquesMediosPago({
   tarjetas,
   grupos,
   recargos,
+  textoBoton = "Confirmar cobro y registrar en cuenta corriente",
+  textoConfirmado = "Cobro registrado — movimientos generados en cuenta corriente.",
   onConfirmarCobro,
   onCobroConfirmado,
   onEstadoPagoChange,
@@ -151,7 +157,7 @@ export default function BloquesMediosPago({
       <div className="mt-6 border-t pt-4">
         <div className="flex items-center gap-2 text-emerald-700 font-medium text-sm">
           <CheckCircle className="w-4 h-4" />
-          Cobro registrado — movimientos generados en cuenta corriente.
+          {textoConfirmado}
         </div>
       </div>
     )
@@ -324,7 +330,7 @@ export default function BloquesMediosPago({
           className="mt-3 w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg flex items-center justify-center gap-2"
         >
           <CheckCircle className="w-4 h-4" />
-          Confirmar cobro y registrar en cuenta corriente
+          {textoBoton}
         </button>
       )}
     </div>
