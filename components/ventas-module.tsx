@@ -8627,13 +8627,27 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               {prevRecargosConfirmados && prevRecargosConfirmados.desglose.map((d, i) => (
                 <div key={i} className="flex justify-between text-amber-700">
                   <span>{d.nombre}:</span>
-                  <span>+ {formatCurrency(d.importe, facturaMoneda)}</span>
+                  <span className="text-right">
+                    + {formatCurrency(d.importe, facturaMoneda)}
+                    {facturaMoneda === "USD" && facturaCotizacion > 1 && (
+                      <span className="block text-xs text-gray-500 font-normal">
+                        ≈ {formatCurrency(d.importe * facturaCotizacion, "ARS")}
+                      </span>
+                    )}
+                  </span>
                 </div>
               ))}
               {prevRecargosConfirmados && prevRecargosConfirmados.totalRecargos > 0 && (
                 <div className="flex justify-between text-amber-700 font-medium">
                   <span>Total recargos:</span>
-                  <span>+ {formatCurrency(prevRecargosConfirmados.totalRecargos, facturaMoneda)}</span>
+                  <span className="text-right">
+                    + {formatCurrency(prevRecargosConfirmados.totalRecargos, facturaMoneda)}
+                    {facturaMoneda === "USD" && facturaCotizacion > 1 && (
+                      <span className="block text-xs text-gray-500 font-normal">
+                        ≈ {formatCurrency(prevRecargosConfirmados.totalRecargos * facturaCotizacion, "ARS")}
+                      </span>
+                    )}
+                  </span>
                 </div>
               )}
               <div className="flex justify-between text-lg font-bold pt-2 border-t">
