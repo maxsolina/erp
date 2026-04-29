@@ -774,6 +774,8 @@ function SeccionTarjetas({ tarjetas, setTarjetas }: { tarjetas: Tarjeta[]; setTa
   const [editando, setEditando] = useState<Tarjeta | null>(null)
   const [creando, setCreando] = useState(false)
   const [form, setForm] = useState<Partial<Tarjeta>>({})
+  const [guardando, setGuardando] = useState(false)
+  const [eliminando, setEliminando] = useState(false)
 
   const abrirCrear = () => {
     setForm({ nombre: "", tipo: "credito", dias_presentacion: 7, dias_pago: 18, activa: true })
@@ -789,6 +791,8 @@ function SeccionTarjetas({ tarjetas, setTarjetas }: { tarjetas: Tarjeta[]; setTa
 
   const guardar = async () => {
     if (!form.nombre?.trim()) return
+    if (guardando) return
+    setGuardando(true)
     try {
       if (creando) {
         const res = await fetch("/api/tarjetas", {
@@ -822,38 +826,84 @@ function SeccionTarjetas({ tarjetas, setTarjetas }: { tarjetas: Tarjeta[]; setTa
       setForm({})
     } catch (e) {
       alert(`Error de red: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setGuardando(false)
     }
   }
 
   const cancelar = () => { setCreando(false); setEditando(null); setForm({}) }
 
-  const eliminar = async (id: number) => {
-    if (!window.confirm("¿Eliminar esta tarjeta? Esta acción no se puede deshacer.")) return
+  const eliminar = async (t?: Tarjeta) => {
+    const objetivo = t ?? editando
+    if (!objetivo) return
+    if (eliminando) return
+    if (!window.confirm(`¿Eliminar la tarjeta "${objetivo.nombre}"? Esta acción no se puede deshacer.`)) return
+    setEliminando(true)
     try {
-      const res = await fetch(`/api/tarjetas/${id}`, { method: "DELETE" })
+      const res = await fetch(`/api/tarjetas/${objetivo.id}`, { method: "DELETE" })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Error al eliminar tarjeta" }))
         alert(`No se pudo eliminar: ${err.error}`)
         return
       }
-      setTarjetas(prev => prev.filter(t => t.id !== id))
+      setTarjetas(prev => prev.filter(x => x.id !== objetivo.id))
+      if (editando?.id === objetivo.id) {
+        setEditando(null)
+        setForm({})
+      }
     } catch (e) {
       alert(`Error de red: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setEliminando(false)
     }
   }
 
-  return (
-    <div>
-      <SectionHeader title="Tarjetas">
-        <button onClick={abrirCrear} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800 transition-colors">
-          <Plus className="w-4 h-4" /> Nueva Tarjeta
-        </button>
-      </SectionHeader>
+  // Pantalla de edición — reemplaza completamente la lista
+  if (creando || editando) {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={cancelar}
+              disabled={guardando || eliminando}
+              className="p-2 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Volver a la lista"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </button>
+            <h2 className="text-2xl font-bold text-amber-900">
+              {creando ? "Nueva Tarjeta" : `Editar tarjeta: ${editando?.nombre ?? ""}`}
+            </h2>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={cancelar}
+              disabled={guardando || eliminando}
+              className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancelar
+            </button>
+            {!creando && editando && (
+              <button
+                onClick={() => eliminar()}
+                disabled={guardando || eliminando}
+                className="px-4 py-2 text-sm border border-red-300 text-red-700 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {eliminando ? "Eliminando…" : "Eliminar"}
+              </button>
+            )}
+            <button
+              onClick={guardar}
+              disabled={guardando || eliminando}
+              className="px-4 py-2 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {guardando ? (creando ? "Creando…" : "Guardando…") : (creando ? "Crear Tarjeta" : "Guardar")}
+            </button>
+          </div>
+        </div>
 
-      {/* Form inline */}
-      {(creando || editando) && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 mb-6">
-          <h3 className="font-semibold text-emerald-900 mb-4">{creando ? "Nueva Tarjeta" : "Editar Tarjeta"}</h3>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
           <div className="grid grid-cols-5 gap-4">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-gray-700 mb-1">Nombre</label>
@@ -879,19 +929,26 @@ function SeccionTarjetas({ tarjetas, setTarjetas }: { tarjetas: Tarjeta[]; setTa
                 className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
             </div>
           </div>
-          <div className="flex items-center gap-3 mt-4">
+          <div className="mt-4">
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={form.activa ?? true} onChange={e => setForm(f => ({ ...f, activa: e.target.checked }))}
                 className="rounded" />
               Activa
             </label>
-            <div className="flex gap-2 ml-auto">
-              <button onClick={cancelar} className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50">Cancelar</button>
-              <button onClick={guardar} className="px-3 py-1.5 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800">Guardar</button>
-            </div>
           </div>
         </div>
-      )}
+      </div>
+    )
+  }
+
+  // Pantalla de lista
+  return (
+    <div>
+      <SectionHeader title="Tarjetas">
+        <button onClick={abrirCrear} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800 transition-colors">
+          <Plus className="w-4 h-4" /> Nueva Tarjeta
+        </button>
+      </SectionHeader>
 
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
         <table className="w-full">
@@ -922,14 +979,18 @@ function SeccionTarjetas({ tarjetas, setTarjetas }: { tarjetas: Tarjeta[]; setTa
                 <td className="py-3 px-4">
                   <div className="flex justify-end gap-2">
                     <button onClick={() => abrirEditar(t)} className="p-1 text-gray-400 hover:text-emerald-600"><Edit className="w-4 h-4" /></button>
-                    <button onClick={() => eliminar(t.id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                    <button onClick={() => eliminar(t)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {tarjetas.length === 0 && <div className="text-center py-12 text-gray-500 text-sm">No hay tarjetas configuradas</div>}
+        {tarjetas.length === 0 && (
+          <div className="text-center py-12 text-gray-500 text-sm">
+            No hay tarjetas configuradas. Apretá &quot;+ Nueva Tarjeta&quot; para crear la primera.
+          </div>
+        )}
       </div>
     </div>
   )
@@ -1342,6 +1403,8 @@ function SeccionRecargos({ tarjetas, grupos, recargos, setRecargos }: {
   const [creando, setCreando] = useState(false)
   const [form, setForm] = useState<Partial<RecargoTarjeta>>({})
   const [soloActivos, setSoloActivos] = useState(true)
+  const [guardando, setGuardando] = useState(false)
+  const [eliminando, setEliminando] = useState(false)
 
   const recFiltrados = useMemo(() => soloActivos ? recargos.filter(r => r.activo) : recargos, [recargos, soloActivos])
 
@@ -1353,8 +1416,16 @@ function SeccionRecargos({ tarjetas, grupos, recargos, setRecargos }: {
     setEditando(null)
   }
 
+  const abrirEditar = (r: RecargoTarjeta) => {
+    setEditando(r)
+    setForm({ ...r })
+    setCreando(false)
+  }
+
   const guardar = async () => {
     if (!form.tarjeta_id || !form.grupo_id) return
+    if (guardando) return
+    setGuardando(true)
     try {
       if (creando) {
         const res = await fetch("/api/recargos-tarjeta", {
@@ -1388,44 +1459,87 @@ function SeccionRecargos({ tarjetas, grupos, recargos, setRecargos }: {
       setForm({})
     } catch (e) {
       alert(`Error de red: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setGuardando(false)
     }
   }
 
   const cancelar = () => { setCreando(false); setEditando(null); setForm({}) }
 
-  const eliminar = async (id: number) => {
+  const eliminar = async (r?: RecargoTarjeta) => {
+    const objetivo = r ?? editando
+    if (!objetivo) return
+    if (eliminando) return
     if (!window.confirm("¿Eliminar este recargo?")) return
+    setEliminando(true)
     try {
-      const res = await fetch(`/api/recargos-tarjeta/${id}`, { method: "DELETE" })
+      const res = await fetch(`/api/recargos-tarjeta/${objetivo.id}`, { method: "DELETE" })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Error al eliminar recargo" }))
         alert(`No se pudo eliminar: ${err.error}`)
         return
       }
-      setRecargos(prev => prev.filter(r => r.id !== id))
+      setRecargos(prev => prev.filter(x => x.id !== objetivo.id))
+      if (editando?.id === objetivo.id) {
+        setEditando(null)
+        setForm({})
+      }
     } catch (e) {
       alert(`Error de red: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setEliminando(false)
     }
   }
 
   const tarjetaById = (id: number) => tarjetas.find(t => t.id === id)
   const grupoById = (id: number) => grupos.find(g => g.id === id)
 
-  return (
-    <div>
-      <SectionHeader title="Recargos de Tarjetas">
-        <label className="flex items-center gap-2 text-sm text-gray-600">
-          <input type="checkbox" checked={soloActivos} onChange={e => setSoloActivos(e.target.checked)} className="rounded" />
-          Solo vigentes
-        </label>
-        <button onClick={abrirCrear} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800">
-          <Plus className="w-4 h-4" /> Nuevo Recargo
-        </button>
-      </SectionHeader>
+  // Pantalla de edición — reemplaza completamente la lista
+  if (creando || editando) {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={cancelar}
+              disabled={guardando || eliminando}
+              className="p-2 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Volver a la lista"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </button>
+            <h2 className="text-2xl font-bold text-amber-900">
+              {creando ? "Nuevo Recargo" : "Editar Recargo"}
+            </h2>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={cancelar}
+              disabled={guardando || eliminando}
+              className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancelar
+            </button>
+            {!creando && editando && (
+              <button
+                onClick={() => eliminar()}
+                disabled={guardando || eliminando}
+                className="px-4 py-2 text-sm border border-red-300 text-red-700 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {eliminando ? "Eliminando…" : "Eliminar"}
+              </button>
+            )}
+            <button
+              onClick={guardar}
+              disabled={guardando || eliminando}
+              className="px-4 py-2 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {guardando ? (creando ? "Creando…" : "Guardando…") : (creando ? "Crear Recargo" : "Guardar")}
+            </button>
+          </div>
+        </div>
 
-      {(creando || editando) && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-5 mb-6">
-          <h3 className="font-semibold text-emerald-900 mb-4">{creando ? "Nuevo Recargo" : "Editar Recargo"}</h3>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
           <div className="grid grid-cols-4 gap-4 mb-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Sucursal</label>
@@ -1479,7 +1593,7 @@ function SeccionRecargos({ tarjetas, grupos, recargos, setRecargos }: {
                 className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
             </div>
           </div>
-          <div className="flex items-center gap-4 mb-4">
+          <div className="flex items-center gap-4">
             <span className="text-xs font-medium text-gray-700">Días que aplica:</span>
             {DIAS_LABELS.map(({ key, label }) => (
               <label key={key} className={`flex items-center justify-center w-8 h-8 rounded-full border cursor-pointer text-sm font-medium transition-colors ${form.dias?.[key] ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-gray-500 border-gray-300 hover:border-emerald-400"}`}>
@@ -1493,12 +1607,23 @@ function SeccionRecargos({ tarjetas, grupos, recargos, setRecargos }: {
               Activo
             </label>
           </div>
-          <div className="flex gap-2 justify-end">
-            <button onClick={cancelar} className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50">Cancelar</button>
-            <button onClick={guardar} className="px-3 py-1.5 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800">Guardar</button>
-          </div>
         </div>
-      )}
+      </div>
+    )
+  }
+
+  // Pantalla de lista
+  return (
+    <div>
+      <SectionHeader title="Recargos de Tarjetas">
+        <label className="flex items-center gap-2 text-sm text-gray-600">
+          <input type="checkbox" checked={soloActivos} onChange={e => setSoloActivos(e.target.checked)} className="rounded" />
+          Solo vigentes
+        </label>
+        <button onClick={abrirCrear} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800">
+          <Plus className="w-4 h-4" /> Nuevo Recargo
+        </button>
+      </SectionHeader>
 
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
         <table className="w-full text-sm">
@@ -1544,8 +1669,8 @@ function SeccionRecargos({ tarjetas, grupos, recargos, setRecargos }: {
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex justify-end gap-2">
-                      <button onClick={() => { setEditando(r); setForm({ ...r }); setCreando(false) }} className="p-1 text-gray-400 hover:text-emerald-600"><Edit className="w-4 h-4" /></button>
-                      <button onClick={() => eliminar(r.id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                      <button onClick={() => abrirEditar(r)} className="p-1 text-gray-400 hover:text-emerald-600"><Edit className="w-4 h-4" /></button>
+                      <button onClick={() => eliminar(r)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </td>
                 </tr>
@@ -1553,7 +1678,11 @@ function SeccionRecargos({ tarjetas, grupos, recargos, setRecargos }: {
             })}
           </tbody>
         </table>
-        {recFiltrados.length === 0 && <div className="text-center py-12 text-gray-500 text-sm">No hay recargos configurados</div>}
+        {recFiltrados.length === 0 && (
+          <div className="text-center py-12 text-gray-500 text-sm">
+            No hay recargos configurados. Apretá &quot;+ Nuevo Recargo&quot; para crear el primero.
+          </div>
+        )}
       </div>
     </div>
   )
