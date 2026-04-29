@@ -8,7 +8,7 @@ import {
   CreditCard, Building2, Percent, Calendar, ToggleLeft, ToggleRight,
   Calculator, Info, Receipt, Lock, ChevronRight, Wallet, ArrowRightLeft,
   FileCheck, Settings, DollarSign, Landmark, BookOpen, Banknote,
-  ArrowDownUp, RefreshCw, Download, Eye, Filter
+  ArrowDownUp, RefreshCw, Download, Eye, Filter, ArrowLeft
 } from "lucide-react"
 import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
 import { ModalMedioPago } from "./modal-medio-pago"
@@ -1106,21 +1106,55 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
     setFormCargo({})
   }
 
-  return (
-    <div>
-      <SectionHeader title="Grupos de Tarjetas">
-        <button onClick={abrirCrear} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800">
-          <Plus className="w-4 h-4" /> Nuevo Grupo
-        </button>
-      </SectionHeader>
+  // Pantalla de edición (creando o editando) — reemplaza completamente la lista
+  if (creando || selectedGrupo) {
+    return (
+      <div>
+        {/* Header con back, título y botones de acción a la derecha */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={cancelarEdicion}
+              disabled={guardando || eliminando}
+              className="p-2 rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Volver a la lista"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </button>
+            <h2 className="text-2xl font-bold text-amber-900">
+              {creando ? "Nuevo Grupo de Tarjetas" : `Editar grupo: ${selectedGrupo?.nombre ?? ""}`}
+            </h2>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={cancelarEdicion}
+              disabled={guardando || eliminando}
+              className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancelar
+            </button>
+            {!creando && selectedGrupo && (
+              <button
+                onClick={() => eliminarGrupo()}
+                disabled={guardando || eliminando}
+                className="px-4 py-2 text-sm border border-red-300 text-red-700 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {eliminando ? "Eliminando…" : "Eliminar"}
+              </button>
+            )}
+            <button
+              onClick={guardarGrupo}
+              disabled={guardando || eliminando}
+              className="px-4 py-2 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {guardando ? (creando ? "Creando…" : "Guardando…") : (creando ? "Crear Grupo" : "Guardar")}
+            </button>
+          </div>
+        </div>
 
-      {/* Form inline (creando o editando) — arriba de la tabla */}
-      {(creando || selectedGrupo) && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg mb-6 overflow-hidden">
-          <div className="p-4 border-b border-emerald-200 bg-white">
-            <h3 className="font-semibold text-emerald-900 mb-4">
-              {creando ? "Nuevo Grupo" : `Editar grupo: ${selectedGrupo?.nombre ?? ""}`}
-            </h3>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          {/* Datos generales */}
+          <div className="p-4 border-b bg-gray-50">
             <div className="grid grid-cols-4 gap-4">
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-gray-700 mb-1">Nombre</label>
@@ -1239,38 +1273,20 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
             </div>
           )}
 
-          {/* Botones acción del form */}
-          <div className="flex items-center gap-2 px-4 py-3 bg-emerald-50 border-t border-emerald-200">
-            <button
-              onClick={cancelarEdicion}
-              disabled={guardando || eliminando}
-              className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Cancelar
-            </button>
-            <div className="ml-auto flex gap-2">
-              {!creando && selectedGrupo && (
-                <button
-                  onClick={() => eliminarGrupo()}
-                  disabled={guardando || eliminando}
-                  className="px-3 py-1.5 text-sm border border-red-300 text-red-700 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {eliminando ? "Eliminando…" : "Eliminar"}
-                </button>
-              )}
-              <button
-                onClick={guardarGrupo}
-                disabled={guardando || eliminando}
-                className="px-3 py-1.5 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {guardando ? (creando ? "Creando…" : "Guardando…") : (creando ? "Crear Grupo" : "Guardar")}
-              </button>
-            </div>
-          </div>
         </div>
-      )}
+      </div>
+    )
+  }
 
-      {/* Tabla de grupos */}
+  // Pantalla de lista (cuando no se está creando ni editando)
+  return (
+    <div>
+      <SectionHeader title="Grupos de Tarjetas">
+        <button onClick={abrirCrear} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800">
+          <Plus className="w-4 h-4" /> Nuevo Grupo
+        </button>
+      </SectionHeader>
+
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
         <table className="w-full">
           <thead>
