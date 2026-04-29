@@ -8245,11 +8245,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const handleCrearFacturaFinal = async () => {
     const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
     const subtotal = facturaLineas.reduce((sum, l) => sum + l.subtotal, 0)
-    const totalRecargos = prevRecargosConfirmados?.totalRecargos || 0
-    const totalFinal = subtotal + totalRecargos
 
     if (!clienteSeleccionado || facturaLineas.length === 0) {
       alert("Debe seleccionar un cliente y agregar al menos un producto")
+      return
+    }
+    if (prevMediosLineas.length === 0) {
+      alert("Faltan medios de pago. Completá el bloque de medios y apretá 'Listo'.")
       return
     }
 
@@ -8258,6 +8260,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const vendedorNombre = vendedores[0]?.nombre || "Admin"
     const terminoPago = terminosPago.find(tp => tp.id === clienteSeleccionado.termino_pago_id)?.nombre || "Contado"
 
+    // PASO 1 — Crear factura "en negro" (sin IVA, total = subtotal).
+    let facData: { id: number; numero: string; asiento_id?: string }
     try {
       const facRes = await fetch("/api/facturas", {
         method: "POST",
@@ -8274,9 +8278,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           termino_pago: terminoPago,
           subtotal,
           descuento: 0,
-          impuestos: totalRecargos,
-          total: totalFinal,
-          saldo: totalFinal,
           lineas: facturaLineas.filter(l => l.producto_nombre.trim() !== "").map(l => ({
             producto_id: l.producto_id ?? null,
             producto_nombre: l.producto_nombre,
@@ -8291,19 +8292,97 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
       if (!facRes.ok) {
         const errText = await facRes.text()
-        console.error("[FACTURA] Error HTTP:", facRes.status, errText)
-        alert(`❌ Error al guardar factura: ${errText}`)
+        alert(`Error al guardar factura: ${errText}`)
         return
       }
 
-      const facData = await facRes.json()
-      console.log("[FACTURA] Respuesta completa:", JSON.stringify(facData))
-      if (facData._advertencia_contable) {
-        console.warn("[CONTABILIDAD] Factura creada sin asiento:", facData._advertencia_contable)
-        alert(`⚠️ Factura creada pero sin asiento contable:\n\n${facData._advertencia_contable}`)
-      } else {
-        console.log("[CONTABILIDAD] Asiento creado:", facData.asiento_id)
+      facData = await facRes.json()
+      if ((facData as { _advertencia_contable?: string })._advertencia_contable) {
+        alert(`Factura creada pero sin asiento contable:\n\n${(facData as { _advertencia_contable: string })._advertencia_contable}`)
       }
+    } catch (err) {
+      alert(`Error inesperado al crear factura: ${err instanceof Error ? err.message : String(err)}`)
+      return
+    }
+
+    // PASO 2 — Construir payload de medios para el endpoint /confirmar.
+    const medios = prevMediosLineas
+      .filter(l => l.monto > 0)
+      .map(l => {
+        let recargo_pct = 0
+        if (l.medio === "tarjeta" && l.tarjeta_id) {
+          const hoy = new Date()
+          const diasKeys = ["dom","lun","mar","mie","jue","vie","sab"] as const
+          const diaKey = diasKeys[hoy.getDay()]
+          const rec = recargosIniciales.find(r =>
+            r.tarjeta_id === l.tarjeta_id && r.activo &&
+            (l.cuotas||1) >= r.desde_cuota && (l.cuotas||1) <= r.hasta_cuota && r.dias[diaKey]
+          )
+          recargo_pct = rec?.recargo_pct ?? 0
+        }
+        return {
+          medio: l.medio,
+          monto: l.monto,
+          tarjeta_id: l.medio === "tarjeta" ? l.tarjeta_id : undefined,
+          cuotas: l.medio === "tarjeta" ? (l.cuotas ?? 1) : undefined,
+          recargo_pct,
+        }
+      })
+
+    // PASO 3 — Si la factura es USD y hay medios facturable, convertir a ARS primero.
+    const tieneFacturable = medios.some(m => m.medio === "tarjeta" || m.medio === "transferencia")
+    let monedaActual: "ARS" | "USD" = facturaMoneda
+    if (facturaMoneda !== "ARS" && tieneFacturable) {
+      const totalArs = subtotal * facturaCotizacion
+      const ok = window.confirm(
+        `Esta factura está en ${facturaMoneda}.\n\n` +
+        `Para aplicar IVA y recargos hay que convertirla a pesos.\n\n` +
+        `Cotización: blue · 1 ${facturaMoneda} = $${facturaCotizacion.toLocaleString("es-AR", { minimumFractionDigits: 2 })}\n` +
+        `Total convertido: $${totalArs.toLocaleString("es-AR", { minimumFractionDigits: 2 })}\n\n` +
+        `¿Convertir y continuar?`
+      )
+      if (!ok) {
+        alert(`La factura ${facData.numero} quedó en estado "abierta" en ${facturaMoneda}. Podés cancelarla o completar la confirmación más tarde.`)
+        return
+      }
+      try {
+        const conv = await fetch(`/api/facturas/${facData.id}/convertir-a-ars`, { method: "POST" })
+        if (!conv.ok) {
+          const err = await conv.json().catch(() => ({ error: "Error al convertir factura" }))
+          alert(`No se pudo convertir la factura: ${err.error}\n\nQueda en estado "abierta" en ${facturaMoneda}.`)
+          return
+        }
+        monedaActual = "ARS"
+        // Convertir los montos de los medios también a ARS
+        for (const m of medios) {
+          m.monto = Math.round(m.monto * facturaCotizacion * 100) / 100
+        }
+      } catch (e) {
+        alert(`Error de red al convertir factura: ${e instanceof Error ? e.message : String(e)}`)
+        return
+      }
+    }
+
+    // PASO 4 — Confirmar la factura: el backend calcula IVA + recargo y emite asiento 2.
+    try {
+      const confRes = await fetch(`/api/facturas/${facData.id}/confirmar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ medios }),
+      })
+      if (!confRes.ok) {
+        const err = await confRes.json().catch(() => ({ error: "Error al confirmar factura" }))
+        alert(`Factura ${facData.numero} creada pero no se pudo confirmar: ${err.error}\n\nQueda en estado "abierta".`)
+        return
+      }
+      const confResult = await confRes.json()
+
+      const totalFinal: number = confResult.total_final
+      const ivaTotal: number = confResult.iva_total
+      const recargoTotal: number = confResult.recargo_total
+      const subtotalFinal = monedaActual === "ARS" && facturaMoneda !== "ARS"
+        ? Math.round(subtotal * facturaCotizacion * 100) / 100
+        : subtotal
 
       const newFactura: Factura = {
         id: facData.id,
@@ -8313,17 +8392,17 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         cliente_id: clienteSeleccionado.id,
         cliente_nombre: clienteSeleccionado.nombre,
         cliente_documento: `${clienteSeleccionado.tipo_documento} ${clienteSeleccionado.numero_documento}`,
-        estado: "abierta",
+        estado: "confirmada",
         fecha: fechaHoy,
         vendedor_nombre: vendedorNombre,
         domicilio_facturacion: clienteSeleccionado.direccion,
-        moneda: facturaMoneda,
+        moneda: monedaActual,
         tipo_cotizacion: "blue",
         cotizacion: facturaMoneda === "USD" ? facturaCotizacion : 1,
         termino_pago: terminoPago,
-        subtotal,
+        subtotal: subtotalFinal,
         descuento: 0,
-        impuestos: totalRecargos,
+        impuestos: ivaTotal,
         total: totalFinal,
         saldo: totalFinal,
         sucursal: sucursalNombre,
@@ -8331,42 +8410,22 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         vencimientos: [{ descripcion: "Vencimiento 1", fecha: fechaHoy.split('T')[0], total: totalFinal }]
       }
       setFacturas(prev => [newFactura, ...prev])
-
-      // Crear movimiento de débito
-      const saldoAnterior = clienteSeleccionado.saldo_cuenta_corriente
-      const nuevoMovimiento: MovimientoCuentaCorriente = {
-        id: movimientosCC.length + 1,
-        cliente_id: clienteSeleccionado.id,
-        fecha: fechaHoy,
-        tipo: "debito",
-        concepto: `Factura de venta`,
-        documento_tipo: "factura",
-        documento_numero: facData.numero,
-        documento_id: facData.id,
-        moneda: "ARS",
-        importe: totalFinal,
-        saldo_posterior: saldoAnterior + totalFinal
-      }
-      setMovimientosCC(prev => [...prev, nuevoMovimiento])
-
-      // Actualizar saldo del cliente
-      setClientes(prev => prev.map(c =>
-        c.id === clienteSeleccionado.id ? {
-          ...c,
-          saldo_cuenta_corriente: c.saldo_cuenta_corriente + totalFinal,
-          total_facturado: c.total_facturado + totalFinal
-        } : c
-      ))
-
       setSelectedFactura(newFactura)
+
+      alert(
+        `Factura ${facData.numero} creada y confirmada.\n` +
+        `IVA: $${ivaTotal.toFixed(2)} · Recargo: $${recargoTotal.toFixed(2)}\n` +
+        `Total final: $${totalFinal.toFixed(2)} ${monedaActual}\n\n` +
+        `Para registrar el cobro, generá un Recibo desde Ventas.`
+      )
     } catch (err) {
-      console.error("[handleCrearFacturaFinal] Error:", err)
-      alert(`❌ Error inesperado al crear factura: ${err}`)
+      alert(`Factura creada pero falló la confirmación: ${err instanceof Error ? err.message : String(err)}`)
       return
     }
 
     // Resetear estado de previsualización
     setPrevRecargosConfirmados(null)
+    setPrevMediosLineas([])
     setPrevEstadoPago({ cobrado: false, tieneLineas: false, diferenciaOk: false })
     setCreandoFactura(false)
     setFacturaPrevisualizando(false)
@@ -8379,6 +8438,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
   // Vista de previsualización de Factura
   const [prevRecargosConfirmados, setPrevRecargosConfirmados] = useState<{ totalRecargos: number; desglose: { nombre: string; importe: number }[] } | null>(null)
+  const [prevMediosLineas, setPrevMediosLineas] = useState<LineaPago[]>([])
   const [prevEstadoPago, setPrevEstadoPago] = useState<{ cobrado: boolean; tieneLineas: boolean; diferenciaOk: boolean }>({ cobrado: false, tieneLineas: false, diferenciaOk: false })
   const [modalValidacionMsg, setModalValidacionMsg] = useState<string | null>(null)
   // Estado de pago para la ficha de factura en estado borrador
@@ -8489,7 +8549,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </div>
                 <div>
                   <span className="text-gray-500">Moneda:</span>
-                  <span className="ml-2 font-medium">{facturaMoneda}{facturaMoneda === "USD" && facturaCotizacion > 1 ? ` (TC: $${facturaCotizacion.toLocaleString("es-AR")})` : ""}</span>
+                  <span className="ml-2 font-medium">{facturaMoneda}</span>
+                  {facturaMoneda !== "ARS" && facturaCotizacion > 0 && (
+                    <span className="ml-2 text-gray-500 text-xs">
+                      · blue · 1 {facturaMoneda} = ${facturaCotizacion.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                    </span>
+                  )}
                 </div>
                 <div>
                   <span className="text-gray-500">Condición:</span>
@@ -8587,7 +8652,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           {/* Medios de Pago — disponible antes de guardar */}
           <BloquesMediosPago
             key={`prev-${facturaClienteId}`}
+            tarjetas={tarjetasIniciales}
+            grupos={gruposIniciales}
+            recargos={recargosIniciales}
+            textoBoton="Listo (los IVA y recargos se calculan al confirmar)"
+            textoConfirmado="Medios de pago listos. Apretá 'Confirmar Factura' arriba para crear la factura y calcular IVA + recargos."
             onEstadoPagoChange={(estado) => setPrevEstadoPago(estado)}
+            onConfirmarCobro={(lineas, totalConRecargos, totalRecargos) => {
+              setPrevMediosLineas(lineas)
+              setPrevRecargosConfirmados({ totalRecargos, desglose: [] })
+            }}
             onCobroConfirmado={(totalRecargos, desglose) => {
               setPrevRecargosConfirmados({ totalRecargos, desglose })
             }}
@@ -8599,7 +8673,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               fecha: new Date().toISOString(),
               cliente_id: facturaClienteId || 0,
               cliente_nombre: clienteSeleccionado?.nombre || "",
-              moneda: "ARS",
+              moneda: facturaMoneda,
+              tipo_cotizacion: "blue",
+              cotizacion: facturaMoneda === "USD" ? facturaCotizacion : 1,
               subtotal,
               descuento: 0,
               impuestos: 0,
