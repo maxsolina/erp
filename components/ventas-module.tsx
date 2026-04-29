@@ -2067,7 +2067,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     if (facturaMoneda !== "USD") { setFacturaCotizacion(1); return }
     fetch("/api/contabilidad/cotizaciones?moneda_codigo=USD&tipo=blue&latest=true")
       .then(r => r.json())
-      .then(data => { if (data?.valor) setFacturaCotizacion(Number(data.valor)) })
+      .then(data => { if (data?.tasa) setFacturaCotizacion(Number(data.tasa)) })
       .catch(() => {})
   }, [facturaMoneda])
 
