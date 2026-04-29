@@ -9033,6 +9033,15 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 <div><span className="text-gray-500">NV:</span> <span className="font-medium text-emerald-700">{selectedFactura.nota_venta_numero}</span></div>
                 <div><span className="text-gray-500">Vendedor:</span> <span className="font-medium">{selectedFactura.vendedor_nombre}</span></div>
                 <div><span className="text-gray-500">Sucursal:</span> <span className="font-medium">{selectedFactura.sucursal}</span></div>
+                <div className="col-span-2">
+                  <span className="text-gray-500">Moneda:</span>{" "}
+                  <span className="font-medium">{selectedFactura.moneda}</span>
+                  {selectedFactura.moneda !== "ARS" && selectedFactura.cotizacion > 0 && (
+                    <span className="text-gray-500 ml-2">
+                      · {selectedFactura.tipo_cotizacion} · 1 {selectedFactura.moneda} = ${selectedFactura.cotizacion.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <div className="space-y-4">
@@ -9169,8 +9178,57 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   }
                 })
 
+              // Caso especial: factura en USD + medio facturable (tarjeta/transferencia).
+              // El IVA y los recargos son siempre en ARS, así que primero hay que
+              // convertir la factura a ARS usando la cotización guardada.
+              let facturaParaConfirmar = selectedFactura
+              const tieneFacturable = medios.some(m => m.medio === "tarjeta" || m.medio === "transferencia")
+              if (selectedFactura.moneda !== "ARS" && tieneFacturable) {
+                if (!(selectedFactura.cotizacion > 0)) {
+                  alert(`Esta factura está en ${selectedFactura.moneda} pero no tiene una cotización válida. Editá la factura y cargá la cotización antes de confirmar con tarjeta o transferencia.`)
+                  return
+                }
+                const totalArs = selectedFactura.total * selectedFactura.cotizacion
+                const ok = window.confirm(
+                  `Esta factura está en ${selectedFactura.moneda}.\n\n` +
+                  `Para aplicar IVA y recargos hay que convertirla a pesos.\n\n` +
+                  `Cotización: ${selectedFactura.tipo_cotizacion} · 1 ${selectedFactura.moneda} = $${selectedFactura.cotizacion.toLocaleString("es-AR", { minimumFractionDigits: 2 })}\n` +
+                  `Total convertido: $${totalArs.toLocaleString("es-AR", { minimumFractionDigits: 2 })}\n\n` +
+                  `¿Convertir y continuar?`
+                )
+                if (!ok) return
+
+                try {
+                  const conv = await fetch(`/api/facturas/${selectedFactura.id}/convertir-a-ars`, { method: "POST" })
+                  if (!conv.ok) {
+                    const err = await conv.json().catch(() => ({ error: "Error al convertir factura a ARS" }))
+                    alert(`No se pudo convertir la factura: ${err.error}`)
+                    return
+                  }
+                  const convResult = await conv.json()
+                  // Refrescar state local con los nuevos valores en ARS
+                  facturaParaConfirmar = {
+                    ...selectedFactura,
+                    moneda: "ARS" as const,
+                    subtotal: convResult.subtotal_ars,
+                    total: convResult.total_ars,
+                    saldo: convResult.total_ars,
+                  }
+                  setFacturas(prev => prev.map(f => f.id === selectedFactura.id ? facturaParaConfirmar : f))
+                  setSelectedFactura(facturaParaConfirmar)
+                  // Recalcular medios ahora que el monto está en ARS — los lineasPago
+                  // que ingresó el operador siguen siendo en USD: hay que convertirlos.
+                  for (const m of medios) {
+                    m.monto = Math.round(m.monto * selectedFactura.cotizacion * 100) / 100
+                  }
+                } catch (e) {
+                  alert(`Error de red al convertir factura: ${e instanceof Error ? e.message : String(e)}`)
+                  return
+                }
+              }
+
               try {
-                const res = await fetch(`/api/facturas/${selectedFactura.id}/confirmar`, {
+                const res = await fetch(`/api/facturas/${facturaParaConfirmar.id}/confirmar`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ medios }),
@@ -9200,14 +9258,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 })
 
                 const facturaActualizada = {
-                  ...selectedFactura,
+                  ...facturaParaConfirmar,
                   estado: "confirmada" as const,
                   impuestos: result.iva_total,
                   total: result.total_final,
                   saldo: result.total_final,
                   medios_pago_detalle: medioPagoDetalle,
                 }
-                setFacturas(prev => prev.map(f => f.id === selectedFactura.id ? facturaActualizada : f))
+                setFacturas(prev => prev.map(f => f.id === facturaParaConfirmar.id ? facturaActualizada : f))
                 setSelectedFactura(facturaActualizada)
 
                 alert(
