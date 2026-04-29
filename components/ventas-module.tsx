@@ -12,7 +12,6 @@ import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Re
  import BotonVolver from "./ui/boton-volver"
 import ProductoDropdown from "./producto-dropdown"
 import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
-import { tarjetasIniciales, gruposIniciales, recargosIniciales } from "./modulo-finanzas"
 import { ModalMedioPago } from "./modal-medio-pago"
 import type { MedioPagoResult } from "./modal-medio-pago"
 import type { Tarjeta as TarjetaFinanzas, GrupoTarjeta as GrupoTarjetaFinanzas, RecargoTarjeta as RecargoTarjetaFinanzas, RecargoTarjeta } from "./modulo-finanzas"
@@ -546,15 +545,29 @@ function MontoInputField({ value, onChange, disabled, title, hasError }: {
 }
 
 // BloquesMediosPago fue movido a bloques-medios-pago.tsx
-function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEstadoPagoChange }: {
+function BloquesMediosPago({
+  factura,
+  tarjetas,
+  grupos,
+  recargos,
+  textoBoton = "Confirmar cobro y registrar en cuenta corriente",
+  textoConfirmado = "Cobro registrado — movimientos generados en cuenta corriente.",
+  onConfirmarCobro,
+  onCobroConfirmado,
+  onEstadoPagoChange,
+}: {
   factura: Factura
+  tarjetas: TarjetaFinanzas[]
+  grupos: GrupoTarjetaFinanzas[]
+  recargos: RecargoTarjetaFinanzas[]
+  textoBoton?: string
+  textoConfirmado?: string
   onConfirmarCobro?: (lineas: LineaPago[], totalConRecargos: number, totalRecargos: number) => void
   onCobroConfirmado?: (totalRecargos: number, desglose: { nombre: string; importe: number }[]) => void
   onEstadoPagoChange?: (estado: { cobrado: boolean; tieneLineas: boolean; diferenciaOk: boolean }) => void
 }) {
   const [lineas, setLineas] = useState<LineaPago[]>([])
   const [cobrado, setCobrado] = useState(false)
-  const tarjetas = tarjetasIniciales
 
   // Notificar estado al padre cada vez que cambie algo relevante
   useEffect(() => {
@@ -566,8 +579,6 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
       diferenciaOk: Math.abs(diferencia) <= 0.5,
     })
   }, [lineas, cobrado, factura.total])
-  const grupos = gruposIniciales
-  const recargos = recargosIniciales
   const CUOTAS_OPTS = [1, 2, 3, 4, 5, 6, 9, 12, 18, 24]
 
   const formatARS = (n: number) =>
@@ -641,7 +652,7 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
       <div className="mt-6 border-t pt-4">
         <div className="flex items-center gap-2 text-emerald-700 font-medium text-sm">
           <CheckCircle className="w-4 h-4" />
-          Cobro registrado — movimientos generados en cuenta corriente.
+          {textoConfirmado}
         </div>
       </div>
     )
@@ -823,7 +834,7 @@ function BloquesMediosPago({ factura, onConfirmarCobro, onCobroConfirmado, onEst
           className="mt-3 w-full py-2 bg-indigo-900 hover:bg-indigo-800 text-white text-sm font-semibold rounded-lg flex items-center justify-center gap-2"
         >
           <CheckCircle className="w-4 h-4" />
-          Confirmar cobro y registrar en cuenta corriente
+          {textoBoton}
         </button>
       )}
     </div>
@@ -1170,7 +1181,18 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [recibosLoaded, setRecibosLoaded] = useState(false)
   const [ajustes, setAjustes] = useState<AjusteCliente[]>([])
   const [movimientosCC, setMovimientosCC] = useState<MovimientoCuentaCorriente[]>([])
-  
+
+  // Tarjetas, grupos y recargos cargados desde DB (no usar mocks)
+  const [tarjetasDB, setTarjetasDB] = useState<TarjetaFinanzas[]>([])
+  const [gruposDB, setGruposDB] = useState<GrupoTarjetaFinanzas[]>([])
+  const [recargosDB, setRecargosDB] = useState<RecargoTarjetaFinanzas[]>([])
+
+  useEffect(() => {
+    fetch("/api/tarjetas").then(r => r.json()).then(d => setTarjetasDB(Array.isArray(d) ? d : [])).catch(() => {})
+    fetch("/api/grupos-tarjeta").then(r => r.json()).then(d => setGruposDB(Array.isArray(d) ? d : [])).catch(() => {})
+    fetch("/api/recargos-tarjeta").then(r => r.json()).then(d => setRecargosDB(Array.isArray(d) ? d : [])).catch(() => {})
+  }, [])
+
   // UI states
   const [searchQuery, setSearchQuery] = useState("")
   const [showModal, setShowModal] = useState(false)
@@ -8314,7 +8336,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           const hoy = new Date()
           const diasKeys = ["dom","lun","mar","mie","jue","vie","sab"] as const
           const diaKey = diasKeys[hoy.getDay()]
-          const rec = recargosIniciales.find(r =>
+          const rec = recargosDB.find(r =>
             r.tarjeta_id === l.tarjeta_id && r.activo &&
             (l.cuotas||1) >= r.desde_cuota && (l.cuotas||1) <= r.hasta_cuota && r.dias[diaKey]
           )
@@ -8653,9 +8675,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           {/* Medios de Pago — disponible antes de guardar */}
           <BloquesMediosPago
             key={`prev-${facturaClienteId}`}
-            tarjetas={tarjetasIniciales}
-            grupos={gruposIniciales}
-            recargos={recargosIniciales}
+            tarjetas={tarjetasDB}
+            grupos={gruposDB}
+            recargos={recargosDB}
             textoBoton="Listo (los IVA y recargos se calculan al confirmar)"
             textoConfirmado="Medios de pago listos. Apretá 'Confirmar Factura' arriba para crear la factura y calcular IVA + recargos."
             onEstadoPagoChange={(estado) => setPrevEstadoPago(estado)}
@@ -9221,9 +9243,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           <BloquesMediosPago
             key={selectedFactura.id}
             factura={selectedFactura}
-            tarjetas={tarjetasIniciales}
-            grupos={gruposIniciales}
-            recargos={recargosIniciales}
+            tarjetas={tarjetasDB}
+            grupos={gruposDB}
+            recargos={recargosDB}
             textoBoton="Confirmar factura (calcula IVA + recargos)"
             textoConfirmado="Factura confirmada. Para registrar el cobro, generá un Recibo desde Ventas."
             onConfirmarCobro={async (lineasPago) => {
@@ -9240,7 +9262,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     const hoy = new Date()
                     const diasKeys = ["dom","lun","mar","mie","jue","vie","sab"] as const
                     const diaKey = diasKeys[hoy.getDay()]
-                    const rec = recargosIniciales.find(r =>
+                    const rec = recargosDB.find(r =>
                       r.tarjeta_id === l.tarjeta_id && r.activo &&
                       (l.cuotas||1) >= r.desde_cuota && (l.cuotas||1) <= r.hasta_cuota && r.dias[diaKey]
                     )
@@ -9323,7 +9345,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   medio: string; tarjeta_id: number | null; cuotas: number | null
                   monto_base: number; iva_calculado: number; recargo: number; monto_total: number
                 }>).map(m => {
-                  const tarjetaInfo = m.tarjeta_id ? tarjetasIniciales.find(t => t.id === m.tarjeta_id) : null
+                  const tarjetaInfo = m.tarjeta_id ? tarjetasDB.find(t => t.id === m.tarjeta_id) : null
                   return {
                     medio: m.medio,
                     tarjeta_nombre: tarjetaInfo?.nombre,
