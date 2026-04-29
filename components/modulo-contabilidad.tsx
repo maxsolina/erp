@@ -644,6 +644,7 @@ function PlanCuentasView() {
 
   const guardar = async () => {
     if (!form.codigo || !form.nombre) { setError("Código y Nombre son obligatorios."); return }
+    if (!form.tipo_cuenta_id) { setError("Tipo de Cuenta es obligatorio."); return }
     setGuardando(true); setError(null)
     const method = selected ? "PATCH" : "POST"
     const url = selected ? `/api/contabilidad/plan-cuentas?id=${selected.id}` : "/api/contabilidad/plan-cuentas"
@@ -673,7 +674,7 @@ function PlanCuentasView() {
         <span className="text-gray-300">/</span>
         <span className="text-gray-600 font-semibold">{selected ? `${selected.codigo} · ${selected.nombre}` : "Nueva Cuenta"}</span>
       </div>
-      <div className="bg-white border rounded-lg shadow-sm p-6 max-w-2xl">
+      <div className="bg-white border rounded-lg shadow-sm p-6">
         {error && <div className="text-sm text-red-600 mb-3 flex items-center gap-1"><AlertCircle className="w-4 h-4" />{error}</div>}
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -687,11 +688,29 @@ function PlanCuentasView() {
               value={form.nombre ?? ""} onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de Cuenta</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de Cuenta *</label>
             <select className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
               value={form.tipo_cuenta_id ?? ""} onChange={e => setForm(p => ({ ...p, tipo_cuenta_id: e.target.value || undefined }))}>
-              <option value="">— Sin tipo —</option>
-              {tipos.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+              <option value="">— Seleccionar —</option>
+              {(() => {
+                const grupos: Record<string, TipoCuenta[]> = {}
+                for (const t of tipos.filter(t => t.activo !== false)) {
+                  const cat = t.categoria_balance_pyg ?? "Otros"
+                  if (!grupos[cat]) grupos[cat] = []
+                  grupos[cat].push(t)
+                }
+                const ordenCategoria = ["Activo", "Activo Corriente", "Pasivo", "Pasivo Corriente", "Patrimonio Neto", "Ingresos", "Egresos", "Otros"]
+                const claves = Object.keys(grupos).sort((a, b) => {
+                  const ia = ordenCategoria.indexOf(a)
+                  const ib = ordenCategoria.indexOf(b)
+                  return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+                })
+                return claves.map(cat => (
+                  <optgroup key={cat} label={cat}>
+                    {grupos[cat].map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                  </optgroup>
+                ))
+              })()}
             </select>
           </div>
           <div>
@@ -705,22 +724,11 @@ function PlanCuentasView() {
             </select>
           </div>
           <div className="col-span-2 flex flex-wrap gap-4">
-            {([
-              ["activo", "Activo"],
-              ["permite_conciliacion", "Permite Conciliación"],
-              ["es_cuenta_puente", "Cuenta Puente"],
-              ["es_cuenta_ventas", "Cuenta Ventas"],
-              ["es_cuenta_compras", "Cuenta Compras"],
-              ["es_cuenta_impuestos", "Cuenta Impuestos"],
-              ["es_cuenta_existencias", "Cuenta Existencias"],
-              ["es_cuenta_cmv", "Cuenta CMV"],
-            ] as [keyof typeof form, string][]).map(([field, label]) => (
-              <label key={String(field)} className="flex items-center gap-1 text-xs">
-                <input type="checkbox" checked={(form as any)[field] ?? false}
-                  onChange={e => setForm(p => ({ ...p, [field]: e.target.checked }))} />
-                {label}
-              </label>
-            ))}
+            <label className="flex items-center gap-1 text-xs">
+              <input type="checkbox" checked={form.activo ?? false}
+                onChange={e => setForm(p => ({ ...p, activo: e.target.checked }))} />
+              Activo
+            </label>
           </div>
         </div>
         <div className="flex gap-2 mt-6">
@@ -763,7 +771,7 @@ function PlanCuentasView() {
         <table className="w-full text-sm border rounded-lg overflow-hidden">
           <thead>
             <tr className="border-b bg-gray-50">
-              {["Código", "Nombre", "Tipo de Cuenta", "Tipo Interno", "Conc.", "Activo", ""].map(h => (
+              {["Código", "Nombre", "Tipo de Cuenta", "Tipo Interno", "Activo", ""].map(h => (
                 <th key={h} className="text-xs font-semibold text-gray-600 uppercase px-3 py-2 text-left">{h}</th>
               ))}
             </tr>
@@ -777,9 +785,13 @@ function PlanCuentasView() {
                   onClick={() => { setSelected(c); setForm({ ...c, tipo_cuenta_id: c.tipo_cuenta?.id }); setEditando(true) }}>
                   <td className={`px-3 py-2 font-mono text-xs ${esVista ? "text-blue-700 font-bold" : ""}`}>{c.codigo}</td>
                   <td className={`px-3 py-2 ${esVista ? "font-bold text-blue-800" : "font-medium"}`}>{c.nombre}</td>
-                  <td className="px-3 py-2 text-gray-500 text-xs">{c.tipo_cuenta?.nombre ?? "—"}</td>
+                  <td className="px-3 py-2 text-gray-500 text-xs">
+                    {c.tipo_cuenta?.nombre ?? "—"}
+                    {c.tipo_cuenta?.categoria_balance_pyg && (
+                      <span className="ml-1 text-gray-400">· {c.tipo_cuenta.categoria_balance_pyg}</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-gray-500 text-xs">{c.tipo_interno}</td>
-                  <td className="px-3 py-2">{c.permite_conciliacion ? <Check className="w-3 h-3 text-green-600" /> : ""}</td>
                   <td className="px-3 py-2">
                     <span className={`text-xs px-2 py-0.5 rounded-full ${c.activo ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-500"}`}>
                       {c.activo ? "Sí" : "No"}

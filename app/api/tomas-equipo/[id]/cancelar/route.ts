@@ -87,10 +87,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .eq("id", ajuste.id)
   }
 
-  // 5. Cancelar la toma
+  // 5. Cancelar la toma — y propagar estado_recepcion=cancelado para que el ficha
+  // refleje que la REP también fue revertida (sino quedaría como 'recibido' visualmente)
   const { error: errCancel } = await supabase
     .from("tomas_equipo")
-    .update({ estado: "cancelado", updated_at: new Date().toISOString() })
+    .update({ estado: "cancelado", estado_recepcion: "cancelado", updated_at: new Date().toISOString() })
     .eq("id", tomaId)
 
   if (errCancel) {

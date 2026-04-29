@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   let query = supabase
     .from("cotizador_criterios")
     .select(`
-      id, modelo_id, categoria_id, etiqueta, descuento_usd, orden, activo, created_at, updated_at,
+      id, modelo_id, categoria_id, etiqueta, descuento_usd, descuento_porcentaje, orden, activo, web_deriva_atencion, created_at, updated_at,
       modelo:cotizador_modelos(id, valor_base_usd, producto:productos(id, nombre)),
       categoria:cotizador_categorias(id, nombre, accion)
     `)
@@ -51,6 +51,15 @@ export async function POST(req: Request) {
     return apiError(`descuento_usd no puede superar el valor base del modelo (${modelo.valor_base_usd})`, 400)
   }
 
+  // Porcentaje dinámico opcional: si viene un número, se usa como base de cálculo
+  let descuentoPct: number | null = null
+  if (body.descuento_porcentaje !== undefined && body.descuento_porcentaje !== null && body.descuento_porcentaje !== "") {
+    descuentoPct = Number(body.descuento_porcentaje)
+    if (Number.isNaN(descuentoPct) || descuentoPct < 0 || descuentoPct > 100) {
+      return apiError("descuento_porcentaje debe estar entre 0 y 100", 400)
+    }
+  }
+
   const { data, error } = await supabase
     .from("cotizador_criterios")
     .insert({
@@ -58,11 +67,13 @@ export async function POST(req: Request) {
       categoria_id: body.categoria_id,
       etiqueta: body.etiqueta.trim(),
       descuento_usd: descuentoUsd,
+      descuento_porcentaje: descuentoPct,
       orden: Number(body.orden) || 0,
       activo: body.activo ?? true,
+      web_deriva_atencion: body.web_deriva_atencion ?? false,
     })
     .select(`
-      id, modelo_id, categoria_id, etiqueta, descuento_usd, orden, activo, created_at, updated_at,
+      id, modelo_id, categoria_id, etiqueta, descuento_usd, descuento_porcentaje, orden, activo, web_deriva_atencion, created_at, updated_at,
       categoria:cotizador_categorias(id, nombre, accion)
     `)
     .single()

@@ -13,6 +13,18 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   if (body.orden !== undefined) update.orden = Number(body.orden) || 0
   if (body.activo !== undefined) update.activo = Boolean(body.activo)
   if (body.categoria_id !== undefined) update.categoria_id = body.categoria_id
+  if (body.web_deriva_atencion !== undefined) update.web_deriva_atencion = Boolean(body.web_deriva_atencion)
+  if (body.descuento_porcentaje !== undefined) {
+    if (body.descuento_porcentaje === null || body.descuento_porcentaje === "") {
+      update.descuento_porcentaje = null
+    } else {
+      const pct = Number(body.descuento_porcentaje)
+      if (Number.isNaN(pct) || pct < 0 || pct > 100) {
+        return apiError("descuento_porcentaje debe estar entre 0 y 100", 400)
+      }
+      update.descuento_porcentaje = pct
+    }
+  }
 
   if (body.descuento_usd !== undefined) {
     const descuentoUsd = Number(body.descuento_usd)
@@ -44,7 +56,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     .update(update)
     .eq("id", id)
     .select(`
-      id, modelo_id, categoria_id, etiqueta, descuento_usd, orden, activo, created_at, updated_at,
+      id, modelo_id, categoria_id, etiqueta, descuento_usd, descuento_porcentaje, orden, activo, web_deriva_atencion, created_at, updated_at,
       categoria:cotizador_categorias(id, nombre, accion)
     `)
     .single()

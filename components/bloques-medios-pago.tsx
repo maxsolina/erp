@@ -7,6 +7,11 @@ import { Plus, X, CreditCard, CheckCircle, AlertCircle } from "lucide-react"
 export interface LineaPago {
   id: number
   medio: "efectivo" | "transferencia" | "tarjeta"
+  // Moneda en la que el cliente paga esta línea. Solo es independiente del
+  // factura.moneda para "efectivo" (ARS/USD). Para tarjeta/transferencia
+  // siempre coincide con factura.moneda.
+  moneda: "ARS" | "USD"
+  // Monto en la moneda indicada por `moneda` (no necesariamente la de la factura)
   monto: number
   tarjeta_id?: number
   cuotas?: number
@@ -56,6 +61,8 @@ interface GrupoTarjeta {
 interface Factura {
   id: number
   total: number
+  moneda?: "ARS" | "USD"
+  cotizacion?: number
   [key: string]: unknown
 }
 
@@ -79,6 +86,29 @@ const CUOTAS_OPTS = [1, 2, 3, 4, 5, 6, 9, 12, 18, 24]
 const formatARS = (n: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 }).format(n)
 
+const formatMoneda = (n: number, moneda: "ARS" | "USD") =>
+  new Intl.NumberFormat("es-AR", { style: "currency", currency: moneda, minimumFractionDigits: 2 }).format(n)
+
+// Convierte un monto en una moneda dada al equivalente en la moneda de la factura.
+function montoEnFacturaMoneda(monto: number, monedaLinea: "ARS" | "USD", factura: Factura): number {
+  const monedaFac = factura.moneda ?? "ARS"
+  const cot = factura.cotizacion ?? 1
+  if (monedaLinea === monedaFac) return monto
+  if (monedaLinea === "USD" && monedaFac === "ARS") return monto * cot
+  if (monedaLinea === "ARS" && monedaFac === "USD") return cot > 0 ? monto / cot : 0
+  return monto
+}
+
+// Convierte un monto desde la moneda de la factura a otra moneda destino.
+function montoDesdeFacturaMoneda(montoFac: number, monedaDestino: "ARS" | "USD", factura: Factura): number {
+  const monedaFac = factura.moneda ?? "ARS"
+  const cot = factura.cotizacion ?? 1
+  if (monedaDestino === monedaFac) return montoFac
+  if (monedaFac === "USD" && monedaDestino === "ARS") return montoFac * cot
+  if (monedaFac === "ARS" && monedaDestino === "USD") return cot > 0 ? montoFac / cot : 0
+  return montoFac
+}
+
 export default function BloquesMediosPago({
   factura,
   tarjetas,
@@ -93,15 +123,20 @@ export default function BloquesMediosPago({
   const [lineas, setLineas] = useState<LineaPago[]>([])
   const [cobrado, setCobrado] = useState(false)
 
+  // Suma todas las líneas convertidas a la moneda de la factura
+  const sumarEnFacturaMoneda = (lns: LineaPago[]) =>
+    lns.reduce((s, l) => s + montoEnFacturaMoneda(l.monto || 0, l.moneda, factura), 0)
+
   useEffect(() => {
-    const totalIngresado = lineas.reduce((s, l) => s + (l.monto || 0), 0)
+    const totalIngresado = sumarEnFacturaMoneda(lineas)
     const diferencia = totalIngresado - factura.total
     onEstadoPagoChange?.({
       cobrado,
       tieneLineas: lineas.length > 0 && totalIngresado > 0,
       diferenciaOk: Math.abs(diferencia) <= 0.5,
     })
-  }, [lineas, cobrado, factura.total])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineas, cobrado, factura.total, factura.moneda, factura.cotizacion])
 
   const buscarRecargo = (tarjetaId: number, cuotas: number): RecargoTarjetaFinanzas | null => {
     const hoy = new Date()
@@ -136,19 +171,43 @@ export default function BloquesMediosPago({
   }
 
   const agregarLinea = () => {
-    const yaIngresado = lineas.reduce((s, l) => s + (l.monto || 0), 0)
-    const restante = lineas.length === 0 ? 0 : Math.max(0, factura.total - yaIngresado)
-    setLineas(prev => [...prev, { id: Date.now(), medio: "efectivo", monto: restante }])
+    const yaIngresado = sumarEnFacturaMoneda(lineas)
+    const monedaDefault = (factura.moneda ?? "ARS") as "ARS" | "USD"
+    const restanteFac = lineas.length === 0 ? 0 : Math.max(0, factura.total - yaIngresado)
+    const restanteEnMonedaDefault = montoDesdeFacturaMoneda(restanteFac, monedaDefault, factura)
+    setLineas(prev => [...prev, { id: Date.now(), medio: "efectivo", moneda: monedaDefault, monto: restanteEnMonedaDefault }])
   }
 
   const actualizarLinea = (id: number, cambios: Partial<LineaPago>) =>
     setLineas(prev => prev.map(l => l.id === id ? { ...l, ...cambios } : l))
 
+  // Cambia el medio (incluyendo moneda en caso de "efectivo") y recalcula el
+  // monto sugerido basado en lo que falta para cubrir la factura.
+  const cambiarMedio = (id: number, opcion: "efectivo_ars" | "efectivo_usd" | "transferencia" | "tarjeta") => {
+    setLineas(prev => {
+      // Saldo restante en moneda de factura, EXCLUYENDO esta línea
+      const restoDeLineas = prev.filter(l => l.id !== id)
+      const yaIngresadoExclu = sumarEnFacturaMoneda(restoDeLineas)
+      const restanteFac = Math.max(0, factura.total - yaIngresadoExclu)
+      let medio: LineaPago["medio"] = "efectivo"
+      let moneda: "ARS" | "USD" = (factura.moneda ?? "ARS") as "ARS" | "USD"
+      if (opcion === "efectivo_ars") { medio = "efectivo"; moneda = "ARS" }
+      else if (opcion === "efectivo_usd") { medio = "efectivo"; moneda = "USD" }
+      else if (opcion === "transferencia") { medio = "transferencia"; moneda = (factura.moneda ?? "ARS") as "ARS" | "USD" }
+      else if (opcion === "tarjeta") { medio = "tarjeta"; moneda = (factura.moneda ?? "ARS") as "ARS" | "USD" }
+      const montoSugerido = montoDesdeFacturaMoneda(restanteFac, moneda, factura)
+      return prev.map(l => l.id === id
+        ? { ...l, medio, moneda, monto: montoSugerido, tarjeta_id: undefined, cuotas: undefined }
+        : l
+      )
+    })
+  }
+
   const eliminarLinea = (id: number) =>
     setLineas(prev => prev.filter(l => l.id !== id))
 
   const totalRecargos = lineas.reduce((sum, l) => sum + (calcularLinea(l)?.totalRecargo || 0), 0)
-  const totalIngresado = lineas.reduce((s, l) => s + (l.monto || 0), 0)
+  const totalIngresado = sumarEnFacturaMoneda(lineas)
   const totalConRecargos = totalIngresado + totalRecargos
   const diferencia = totalIngresado - factura.total
 
@@ -183,19 +242,24 @@ export default function BloquesMediosPago({
         {lineas.map((linea, idx) => {
           const calc = calcularLinea(linea)
           const esPrimeraLineaEfectivo = linea.medio === "efectivo" && lineas.findIndex(l => l.medio === "efectivo") === idx
-          const montoOtras = lineas.filter(l => l.id !== linea.id).reduce((s, l) => s + (l.monto || 0), 0)
-          const restanteParaEstaLinea = factura.total - montoOtras
-          const excedeLimite = (linea.monto || 0) > restanteParaEstaLinea + 0.5
+          const montoOtrasFac = lineas.filter(l => l.id !== linea.id).reduce((s, l) => s + montoEnFacturaMoneda(l.monto || 0, l.moneda, factura), 0)
+          const restanteParaEstaLineaFac = factura.total - montoOtrasFac
+          const restanteParaEstaLineaEnMonedaLinea = montoDesdeFacturaMoneda(restanteParaEstaLineaFac, linea.moneda, factura)
+          const excedeLimite = (linea.monto || 0) > restanteParaEstaLineaEnMonedaLinea + 0.5
+          const opcionMedio = linea.medio === "efectivo"
+            ? (linea.moneda === "USD" ? "efectivo_usd" : "efectivo_ars")
+            : linea.medio
 
           return (
             <div key={linea.id} className="rounded-lg border border-gray-200 overflow-hidden">
               <div className="flex flex-wrap items-center gap-2 p-3 bg-gray-50">
                 <select
-                  value={linea.medio}
-                  onChange={e => actualizarLinea(linea.id, { medio: e.target.value as LineaPago["medio"], tarjeta_id: undefined, cuotas: undefined })}
+                  value={opcionMedio}
+                  onChange={e => cambiarMedio(linea.id, e.target.value as "efectivo_ars" | "efectivo_usd" | "transferencia" | "tarjeta")}
                   className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 >
-                  <option value="efectivo">Efectivo</option>
+                  <option value="efectivo_ars">Efectivo ARS</option>
+                  <option value="efectivo_usd">Efectivo USD</option>
                   <option value="transferencia">Transferencia</option>
                   <option value="tarjeta">Tarjeta</option>
                 </select>
@@ -227,25 +291,33 @@ export default function BloquesMediosPago({
                     <label className="flex items-center gap-1.5 cursor-pointer select-none">
                       <input
                         type="checkbox"
-                        checked={linea.monto === factura.total}
-                        onChange={e => actualizarLinea(linea.id, { monto: e.target.checked ? factura.total : 0 })}
+                        checked={Math.abs(linea.monto - restanteParaEstaLineaEnMonedaLinea) < 0.5 && restanteParaEstaLineaEnMonedaLinea > 0}
+                        onChange={e => actualizarLinea(linea.id, { monto: e.target.checked ? restanteParaEstaLineaEnMonedaLinea : 0 })}
                         className="w-3.5 h-3.5 accent-emerald-600"
                       />
                       <span className="text-xs text-gray-500 whitespace-nowrap">Todo efectivo</span>
                     </label>
                   )}
                   <div className="flex flex-col items-end gap-1">
-                    <input
-                      type="number"
-                      value={linea.monto || ""}
-                      onChange={e => actualizarLinea(linea.id, { monto: parseFloat(e.target.value) || 0 })}
-                      disabled={linea.medio === "tarjeta" && !linea.tarjeta_id}
-                      className={`w-32 border rounded px-2 py-1.5 text-sm text-right focus:ring-2 focus:ring-emerald-500 focus:outline-none ${excedeLimite ? "border-red-400 bg-red-50" : "border-gray-300"} disabled:bg-gray-100 disabled:cursor-not-allowed`}
-                      placeholder="0,00"
-                    />
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-500 font-medium shrink-0">{linea.moneda}</span>
+                      <input
+                        type="number"
+                        value={linea.monto || ""}
+                        onChange={e => actualizarLinea(linea.id, { monto: parseFloat(e.target.value) || 0 })}
+                        disabled={linea.medio === "tarjeta" && !linea.tarjeta_id}
+                        className={`w-32 border rounded px-2 py-1.5 text-sm text-right focus:ring-2 focus:ring-emerald-500 focus:outline-none ${excedeLimite ? "border-red-400 bg-red-50" : "border-gray-300"} disabled:bg-gray-100 disabled:cursor-not-allowed`}
+                        placeholder="0,00"
+                      />
+                    </div>
+                    {linea.medio === "efectivo" && linea.moneda !== (factura.moneda ?? "ARS") && linea.monto > 0 && (
+                      <span className="text-xs text-gray-500">
+                        ≈ {formatMoneda(montoEnFacturaMoneda(linea.monto, linea.moneda, factura), (factura.moneda ?? "ARS") as "ARS" | "USD")}
+                      </span>
+                    )}
                     {excedeLimite && (
                       <span className="text-xs text-red-600 font-medium">
-                        Supera el total ({formatARS(restanteParaEstaLinea)})
+                        Supera el total ({formatMoneda(restanteParaEstaLineaEnMonedaLinea, linea.moneda)})
                       </span>
                     )}
                   </div>

@@ -25,7 +25,7 @@ export async function POST(req: Request) {
 
   const baseCols = ["nombre", "moneda", "activa", "moneda_base"]
   const extendedCols = ["incluye_iva", "no_visible", "dias_validez", "estado",
-    "usuarios_admin", "usuarios_habilitados", "observaciones_filtro"]
+    "usuarios_admin", "usuarios_habilitados", "observaciones_filtro", "tipo_cotizacion"]
 
   const buildInsert = (cols: string[]) => {
     const ins: Record<string, unknown> = {}
@@ -58,7 +58,7 @@ export async function PATCH(req: Request) {
   // Columnas base (siempre existen) + columnas extendidas (requieren migración 070)
   const baseCols = ["nombre", "tipo", "moneda", "moneda_base", "activa"]
   const extendedCols = ["incluye_iva", "no_visible", "dias_validez", "estado",
-    "usuarios_admin", "usuarios_habilitados", "observaciones_filtro"]
+    "usuarios_admin", "usuarios_habilitados", "observaciones_filtro", "tipo_cotizacion"]
 
   const buildUpdate = (cols: string[]) => {
     const u: Record<string, unknown> = {}

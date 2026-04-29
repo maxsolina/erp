@@ -502,88 +502,25 @@ export function ModalMedioPago({
     // ── TARJETA ───────────────────────────────────────────────────────────
     if (subtipo === "tarjeta") {
       return (
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-          {/* Columna izquierda */}
-          <div className="space-y-2">
-            <div>
-              <label className={lbl}>Tarjeta *</label>
-              <select
-                value={tarjetaId}
-                onChange={e => setTarjetaId(e.target.value ? parseInt(e.target.value) : "")}
-                className={cls}
-              >
-                <option value="">Seleccionar...</option>
-                {tarjetas.map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.nombre} ({t.tipo === "credito" ? "Crédito" : "Débito"})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={lbl}>Vto. Tarjeta (MM / AA)</label>
-              <div className="flex gap-1 items-center">
-                <input value={tarjetaVtoMM} onChange={e => setTarjetaVtoMM(e.target.value)} placeholder="MM" maxLength={2} className={`${cls} w-full`} />
-                <span className="text-gray-400">/</span>
-                <input value={tarjetaVtoAA} onChange={e => setTarjetaVtoAA(e.target.value)} placeholder="AA" maxLength={2} className={`${cls} w-full`} />
-              </div>
-            </div>
-            <div>
-              <label className={lbl}>Banco Emisor</label>
-              <select value={tarjetaBancoId} onChange={e => setTarjetaBancoId(e.target.value)} className={cls}>
-                <option value="">—</option>
-                {bancos.map(b => <option key={b.id} value={b.id}>{b.nombre}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className={lbl}>Número de Lote</label>
-              <input value={tarjetaLote} onChange={e => setTarjetaLote(e.target.value)} className={cls} />
-            </div>
-            <div>
-              <label className={lbl}>Código de Autorización</label>
-              <input value={tarjetaAutorizacion} onChange={e => setTarjetaAutorizacion(e.target.value)} className={cls} />
-            </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={lbl}>Tarjeta *</label>
+            <select
+              value={tarjetaId}
+              onChange={e => setTarjetaId(e.target.value ? parseInt(e.target.value) : "")}
+              className={cls}
+            >
+              <option value="">Seleccionar...</option>
+              {tarjetas.map(t => (
+                <option key={t.id} value={t.id}>
+                  {t.nombre} ({t.tipo === "credito" ? "Crédito" : "Débito"})
+                </option>
+              ))}
+            </select>
           </div>
-          {/* Columna derecha */}
-          <div className="space-y-2">
-            <div>
-              <label className={lbl}>Importe *</label>
-              <input type="number" value={importe} onChange={e => setImporte(e.target.value)} step="0.01" min="0" className={cls} />
-            </div>
-            <div>
-              <label className={lbl}>Cuotas</label>
-              <select value={tarjetaCuotas} onChange={e => setTarjetaCuotas(parseInt(e.target.value))} className={cls}>
-                {[1, 3, 6, 12, 18, 24].map(n => <option key={n} value={n}>{n === 1 ? "1 (contado)" : `${n} cuotas`}</option>)}
-              </select>
-            </div>
-            {tarjetaCuotas > 1 && recargoPct > 0 && (
-              <p className="text-xs bg-amber-50 text-amber-700 rounded px-2 py-1.5 border border-amber-100">
-                Recargo {recargoPct}%: +${(importeNum * recargoPct / 100).toLocaleString("es-AR", { minimumFractionDigits: 2 })} → Total: ${importeConRecargo.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-              </p>
-            )}
-            <div>
-              <label className={lbl}>Ult. 4 dígitos</label>
-              <input value={tarjetaUlt4} onChange={e => setTarjetaUlt4(e.target.value)} maxLength={4} className={cls} />
-            </div>
-            <div>
-              <label className={lbl}>Documento</label>
-              <div className="flex gap-1">
-                <select value={tarjetaTipoDoc} onChange={e => setTarjetaTipoDoc(e.target.value)} className={`${cls} w-24`}>
-                  <option>DNI</option>
-                  <option>CUIT</option>
-                  <option>CUIL</option>
-                </select>
-                <input value={tarjetaNumDoc} onChange={e => setTarjetaNumDoc(e.target.value)} placeholder="Número" className={`${cls} flex-1`} />
-              </div>
-            </div>
-            <div>
-              <label className={lbl}>Número de Cupón</label>
-              <input value={tarjetaCupon} onChange={e => setTarjetaCupon(e.target.value)} className={cls} />
-            </div>
-            <div>
-              <label className={lbl}>Fecha de Cupón</label>
-              <input type="date" value={tarjetaFechaCupon} onChange={e => setTarjetaFechaCupon(e.target.value)} className={cls} />
-            </div>
+          <div>
+            <label className={lbl}>Importe *</label>
+            <input type="number" value={importe} onChange={e => setImporte(e.target.value)} step="0.01" min="0" className={cls} />
           </div>
         </div>
       )

@@ -58,15 +58,15 @@ export default function ProductoDropdown({
     ? versionesLista.filter((v: any) => v.lista_precios_id === listaId)
     : []
 
+  // Versión activa = no archivada (activa !== false) + fecha vigente. Si hay varias, la de fecha_inicial más reciente.
+  const hoyIso = new Date().toISOString().split("T")[0]
+  const vigentes = versionesDeEstaLista
+    .filter((v: any) => v.activa !== false)
+    .filter((v: any) => v.fecha_inicial <= hoyIso && (!v.fecha_final || v.fecha_final >= hoyIso))
+    .filter((v: any) => Array.isArray(v.lineas) && v.lineas.length > 0)
+    .sort((a: any, b: any) => (b.fecha_inicial ?? "").localeCompare(a.fecha_inicial ?? ""))
   const versionActiva =
-    versionesDeEstaLista.find((v: any) =>
-      (v.activa === true || v.estado === "activa" || v.estado === "Activa" || v.estado === "activo" || v.estado === "Activo") &&
-      Array.isArray(v.lineas) && v.lineas.length > 0
-    ) ??
-    versionesDeEstaLista.find((v: any) =>
-      (v.estado === "confirmada" || v.estado === "Confirmada") &&
-      Array.isArray(v.lineas) && v.lineas.length > 0
-    ) ??
+    vigentes[0] ??
     versionesDeEstaLista.find((v: any) => Array.isArray(v.lineas) && v.lineas.length > 0) ??
     versionesDeEstaLista[versionesDeEstaLista.length - 1] ??
     null

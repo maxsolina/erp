@@ -78,12 +78,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }, { status: 422 })
   }
 
-  // 4. Calcular IVA proporcional + recargo por cada medio facturable
+  // 4. Calcular recargo + IVA proporcional por cada medio facturable
   // Para cada medio NO efectivo:
+  //   - Recargo (solo tarjeta) = monto * recargo_pct / 100
   //   - ratio = monto / subtotalNegro (qué porción del total cubre)
-  //   - por cada línea: base imponible = línea.subtotal * ratio, IVA = base * alicuota/100
-  //   - IVA del medio = suma de los IVA por línea
-  //   - Recargo = (monto + IVA medio) * recargo_pct / 100
+  //   - por cada línea: base imponible = (línea.subtotal + recargo de la línea) * ratio
+  //                     IVA = base * alicuota/100
+  //   - IVA del medio = suma de los IVA por línea (calculado sobre monto + recargo)
   let ivaTotal = 0
   let recargoTotal = 0
 
@@ -92,19 +93,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     let ivaMedio = 0
     let recargoMedio = 0
 
+    // Recargo va primero — se calcula sobre el monto base
+    if (m.medio === "tarjeta" && (m.recargo_pct ?? 0) > 0) {
+      recargoMedio = Math.round(monto * (Number(m.recargo_pct) / 100) * 100) / 100
+    }
+
+    // IVA se calcula sobre (monto base + recargo) en proporción a las alícuotas de cada línea
     if (m.medio !== "efectivo") {
-      const ratio = monto / subtotalNegro
+      const baseConRecargo = monto + recargoMedio
+      const ratio = baseConRecargo / subtotalNegro
       for (const linea of lineas) {
         const alicuota = linea.producto_id != null ? (alicuotaPorProducto.get(linea.producto_id) ?? 21) : 21
         const baseImponible = Number(linea.subtotal ?? 0) * ratio
         ivaMedio += baseImponible * (alicuota / 100)
       }
       ivaMedio = Math.round(ivaMedio * 100) / 100
-    }
-
-    if (m.medio === "tarjeta" && (m.recargo_pct ?? 0) > 0) {
-      // Recargo sobre (monto + IVA) — opción B confirmada por el usuario
-      recargoMedio = Math.round((monto + ivaMedio) * (Number(m.recargo_pct) / 100) * 100) / 100
     }
 
     ivaTotal += ivaMedio

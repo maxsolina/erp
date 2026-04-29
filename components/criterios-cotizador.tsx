@@ -1,7 +1,50 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Plus, Edit, Trash2, X, Save, Search, AlertCircle, Smartphone, Sliders, Ban, Tag } from "lucide-react"
+import { Plus, Edit, Trash2, X, Save, Search, AlertCircle, Smartphone, Sliders, Ban, Tag, ListChecks, GripVertical, MessageSquare } from "lucide-react"
+
+// ── Hook reutilizable para drag-and-drop reorder ──────────────
+function useDragReorder<T extends { id: string }>(
+  items: T[],
+  endpoint: string,
+  onDone: () => void,
+  onError: (msg: string | null) => void,
+) {
+  const [draggingIdx, setDraggingIdx] = useState<number | null>(null)
+  const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null)
+
+  const onDragStart = (idx: number) => setDraggingIdx(idx)
+  const onDragOver = (idx: number) => (e: React.DragEvent) => {
+    e.preventDefault()
+    if (draggingIdx !== null && draggingIdx !== idx) setDropTargetIdx(idx)
+  }
+  const onDragLeave = () => setDropTargetIdx(null)
+  const onDragEnd = () => { setDraggingIdx(null); setDropTargetIdx(null) }
+  const onDrop = async (toIdx: number) => {
+    if (draggingIdx === null || draggingIdx === toIdx) {
+      setDraggingIdx(null); setDropTargetIdx(null); return
+    }
+    const reordered = [...items]
+    const [moved] = reordered.splice(draggingIdx, 1)
+    reordered.splice(toIdx, 0, moved)
+    setDraggingIdx(null); setDropTargetIdx(null)
+
+    // Persistir el nuevo orden en paralelo
+    const updates = reordered.map((item, i) =>
+      fetch(`${endpoint}/${item.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orden: i }),
+      })
+    )
+    const results = await Promise.all(updates)
+    if (results.some(r => !r.ok)) onError("Algunos cambios de orden no se guardaron")
+    else onError(null)
+    onDone()
+  }
+
+  return { draggingIdx, dropTargetIdx, onDragStart, onDragOver, onDragLeave, onDragEnd, onDrop }
+}
 
 type Categoria = {
   id: string
@@ -35,8 +78,10 @@ type Criterio = {
   categoria_id: string
   etiqueta: string
   descuento_usd: number
+  descuento_porcentaje: number | null  // si NOT NULL → modo porcentual dinámico
   orden: number
   activo: boolean
+  web_deriva_atencion: boolean
   categoria?: { id: string; nombre: string; accion: string } | null
 }
 
@@ -47,7 +92,15 @@ type Exclusion = {
   activo: boolean
 }
 
-type Tab = "modelos" | "criterios" | "exclusiones" | "categorias"
+type EtiquetaCategoria = {
+  id: string
+  categoria_id: string
+  etiqueta: string
+  orden: number
+  activo: boolean
+}
+
+type Tab = "modelos" | "criterios" | "etiquetas" | "exclusiones" | "categorias"
 
 const fmtUsd = (n: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(n)
@@ -60,6 +113,7 @@ export default function CriteriosCotizador() {
   const [criterios, setCriterios] = useState<Criterio[]>([])
   const [exclusiones, setExclusiones] = useState<Exclusion[]>([])
   const [productos, setProductos] = useState<ProductoLite[]>([])
+  const [etiquetas, setEtiquetas] = useState<EtiquetaCategoria[]>([])
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -69,12 +123,13 @@ export default function CriteriosCotizador() {
     setLoading(true)
     setError(null)
     try {
-      const [rM, rC, rCr, rE, rP] = await Promise.all([
+      const [rM, rC, rCr, rE, rP, rEt] = await Promise.all([
         fetch("/api/cotizador/modelos").then(r => r.json()),
         fetch("/api/cotizador/categorias").then(r => r.json()),
         fetch("/api/cotizador/criterios").then(r => r.json()),
         fetch("/api/cotizador/exclusiones").then(r => r.json()),
         fetch("/api/productos").then(r => r.json()),
+        fetch("/api/cotizador/etiquetas").then(r => r.json()),
       ])
       setModelos(Array.isArray(rM) ? rM : [])
       setCategorias(Array.isArray(rC) ? rC : [])
@@ -83,6 +138,7 @@ export default function CriteriosCotizador() {
       setProductos(Array.isArray(rP) ? rP.map((p: any) => ({
         id: p.id, nombre: p.nombre, codigo_interno: p.codigo_interno, marca: p.marca, modelo: p.modelo,
       })) : [])
+      setEtiquetas(Array.isArray(rEt) ? rEt : [])
     } catch (e) {
       setError("Error cargando datos del cotizador")
     } finally {
@@ -107,6 +163,9 @@ export default function CriteriosCotizador() {
           </TabButton>
           <TabButton active={tab === "criterios"} onClick={() => setTab("criterios")} icon={<Sliders className="w-4 h-4" />}>
             Criterios de Descuento
+          </TabButton>
+          <TabButton active={tab === "etiquetas"} onClick={() => setTab("etiquetas")} icon={<ListChecks className="w-4 h-4" />}>
+            Etiquetas
           </TabButton>
           <TabButton active={tab === "exclusiones"} onClick={() => setTab("exclusiones")} icon={<Ban className="w-4 h-4" />}>
             Exclusiones
@@ -143,6 +202,15 @@ export default function CriteriosCotizador() {
               modelos={modelos}
               categorias={categorias}
               criterios={criterios}
+              etiquetas={etiquetas}
+              onChange={recargar}
+              onError={setError}
+            />
+          )}
+          {tab === "etiquetas" && (
+            <EtiquetasTab
+              etiquetas={etiquetas}
+              categorias={categorias}
               onChange={recargar}
               onError={setError}
             />
@@ -200,17 +268,21 @@ function ModelosTab({
     )
   }, [modelos, search])
 
-  // Cuántas categorías de tipo "descuento" tienen al menos una opción con descuento=0 y al menos una opción para este modelo
+  // Cuántas categorías de tipo "descuento" o "cartel_sistema" tienen al menos
+  // una opción con descuento=0 (Impecable). El wizard de Toma de Equipo
+  // requiere que TODAS estas categorías tengan su opción Impecable cargada.
   const completitudPorModelo = useMemo(() => {
-    const map: Record<string, { total: number; conImpecable: number }> = {}
-    const cats = categorias.filter(c => c.activo && c.accion === "descuento")
+    const map: Record<string, { total: number; conImpecable: number; faltantes: string[] }> = {}
+    const cats = categorias.filter(c => c.activo && (c.accion === "descuento" || c.accion === "cartel_sistema"))
     for (const m of modelos) {
       let conImpecable = 0
+      const faltantes: string[] = []
       for (const cat of cats) {
         const opciones = criterios.filter(cr => cr.modelo_id === m.id && cr.categoria_id === cat.id && cr.activo)
         if (opciones.some(o => Number(o.descuento_usd) === 0)) conImpecable++
+        else faltantes.push(cat.nombre)
       }
-      map[m.id] = { total: cats.length, conImpecable }
+      map[m.id] = { total: cats.length, conImpecable, faltantes }
     }
     return map
   }, [modelos, criterios, categorias])
@@ -280,7 +352,7 @@ function ModelosTab({
           </thead>
           <tbody>
             {filtered.map((m, idx) => {
-              const compl = completitudPorModelo[m.id] ?? { total: 0, conImpecable: 0 }
+              const compl = completitudPorModelo[m.id] ?? { total: 0, conImpecable: 0, faltantes: [] }
               const completo = compl.total > 0 && compl.conImpecable === compl.total
               return (
                 <tr key={m.id} className={`border-b border-gray-100 hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
@@ -298,7 +370,7 @@ function ModelosTab({
                       <button
                         onClick={onJumpToCriterios}
                         className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200"
-                        title="Faltan opciones 'Impecable' en algunas categorías"
+                        title={`Falta opción "Impecable" (USD 0) en: ${compl.faltantes.join(", ")}`}
                       >
                         {compl.conImpecable}/{compl.total} Pendiente
                       </button>
@@ -377,9 +449,9 @@ function ModelosTab({
 // TAB: CRITERIOS
 // ═══════════════════════════════════════════════════════════════
 function CriteriosTab({
-  modelos, categorias, criterios, onChange, onError,
+  modelos, categorias, criterios, etiquetas, onChange, onError,
 }: {
-  modelos: Modelo[]; categorias: Categoria[]; criterios: Criterio[]
+  modelos: Modelo[]; categorias: Categoria[]; criterios: Criterio[]; etiquetas: EtiquetaCategoria[]
   onChange: () => void; onError: (msg: string | null) => void
 }) {
   const [filtroModelo, setFiltroModelo] = useState<string>("")
@@ -424,8 +496,10 @@ function CriteriosTab({
           categoria_id: editing.categoria_id,
           etiqueta: editing.etiqueta,
           descuento_usd: editing.descuento_usd,
+          descuento_porcentaje: editing.descuento_porcentaje,  // null = nominal, número = porcentual dinámico
           orden: editing.orden,
           activo: editing.activo,
+          web_deriva_atencion: editing.web_deriva_atencion,
         }),
       })
       const data = await res.json()
@@ -446,6 +520,35 @@ function CriteriosTab({
 
   // Categorías filtrables: solo las de tipo "descuento" o "cartel_sistema" tienen criterios
   const categoriasUtiles = categorias.filter(c => c.activo && c.accion !== "whatsapp")
+
+  // Detectar categorías sin "Impecable" para el modelo filtrado
+  const impecablesFaltantes = useMemo(() => {
+    if (!filtroModelo) return []
+    return categoriasUtiles.filter(cat => {
+      const opciones = criterios.filter(c => c.modelo_id === filtroModelo && c.categoria_id === cat.id && c.activo)
+      return !opciones.some(o => Number(o.descuento_usd) === 0)
+    })
+  }, [filtroModelo, criterios, categoriasUtiles])
+
+  const crearImpecablesFaltantes = async () => {
+    if (!filtroModelo || impecablesFaltantes.length === 0) return
+    if (!confirm(`Crear ${impecablesFaltantes.length} opciones "Impecable" (USD 0) para: ${impecablesFaltantes.map(c => c.nombre).join(", ")}?`)) return
+    let errors = 0
+    for (const cat of impecablesFaltantes) {
+      const res = await fetch("/api/cotizador/criterios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modelo_id: filtroModelo, categoria_id: cat.id,
+          etiqueta: "Impecable", descuento_usd: 0, orden: 0, activo: true,
+        }),
+      })
+      if (!res.ok) errors++
+    }
+    if (errors > 0) onError(`${errors} de ${impecablesFaltantes.length} no se pudieron crear`)
+    else onError(null)
+    onChange()
+  }
 
   return (
     <div>
@@ -495,6 +598,24 @@ function CriteriosTab({
         </div>
       )}
 
+      {filtroModelo && impecablesFaltantes.length > 0 && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-800 mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>
+              Falta la opción "Impecable" (USD 0) en: <strong>{impecablesFaltantes.map(c => c.nombre).join(", ")}</strong>.
+              Sin esto, el modelo no aparece en el wizard de Toma de Equipo.
+            </span>
+          </div>
+          <button
+            onClick={crearImpecablesFaltantes}
+            className="flex-shrink-0 bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap"
+          >
+            Crear automáticamente
+          </button>
+        </div>
+      )}
+
       <div className="bg-white border border-gray-200 rounded overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
@@ -504,6 +625,7 @@ function CriteriosTab({
               <th className="text-left py-3 px-4 font-medium">Etiqueta</th>
               <th className="text-right py-3 px-4 font-medium">Descuento USD</th>
               <th className="text-right py-3 px-4 font-medium">% del base</th>
+              <th className="text-center py-3 px-4 font-medium" title="En web deriva a atención presencial">Web</th>
               <th className="text-center py-3 px-4 font-medium">Activo</th>
               <th className="text-right py-3 px-4 font-medium">Acciones</th>
             </tr>
@@ -520,8 +642,22 @@ function CriteriosTab({
                   <td className="py-3 px-4 text-sm">{m?.producto?.nombre ?? "—"}</td>
                   <td className="py-3 px-4 text-sm">{cat?.nombre ?? "—"}</td>
                   <td className="py-3 px-4 font-medium">{c.etiqueta}</td>
-                  <td className="py-3 px-4 text-right">{fmtUsd(c.descuento_usd)}</td>
-                  <td className="py-3 px-4 text-right text-gray-500 text-sm">{pct == null ? "—" : `${pct.toFixed(1)}%`}</td>
+                  <td className="py-3 px-4 text-right">
+                    {fmtUsd(c.descuento_usd)}
+                    {c.descuento_porcentaje !== null && c.descuento_porcentaje !== undefined && (
+                      <span className="ml-1 text-xs text-violet-600" title="Calculado dinámicamente">↻</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-4 text-right text-gray-500 text-sm">
+                    {c.descuento_porcentaje !== null && c.descuento_porcentaje !== undefined
+                      ? <span className="text-violet-600 font-medium">{Number(c.descuento_porcentaje).toFixed(1)}% (din.)</span>
+                      : pct == null ? "—" : `${pct.toFixed(1)}%`}
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    {c.web_deriva_atencion ? (
+                      <MessageSquare className="w-4 h-4 text-amber-600 inline" />
+                    ) : <span className="text-gray-300">—</span>}
+                  </td>
                   <td className="py-3 px-4 text-center">
                     <span className={`inline-block w-2 h-2 rounded-full ${c.activo ? 'bg-green-500' : 'bg-gray-300'}`} />
                   </td>
@@ -537,7 +673,7 @@ function CriteriosTab({
               )
             })}
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="py-8 text-center text-gray-500">No hay criterios cargados</td></tr>
+              <tr><td colSpan={8} className="py-8 text-center text-gray-500">No hay criterios cargados</td></tr>
             )}
           </tbody>
         </table>
@@ -576,34 +712,110 @@ function CriteriosTab({
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Etiqueta *</label>
-              <input
-                type="text"
-                value={editing.etiqueta ?? ""}
-                onChange={(e) => setEditing({ ...editing, etiqueta: e.target.value })}
-                placeholder="Ej: Rayones leves, Impecable, Menor a 85%..."
-                className="w-full border border-violet-500 rounded px-2 py-1.5 text-sm"
-              />
+              {(() => {
+                const etiquetasDeCategoria = etiquetas
+                  .filter(e => e.categoria_id === editing.categoria_id && e.activo)
+                  .sort((a, b) => a.orden - b.orden || a.etiqueta.localeCompare(b.etiqueta))
+                if (etiquetasDeCategoria.length === 0) {
+                  return (
+                    <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                      Esta categoría no tiene etiquetas predefinidas. Cargá algunas en la pestaña <strong>Etiquetas</strong> antes de crear el criterio.
+                    </div>
+                  )
+                }
+                return (
+                  <select
+                    value={editing.etiqueta ?? ""}
+                    onChange={(e) => setEditing({ ...editing, etiqueta: e.target.value })}
+                    className="w-full border border-violet-500 rounded px-2 py-1.5 text-sm"
+                  >
+                    <option value="">Seleccione una etiqueta</option>
+                    {etiquetasDeCategoria.map(et => (
+                      <option key={et.id} value={et.etiqueta}>{et.etiqueta}</option>
+                    ))}
+                  </select>
+                )
+              })()}
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Descuento USD *</label>
-              <input
-                type="number" step="0.01" min="0" max={valorBaseEditing}
-                value={editing.descuento_usd ?? 0}
-                onChange={(e) => setEditing({ ...editing, descuento_usd: Number(e.target.value) })}
-                className="w-full border border-violet-500 rounded px-2 py-1.5 text-sm"
-              />
-              {porcentajeEditing != null && (
-                <span className="text-xs text-gray-500 mt-1 block">= {porcentajeEditing.toFixed(1)}% del valor base ({fmtUsd(valorBaseEditing)})</span>
-              )}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Descuento USD *</label>
+                <input
+                  type="number" step="0.01" min="0" max={valorBaseEditing}
+                  value={editing.descuento_usd ?? 0}
+                  onChange={(e) => {
+                    // Clamp a [0, valor_base] — no permitir exceder el valor del equipo
+                    let usd = Math.max(0, Number(e.target.value) || 0)
+                    if (valorBaseEditing > 0) usd = Math.min(usd, valorBaseEditing)
+                    const pct = valorBaseEditing > 0 ? Number(((usd / valorBaseEditing) * 100).toFixed(2)) : 0
+                    setEditing({ ...editing, descuento_usd: usd, descuento_porcentaje: editing.descuento_porcentaje !== null && editing.descuento_porcentaje !== undefined ? pct : null })
+                  }}
+                  className="w-full border border-violet-500 rounded px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Porcentaje %</label>
+                <input
+                  type="number" step="0.01" min="0" max="100"
+                  value={editing.descuento_porcentaje ?? (valorBaseEditing > 0 && editing.descuento_usd != null ? Number(((Number(editing.descuento_usd) / valorBaseEditing) * 100).toFixed(2)) : 0)}
+                  onChange={(e) => {
+                    // Clamp a [0, 100]
+                    const pct = Math.max(0, Math.min(100, Number(e.target.value) || 0))
+                    const usd = valorBaseEditing > 0 ? Number(((valorBaseEditing * pct) / 100).toFixed(2)) : 0
+                    setEditing({ ...editing, descuento_porcentaje: pct, descuento_usd: usd })
+                  }}
+                  className="w-full border border-violet-500 rounded px-2 py-1.5 text-sm"
+                />
+              </div>
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={editing.activo ?? true}
-                onChange={(e) => setEditing({ ...editing, activo: e.target.checked })}
-              />
-              Activo
-            </label>
+            <span className="text-xs text-gray-500 -mt-2 block">
+              Valor base del modelo: {fmtUsd(valorBaseEditing)} (máximo 100% / {fmtUsd(valorBaseEditing)})
+            </span>
+            <div className="space-y-2 pt-2 border-t border-gray-100">
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={editing.descuento_porcentaje !== null && editing.descuento_porcentaje !== undefined}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      // Activar modo porcentual: si no hay %, lo calculo del USD
+                      const pct = valorBaseEditing > 0 && editing.descuento_usd != null
+                        ? Number(((Number(editing.descuento_usd) / valorBaseEditing) * 100).toFixed(2))
+                        : 0
+                      setEditing({ ...editing, descuento_porcentaje: pct })
+                    } else {
+                      // Volver a modo nominal
+                      setEditing({ ...editing, descuento_porcentaje: null })
+                    }
+                  }}
+                />
+                <div>
+                  <span>Aplicar como % dinámico</span>
+                  <span className="block text-xs text-gray-500">El descuento se recalcula al vuelo como % del valor base del modelo. Si el valor base cambia en el futuro, el descuento se ajusta automáticamente. Si está desactivado, queda fijo el monto USD nominal.</span>
+                </div>
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={editing.activo ?? true}
+                  onChange={(e) => setEditing({ ...editing, activo: e.target.checked })}
+                />
+                Activo
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={editing.web_deriva_atencion ?? false}
+                  onChange={(e) => setEditing({ ...editing, web_deriva_atencion: e.target.checked })}
+                />
+                <div>
+                  <span>En web deriva a atención</span>
+                  <span className="block text-xs text-gray-500">El cotizador público mostrará aviso de derivación a WhatsApp en vez de aplicar el descuento. En el ERP no afecta — el operador siempre aplica el descuento.</span>
+                </div>
+              </label>
+            </div>
           </div>
           <ModalFooter
             onCancel={() => { setEditing(null); setCreating(false) }}
@@ -622,6 +834,8 @@ function CriteriosTab({
 function ExclusionesTab({ exclusiones, onChange, onError }: { exclusiones: Exclusion[]; onChange: () => void; onError: (m: string | null) => void }) {
   const [editing, setEditing] = useState<Partial<Exclusion> | null>(null)
   const [creating, setCreating] = useState(false)
+  const sorted = useMemo(() => [...exclusiones].sort((a, b) => a.orden - b.orden), [exclusiones])
+  const dnd = useDragReorder(sorted, "/api/cotizador/exclusiones", onChange, onError)
 
   const guardar = async () => {
     if (!editing) return
@@ -660,17 +874,32 @@ function ExclusionesTab({ exclusiones, onChange, onError }: { exclusiones: Exclu
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr className="text-xs text-gray-500 uppercase tracking-wider">
+              <th className="w-8"></th>
               <th className="text-left py-3 px-4 font-medium">Descripción</th>
-              <th className="text-center py-3 px-4 font-medium">Orden</th>
               <th className="text-center py-3 px-4 font-medium">Activo</th>
               <th className="text-right py-3 px-4 font-medium">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {exclusiones.map((e, idx) => (
-              <tr key={e.id} className={`border-b border-gray-100 hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+            {sorted.map((e, idx) => (
+              <tr
+                key={e.id}
+                draggable
+                onDragStart={() => dnd.onDragStart(idx)}
+                onDragOver={dnd.onDragOver(idx)}
+                onDragLeave={dnd.onDragLeave}
+                onDragEnd={dnd.onDragEnd}
+                onDrop={() => dnd.onDrop(idx)}
+                className={`border-b border-gray-100 ${
+                  dnd.draggingIdx === idx ? 'opacity-40' :
+                  dnd.dropTargetIdx === idx ? 'bg-blue-50 border-t-2 border-t-blue-400' :
+                  idx % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50/50 hover:bg-gray-50'
+                }`}
+              >
+                <td className="py-3 px-2 text-center cursor-grab active:cursor-grabbing text-gray-400">
+                  <GripVertical className="w-4 h-4 inline" />
+                </td>
                 <td className="py-3 px-4">{e.descripcion}</td>
-                <td className="py-3 px-4 text-center text-sm text-gray-500">{e.orden}</td>
                 <td className="py-3 px-4 text-center">
                   <span className={`inline-block w-2 h-2 rounded-full ${e.activo ? 'bg-green-500' : 'bg-gray-300'}`} />
                 </td>
@@ -684,7 +913,7 @@ function ExclusionesTab({ exclusiones, onChange, onError }: { exclusiones: Exclu
                 </td>
               </tr>
             ))}
-            {exclusiones.length === 0 && (
+            {sorted.length === 0 && (
               <tr><td colSpan={4} className="py-8 text-center text-gray-500">No hay exclusiones cargadas</td></tr>
             )}
           </tbody>
@@ -703,23 +932,10 @@ function ExclusionesTab({ exclusiones, onChange, onError }: { exclusiones: Exclu
                 className="w-full border border-violet-500 rounded px-2 py-1.5 text-sm"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Orden</label>
-                <input
-                  type="number"
-                  value={editing.orden ?? 0}
-                  onChange={(ev) => setEditing({ ...editing, orden: Number(ev.target.value) })}
-                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"
-                />
-              </div>
-              <div className="flex items-end">
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={editing.activo ?? true} onChange={(ev) => setEditing({ ...editing, activo: ev.target.checked })} />
-                  Activo
-                </label>
-              </div>
-            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={editing.activo ?? true} onChange={(ev) => setEditing({ ...editing, activo: ev.target.checked })} />
+              Activo
+            </label>
           </div>
           <ModalFooter onCancel={() => { setEditing(null); setCreating(false) }} onSave={guardar} disabled={!editing.descripcion?.trim()} />
         </Modal>
@@ -734,6 +950,8 @@ function ExclusionesTab({ exclusiones, onChange, onError }: { exclusiones: Exclu
 function CategoriasTab({ categorias, onChange, onError }: { categorias: Categoria[]; onChange: () => void; onError: (m: string | null) => void }) {
   const [editing, setEditing] = useState<Partial<Categoria> | null>(null)
   const [creating, setCreating] = useState(false)
+  const sorted = useMemo(() => [...categorias].sort((a, b) => a.orden - b.orden), [categorias])
+  const dnd = useDragReorder(sorted, "/api/cotizador/categorias", onChange, onError)
 
   const guardar = async () => {
     if (!editing) return
@@ -779,19 +997,34 @@ function CategoriasTab({ categorias, onChange, onError }: { categorias: Categori
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr className="text-xs text-gray-500 uppercase tracking-wider">
+              <th className="w-8"></th>
               <th className="text-left py-3 px-4 font-medium">Nombre</th>
               <th className="text-left py-3 px-4 font-medium">Acción</th>
-              <th className="text-center py-3 px-4 font-medium">Orden</th>
               <th className="text-center py-3 px-4 font-medium">Activo</th>
               <th className="text-right py-3 px-4 font-medium">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {categorias.map((c, idx) => (
-              <tr key={c.id} className={`border-b border-gray-100 hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+            {sorted.map((c, idx) => (
+              <tr
+                key={c.id}
+                draggable
+                onDragStart={() => dnd.onDragStart(idx)}
+                onDragOver={dnd.onDragOver(idx)}
+                onDragLeave={dnd.onDragLeave}
+                onDragEnd={dnd.onDragEnd}
+                onDrop={() => dnd.onDrop(idx)}
+                className={`border-b border-gray-100 ${
+                  dnd.draggingIdx === idx ? 'opacity-40' :
+                  dnd.dropTargetIdx === idx ? 'bg-blue-50 border-t-2 border-t-blue-400' :
+                  idx % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50/50 hover:bg-gray-50'
+                }`}
+              >
+                <td className="py-3 px-2 text-center cursor-grab active:cursor-grabbing text-gray-400">
+                  <GripVertical className="w-4 h-4 inline" />
+                </td>
                 <td className="py-3 px-4 font-medium">{c.nombre}</td>
                 <td className="py-3 px-4 text-sm text-gray-600">{labelAccion(c.accion)}</td>
-                <td className="py-3 px-4 text-center text-sm text-gray-500">{c.orden}</td>
                 <td className="py-3 px-4 text-center">
                   <span className={`inline-block w-2 h-2 rounded-full ${c.activo ? 'bg-green-500' : 'bg-gray-300'}`} />
                 </td>
@@ -805,7 +1038,7 @@ function CategoriasTab({ categorias, onChange, onError }: { categorias: Categori
                 </td>
               </tr>
             ))}
-            {categorias.length === 0 && (
+            {sorted.length === 0 && (
               <tr><td colSpan={5} className="py-8 text-center text-gray-500">No hay categorías cargadas</td></tr>
             )}
           </tbody>
@@ -836,25 +1069,190 @@ function CategoriasTab({ categorias, onChange, onError }: { categorias: Categori
                 <option value="whatsapp">WhatsApp (deriva a contacto)</option>
               </select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Orden</label>
-                <input
-                  type="number"
-                  value={editing.orden ?? 0}
-                  onChange={(ev) => setEditing({ ...editing, orden: Number(ev.target.value) })}
-                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"
-                />
-              </div>
-              <div className="flex items-end">
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={editing.activo ?? true} onChange={(ev) => setEditing({ ...editing, activo: ev.target.checked })} />
-                  Activo
-                </label>
-              </div>
-            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={editing.activo ?? true} onChange={(ev) => setEditing({ ...editing, activo: ev.target.checked })} />
+              Activo
+            </label>
           </div>
           <ModalFooter onCancel={() => { setEditing(null); setCreating(false) }} onSave={guardar} disabled={!editing.nombre?.trim()} />
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TAB: ETIQUETAS
+// ═══════════════════════════════════════════════════════════════
+function EtiquetasTab({
+  etiquetas, categorias, onChange, onError,
+}: {
+  etiquetas: EtiquetaCategoria[]; categorias: Categoria[]
+  onChange: () => void; onError: (m: string | null) => void
+}) {
+  const [filtroCategoria, setFiltroCategoria] = useState<string>("")
+  const [editing, setEditing] = useState<Partial<EtiquetaCategoria> | null>(null)
+  const [creating, setCreating] = useState(false)
+
+  // Solo categorías que tienen criterios (descuento + cartel_sistema)
+  const categoriasUtiles = categorias.filter(c => c.activo && c.accion !== "whatsapp")
+
+  const filtered = useMemo(() => {
+    return etiquetas
+      .filter(e => !filtroCategoria || e.categoria_id === filtroCategoria)
+      .sort((a, b) => a.orden - b.orden)
+  }, [etiquetas, filtroCategoria])
+
+  const dnd = useDragReorder(filtered, "/api/cotizador/etiquetas", onChange, onError)
+
+  const categoriaPorId = useMemo(() => {
+    const m: Record<string, Categoria> = {}
+    for (const c of categorias) m[c.id] = c
+    return m
+  }, [categorias])
+
+  const guardar = async () => {
+    if (!editing || !editing.etiqueta?.trim() || !editing.categoria_id) return
+    const url = creating ? "/api/cotizador/etiquetas" : `/api/cotizador/etiquetas/${editing.id}`
+    const method = creating ? "POST" : "PUT"
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        categoria_id: editing.categoria_id,
+        etiqueta: editing.etiqueta,
+        orden: editing.orden,
+        activo: editing.activo,
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) { onError(data.error ?? "Error al guardar"); return }
+    setEditing(null); setCreating(false); onError(null); onChange()
+  }
+
+  const eliminar = async (id: string) => {
+    if (!confirm("¿Eliminar esta etiqueta? Si hay criterios usándola seguirán teniendo el texto, pero no podrás crear nuevos con esa etiqueta.")) return
+    const res = await fetch(`/api/cotizador/etiquetas/${id}`, { method: "DELETE" })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) { onError(data.error ?? "Error al eliminar"); return }
+    onError(null); onChange()
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Categoría</label>
+          <select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} className="border border-gray-300 rounded px-2 py-1.5 text-sm min-w-[200px]">
+            <option value="">Todas</option>
+            {categoriasUtiles.map(c => (
+              <option key={c.id} value={c.id}>{c.nombre}</option>
+            ))}
+          </select>
+        </div>
+        <div className="ml-auto">
+          <button
+            onClick={() => {
+              setCreating(true)
+              setEditing({
+                categoria_id: filtroCategoria || categoriasUtiles[0]?.id || "",
+                etiqueta: "",
+                orden: 0,
+                activo: true,
+              })
+            }}
+            disabled={categoriasUtiles.length === 0}
+            className="flex items-center gap-2 bg-indigo-900 text-white px-4 py-2 rounded hover:bg-indigo-800 text-sm font-medium disabled:opacity-50"
+          >
+            <Plus className="w-4 h-4" /> Agregar etiqueta
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr className="text-xs text-gray-500 uppercase tracking-wider">
+              <th className="w-8"></th>
+              <th className="text-left py-3 px-4 font-medium">Categoría</th>
+              <th className="text-left py-3 px-4 font-medium">Etiqueta</th>
+              <th className="text-center py-3 px-4 font-medium">Activo</th>
+              <th className="text-right py-3 px-4 font-medium">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((et, idx) => (
+              <tr
+                key={et.id}
+                draggable
+                onDragStart={() => dnd.onDragStart(idx)}
+                onDragOver={dnd.onDragOver(idx)}
+                onDragLeave={dnd.onDragLeave}
+                onDragEnd={dnd.onDragEnd}
+                onDrop={() => dnd.onDrop(idx)}
+                className={`border-b border-gray-100 ${
+                  dnd.draggingIdx === idx ? 'opacity-40' :
+                  dnd.dropTargetIdx === idx ? 'bg-blue-50 border-t-2 border-t-blue-400' :
+                  idx % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50/50 hover:bg-gray-50'
+                }`}
+              >
+                <td className="py-3 px-2 text-center cursor-grab active:cursor-grabbing text-gray-400">
+                  <GripVertical className="w-4 h-4 inline" />
+                </td>
+                <td className="py-3 px-4 text-sm">{categoriaPorId[et.categoria_id]?.nombre ?? "—"}</td>
+                <td className="py-3 px-4 font-medium">{et.etiqueta}</td>
+                <td className="py-3 px-4 text-center">
+                  <span className={`inline-block w-2 h-2 rounded-full ${et.activo ? 'bg-green-500' : 'bg-gray-300'}`} />
+                </td>
+                <td className="py-3 px-4 text-right">
+                  <button onClick={() => setEditing({ ...et })} className="p-1.5 text-gray-500 hover:text-indigo-900 hover:bg-gray-100 rounded">
+                    <Edit className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => eliminar(et.id)} className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-gray-100 rounded ml-1">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr><td colSpan={5} className="py-8 text-center text-gray-500">No hay etiquetas cargadas</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {editing && (
+        <Modal title={creating ? "Nueva etiqueta" : "Editar etiqueta"} onClose={() => { setEditing(null); setCreating(false) }}>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Categoría *</label>
+              <select
+                value={editing.categoria_id ?? ""}
+                onChange={(ev) => setEditing({ ...editing, categoria_id: ev.target.value })}
+                disabled={!creating}
+                className="w-full border border-violet-500 rounded px-2 py-1.5 text-sm disabled:bg-gray-100"
+              >
+                {categoriasUtiles.map(c => (
+                  <option key={c.id} value={c.id}>{c.nombre}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Etiqueta *</label>
+              <input
+                type="text"
+                value={editing.etiqueta ?? ""}
+                onChange={(ev) => setEditing({ ...editing, etiqueta: ev.target.value })}
+                placeholder="Ej: Impecable, Rayones leves, Menor a 85%..."
+                className="w-full border border-violet-500 rounded px-2 py-1.5 text-sm"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={editing.activo ?? true} onChange={(ev) => setEditing({ ...editing, activo: ev.target.checked })} />
+              Activo
+            </label>
+          </div>
+          <ModalFooter onCancel={() => { setEditing(null); setCreating(false) }} onSave={guardar} disabled={!editing.etiqueta?.trim() || !editing.categoria_id} />
         </Modal>
       )}
     </div>

@@ -379,6 +379,9 @@ interface ReciboPago {
   es_cheque: boolean
   cheque_id: string | null
   cupon_tarjeta_id: string | null
+  // Medio de pago original (cuando el pago viene pre-cargado desde una factura).
+  // Se usa para re-mapear el valor_id al cambiar de caja.
+  medio_origen?: "efectivo" | "transferencia" | "tarjeta" | null
   // Bimonetario: a qué CC se imputa este pago (solo relevante para pagos en ARS)
   imputacion_cuenta: 'ARS' | 'USD' | null
   cotizacion_cruce: number | null // cotización usada si imputacion_cuenta='USD' y moneda='ARS'
@@ -413,6 +416,7 @@ interface Recibo {
   cliente_nombre: string | null
   caja_id: string | null
   caja_nombre: string | null
+  factura_id: number | null
   nota_venta_id: string | null
   nota_venta_numero: string | null
   cobrador_id: string | null
@@ -485,9 +489,18 @@ interface MovimientoCuentaCorriente {
 interface LineaPago {
   id: number
   medio: "efectivo" | "transferencia" | "tarjeta"
+  // Moneda en la que el cliente paga esta línea. Solo es independiente del
+  // factura.moneda para "efectivo" (ARS/USD). Para tarjeta/transferencia
+  // siempre coincide con factura.moneda.
+  moneda: "ARS" | "USD"
   tarjeta_id?: number
   cuotas?: number
+  // Monto en la moneda indicada por `moneda` (no necesariamente la de la factura)
   monto: number
+  // Cotización por línea: solo se usa cuando factura.moneda === "ARS" y line.moneda === "USD"
+  // (caso "Efectivo USD" sobre factura ARS — la factura no tiene cotización propia).
+  tipo_cotizacion?: string
+  cotizacion?: number
 }
 
 interface ResultadoCalculo {
@@ -569,21 +582,82 @@ function BloquesMediosPago({
 }) {
   const [lineas, setLineas] = useState<LineaPago[]>([])
   const [cobrado, setCobrado] = useState(false)
+  const [tiposCotizacion, setTiposCotizacion] = useState<string[]>([])
+
+  // Cargar tipos de cotización disponibles (blue, oficial, etc.)
+  useEffect(() => {
+    fetch('/api/contabilidad/tipos-cotizacion?activo=true')
+      .then(r => r.json())
+      .then((tipos: { nombre: string }[] | unknown) => {
+        if (Array.isArray(tipos) && tipos.length > 0) {
+          setTiposCotizacion(tipos.map(t => t.nombre))
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  // Pide la última cotización para un tipo dado (USD/ARS)
+  const fetchCotizacion = async (tipo: string): Promise<number> => {
+    try {
+      const r = await fetch(`/api/contabilidad/cotizaciones?moneda_codigo=USD&tipo=${tipo}&latest=true`)
+      const d = await r.json()
+      return Number(d?.tasa) > 0 ? Number(d.tasa) : 0
+    } catch { return 0 }
+  }
+
+  // Resuelve la cotización a usar para convertir entre moneda de línea y moneda de factura.
+  // - Si factura es USD: la cotización viene de la factura.
+  // - Si factura es ARS y línea es USD: la cotización es por línea (tipo_cotizacion + cotizacion).
+  const cotizacionParaLinea = (linea: { moneda: "ARS" | "USD"; cotizacion?: number }): number => {
+    const monedaFac = (factura.moneda ?? "ARS") as "ARS" | "USD"
+    if (linea.moneda === monedaFac) return 1
+    if (monedaFac === "USD") return factura.cotizacion ?? 0
+    return linea.cotizacion ?? 0
+  }
+
+  // Convierte un monto en una moneda dada al equivalente en la moneda de la factura.
+  const montoEnFacturaMoneda = (monto: number, monedaLinea: "ARS" | "USD", cotizacionLinea?: number): number => {
+    const monedaFac = (factura.moneda ?? "ARS") as "ARS" | "USD"
+    if (monedaLinea === monedaFac) return monto
+    const cot = monedaFac === "USD" ? (factura.cotizacion ?? 0) : (cotizacionLinea ?? 0)
+    if (cot <= 0) return 0
+    if (monedaLinea === "USD" && monedaFac === "ARS") return monto * cot
+    if (monedaLinea === "ARS" && monedaFac === "USD") return monto / cot
+    return monto
+  }
+
+  // Convierte un monto desde la moneda de la factura a otra moneda destino.
+  const montoDesdeFacturaMoneda = (montoFac: number, monedaDestino: "ARS" | "USD", cotizacionLinea?: number): number => {
+    const monedaFac = (factura.moneda ?? "ARS") as "ARS" | "USD"
+    if (monedaDestino === monedaFac) return montoFac
+    const cot = monedaFac === "USD" ? (factura.cotizacion ?? 0) : (cotizacionLinea ?? 0)
+    if (cot <= 0) return 0
+    if (monedaFac === "USD" && monedaDestino === "ARS") return montoFac * cot
+    if (monedaFac === "ARS" && monedaDestino === "USD") return montoFac / cot
+    return montoFac
+  }
+
+  const sumarEnFacturaMoneda = (lns: LineaPago[]) =>
+    lns.reduce((s, l) => s + montoEnFacturaMoneda(l.monto || 0, l.moneda, l.cotizacion), 0)
 
   // Notificar estado al padre cada vez que cambie algo relevante
   useEffect(() => {
-    const totalIngresado = lineas.reduce((s, l) => s + (l.monto || 0), 0)
+    const totalIngresado = sumarEnFacturaMoneda(lineas)
     const diferencia = totalIngresado - factura.total
     onEstadoPagoChange?.({
       cobrado,
       tieneLineas: lineas.length > 0 && totalIngresado > 0,
       diferenciaOk: Math.abs(diferencia) <= 0.5,
     })
-  }, [lineas, cobrado, factura.total])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineas, cobrado, factura.total, factura.moneda, factura.cotizacion])
   const CUOTAS_OPTS = [1, 2, 3, 4, 5, 6, 9, 12, 18, 24]
 
   const formatARS = (n: number) =>
     new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 }).format(n)
+
+  const formatMoneda = (n: number, moneda: "ARS" | "USD") =>
+    new Intl.NumberFormat("es-AR", { style: "currency", currency: moneda, minimumFractionDigits: 2 }).format(n)
 
   // Busca el recargo configurado para tarjeta + cuotas + fecha (sin filtro de fecha para demo)
   const buscarRecargo = (tarjetaId: number, cuotas: number): RecargoTarjetaFinanzas | null => {
@@ -624,29 +698,79 @@ function BloquesMediosPago({
 
   const agregarLinea = () => {
     const esLaPrimera = lineas.length === 0
-    const yaIngresado = lineas.reduce((s, l) => s + (l.monto || 0), 0)
-    const restante = esLaPrimera ? 0 : Math.max(0, factura.total - yaIngresado)
-    setLineas(prev => [...prev, { id: Date.now(), medio: "efectivo", monto: restante }])
+    const yaIngresado = sumarEnFacturaMoneda(lineas)
+    const monedaDefault = (factura.moneda ?? "ARS") as "ARS" | "USD"
+    const restanteFac = esLaPrimera ? 0 : Math.max(0, factura.total - yaIngresado)
+    const restanteEnMonedaDefault = montoDesdeFacturaMoneda(restanteFac, monedaDefault)
+    setLineas(prev => [...prev, { id: Date.now(), medio: "efectivo", moneda: monedaDefault, monto: restanteEnMonedaDefault }])
   }
 
   const actualizarLinea = (id: number, cambios: Partial<LineaPago>) => {
     setLineas(prev => prev.map(l => l.id === id ? { ...l, ...cambios } : l))
   }
 
+  // Cambia el medio (incluyendo moneda en caso de "efectivo") y recalcula el
+  // monto sugerido basado en lo que falta para cubrir la factura.
+  const cambiarMedio = async (id: number, opcion: "efectivo_ars" | "efectivo_usd" | "transferencia" | "tarjeta") => {
+    let medio: LineaPago["medio"] = "efectivo"
+    let moneda: "ARS" | "USD" = (factura.moneda ?? "ARS") as "ARS" | "USD"
+    if (opcion === "efectivo_ars") { medio = "efectivo"; moneda = "ARS" }
+    else if (opcion === "efectivo_usd") { medio = "efectivo"; moneda = "USD" }
+    else if (opcion === "transferencia") { medio = "transferencia"; moneda = (factura.moneda ?? "ARS") as "ARS" | "USD" }
+    else if (opcion === "tarjeta") { medio = "tarjeta"; moneda = (factura.moneda ?? "ARS") as "ARS" | "USD" }
+
+    // Si la moneda de la línea difiere de la factura y la factura es ARS,
+    // pre-cargar tipo_cotizacion + cotización del primer tipo disponible.
+    let tipoCotLinea: string | undefined
+    let cotLinea: number | undefined
+    const monedaFac = (factura.moneda ?? "ARS") as "ARS" | "USD"
+    if (moneda !== monedaFac && monedaFac === "ARS") {
+      tipoCotLinea = tiposCotizacion[0] || "blue"
+      cotLinea = await fetchCotizacion(tipoCotLinea)
+    }
+
+    setLineas(prev => {
+      const restoDeLineas = prev.filter(l => l.id !== id)
+      const yaIngresadoExclu = sumarEnFacturaMoneda(restoDeLineas)
+      const restanteFac = Math.max(0, factura.total - yaIngresadoExclu)
+      const montoSugerido = montoDesdeFacturaMoneda(restanteFac, moneda, cotLinea)
+      return prev.map(l => l.id === id
+        ? { ...l, medio, moneda, monto: montoSugerido, tarjeta_id: undefined, cuotas: undefined, tipo_cotizacion: tipoCotLinea, cotizacion: cotLinea }
+        : l
+      )
+    })
+  }
+
+  // Cambia el tipo de cotización en una línea: re-fetchea la tasa y recalcula el monto sugerido.
+  const cambiarTipoCotizacionLinea = async (id: number, tipo: string) => {
+    const cot = await fetchCotizacion(tipo)
+    setLineas(prev => {
+      const linea = prev.find(l => l.id === id)
+      if (!linea) return prev
+      const restoDeLineas = prev.filter(l => l.id !== id)
+      const yaIngresadoExclu = sumarEnFacturaMoneda(restoDeLineas)
+      const restanteFac = Math.max(0, factura.total - yaIngresadoExclu)
+      const montoSugerido = montoDesdeFacturaMoneda(restanteFac, linea.moneda, cot)
+      return prev.map(l => l.id === id
+        ? { ...l, tipo_cotizacion: tipo, cotizacion: cot, monto: montoSugerido }
+        : l
+      )
+    })
+  }
+
   const eliminarLinea = (id: number) => {
     setLineas(prev => prev.filter(l => l.id !== id))
   }
 
-  // Totales
+  // Totales (todos en moneda de la factura)
   const totalRecargos = lineas.reduce((sum, l) => {
     const c = calcularLinea(l)
     return sum + (c?.totalRecargo || 0)
   }, 0)
-  const totalIngresado = lineas.reduce((s, l) => s + (l.monto || 0), 0)
+  const totalIngresado = sumarEnFacturaMoneda(lineas)
   const totalConRecargos = totalIngresado + totalRecargos
-  // Diferencia: lo que ingresó el operador vs lo que debería sumar (total factura + recargos)
   const totalEsperado = factura.total + totalRecargos
-  const diferencia = totalIngresado - factura.total  // cuánto ingresó vs el total de factura sin recargo
+  const diferencia = totalIngresado - factura.total
 
   if (cobrado) {
     return (
@@ -679,23 +803,46 @@ function BloquesMediosPago({
         {lineas.map((linea, idx) => {
           const calc = calcularLinea(linea)
           const esPrimeraLineaEfectivo = linea.medio === "efectivo" && lineas.findIndex(l => l.medio === "efectivo") === idx
-          // Monto ingresado por las OTRAS líneas (excluye esta)
-          const montoOtras = lineas.filter(l => l.id !== linea.id).reduce((s, l) => s + (l.monto || 0), 0)
-          const restanteParaEstaLinea = factura.total - montoOtras
-          const excedeLimite = (linea.monto || 0) > restanteParaEstaLinea + 0.5
+          // Monto ingresado por las OTRAS líneas (excluye esta), en moneda de factura
+          const montoOtrasFac = lineas.filter(l => l.id !== linea.id).reduce((s, l) => s + montoEnFacturaMoneda(l.monto || 0, l.moneda, l.cotizacion), 0)
+          const restanteParaEstaLineaFac = factura.total - montoOtrasFac
+          const restanteParaEstaLineaEnMonedaLinea = montoDesdeFacturaMoneda(restanteParaEstaLineaFac, linea.moneda, linea.cotizacion)
+          const excedeLimite = (linea.monto || 0) > restanteParaEstaLineaEnMonedaLinea + 0.5
+          const opcionMedio = linea.medio === "efectivo"
+            ? (linea.moneda === "USD" ? "efectivo_usd" : "efectivo_ars")
+            : linea.medio
+          const monedaFac = (factura.moneda ?? "ARS") as "ARS" | "USD"
+          const requiereCotizacionLinea = linea.moneda !== monedaFac && monedaFac === "ARS"
+          const cotizacionResuelta = cotizacionParaLinea(linea)
+          const faltaCotizacion = requiereCotizacionLinea && cotizacionResuelta <= 0
           return (
             <div key={linea.id} className="rounded-lg border border-gray-200 overflow-hidden">
               {/* Fila de inputs */}
               <div className="flex flex-wrap items-center gap-2 p-3 bg-gray-50">
                 <select
-                  value={linea.medio}
-                  onChange={e => actualizarLinea(linea.id, { medio: e.target.value as LineaPago["medio"], tarjeta_id: undefined, cuotas: undefined })}
+                  value={opcionMedio}
+                  onChange={e => cambiarMedio(linea.id, e.target.value as "efectivo_ars" | "efectivo_usd" | "transferencia" | "tarjeta")}
                   className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 >
-                  <option value="efectivo">Efectivo</option>
+                  <option value="efectivo_ars">Efectivo ARS</option>
+                  <option value="efectivo_usd">Efectivo USD</option>
                   <option value="transferencia">Transferencia</option>
                   <option value="tarjeta">Tarjeta</option>
                 </select>
+
+                {requiereCotizacionLinea && (
+                  <select
+                    value={linea.tipo_cotizacion || ""}
+                    onChange={e => cambiarTipoCotizacionLinea(linea.id, e.target.value)}
+                    title={cotizacionResuelta > 0 ? `1 USD = ${cotizacionResuelta.toLocaleString("es-AR", { minimumFractionDigits: 2 })} ARS` : "Sin cotización configurada"}
+                    className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  >
+                    {tiposCotizacion.length === 0 && <option value="">—</option>}
+                    {tiposCotizacion.map(t => (
+                      <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                    ))}
+                  </select>
+                )}
 
                 {linea.medio === "tarjeta" && (
                   <>
@@ -724,24 +871,32 @@ function BloquesMediosPago({
                     <label className="flex items-center gap-1.5 cursor-pointer select-none">
                       <input
                         type="checkbox"
-                        checked={linea.monto === factura.total}
-                        onChange={e => actualizarLinea(linea.id, { monto: e.target.checked ? factura.total : 0 })}
+                        checked={Math.abs(linea.monto - restanteParaEstaLineaEnMonedaLinea) < 0.5 && restanteParaEstaLineaEnMonedaLinea > 0}
+                        onChange={e => actualizarLinea(linea.id, { monto: e.target.checked ? restanteParaEstaLineaEnMonedaLinea : 0 })}
                         className="w-3.5 h-3.5 accent-emerald-600"
                       />
                       <span className="text-xs text-gray-500 whitespace-nowrap">Todo efectivo</span>
                     </label>
                   )}
                   <div className="flex flex-col items-end gap-1">
-                    <MontoInputField
-                      value={linea.monto || 0}
-                      onChange={val => actualizarLinea(linea.id, { monto: val })}
-                      disabled={linea.medio === "tarjeta" && !linea.tarjeta_id}
-                      title={linea.medio === "tarjeta" && !linea.tarjeta_id ? "Seleccioná una tarjeta primero" : undefined}
-                      hasError={excedeLimite}
-                    />
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-500 font-medium shrink-0">{linea.moneda}</span>
+                      <MontoInputField
+                        value={linea.monto || 0}
+                        onChange={val => actualizarLinea(linea.id, { monto: val })}
+                        disabled={linea.medio === "tarjeta" && !linea.tarjeta_id}
+                        title={linea.medio === "tarjeta" && !linea.tarjeta_id ? "Seleccioná una tarjeta primero" : undefined}
+                        hasError={excedeLimite}
+                      />
+                    </div>
+                    {linea.medio === "efectivo" && linea.moneda !== monedaFac && linea.monto > 0 && cotizacionResuelta > 0 && (
+                      <span className="text-xs text-gray-500">
+                        ≈ {formatMoneda(montoEnFacturaMoneda(linea.monto, linea.moneda, linea.cotizacion), monedaFac)}
+                      </span>
+                    )}
                     {excedeLimite && (
                       <span className="text-xs text-red-600 font-medium">
-                        Supera el total a abonar ({formatARS(restanteParaEstaLinea)})
+                        Supera el total a abonar ({formatMoneda(restanteParaEstaLineaEnMonedaLinea, linea.moneda)})
                       </span>
                     )}
                   </div>
@@ -1351,8 +1506,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   const [reciboObservaciones, setReciboObservaciones] = useState<string>("")
   const [reciboTab, setReciboTab] = useState<string>("pagos")
   const [reciboCajasDisponibles, setReciboCajasDisponibles] = useState<{id: string; nombre: string; sucursal: string}[]>([])
-  const [reciboValoresCaja, setReciboValoresCaja] = useState<{id: string; nombre: string; tipo: string; moneda: string}[]>([])
+  const [reciboValoresCaja, setReciboValoresCaja] = useState<{id: string; nombre: string; tipo: string; subtipo?: string | null; moneda: string}[]>([])
   const [reciboGuardando, setReciboGuardando] = useState(false)
+  const [confirmandoFactura, setConfirmandoFactura] = useState(false)
   const [reciboPublicando, setReciboPublicando] = useState(false)
   const [showAddPagoModal, setShowAddPagoModal] = useState(false)
   
@@ -8301,6 +8457,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
   // Función para crear factura (usada desde previsualización)
   const handleCrearFacturaFinal = async () => {
+    if (confirmandoFactura) return
     const clienteSeleccionado = clientes.find(c => c.id === facturaClienteId)
     const subtotal = facturaLineas.reduce((sum, l) => sum + l.subtotal, 0)
 
@@ -8313,6 +8470,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       return
     }
 
+    setConfirmandoFactura(true)
+    try {
     const fechaHoy = new Date().toISOString()
     const sucursalNombre = sucursalActiva?.nombre ?? "Casa Central"
     const vendedorNombre = vendedores[0]?.nombre || "Admin"
@@ -8364,6 +8523,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     }
 
     // PASO 2 — Construir payload de medios para el endpoint /confirmar.
+    // Cada línea puede estar en su propia moneda (efectivo ARS / efectivo USD);
+    // hay que convertir a la moneda de la factura antes de mandar al API.
     const medios = prevMediosLineas
       .filter(l => l.monto > 0)
       .map(l => {
@@ -8378,9 +8539,22 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           )
           recargo_pct = rec?.recargo_pct ?? 0
         }
+        // Convertir el monto a la moneda de la factura.
+        // Cuando factura es USD se usa facturaCotizacion (la de la propia factura).
+        // Cuando factura es ARS y la línea es USD, la cotización viene en la línea.
+        let montoEnFac = l.monto
+        if (l.moneda && l.moneda !== facturaMoneda) {
+          if (l.moneda === "USD" && facturaMoneda === "ARS") {
+            const cotLinea = l.cotizacion ?? 0
+            montoEnFac = l.monto * cotLinea
+          } else if (l.moneda === "ARS" && facturaMoneda === "USD" && facturaCotizacion > 0) {
+            montoEnFac = l.monto / facturaCotizacion
+          }
+        }
+        montoEnFac = Math.round(montoEnFac * 100) / 100
         return {
           medio: l.medio,
-          monto: l.monto,
+          monto: montoEnFac,
           tarjeta_id: l.medio === "tarjeta" ? l.tarjeta_id : undefined,
           cuotas: l.medio === "tarjeta" ? (l.cuotas ?? 1) : undefined,
           recargo_pct,
@@ -8470,13 +8644,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       }
       setFacturas(prev => [newFactura, ...prev])
       setSelectedFactura(newFactura)
-
-      alert(
-        `Factura ${facData.numero} creada y confirmada.\n` +
-        `IVA: $${ivaTotal.toFixed(2)} · Recargo: $${recargoTotal.toFixed(2)}\n` +
-        `Total final: $${totalFinal.toFixed(2)} ${monedaActual}\n\n` +
-        `Para registrar el cobro, generá un Recibo desde Ventas.`
-      )
     } catch (err) {
       alert(`Factura creada pero falló la confirmación: ${err instanceof Error ? err.message : String(err)}`)
       return
@@ -8493,6 +8660,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     setFacturaListaPreciosId(1)
     setFacturaMoneda("ARS")
     setFacturaCotizacion(1)
+    } finally {
+      setConfirmandoFactura(false)
+    }
   }
 
   // Vista de previsualización de Factura
@@ -8538,7 +8708,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             >
               <Save className="w-4 h-4" /> Guardar Cambios
             </button>
-            <button 
+            <button
+              disabled={confirmandoFactura}
               onClick={() => {
                 const subtotalPrev = facturaLineas.reduce((s, l) => s + l.subtotal, 0)
                 const totalRecPrev = prevRecargosConfirmados?.totalRecargos || 0
@@ -8556,9 +8727,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 }
                 handleCrearFacturaFinal()
               }}
-              className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 flex items-center gap-1"
+              className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
             >
-              <CheckCircle className="w-4 h-4" /> Confirmar Factura
+              <CheckCircle className="w-4 h-4" /> {confirmandoFactura ? "Confirmando..." : "Confirmar Factura"}
             </button>
           </div>
         </div>
@@ -8695,27 +8866,27 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           ) : (
             // Layout simple (concepto + monto) cuando moneda es ARS
             <div className="flex justify-end">
-              <div className="w-64 space-y-2 text-sm">
+              <div className="w-72 space-y-2 text-xs">
                 <div className="flex justify-between">
                   <span className="text-gray-500">Subtotal (precio contado):</span>
                   <span>{formatCurrency(subtotal, facturaMoneda)}</span>
                 </div>
                 {prevRecargosConfirmados && prevRecargosConfirmados.desglose.map((d, i) => (
-                  <div key={i} className="flex justify-between text-amber-700">
+                  <div key={i} className="flex justify-between text-amber-700 gap-2">
                     <span>{d.nombre}:</span>
-                    <span>+ {formatCurrency(d.importe, facturaMoneda)}</span>
+                    <span className="whitespace-nowrap">+ {formatCurrency(d.importe, facturaMoneda)}</span>
                   </div>
                 ))}
                 {prevRecargosConfirmados && prevRecargosConfirmados.totalRecargos > 0 && (
-                  <div className="flex justify-between text-amber-700 font-medium">
+                  <div className="flex justify-between text-amber-700 font-medium gap-2">
                     <span>Total recargos:</span>
-                    <span>+ {formatCurrency(prevRecargosConfirmados.totalRecargos, facturaMoneda)}</span>
+                    <span className="whitespace-nowrap">+ {formatCurrency(prevRecargosConfirmados.totalRecargos, facturaMoneda)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-lg font-bold pt-2 border-t">
                   <span>Total:</span>
-                  <span className="text-emerald-700">
-                    {formatCurrency(subtotal + (prevRecargosConfirmados?.totalRecargos || 0), facturaMoneda)}
+                  <span className="text-emerald-700 whitespace-nowrap">
+                    {formatCurrency(subtotal + (prevRecargosConfirmados?.totalRecargos || 0), facturaMoneda)} <span className="text-sm text-gray-500 font-normal">{facturaMoneda}</span>
                   </span>
                 </div>
               </div>
@@ -8750,7 +8921,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             grupos={gruposDB}
             recargos={recargosDB}
             textoBoton="Listo (los IVA y recargos se calculan al confirmar)"
-            textoConfirmado="Medios de pago listos. Apretá 'Confirmar Factura' arriba para crear la factura y calcular IVA + recargos."
+            textoConfirmado="Medios de pago listos."
             onEstadoPagoChange={(estado) => setPrevEstadoPago(estado)}
             onConfirmarCobro={(lineas, totalConRecargos, totalRecargos) => {
               setPrevMediosLineas(lineas)
@@ -8849,9 +9020,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
                     <th className="text-left py-2 px-3">Producto</th>
                     <th className="text-center py-2 px-3 w-24">Cantidad</th>
-                    <th className="text-right py-2 px-3 w-32">Precio Unit.{facturaMoneda !== "ARS" && <span className="text-blue-600 normal-case font-semibold ml-1">({facturaMoneda})</span>}</th>
+                    <th className="text-right py-2 px-3 w-32">Precio Unit.<span className={`normal-case font-semibold ml-1 ${facturaMoneda === "ARS" ? "text-gray-500" : "text-blue-600"}`}>({facturaMoneda})</span></th>
                     <th className="text-center py-2 px-3 w-24">Dto. %</th>
-                    <th className="text-right py-2 px-3 w-32">Subtotal{facturaMoneda !== "ARS" && <span className="text-blue-600 normal-case font-semibold ml-1">({facturaMoneda})</span>}</th>
+                    <th className="text-right py-2 px-3 w-32">Subtotal<span className={`normal-case font-semibold ml-1 ${facturaMoneda === "ARS" ? "text-gray-500" : "text-blue-600"}`}>({facturaMoneda})</span></th>
                     <th className="w-10"></th>
                   </tr>
                 </thead>
@@ -8994,7 +9165,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               <div className="space-y-3">
                 <div className="flex justify-between text-sm"><span className="text-gray-600">Subtotal:</span><span className="font-medium">{formatCurrency(subtotal, facturaMoneda)}</span></div>
                 <div className="border-t pt-3">
-                  <div className="flex justify-between text-lg font-bold"><span>Total:</span><span className="text-emerald-700">{formatCurrency(subtotal, facturaMoneda)}</span></div>
+                  <div className="flex justify-between text-lg font-bold"><span>Total:</span><span className="text-emerald-700 whitespace-nowrap">{formatCurrency(subtotal, facturaMoneda)} <span className="text-sm text-gray-500 font-normal">{facturaMoneda}</span></span></div>
                 </div>
                 {facturaMoneda === "USD" && facturaCotizacion > 1 && (
                   <div className="border-t pt-2 text-xs text-gray-500 flex justify-between">
@@ -9083,10 +9254,24 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             {selectedFactura.estado === 'borrador' && (
               <>
                 <button
-                  onClick={() => setShowCancelarFacturaModal(true)}
-                  className="px-3 py-1.5 text-sm border border-gray-400 text-white rounded-md hover:bg-gray-700 flex items-center gap-1"
+                  onClick={async () => {
+                    if (!confirm(`¿Suprimir definitivamente la factura ${selectedFactura.numero}? Esta acción no se puede deshacer y no deja registro.`)) return
+                    try {
+                      const r = await fetch(`/api/facturas/${selectedFactura.id}`, { method: "DELETE" })
+                      const d = await r.json().catch(() => ({}))
+                      if (!r.ok) {
+                        alert(`No se pudo suprimir: ${d.error || "error desconocido"}`)
+                        return
+                      }
+                      setFacturas(prev => prev.filter(f => f.id !== selectedFactura.id))
+                      setSelectedFactura(null)
+                    } catch (err) {
+                      alert("Error al suprimir factura: " + (err as Error).message)
+                    }
+                  }}
+                  className="px-3 py-1.5 text-sm border border-red-400 text-red-300 rounded-md hover:bg-red-900/30 flex items-center gap-1"
                 >
-                  <X className="w-4 h-4" /> Cancelar
+                  <Trash2 className="w-4 h-4" /> Suprimir
                 </button>
                 <button
                   onClick={() => {
@@ -9149,14 +9334,86 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   <X className="w-4 h-4" /> Cancelar
                 </button>
                 <button
-                  onClick={() => {
-                    // Precargar datos del cliente y factura en el recibo
-                    setReciboClienteIdForm(selectedFactura.cliente_id)
-                    setReciboFacturaIdForm(selectedFactura.id)
-                    setReciboMontoForm(selectedFactura.saldo)
-                    // No precargar pagos vacíos: el usuario los agregará desde el modal con valor_id correcto
-                    setReciboPagosForm([])
+                  onClick={async () => {
+                    const facturaListado = selectedFactura
+                    setReciboClienteIdForm(facturaListado.cliente_id)
+                    setReciboFacturaIdForm(facturaListado.id)
+                    setReciboMontoForm(facturaListado.saldo)
+
+                    // Fetch fresco de la factura para asegurar medios_pago_detalle actualizado
+                    let mediosPagoDetalle = facturaListado.medios_pago_detalle || []
+                    try {
+                      const r = await fetch(`/api/facturas?id=${facturaListado.id}`)
+                      const d = await r.json()
+                      const fresh = Array.isArray(d) ? d[0] : d
+                      if (fresh?.factura_medios_pago) {
+                        mediosPagoDetalle = fresh.factura_medios_pago.map((mp: { medio: string; tarjeta?: { nombre: string }; cuotas?: number; monto_base: number; iva_calculado: number; recargo: number; monto_total: number }) => ({
+                          medio: mp.medio,
+                          tarjeta_nombre: mp.tarjeta?.nombre ?? null,
+                          cuotas: mp.cuotas ?? undefined,
+                          monto_base: Number(mp.monto_base ?? 0),
+                          iva: Number(mp.iva_calculado ?? 0),
+                          total_recargo: Number(mp.recargo ?? 0),
+                          total_acreditar: Number(mp.monto_total ?? 0),
+                        }))
+                      }
+                    } catch (err) {
+                      console.error("[RegistrarCobro] error fetch factura:", err)
+                    }
+
+                    if (mediosPagoDetalle.length === 0) {
+                      alert("Esta factura no tiene medios de pago registrados (probablemente fue confirmada antes de implementarse este sistema). Vas a tener que cargar el cobro manualmente.")
+                    }
+
+                    // Cargar cajas de la sucursal y elegir la primera como default
+                    const { createClient } = await import("@/lib/supabase/client")
+                    const supabase = createClient()
+                    const { data: cajasData } = await supabase
+                      .from("cajas")
+                      .select("id, nombre, sucursal, activo")
+                      .eq("activo", true)
+                    const cajasFiltradas = (cajasData || []).filter(
+                      (c: { sucursal: string }) => c.sucursal === sucursalActiva?.nombre
+                    ) as { id: string; nombre: string; sucursal: string }[]
+                    setReciboCajasDisponibles(cajasFiltradas)
+
+                    const cajaDefaultId = cajasFiltradas[0]?.id || ""
+                    setReciboCajaId(cajaDefaultId)
+                    const valoresDefault = cajaDefaultId ? await cargarValoresCaja(cajaDefaultId) : []
+
+                    const monedaFactura = facturaListado.moneda || "ARS"
+                    const lineas: ReciboPago[] = mediosPagoDetalle.map((mp: { medio: string; tarjeta_nombre?: string | null; cuotas?: number; total_recargo: number; total_acreditar: number }) => {
+                      const cv = mapearMedioACajaValor(mp.medio, valoresDefault)
+                      return {
+                        id: crypto.randomUUID(),
+                        recibo_id: "",
+                        valor_id: cv?.id || "",
+                        valor_nombre: cv?.nombre || "",
+                        tipo_valor: cv?.tipo || "",
+                        importe_comprobante: mp.total_acreditar,
+                        moneda_comprobante: monedaFactura,
+                        importe: mp.total_acreditar,
+                        moneda: monedaFactura,
+                        es_tarjeta: mp.medio === "tarjeta",
+                        tarjeta_nombre: mp.tarjeta_nombre || null,
+                        cantidad_cuotas: mp.cuotas || 1,
+                        numero_cupon: null,
+                        recargo_porcentaje: 0,
+                        recargo_importe: mp.total_recargo || 0,
+                        es_cheque: false,
+                        cheque_id: null,
+                        cupon_tarjeta_id: null,
+                        imputacion_cuenta: null,
+                        cotizacion_cruce: null,
+                        cotizacion: null,
+                        tipo_cotizacion: null,
+                        medio_origen: mp.medio as "efectivo" | "transferencia" | "tarjeta",
+                      }
+                    })
+                    setReciboPagosForm(lineas)
+
                     setCreandoRecibo(true)
+                    setEditandoRecibo(true)
                     setReciboPrevisualizando(false)
                     setSelectedFactura(null)
                     setActiveView("recibos")
@@ -9306,7 +9563,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 </div>
               )}
 
-              <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2"><span>Total:</span><span>{formatCurrency(selectedFactura.total, selectedFactura.moneda)}</span></div>
+              <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2"><span>Total:</span><span className="whitespace-nowrap">{formatCurrency(selectedFactura.total, selectedFactura.moneda)} <span className="text-sm text-gray-500 font-normal">{selectedFactura.moneda}</span></span></div>
               <div className="flex justify-between text-red-600 font-medium"><span>Saldo:</span><span>{formatCurrency(selectedFactura.saldo ?? 0, selectedFactura.moneda)}</span></div>
             </div>
           </div>
@@ -9327,6 +9584,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
               // genera el segundo asiento contable. La factura queda "confirmada"
               // con saldo = total_final. El COBRO real (descuento de saldo cliente,
               // movimientos en cuenta corriente) se registra después con un Recibo.
+              const cotFac = selectedFactura.cotizacion || 1
               const medios = lineasPago
                 .filter(l => l.monto > 0)
                 .map(l => {
@@ -9341,9 +9599,22 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                     )
                     recargo_pct = rec?.recargo_pct ?? 0
                   }
+                  // Convertir el monto a la moneda de la factura.
+                  // Si factura ARS + línea USD: usar cotización de la línea.
+                  // Si factura USD + línea ARS: usar cotización de la factura.
+                  let montoEnFac = l.monto
+                  if (l.moneda && l.moneda !== selectedFactura.moneda) {
+                    if (l.moneda === "USD" && selectedFactura.moneda === "ARS") {
+                      const cotLinea = l.cotizacion ?? 0
+                      montoEnFac = l.monto * cotLinea
+                    } else if (l.moneda === "ARS" && selectedFactura.moneda === "USD" && cotFac > 0) {
+                      montoEnFac = l.monto / cotFac
+                    }
+                  }
+                  montoEnFac = Math.round(montoEnFac * 100) / 100
                   return {
                     medio: l.medio,
-                    monto: l.monto,
+                    monto: montoEnFac,
                     tarjeta_id: l.medio === "tarjeta" ? l.tarjeta_id : undefined,
                     cuotas: l.medio === "tarjeta" ? (l.cuotas ?? 1) : undefined,
                     recargo_pct,
@@ -9440,13 +9711,6 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                 }
                 setFacturas(prev => prev.map(f => f.id === facturaParaConfirmar.id ? facturaActualizada : f))
                 setSelectedFactura(facturaActualizada)
-
-                alert(
-                  `Factura confirmada.\n` +
-                  `IVA: $${result.iva_total.toFixed(2)} · Recargo: $${result.recargo_total.toFixed(2)}\n` +
-                  `Total final: $${result.total_final.toFixed(2)}\n\n` +
-                  `Para registrar el cobro, generá un Recibo desde el módulo de Ventas.`
-                )
               } catch (e) {
                 alert(`Error de red al confirmar factura: ${e instanceof Error ? e.message : String(e)}`)
               }
@@ -9808,6 +10072,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       setReciboTipoCotizacion(rec.tipo_cotizacion || "")
       setReciboCotizacion(rec.cotizacion || 0)
       setReciboConcepto(rec.concepto || "")
+      setReciboFacturaIdForm(rec.factura_id || null)
       setReciboNvId(rec.nota_venta_id || "")
       setReciboObservaciones(rec.observaciones || "")
       setReciboTab("pagos")
@@ -9851,12 +10116,12 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   }
 
   const cargarValoresCaja = async (cajaId: string) => {
-    if (!cajaId) { setReciboValoresCaja([]); return }
+    if (!cajaId) { setReciboValoresCaja([]); return [] as { id: string; nombre: string; tipo: string; subtipo?: string | null; moneda: string }[] }
     const { createClient } = await import("@/lib/supabase/client")
     const supabase = createClient()
     const { data, error } = await supabase
       .from("caja_valores")
-      .select("id, nombre, tipo, moneda")
+      .select("id, nombre, tipo, subtipo, moneda")
       .eq("caja_id", cajaId)
       .or("activo.eq.true,activo.is.null")
       .order("nombre")
@@ -9864,15 +10129,29 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     if (error) {
       const { data: fallbackData } = await supabase
         .from("caja_valores")
-        .select("id, nombre, tipo, moneda")
+        .select("id, nombre, tipo, subtipo, moneda")
         .eq("caja_id", cajaId)
         .order("nombre")
 
-      setReciboValoresCaja((fallbackData || []) as { id: string; nombre: string; tipo: string; moneda: string }[])
-      return
+      const valores = (fallbackData || []) as { id: string; nombre: string; tipo: string; subtipo?: string | null; moneda: string }[]
+      setReciboValoresCaja(valores)
+      return valores
     }
 
-    setReciboValoresCaja((data || []) as { id: string; nombre: string; tipo: string; moneda: string }[])
+    const valores = (data || []) as { id: string; nombre: string; tipo: string; subtipo?: string | null; moneda: string }[]
+    setReciboValoresCaja(valores)
+    return valores
+  }
+
+  // Mapea un medio_pago de factura al caja_valor correspondiente
+  const mapearMedioACajaValor = (
+    medio: string,
+    valores: { id: string; nombre: string; tipo: string; subtipo?: string | null; moneda: string }[]
+  ) => {
+    if (medio === "efectivo") return valores.find(v => v.tipo === "efectivo")
+    if (medio === "tarjeta") return valores.find(v => v.subtipo === "tarjeta")
+    if (medio === "transferencia") return valores.find(v => v.subtipo === "banco")
+    return undefined
   }
 
   const cargarComprobantesCliente = async (clienteId: string) => {
@@ -10050,6 +10329,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           cliente_nombre: clientes.find(c => String(c.id) === String(reciboClienteIdForm))?.nombre || "",
           caja_id: reciboCajaId || null,
           caja_nombre: reciboCajasDisponibles.find(c => c.id === reciboCajaId)?.nombre || null,
+          factura_id: reciboFacturaIdForm || null,
           nota_venta_id: reciboNvId || null,
           cobrador_nombre: null,
           concepto: reciboConcepto || null,
@@ -10091,6 +10371,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           cliente_nombre: clienteNombre,
           caja_id: reciboCajaId || null,
           caja_nombre: reciboCajasDisponibles.find(c => c.id === reciboCajaId)?.nombre || null,
+          factura_id: reciboFacturaIdForm || null,
           nota_venta_id: reciboNvId || null,
           cobrador_nombre: reciboCobradorNombre || null,
           concepto: reciboConcepto || null,
@@ -10143,8 +10424,8 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
       const cajaNombreParaPublicar = (selectedRecibo as Record<string, unknown>).caja_nombre as string | undefined || reciboCajasDisponibles.find(c => c.id === cajaIdParaPublicar)?.nombre
       if (!cajaIdParaPublicar) { alert("Seleccioná una caja antes de confirmar."); return }
 
-      // Validar tarjeta sin NV
-      if (pagos.some(p => p.es_tarjeta) && !selectedRecibo.nota_venta_id) {
+      // Validar tarjeta sin factura/NV
+      if (pagos.some(p => p.es_tarjeta) && !selectedRecibo.factura_id && !selectedRecibo.nota_venta_id) {
         alert("Para cobrar con tarjeta, el recibo debe estar vinculado a una factura donde el recargo ya esté calculado.")
         return
       }
@@ -10251,6 +10532,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         .reduce((s, p) => s + (p.importe || 0), 0)
       noConciliadoARS = Math.max(0, totalARSPagosDirectos)
     } else {
+      const totalPagos = reciboPagosForm.reduce((s, p) => s + (p.importe_comprobante || 0), 0)
       const totalAsig = reciboImputacionesForm.reduce((s, i) => s + (i.asignacion || 0), 0)
       noConciliado = Math.max(0, totalPagos - totalAsig)
       noConciliadoARS = 0
@@ -10509,11 +10791,16 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
   // ─── RENDER: Formulario Recibo (Crear / Editar) ─────────────────────────
   const renderFormularioRecibo = () => {
     const esBorrador = !selectedRecibo || selectedRecibo.estado === "borrador"
-    const esSoloLectura = selectedRecibo ? selectedRecibo.estado !== "borrador" : false
+    const enModoEdicion = creandoRecibo || editandoRecibo
+    const esSoloLectura = !enModoEdicion
     const clienteSeleccionado = clientes.find(c => String(c.id) === String(reciboClienteIdForm))
     const totalPagos = reciboPagosForm.reduce((s, p) => s + (p.importe_comprobante || 0), 0)
     const totalAsig = reciboImputacionesForm.reduce((s, i) => s + (i.asignacion || 0), 0)
     const noConciliado = Math.max(0, totalPagos - totalAsig)
+    // Pagos pre-cargados desde factura que no encontraron caja_valor en la caja seleccionada
+    const pagosSinValor = reciboPagosForm.filter(p => p.medio_origen && !p.valor_id)
+    const labelMedio: Record<string, string> = { efectivo: "Efectivo", transferencia: "Transferencia", tarjeta: "Tarjeta" }
+    const cobroBloqueado = pagosSinValor.length > 0
 
     return (
       <div>
@@ -10527,8 +10814,9 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
             </div>}
           </div>
           <div className="flex gap-2">
-            {esBorrador && <button onClick={guardarRecibo} disabled={reciboGuardando || reciboPublicando} className="bg-indigo-900 text-white px-4 py-2 rounded text-sm hover:bg-indigo-800 disabled:opacity-50">{reciboGuardando ? "Guardando..." : "Guardar"}</button>}
-            {selectedRecibo?.estado === "borrador" && <button onClick={publicarRecibo} disabled={reciboGuardando || reciboPublicando} className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1"><CheckCircle className="w-4 h-4" />{reciboPublicando ? "Confirmando..." : "Confirmar"}</button>}
+            {selectedRecibo?.estado === "borrador" && !editandoRecibo && <button onClick={() => setEditandoRecibo(true)} className="bg-indigo-900 text-white px-4 py-2 rounded text-sm hover:bg-indigo-800">Editar</button>}
+            {esBorrador && enModoEdicion && <button onClick={guardarRecibo} disabled={reciboGuardando || reciboPublicando} className="bg-indigo-900 text-white px-4 py-2 rounded text-sm hover:bg-indigo-800 disabled:opacity-50">{reciboGuardando ? "Guardando..." : "Guardar"}</button>}
+            {selectedRecibo?.estado === "borrador" && enModoEdicion && <button onClick={publicarRecibo} disabled={reciboGuardando || reciboPublicando || cobroBloqueado} title={cobroBloqueado ? "La caja seleccionada no tiene los valores requeridos" : ""} className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1"><CheckCircle className="w-4 h-4" />{reciboPublicando ? "Confirmando..." : "Confirmar"}</button>}
             {selectedRecibo?.estado === "publicado" && <button onClick={() => setShowCancelarReciboModal(true)} className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700">Cancelar Recibo</button>}
           </div>
         </div>
@@ -10551,70 +10839,41 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
             </div>
             <div className="space-y-3">
-              <div><label className="text-xs font-medium text-gray-500">Fecha</label><input type="date" value={selectedRecibo?.fecha || new Date().toISOString().split("T")[0]} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm" /></div>
               <div><label className="text-xs font-medium text-gray-500">Caja</label>
-                <select value={reciboCajaId} onChange={e => { setReciboCajaId(e.target.value); cargarValoresCaja(e.target.value) }} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm">
+                <select
+                  value={reciboCajaId}
+                  onChange={async e => {
+                    const nuevaCajaId = e.target.value
+                    setReciboCajaId(nuevaCajaId)
+                    const valores = await cargarValoresCaja(nuevaCajaId)
+                    // Re-mapear pagos pre-cargados desde factura al cambiar la caja
+                    setReciboPagosForm(prev => prev.map(p => {
+                      if (!p.medio_origen) return p
+                      const cv = mapearMedioACajaValor(p.medio_origen, valores)
+                      return {
+                        ...p,
+                        valor_id: cv?.id || "",
+                        valor_nombre: cv?.nombre || "",
+                        tipo_valor: cv?.tipo || "",
+                      }
+                    }))
+                  }}
+                  disabled={esSoloLectura}
+                  className="w-full border rounded px-2 py-1.5 text-sm"
+                >
                   <option value="">Seleccionar caja...</option>
                   {reciboCajasDisponibles.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                 </select>
               </div>
-              <div><label className="text-xs font-medium text-gray-500">Nota de Venta</label><input value={reciboNvId} onChange={e => setReciboNvId(e.target.value)} disabled={esSoloLectura} placeholder="ID o número de NV (opcional)" className="w-full border rounded px-2 py-1.5 text-sm" /></div>
-
-              <div><label className="text-xs font-medium text-gray-500">Concepto</label><input value={reciboConcepto} onChange={e => setReciboConcepto(e.target.value)} disabled={esSoloLectura} placeholder="Concepto libre (si no hay NV)" className="w-full border rounded px-2 py-1.5 text-sm" /></div>
             </div>
           </div>
         </div>
 
-        {/* Panel CC Bimonetaria */}
-        {reciboClienteIdForm && (
-          <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-gray-700">Cuenta Corriente del Cliente</h3>
-              {reciboCCCargando && <span className="text-xs text-gray-400 animate-pulse">Cargando...</span>}
-            </div>
-            {reciboCCResumen ? (
-              <>
-                <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div className="bg-gray-50 rounded p-3">
-                    <div className="text-xs text-gray-500 mb-1">Saldo CC ARS</div>
-                    <div className={`font-semibold text-lg ${reciboCCResumen.saldo_ars > 0 ? 'text-red-600' : reciboCCResumen.saldo_ars < 0 ? 'text-green-600' : 'text-gray-700'}`}>
-                      $ {Math.abs(reciboCCResumen.saldo_ars).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                    <div className="text-xs text-gray-400">{reciboCCResumen.saldo_ars > 0 ? 'Deuda del cliente' : reciboCCResumen.saldo_ars < 0 ? 'Crédito a favor' : 'Sin saldo'}</div>
-                  </div>
-                  <div className="bg-gray-50 rounded p-3">
-                    <div className="text-xs text-gray-500 mb-1">Saldo CC USD</div>
-                    <div className={`font-semibold text-lg ${reciboCCResumen.saldo_usd > 0 ? 'text-red-600' : reciboCCResumen.saldo_usd < 0 ? 'text-green-600' : 'text-gray-700'}`}>
-                      USD {Math.abs(reciboCCResumen.saldo_usd).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                    <div className="text-xs text-gray-400">{reciboCCResumen.saldo_usd > 0 ? 'Deuda del cliente' : reciboCCResumen.saldo_usd < 0 ? 'Crédito a favor' : 'Sin saldo'}</div>
-                  </div>
-                  <div className="bg-blue-50 rounded p-3">
-                    <div className="text-xs text-gray-500 mb-1">Caso de Imputación</div>
-                    {(() => {
-                      const caso = calcularCasoImputacion(reciboCCResumen)
-                      const desc: Record<string, string> = {
-                        A: 'Caso A – Solo deuda ARS → pagos ARS imputan CC ARS',
-                        B: 'Caso B – Solo deuda USD → pagos ARS imputan CC USD',
-                        C: 'Caso C – Doble deuda → elegir destino por pago',
-                        D: 'Caso D – Sin deuda → importe a cuenta ARS',
-                      }
-                      return <>
-                        <div className="font-bold text-indigo-900 text-lg">{caso}</div>
-                        <div className="text-xs text-gray-500 leading-tight mt-1">{desc[caso]}</div>
-                      </>
-                    })()}
-                  </div>
-                </div>
-                {reciboCCResumen.cotizacion_cliente > 0 && (
-                  <div className="mt-2 text-xs text-gray-400">
-                    Cotización del cliente: {reciboCCResumen.tipo_cotizacion_cliente} = $ {reciboCCResumen.cotizacion_cliente.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                  </div>
-                )}
-              </>
-            ) : !reciboCCCargando ? (
-              <p className="text-sm text-gray-400">Sin datos de cuenta corriente.</p>
-            ) : null}
+        {cobroBloqueado && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-700">
+            <strong>La caja seleccionada no tiene los siguientes valores configurados:</strong>{" "}
+            {pagosSinValor.map(p => labelMedio[p.medio_origen || ""] || p.medio_origen).join(", ")}.
+            Cambiá de caja o configurá esos valores para poder confirmar el cobro.
           </div>
         )}
 
