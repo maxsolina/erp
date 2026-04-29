@@ -8333,12 +8333,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
     const tieneFacturable = medios.some(m => m.medio === "tarjeta" || m.medio === "transferencia")
     let monedaActual: "ARS" | "USD" = facturaMoneda
     if (facturaMoneda !== "ARS" && tieneFacturable) {
-      const totalArs = subtotal * facturaCotizacion
+      const subtotalArs = subtotal * facturaCotizacion
       const ok = window.confirm(
         `Esta factura está en ${facturaMoneda}.\n\n` +
         `Para aplicar IVA y recargos hay que convertirla a pesos.\n\n` +
         `Cotización: blue · 1 ${facturaMoneda} = $${facturaCotizacion.toLocaleString("es-AR", { minimumFractionDigits: 2 })}\n` +
-        `Total convertido: $${totalArs.toLocaleString("es-AR", { minimumFractionDigits: 2 })}\n\n` +
+        `Subtotal en pesos: $${subtotalArs.toLocaleString("es-AR", { minimumFractionDigits: 2 })}\n\n` +
+        `(El IVA y el recargo de tarjeta se calculan después y se suman al total final.)\n\n` +
         `¿Convertir y continuar?`
       )
       if (!ok) {
@@ -9264,12 +9265,13 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                   alert(`Esta factura está en ${selectedFactura.moneda} pero no tiene una cotización válida. Editá la factura y cargá la cotización antes de confirmar con tarjeta o transferencia.`)
                   return
                 }
-                const totalArs = selectedFactura.total * selectedFactura.cotizacion
+                const subtotalArs = selectedFactura.subtotal * selectedFactura.cotizacion
                 const ok = window.confirm(
                   `Esta factura está en ${selectedFactura.moneda}.\n\n` +
                   `Para aplicar IVA y recargos hay que convertirla a pesos.\n\n` +
                   `Cotización: ${selectedFactura.tipo_cotizacion} · 1 ${selectedFactura.moneda} = $${selectedFactura.cotizacion.toLocaleString("es-AR", { minimumFractionDigits: 2 })}\n` +
-                  `Total convertido: $${totalArs.toLocaleString("es-AR", { minimumFractionDigits: 2 })}\n\n` +
+                  `Subtotal en pesos: $${subtotalArs.toLocaleString("es-AR", { minimumFractionDigits: 2 })}\n\n` +
+                  `(El IVA y el recargo de tarjeta se calculan después y se suman al total final.)\n\n` +
                   `¿Convertir y continuar?`
                 )
                 if (!ok) return
