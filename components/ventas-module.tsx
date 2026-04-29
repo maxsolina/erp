@@ -8618,52 +8618,73 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           </div>
 
           {/* Totales */}
-          <div className="flex justify-end">
-            <div className="w-64 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Subtotal (precio contado):</span>
-                <span>{formatCurrency(subtotal, facturaMoneda)}</span>
+          {facturaMoneda === "USD" && facturaCotizacion > 1 ? (
+            // Layout 3 columnas (concepto / USD / ARS) cuando hay conversión
+            <div className="flex justify-end">
+              <div className="text-sm" style={{ minWidth: "32rem" }}>
+                <div className="grid grid-cols-[1fr_auto_auto] gap-x-6 gap-y-1.5">
+                  <div className="col-span-2 flex justify-between border-b border-gray-200 pb-1.5 mb-1">
+                    <span className="text-xs uppercase tracking-wide text-gray-400 font-semibold">Concepto</span>
+                    <span className="text-xs uppercase tracking-wide text-gray-400 font-semibold text-right pr-12">USD</span>
+                  </div>
+                  <div className="text-xs uppercase tracking-wide text-gray-400 font-semibold text-right border-b border-gray-200 pb-1.5 mb-1">ARS</div>
+
+                  <span className="text-gray-500">Subtotal (precio contado):</span>
+                  <span className="text-right tabular-nums">{formatCurrency(subtotal, "USD")}</span>
+                  <span className="text-right tabular-nums text-gray-400">{formatCurrency(subtotal * facturaCotizacion, "ARS")}</span>
+
+                  {prevRecargosConfirmados && prevRecargosConfirmados.desglose.map((d, i) => (
+                    <React.Fragment key={i}>
+                      <span className="text-amber-700">{d.nombre}:</span>
+                      <span className="text-right tabular-nums text-amber-700">+ {formatCurrency(d.importe, "USD")}</span>
+                      <span className="text-right tabular-nums text-amber-600/70">+ {formatCurrency(d.importe * facturaCotizacion, "ARS")}</span>
+                    </React.Fragment>
+                  ))}
+
+                  {prevRecargosConfirmados && prevRecargosConfirmados.totalRecargos > 0 && (
+                    <>
+                      <span className="text-amber-700 font-medium">Total recargos:</span>
+                      <span className="text-right tabular-nums text-amber-700 font-medium">+ {formatCurrency(prevRecargosConfirmados.totalRecargos, "USD")}</span>
+                      <span className="text-right tabular-nums text-amber-600/70 font-medium">+ {formatCurrency(prevRecargosConfirmados.totalRecargos * facturaCotizacion, "ARS")}</span>
+                    </>
+                  )}
+
+                  <span className="font-bold text-base pt-2 border-t mt-1">Total:</span>
+                  <span className="text-right tabular-nums text-emerald-700 font-bold text-base pt-2 border-t mt-1">{formatCurrency(subtotal + (prevRecargosConfirmados?.totalRecargos || 0), "USD")}</span>
+                  <span className="text-right tabular-nums text-emerald-700 font-bold text-base pt-2 border-t mt-1">{formatCurrency((subtotal + (prevRecargosConfirmados?.totalRecargos || 0)) * facturaCotizacion, "ARS")}</span>
+                </div>
+                <p className="text-xs text-gray-400 mt-2 text-right">Cotización aplicada: 1 USD = ${facturaCotizacion.toLocaleString("es-AR")} (blue)</p>
               </div>
-              {prevRecargosConfirmados && prevRecargosConfirmados.desglose.map((d, i) => (
-                <div key={i} className="flex justify-between text-amber-700">
-                  <span>{d.nombre}:</span>
-                  <span className="text-right">
-                    + {formatCurrency(d.importe, facturaMoneda)}
-                    {facturaMoneda === "USD" && facturaCotizacion > 1 && (
-                      <span className="block text-xs text-gray-500 font-normal">
-                        ≈ {formatCurrency(d.importe * facturaCotizacion, "ARS")}
-                      </span>
-                    )}
-                  </span>
-                </div>
-              ))}
-              {prevRecargosConfirmados && prevRecargosConfirmados.totalRecargos > 0 && (
-                <div className="flex justify-between text-amber-700 font-medium">
-                  <span>Total recargos:</span>
-                  <span className="text-right">
-                    + {formatCurrency(prevRecargosConfirmados.totalRecargos, facturaMoneda)}
-                    {facturaMoneda === "USD" && facturaCotizacion > 1 && (
-                      <span className="block text-xs text-gray-500 font-normal">
-                        ≈ {formatCurrency(prevRecargosConfirmados.totalRecargos * facturaCotizacion, "ARS")}
-                      </span>
-                    )}
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between text-lg font-bold pt-2 border-t">
-                <span>Total{facturaMoneda !== "ARS" && <span className="text-sm font-normal text-blue-600 ml-1">({facturaMoneda})</span>}:</span>
-                <span className="text-emerald-700">
-                  {formatCurrency(subtotal + (prevRecargosConfirmados?.totalRecargos || 0), facturaMoneda)}
-                </span>
-              </div>
-              {facturaMoneda === "USD" && facturaCotizacion > 1 && (
-                <div className="flex justify-between text-xs text-gray-500 pt-1">
-                  <span>≈ ARS (TC ${facturaCotizacion.toLocaleString("es-AR")}):</span>
-                  <span>{formatCurrency((subtotal + (prevRecargosConfirmados?.totalRecargos || 0)) * facturaCotizacion, "ARS")}</span>
-                </div>
-              )}
             </div>
-          </div>
+          ) : (
+            // Layout simple (concepto + monto) cuando moneda es ARS
+            <div className="flex justify-end">
+              <div className="w-64 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Subtotal (precio contado):</span>
+                  <span>{formatCurrency(subtotal, facturaMoneda)}</span>
+                </div>
+                {prevRecargosConfirmados && prevRecargosConfirmados.desglose.map((d, i) => (
+                  <div key={i} className="flex justify-between text-amber-700">
+                    <span>{d.nombre}:</span>
+                    <span>+ {formatCurrency(d.importe, facturaMoneda)}</span>
+                  </div>
+                ))}
+                {prevRecargosConfirmados && prevRecargosConfirmados.totalRecargos > 0 && (
+                  <div className="flex justify-between text-amber-700 font-medium">
+                    <span>Total recargos:</span>
+                    <span>+ {formatCurrency(prevRecargosConfirmados.totalRecargos, facturaMoneda)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-lg font-bold pt-2 border-t">
+                  <span>Total:</span>
+                  <span className="text-emerald-700">
+                    {formatCurrency(subtotal + (prevRecargosConfirmados?.totalRecargos || 0), facturaMoneda)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Modal de validación */}
           {modalValidacionMsg && (
