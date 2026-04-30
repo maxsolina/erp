@@ -17,11 +17,6 @@ export default function VersionesGlobalListPage() {
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
-      <div className="bg-indigo-900 text-white px-6 py-2 flex items-center gap-4 text-sm">
-        <Link href="/" className="hover:text-indigo-200 transition-colors">← Volver al ERP</Link>
-        <span className="text-indigo-200">·</span>
-        <span className="font-semibold">Versiones de Lista</span>
-      </div>
       <div className="flex items-center gap-2 px-6 py-3 border-b border-gray-200 bg-white text-sm">
         <Link href="/listas-precios" className="flex items-center gap-1 text-indigo-700 hover:text-indigo-900 font-medium">
           <ChevronLeft className="w-4 h-4" />

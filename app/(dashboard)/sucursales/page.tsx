@@ -60,13 +60,6 @@ export default function SucursalesListingPage() {
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
-      {/* Mini-topbar */}
-      <div className="bg-indigo-900 text-white px-6 py-2 flex items-center gap-4 text-sm">
-        <Link href="/" className="hover:text-indigo-200 transition-colors">← Volver al ERP</Link>
-        <span className="text-indigo-200">·</span>
-        <span className="font-semibold">Sucursales</span>
-      </div>
-
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white">
         <div>

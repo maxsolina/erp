@@ -342,6 +342,7 @@ interface ERPContextType {
   currentUser: Usuario | null
   setCurrentUser: (user: Usuario | null) => void
   isAuthenticated: boolean
+  restaurandoSesion: boolean
   login: (username: string, password: string) => Promise<LoginResult>
   verifyLoginOtp: (email: string, token: string) => Promise<boolean>
   resendLoginOtp: (email: string) => Promise<boolean>
@@ -456,6 +457,9 @@ export function ERPProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null)
   const [usuarios] = useState<Usuario[]>(usuariosIniciales)
 
+  // Mientras restauramos la sesión Supabase tras un F5, evitamos que el auth gate redirija a /login.
+  const [restaurandoSesion, setRestaurandoSesion] = useState(true)
+
   // Permisos del usuario logueado (cargados desde /api/usuarios/me al loguearse)
   const [isSuperuser, setIsSuperuser] = useState(false)
   const [vistas, setVistas] = useState<Record<string, boolean>>({})
@@ -464,6 +468,57 @@ export function ERPProvider({ children }: { children: ReactNode }) {
   // marcamos al usuario como "sin perfil" y le permitimos ver todo (compatibilidad
   // con admin/solinamax/juanperez del array hardcodeado, hasta que se migren a DB).
   const [sinPerfilDB, setSinPerfilDB] = useState(false)
+
+  // Restaura currentUser + permisos desde Supabase al montar (al hacer F5).
+  // Importante: cargamos permisos ACÁ (no en otro useEffect aparte) para que cuando
+  // marquemos restaurandoSesion=false los guards de las páginas (canSee()) ya tengan
+  // datos válidos y no redirijan al home.
+  useEffect(() => {
+    let cancelado = false
+    ;(async () => {
+      try {
+        const supabase = createClient()
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        if (!session) return
+        const meRes = await fetch("/api/usuarios/me")
+        if (cancelado) return
+        if (meRes.status === 404) {
+          // Perfil ERP no encontrado → modo permisivo (compatibilidad con admin/solinamax/juanperez)
+          setSinPerfilDB(true)
+          return
+        }
+        if (!meRes.ok) return
+        const me = await meRes.json()
+        if (cancelado) return
+        const restored: Usuario = {
+          id: me.id,
+          username: me.username,
+          nombre: me.nombre,
+          email: me.email,
+          rol: me.is_superuser ? "admin" : "vendedor",
+          sucursal_id: me.sucursal_default_id ?? 0,
+          sucursal_nombre: me.sucursal_default_nombre ?? "",
+          activo: !!me.is_active,
+          ultimo_acceso: me.last_login_at ?? new Date().toISOString(),
+          avatar: me.avatar_url ?? undefined,
+        }
+        setCurrentUser(restored)
+        setSinPerfilDB(false)
+        setIsSuperuser(!!me.is_superuser)
+        setVistas(me.vistas ?? {})
+        setPermisos(me.permisos ?? {})
+      } catch {
+        // ignorar — quedará sin usuario y el auth gate redirige a /login
+      } finally {
+        if (!cancelado) setRestaurandoSesion(false)
+      }
+    })()
+    return () => {
+      cancelado = true
+    }
+  }, [])
 
   const canSee = useCallback((modulo: string, subvista?: string): boolean => {
     if (isSuperuser || sinPerfilDB) return true
@@ -1107,6 +1162,7 @@ export function ERPProvider({ children }: { children: ReactNode }) {
     currentUser,
     setCurrentUser,
     isAuthenticated: currentUser !== null,
+    restaurandoSesion,
     login,
     verifyLoginOtp,
     resendLoginOtp,

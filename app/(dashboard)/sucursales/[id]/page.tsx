@@ -57,11 +57,6 @@ export default function EditarSucursalPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
-      {/* Mini-topbar */}
-      <div className="bg-indigo-900 text-white px-6 py-2 flex items-center gap-4 text-sm">
-        <Link href="/" className="hover:text-indigo-200 transition-colors">← Volver al ERP</Link>
-      </div>
-
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 bg-white text-sm">
         <div className="flex items-center gap-2">
           <Link

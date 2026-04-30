@@ -2,11 +2,12 @@
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import Link from "next/link"
-import { Menu, X } from "lucide-react"
+import { useSearchParams } from "next/navigation"
+import { Menu } from "lucide-react"
 import ModuloHome from "@/components/modulo-home"
 import ModuloVentas, { type ClienteVenta } from "@/components/ventas-module"
 import ModuloCompras from "@/components/modulo-compras-v2"
-import ModuloStock from "@/components/modulo-stock"
+// ModuloStock fue migrado a /stock top-level (PR 9). Import eliminado.
 import ModuloInformes from "@/components/modulo-informes"
 import ModuloContabilidad from "@/components/modulo-contabilidad"
 import ModuloFinanzas from "@/components/modulo-finanzas"
@@ -519,8 +520,16 @@ const mockEtapasOT: EtapaOT[] = [
 // Main Component
 function CellHomeERPContent() {
   const { canSee } = useERP()
-  const [activeModule, setActiveModule] = useState("home")
+  const searchParams = useSearchParams()
+  const moduleFromUrl = searchParams?.get("module") || "home"
+  const [activeModule, setActiveModule] = useState(moduleFromUrl)
   const [activeView, setActiveView] = useState("dashboard")
+
+  // Sync activeModule cuando cambia el ?module= en la URL (Links del topbar global en (dashboard)/layout.tsx).
+  useEffect(() => {
+    setActiveModule(moduleFromUrl)
+    setActiveView("dashboard")
+  }, [moduleFromUrl])
 
   // Si el módulo activo deja de estar permitido (cambio de permisos), redirigimos al home.
   useEffect(() => {
@@ -530,7 +539,6 @@ function CellHomeERPContent() {
       setActiveView("dashboard")
     }
   }, [activeModule, canSee])
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [configSidebarOpen, setConfigSidebarOpen] = useState(false)
   const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -2549,113 +2557,17 @@ function CellHomeERPContent() {
     )
   }
 
+  // El topbar grande (Cell Home ERP + tabs Home/Taller/Ventas/etc + Casa Central + tickets + user)
+  // ahora vive en (dashboard)/layout.tsx. Esta página sólo renderiza el módulo activo.
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Navbar */}
-      <nav className="fixed top-0 left-0 right-0 h-11 bg-indigo-900 flex items-center px-4 z-50 shadow-md">
-        <div className="text-white font-semibold flex items-center gap-2 shrink-0">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-          <span className="text-sm">Cell Home ERP</span>
-        </div>
-        {/* Desktop tabs */}
-        <div className="hidden md:flex ml-6 gap-1 overflow-x-auto">
-          {["home", "taller", "ventas", "compras", "finanzas", "contabilidad", "deposito", "informes", "config"]
-            .filter(mod => {
-              const v = TOPBAR_TO_VISTA[mod]
-              return v === null || canSee(v)
-            })
-            .map(mod => {
-              // taller migró a /servicio-tecnico top-level (PR 7)
-              if (mod === "taller") {
-                return (
-                  <Link
-                    key={mod}
-                    href="/servicio-tecnico"
-                    className="px-3 py-2 text-sm rounded transition-colors whitespace-nowrap text-white/80 hover:bg-white/10 hover:text-white"
-                  >
-                    Taller
-                  </Link>
-                )
-              }
-              return (
-                <button
-                  key={mod}
-                  onClick={() => { setActiveModule(mod); setActiveView("dashboard") }}
-                  className={`px-3 py-2 text-sm rounded transition-colors whitespace-nowrap ${
-                    activeModule === mod
-                      ? "bg-white/20 text-white"
-                      : "text-white/80 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  {mod.charAt(0).toUpperCase() + mod.slice(1)}
-                </button>
-              )
-            })}
-        </div>
-        {/* Mobile hamburger */}
-        <button
-          onClick={() => setMobileMenuOpen(o => !o)}
-          className="md:hidden ml-auto p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded transition-colors"
-          aria-label="Menú"
-        >
-          {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
-      </nav>
-      {/* Mobile nav drawer */}
-      {mobileMenuOpen && (
-        <>
-          <div
-            className="md:hidden fixed inset-0 bg-black/40 z-40"
-            onClick={() => setMobileMenuOpen(false)}
-          />
-          <div className="md:hidden fixed top-11 left-0 right-0 bg-indigo-900 z-40 shadow-xl pb-3">
-            {["home", "taller", "ventas", "compras", "finanzas", "contabilidad", "deposito", "informes", "config"]
-              .filter(mod => {
-                const v = TOPBAR_TO_VISTA[mod]
-                return v === null || canSee(v)
-              })
-              .map(mod => {
-                // taller migró a /servicio-tecnico top-level (PR 7)
-                if (mod === "taller") {
-                  return (
-                    <Link
-                      key={mod}
-                      href="/servicio-tecnico"
-                      onClick={() => setMobileMenuOpen(false)}
-                      className="block w-full text-left px-5 py-3 text-sm border-b border-white/10 transition-colors text-white/80 hover:bg-white/10 hover:text-white"
-                    >
-                      Taller
-                    </Link>
-                  )
-                }
-                return (
-                  <button
-                    key={mod}
-                    onClick={() => { setActiveModule(mod); setActiveView("dashboard"); setMobileMenuOpen(false) }}
-                    className={`w-full text-left px-5 py-3 text-sm border-b border-white/10 transition-colors ${
-                      activeModule === mod
-                        ? "bg-white/20 text-white font-medium"
-                        : "text-white/80 hover:bg-white/10 hover:text-white"
-                    }`}
-                  >
-                    {mod.charAt(0).toUpperCase() + mod.slice(1)}
-                  </button>
-                )
-              })}
-          </div>
-        </>
-      )}
-
+    <div className="bg-gray-100 flex-1 overflow-auto">
 {/* Layout */}
   {activeModule === "home" ? (
-  <div className="pt-11">
+  <div>
   <ModuloHome />
   </div>
   ) : activeModule === "ventas" ? (
-  <div className="pt-11">
+  <div>
         <ModuloVentas
           clientesIniciales={clientesVenta.length > 0 ? clientesVenta : undefined}
           onNuevoCliente={(c) => setClientesVenta(prev => {
@@ -2665,30 +2577,26 @@ function CellHomeERPContent() {
         />
   </div>
   ) : activeModule === "compras" ? (
-  <div className="pt-11">
+  <div>
   <ModuloCompras
     initialRecepcionNumero={pendingRecepcionNumero}
     onNavigationHandled={() => setPendingRecepcionNumero(null)}
   />
   </div>
   ) : activeModule === "finanzas" ? (
-  <div className="pt-11">
+  <div>
   <ModuloFinanzas />
   </div>
   ) : activeModule === "contabilidad" ? (
-  <div className="pt-11">
+  <div>
   <ModuloContabilidad />
   </div>
-  ) : activeModule === "deposito" ? (
-        <div className="pt-11">
-          <ModuloStock />
-        </div>
-      ) : activeModule === "informes" ? (
-        <div className="pt-11">
+  ) : activeModule === "informes" ? (
+        <div>
           <ModuloInformes />
         </div>
       ) : activeModule === "config" ? (
-        <div className="flex pt-11">
+        <div className="flex">
           {/* Mobile sidebar toggle */}
           <button
             onClick={() => setConfigSidebarOpen(o => !o)}
@@ -2745,11 +2653,11 @@ function CellHomeERPContent() {
           </main>
         </div>
       ) : activeModule === "taller" ? (
-        <div className="pt-11">
+        <div>
           <ModuloTaller />
         </div>
       ) : (
-        <div className="flex items-center justify-center pt-11 h-96 text-gray-400 text-sm">
+        <div className="flex items-center justify-center h-96 text-gray-400 text-sm">
           Seleccioná un módulo del menú superior
         </div>
       )}
