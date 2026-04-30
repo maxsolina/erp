@@ -39,25 +39,38 @@ Los redirect-stubs sincronizan `?view=` con el monolito vía `useSearchParams()`
 - ✅ **PR 17** — Contabilidad (19 rutas redirect-stubs + sidebar config)
 - ✅ **PR 18** — Informes (`/informes` monta ModuloInformes directo)
 
-## Pendiente para limpieza futura (PR 19 cleanup)
+## Pendiente para limpieza futura (cleanup post-PR-18)
 
-No bloqueante; el ERP está completamente funcional con clean URLs. Estos son ítems de polish:
+No bloqueante; el ERP está completamente funcional con clean URLs.
 
 1. **Convertir redirect-stubs a extracciones reales** (con su propio listado/ficha/form):
-   - Ventas: NV, OE, Remitos, Facturas, Recibos, NC, ND, Ajustes, Seña, Categorías Cliente, Criterios Cotizador, NC-Categorías
-   - Compras: Legajos Importación, Despachos Simples, Conciliación de Deuda, Categorías de Proveedores
-   - Finanzas: las 25 rutas (todas redirect-stubs hoy)
-   - Contabilidad: las 19 rutas (todas redirect-stubs hoy)
+   - **Ventas — TODOS COMPLETADOS** (post-PR-18 cleanup):
+     - ~~NV, OE, Remitos, Facturas, Recibos~~ — los 5 documentos principales con listado + ficha read-only
+     - ~~Ajustes, NC, ND~~ — 3 vistas sobre la misma tabla (`ajustes_clientes`)
+     - ~~Seña~~ — listado con stats cards + ficha rica
+     - ~~Categorías Cliente, NC-Categorías~~ — listados simples
+     - ~~Criterios Cotizador~~ — montaje directo del componente standalone existente
+   - **Compras**: ~~Categorías de Proveedores~~ extraída (post-PR-18 cleanup). Todavía como redirect-stubs: Legajos Importación, Despachos Simples, Conciliación de Deuda.
+   - **Finanzas**: las 25 rutas (todas redirect-stubs hoy)
+   - **Contabilidad**: las 19 rutas (todas redirect-stubs hoy)
 2. **Borrar dead code** en los monolitos:
-   - `components/ventas-module.tsx`: render functions de listas-precios, toma-equipo (ya migradas), case del switch quitado
-   - `components/modulo-compras-v2.tsx`: render functions de OC, recepciones, etc. (parcial)
-   - ~~`components/modulo-stock.tsx`~~ — borrado (PR 19, post-PR-18 cleanup)
-   - ~~`components/modulo-taller.tsx`~~ — borrado (PR 19, post-PR-18 cleanup)
+   - `components/ventas-module.tsx`: render functions de listas-precios, toma-equipo (ya migradas), y ahora también de NV/OE/Remitos/Facturas/Recibos/Ajustes/NC/ND/Seña (extraídas post-PR-18). Ninguna se llama desde JSX una vez que la URL top-level ya no rebota al monolito.
+   - `components/modulo-compras-v2.tsx`: render functions de OC, recepciones, etc. (parcial); más Categorías Proveedores (extraída post-PR-18)
+   - ~~`components/modulo-stock.tsx`~~ — borrado (post-PR-18 cleanup)
+   - ~~`components/modulo-taller.tsx`~~ — borrado (post-PR-18 cleanup)
    - ~~`components/modulo-compras.tsx` (v1)~~ — borrado (post-PR-18 cleanup)
    - ~~`app/(dashboard)/page.tsx`: helpers `renderSidebar`/`renderContent` + `render*` específicos de Taller~~ — borrado (~1390 líneas, post-PR-18 cleanup)
 3. **Deduplicar helpers** (`formatCurrency`, `formatDate`) — ~~hay copias en cada `components/<modulo>/_shared.ts`~~ unificadas en `lib/format.ts` (post-PR-18 cleanup). Pendiente todavía: copias in-line en monolitos (`modulo-finanzas`, `modulo-home`, `modulo-informes`, `ventas-module`, `modulo-compras-v2`). **No-go por ahora**: `proveedores/listado.tsx` y `proveedores/ficha.tsx` — su `formatCurrency` produce `"ARS $ 1.234,56"` (prefijo manual) en lugar de `"$ 1.234,56"` del `Intl currency`; unificar regresa la UI hasta que decidamos qué formato es el correcto.
 4. **Mover `app/(dashboard)/page.tsx` a un dashboard limpio** — hoy sigue siendo el "shell" del monolito completo. Idealmente queda solo como home dashboard con KPIs.
 5. **Resolver TODOs marcados** (movimientosCtaCte en proveedores, modal vs página para algunos forms, etc.)
+
+### Notas para extraer Finanzas / Contabilidad
+
+Los 25 stubs de Finanzas y los 19 de Contabilidad siguen siendo los blocs grandes pendientes. Cada uno requiere:
+- Verificar que exista API endpoint en `app/api/...` (varios módulos leen Supabase directamente desde el cliente y necesitan un endpoint nuevo, similar a lo que se hizo con `/api/recibos` y `/api/nc-categorias`).
+- Crear `components/<modulo>/<entidad>-listado.tsx` (+ `<entidad>-ficha.tsx` si la vista de detalle es no trivial).
+- Reemplazar la `page.tsx` del stub por el listado real.
+- Mantener el botón "Editar en monolito" para creación/edición compleja (mismo patrón que Compras OC/Ventas NV).
 
 ## Convenciones (siguen aplicando)
 

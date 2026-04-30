@@ -125,3 +125,20 @@ export function getEstadoFacturaLabel(estado: string) {
   }
   return labels[estado] ?? estado
 }
+
+// ─── Categorías de Proveedor ────────────────────────────────────────────────
+
+export interface CategoriaProveedor {
+  id: number
+  nombre: string
+  disponible_clientes?: boolean
+  disponible_proveedores?: boolean
+  tipo_control?: string
+  cuenta_cobrar_defecto?: string | null
+  cuenta_pagar_defecto?: string | null
+  requiere_oc_para_facturar?: boolean
+  comprobantes_confidenciales?: boolean
+  cuenta_cobrar_id?: string | null
+  cuenta_pagar_id?: string | null
+  created_at?: string
+}
