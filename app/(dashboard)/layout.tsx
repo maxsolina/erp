@@ -28,16 +28,21 @@ function tabHref(mod: string): string {
   if (mod === "home") return "/"
   if (mod === "taller") return "/servicio-tecnico"
   if (mod === "deposito") return "/stock"
+  if (mod === "informes") return "/informes"
   return `/?module=${mod}`
 }
 
 // Cuál pestaña está activa según la URL actual.
 function activeTabFromUrl(pathname: string, search: URLSearchParams): string {
   if (pathname.startsWith("/servicio-tecnico")) return "taller"
-  if (pathname.startsWith("/stock")) return "deposito"
+  if (pathname.startsWith("/stock") || pathname.startsWith("/productos")) return "deposito"
+  if (pathname.startsWith("/ventas") || pathname.startsWith("/listas-precios") || pathname.startsWith("/toma-equipo")) return "ventas"
+  if (pathname.startsWith("/compras") || pathname.startsWith("/proveedores")) return "compras"
+  if (pathname.startsWith("/finanzas")) return "finanzas"
+  if (pathname.startsWith("/contabilidad")) return "contabilidad"
+  if (pathname.startsWith("/informes")) return "informes"
+  if (pathname.startsWith("/sucursales") || pathname.startsWith("/usuarios")) return "config"
   if (pathname === "/") return search.get("module") || "home"
-  // Otras rutas top-level (productos, listas-precios, proveedores, sucursales, usuarios, toma-equipo)
-  // no están claramente asociadas a una pestaña. Devolvemos "" → ninguna pestaña activa.
   return ""
 }
 
