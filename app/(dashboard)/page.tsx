@@ -13,7 +13,7 @@ import ModuloContabilidad from "@/components/modulo-contabilidad"
 import ModuloFinanzas from "@/components/modulo-finanzas"
 import ModuloConfigSucursales from "@/components/modulo-config-sucursales"
 import ModuloUsuarios from "@/components/modulo-usuarios"
-import ModuloTaller from "@/components/modulo-taller"
+// ModuloTaller fue migrado a /servicio-tecnico top-level (PR 7). Import eliminado.
 import { useERP } from "@/contexts/erp-context"
 
 // Mapeo del id del topbar al "modulo" del catalogo de permisos.
@@ -2651,10 +2651,6 @@ function CellHomeERPContent() {
               </div>
             )}
           </main>
-        </div>
-      ) : activeModule === "taller" ? (
-        <div>
-          <ModuloTaller />
         </div>
       ) : (
         <div className="flex items-center justify-center h-96 text-gray-400 text-sm">
