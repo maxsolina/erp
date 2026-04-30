@@ -210,3 +210,100 @@ export function getEstadoRemitoLabel(estado?: string) {
   if (!estado) return "—"
   return ESTADO_REMITO_LABELS[estado] ?? estado
 }
+
+// ─── Facturas ───────────────────────────────────────────────────────────────
+
+export interface FacturaLinea {
+  id?: number
+  factura_id?: number
+  producto_id?: number
+  producto_nombre: string
+  descripcion?: string | null
+  cantidad: number
+  precio_unitario: number
+  descuento?: number
+  subtotal?: number
+  iva?: number
+}
+
+export interface FacturaVencimiento {
+  id?: number
+  factura_id?: number
+  descripcion?: string
+  fecha: string
+  total: number
+}
+
+export interface FacturaMedioPago {
+  id?: number
+  factura_id?: number
+  medio?: string
+  tarjeta_id?: number | null
+  tarjeta?: { id: number; nombre: string; tipo: string } | null
+  cuotas?: number
+  monto_base?: number
+  total_recargo?: number
+  total_acreditar?: number
+}
+
+export interface Factura {
+  id: number
+  numero: string
+  fecha: string
+  cliente_id?: number
+  cliente_nombre?: string
+  cliente_documento?: string
+  nota_venta_id?: number | null
+  nota_venta_numero?: string
+  vendedor_nombre?: string
+  domicilio_facturacion?: string
+  moneda?: string
+  estado: string
+  subtotal?: number
+  descuento?: number
+  impuestos?: number
+  total: number
+  saldo?: number
+  sucursal?: string
+  termino_pago?: string
+  condicion_pago?: string
+  fecha_vencimiento?: string
+  cotizacion?: number
+  tipo_cotizacion?: string
+  facturas_lineas?: FacturaLinea[]
+  facturas_vencimientos?: FacturaVencimiento[]
+  factura_medios_pago?: FacturaMedioPago[]
+  created_at?: string
+}
+
+const ESTADO_FACTURA_COLORS: Record<string, string> = {
+  borrador: "bg-gray-100 text-gray-700",
+  abierta: "bg-blue-100 text-blue-700",
+  confirmada: "bg-indigo-100 text-indigo-700",
+  parcial: "bg-amber-100 text-amber-700",
+  cobrada: "bg-emerald-100 text-emerald-700",
+  conciliada: "bg-green-100 text-green-700",
+  cancelada: "bg-red-100 text-red-700",
+  esperando_confirmacion: "bg-amber-100 text-amber-700",
+  ejecucion_senia: "bg-amber-100 text-amber-700",
+}
+
+const ESTADO_FACTURA_LABELS: Record<string, string> = {
+  borrador: "Borrador",
+  abierta: "Abierta",
+  confirmada: "Confirmada",
+  parcial: "Parcial",
+  cobrada: "Cobrada",
+  conciliada: "Conciliada",
+  cancelada: "Cancelada",
+  esperando_confirmacion: "Esperando confirmación",
+  ejecucion_senia: "Ejecución Seña",
+}
+
+export function getEstadoFacturaColor(estado: string) {
+  return ESTADO_FACTURA_COLORS[estado] ?? "bg-gray-100 text-gray-700"
+}
+
+export function getEstadoFacturaLabel(estado: string) {
+  return ESTADO_FACTURA_LABELS[estado] ?? estado
+}
