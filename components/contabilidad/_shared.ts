@@ -99,3 +99,41 @@ export interface TipoCuentaConfig {
   es_resultado?: boolean
   activo: boolean
 }
+
+// ─── Asientos contables ─────────────────────────────────────────────────────
+
+export interface AsientoLinea {
+  id?: number
+  asiento_id?: number
+  cuenta_id?: number
+  cuenta_codigo?: string
+  cuenta_nombre?: string
+  debe?: number
+  haber?: number
+  descripcion?: string | null
+  orden?: number
+}
+
+export interface Asiento {
+  id: number
+  numero?: string | null
+  fecha: string
+  descripcion?: string | null
+  estado: string
+  es_manual?: boolean
+  diario_id?: number
+  periodo_id?: number
+  sucursal_id?: number | null
+  total_debe?: number
+  total_haber?: number
+  origen?: string | null
+  documento_origen_tipo?: string | null
+  documento_origen_id?: number | null
+  documento_origen_numero?: string | null
+  diario?: { id: number; nombre: string; codigo: string; tipo?: string } | null
+  periodo?: { id: number; nombre: string } | null
+  sucursal?: { id: number; nombre: string } | null
+  lineas?: AsientoLinea[]
+  created_at?: string
+}
+
