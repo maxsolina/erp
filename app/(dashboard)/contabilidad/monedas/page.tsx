@@ -1,3 +1,15 @@
 "use client"
-import ContabilidadRedirectStub from "@/components/contabilidad/redirect-stub"
-export default function Page() { return <ContabilidadRedirectStub view="monedas" /> }
+
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useERP } from "@/contexts/erp-context"
+import MonedasListado from "@/components/contabilidad/monedas-listado"
+
+export default function MonedasPage() {
+  const router = useRouter()
+  const { canSee } = useERP()
+  useEffect(() => {
+    if (!canSee("contabilidad", "monedas")) router.replace("/")
+  }, [canSee, router])
+  return <MonedasListado />
+}
