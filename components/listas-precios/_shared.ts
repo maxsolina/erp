@@ -92,13 +92,7 @@ export interface MonedaItem {
 
 // ─── Helpers ───────────────────────────────────────────────
 
-export function formatCurrency(amount: number, currency: "ARS" | "USD" = "ARS") {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-  }).format(amount)
-}
+export { formatCurrency } from "@/lib/format"
 
 export function formatPrecioForzadoARS(amount: number) {
   const formatted = new Intl.NumberFormat("es-AR", {

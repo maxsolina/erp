@@ -22,10 +22,4 @@ export interface Cliente {
   lista_precios_id?: number | null
 }
 
-export function formatCurrency(amount: number, currency: string = "ARS") {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-  }).format(amount ?? 0)
-}
+export { formatCurrency } from "@/lib/format"

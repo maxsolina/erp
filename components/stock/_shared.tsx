@@ -207,12 +207,7 @@ export function getEstadoLabel(estado: string) {
   return labels[estado] ?? estado
 }
 
-export function formatDate(isoDate: string) {
-  if (!isoDate) return ""
-  const d = new Date(isoDate)
-  if (isNaN(d.getTime())) return isoDate
-  return d.toLocaleDateString("es-AR")
-}
+export { formatDate } from "@/lib/format"
 
 // ─── sessionStorage para Transferencias y Pedidos ──────────────────────────
 // El monolito no persiste estos en backend. Para que el listado y el form
