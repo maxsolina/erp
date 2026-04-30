@@ -55,7 +55,7 @@ No bloqueante; el ERP está completamente funcional con clean URLs. Estos son í
    - ~~`components/modulo-taller.tsx`~~ — borrado (PR 19, post-PR-18 cleanup)
    - ~~`components/modulo-compras.tsx` (v1)~~ — borrado (post-PR-18 cleanup)
    - ~~`app/(dashboard)/page.tsx`: helpers `renderSidebar`/`renderContent` + `render*` específicos de Taller~~ — borrado (~1390 líneas, post-PR-18 cleanup)
-3. **Deduplicar helpers** (`formatCurrency`, `formatDate`) — ~~hay copias en cada `components/<modulo>/_shared.ts`~~ unificadas en `lib/format.ts` (post-PR-18 cleanup). Pendiente todavía: copias in-line en monolitos (`modulo-finanzas`, `modulo-home`, `modulo-informes`, `ventas-module`, `modulo-compras-v2`) y en `proveedores/listado.tsx`/`proveedores/ficha.tsx`.
+3. **Deduplicar helpers** (`formatCurrency`, `formatDate`) — ~~hay copias en cada `components/<modulo>/_shared.ts`~~ unificadas en `lib/format.ts` (post-PR-18 cleanup). Pendiente todavía: copias in-line en monolitos (`modulo-finanzas`, `modulo-home`, `modulo-informes`, `ventas-module`, `modulo-compras-v2`). **No-go por ahora**: `proveedores/listado.tsx` y `proveedores/ficha.tsx` — su `formatCurrency` produce `"ARS $ 1.234,56"` (prefijo manual) en lugar de `"$ 1.234,56"` del `Intl currency`; unificar regresa la UI hasta que decidamos qué formato es el correcto.
 4. **Mover `app/(dashboard)/page.tsx` a un dashboard limpio** — hoy sigue siendo el "shell" del monolito completo. Idealmente queda solo como home dashboard con KPIs.
 5. **Resolver TODOs marcados** (movimientosCtaCte en proveedores, modal vs página para algunos forms, etc.)
 
