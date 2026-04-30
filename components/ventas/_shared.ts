@@ -307,3 +307,55 @@ export function getEstadoFacturaColor(estado: string) {
 export function getEstadoFacturaLabel(estado: string) {
   return ESTADO_FACTURA_LABELS[estado] ?? estado
 }
+
+// ─── Recibos ────────────────────────────────────────────────────────────────
+
+export interface Recibo {
+  id: number | string
+  numero: string
+  fecha: string
+  sucursal?: string
+  cliente_id?: string | number | null
+  cliente_nombre?: string | null
+  caja_id?: string | number | null
+  caja_nombre?: string | null
+  factura_id?: number | null
+  nota_venta_id?: string | number | null
+  nota_venta_numero?: string | null
+  cobrador_id?: string | number | null
+  cobrador_nombre?: string | null
+  concepto?: string | null
+  importe: number
+  importe_no_conciliado?: number
+  importe_no_conciliado_ars?: number
+  moneda?: string
+  tipo_cotizacion?: string | null
+  cotizacion?: number | null
+  estado: string
+  fecha_publicacion?: string | null
+  fecha_cancelacion?: string | null
+  motivo_cancelacion?: string | null
+  observaciones?: string | null
+  asiento_id?: string | null
+  created_at?: string
+}
+
+const ESTADO_RECIBO_COLORS: Record<string, string> = {
+  borrador: "bg-gray-100 text-gray-700",
+  publicado: "bg-green-100 text-green-700",
+  cancelado: "bg-red-100 text-red-700",
+}
+
+const ESTADO_RECIBO_LABELS: Record<string, string> = {
+  borrador: "Borrador",
+  publicado: "Publicado",
+  cancelado: "Cancelado",
+}
+
+export function getEstadoReciboColor(estado: string) {
+  return ESTADO_RECIBO_COLORS[estado] ?? "bg-gray-100 text-gray-700"
+}
+
+export function getEstadoReciboLabel(estado: string) {
+  return ESTADO_RECIBO_LABELS[estado] ?? estado
+}
