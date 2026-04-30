@@ -11,8 +11,8 @@ export const ventasSidebarConfig: SidebarConfig = {
       id: "clientes",
       label: "Clientes",
       items: [
-        { label: "Clientes", href: "/?module=ventas&view=listado", matchView: "listado", permKey: "listado" },
-        { label: "Conciliación de Deuda", href: "/?module=ventas&view=conciliacion", matchView: "conciliacion", permKey: "conciliacion" },
+        { label: "Clientes", href: "/ventas/clientes", permKey: "listado" },
+        { label: "Conciliación de Deuda", href: "/ventas/conciliacion", permKey: "conciliacion" },
         { label: "Ajustes de Cliente", href: "/?module=ventas&view=ajustes", matchView: "ajustes", permKey: "ajustes" },
       ],
     },
