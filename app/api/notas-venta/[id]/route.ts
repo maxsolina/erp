@@ -34,6 +34,105 @@ export async function GET(
   return NextResponse.json({ ...nv, notas_venta_lineas: lineas ?? [] })
 }
 
+// PUT — reemplazar cabecera + líneas de una NV (modo edición)
+// Solo permitido si la NV está en estado 'abierta' (sin cascada disparada).
+export async function PUT(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  const supabase = getSupabase()
+  const id = Number(params.id)
+  if (!id) return NextResponse.json({ error: "ID inválido" }, { status: 400 })
+
+  const body = await req.json()
+  const {
+    cliente_id,
+    vendedor_id,
+    sucursal_id,
+    moneda,
+    estado,
+    subtotal,
+    impuestos,
+    total,
+    notas,
+    lineas = [],
+  } = body
+
+  // Verificar estado actual
+  const { data: actual, error: actualErr } = await supabase
+    .from("notas_venta")
+    .select("estado")
+    .eq("id", id)
+    .single()
+  if (actualErr || !actual) {
+    return NextResponse.json({ error: "NV no encontrada" }, { status: 404 })
+  }
+  if (actual.estado !== "abierta") {
+    return NextResponse.json(
+      { error: `No se puede editar una NV en estado '${actual.estado}'. Solo NVs en estado 'abierta' son editables.` },
+      { status: 422 }
+    )
+  }
+
+  const ESTADOS_VALIDOS = ["abierta", "facturada", "cancelada", "parcial"]
+  const estadoNormalizado = ESTADOS_VALIDOS.includes(estado) ? estado : "abierta"
+
+  // Update cabecera
+  const { error: updErr } = await supabase
+    .from("notas_venta")
+    .update({
+      cliente_id: cliente_id ?? null,
+      vendedor_id: vendedor_id ?? null,
+      sucursal_id: sucursal_id ?? null,
+      moneda: moneda ?? "ARS",
+      estado: estadoNormalizado,
+      subtotal: Number(subtotal ?? 0),
+      impuestos: Number(impuestos ?? 0),
+      total: Number(total ?? 0),
+      notas: notas ?? null,
+    })
+    .eq("id", id)
+  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+
+  // Reemplazar líneas: borrar las existentes e insertar las nuevas
+  const { error: delErr } = await supabase
+    .from("notas_venta_lineas")
+    .delete()
+    .eq("nota_venta_id", id)
+  if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 })
+
+  if (Array.isArray(lineas) && lineas.length > 0) {
+    const lineasInsert = lineas.map((l: any) => {
+      const cant = Number(l.cantidad ?? 1)
+      const precio = Number(l.precio_unitario ?? 0)
+      const desc = Number(l.descuento ?? 0)
+      const sub = Number(l.subtotal ?? (cant * precio))
+      return {
+        nota_venta_id: id,
+        producto_id: l.producto_id ?? null,
+        producto_nombre: String(l.producto_nombre ?? ""),
+        descripcion: l.descripcion ?? null,
+        cantidad: cant,
+        precio_unitario: precio,
+        descuento: desc,
+        subtotal: isNaN(sub) ? 0 : sub,
+        iva: Number(l.iva ?? 0),
+      }
+    })
+    const { error: insErr } = await supabase
+      .from("notas_venta_lineas")
+      .insert(lineasInsert)
+    if (insErr) {
+      return NextResponse.json(
+        { error: `Cabecera actualizada pero error en líneas: ${insErr.message}` },
+        { status: 207 }
+      )
+    }
+  }
+
+  return NextResponse.json({ ok: true, id })
+}
+
 // PATCH — ejecutar acciones sobre una NV
 // Acciones:
 //   - reservar_stock: marca N unidades disponibles de cada producto como 'reservado'

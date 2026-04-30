@@ -62,10 +62,10 @@ export default function NvFicha({ nvId }: { nvId: number }) {
         </span>
         <div className="ml-auto flex items-center gap-3">
           <Link
-            href={`/?module=ventas&view=notas_venta&id=${nv.id}`}
+            href={`/ventas/nv/${nv.id}/editar`}
             className="text-sm text-indigo-700 hover:underline"
           >
-            Editar en el módulo Ventas →
+            Editar →
           </Link>
         </div>
       </div>
