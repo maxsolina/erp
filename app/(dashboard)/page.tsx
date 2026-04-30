@@ -2567,19 +2567,33 @@ function CellHomeERPContent() {
               const v = TOPBAR_TO_VISTA[mod]
               return v === null || canSee(v)
             })
-            .map(mod => (
-              <button
-                key={mod}
-                onClick={() => { setActiveModule(mod); setActiveView("dashboard") }}
-                className={`px-3 py-2 text-sm rounded transition-colors whitespace-nowrap ${
-                  activeModule === mod
-                    ? "bg-white/20 text-white"
-                    : "text-white/80 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                {mod.charAt(0).toUpperCase() + mod.slice(1)}
-              </button>
-            ))}
+            .map(mod => {
+              // taller migró a /servicio-tecnico top-level (PR 7)
+              if (mod === "taller") {
+                return (
+                  <Link
+                    key={mod}
+                    href="/servicio-tecnico"
+                    className="px-3 py-2 text-sm rounded transition-colors whitespace-nowrap text-white/80 hover:bg-white/10 hover:text-white"
+                  >
+                    Taller
+                  </Link>
+                )
+              }
+              return (
+                <button
+                  key={mod}
+                  onClick={() => { setActiveModule(mod); setActiveView("dashboard") }}
+                  className={`px-3 py-2 text-sm rounded transition-colors whitespace-nowrap ${
+                    activeModule === mod
+                      ? "bg-white/20 text-white"
+                      : "text-white/80 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  {mod.charAt(0).toUpperCase() + mod.slice(1)}
+                </button>
+              )
+            })}
         </div>
         {/* Mobile hamburger */}
         <button
@@ -2603,19 +2617,34 @@ function CellHomeERPContent() {
                 const v = TOPBAR_TO_VISTA[mod]
                 return v === null || canSee(v)
               })
-              .map(mod => (
-                <button
-                  key={mod}
-                  onClick={() => { setActiveModule(mod); setActiveView("dashboard"); setMobileMenuOpen(false) }}
-                  className={`w-full text-left px-5 py-3 text-sm border-b border-white/10 transition-colors ${
-                    activeModule === mod
-                      ? "bg-white/20 text-white font-medium"
-                      : "text-white/80 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  {mod.charAt(0).toUpperCase() + mod.slice(1)}
-                </button>
-              ))}
+              .map(mod => {
+                // taller migró a /servicio-tecnico top-level (PR 7)
+                if (mod === "taller") {
+                  return (
+                    <Link
+                      key={mod}
+                      href="/servicio-tecnico"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="block w-full text-left px-5 py-3 text-sm border-b border-white/10 transition-colors text-white/80 hover:bg-white/10 hover:text-white"
+                    >
+                      Taller
+                    </Link>
+                  )
+                }
+                return (
+                  <button
+                    key={mod}
+                    onClick={() => { setActiveModule(mod); setActiveView("dashboard"); setMobileMenuOpen(false) }}
+                    className={`w-full text-left px-5 py-3 text-sm border-b border-white/10 transition-colors ${
+                      activeModule === mod
+                        ? "bg-white/20 text-white font-medium"
+                        : "text-white/80 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    {mod.charAt(0).toUpperCase() + mod.slice(1)}
+                  </button>
+                )
+              })}
           </div>
         </>
       )}
