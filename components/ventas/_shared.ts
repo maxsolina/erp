@@ -415,3 +415,74 @@ export function getEstadoAjusteColor(estado: string) {
 export function getEstadoAjusteLabel(estado: string) {
   return ESTADO_AJUSTE_LABELS[estado] ?? estado
 }
+
+// ─── Seña de Equipo ─────────────────────────────────────────────────────────
+
+export interface SeniaEquipo {
+  id: number
+  numero: string
+  fecha: string
+  fecha_limite: string
+  estado: string
+  vendedor_id?: number | null
+  sucursal_id?: number | null
+  cliente_id?: number
+  cliente_nombre?: string
+  stock_item_id?: number | null
+  equipo_nombre?: string
+  equipo_imei?: string | null
+  equipo_color?: string | null
+  equipo_bateria?: number | null
+  precio_venta?: number
+  descuento?: number
+  precio_final: number
+  moneda?: string
+  cotizacion?: number
+  monto_senia?: number
+  medio_pago_senia?: string | null
+  estado_senia?: string
+  recibo_senia_numero?: string | null
+  nota_venta_numero?: string | null
+  nota_venta_id?: number | null
+  oe_numero?: string | null
+  oe_id?: number | null
+  remito_numero?: string | null
+  remito_id?: number | null
+  factura_numero?: string | null
+  factura_id?: number | null
+  medios_pago_cierre?: { medio: string; monto: number }[]
+  toma_equipo_id?: number | null
+  created_at?: string
+}
+
+const ESTADO_SENIA_COLORS: Record<string, string> = {
+  en_curso: "bg-blue-100 text-blue-700",
+  confirmada: "bg-green-100 text-green-700",
+  cancelada: "bg-red-100 text-red-700",
+}
+
+const ESTADO_SENIA_LABELS: Record<string, string> = {
+  en_curso: "En curso",
+  confirmada: "Confirmada",
+  cancelada: "Cancelada",
+}
+
+export function getEstadoSeniaColor(estado: string) {
+  return ESTADO_SENIA_COLORS[estado] ?? "bg-gray-100 text-gray-700"
+}
+
+export function getEstadoSeniaLabel(estado: string) {
+  return ESTADO_SENIA_LABELS[estado] ?? estado
+}
+
+// Días restantes hasta una fecha límite (puede ser negativo si ya venció)
+export function diasRestantes(fechaLimite?: string): number | null {
+  if (!fechaLimite) return null
+  const limite = new Date(fechaLimite)
+  if (isNaN(limite.getTime())) return null
+  const hoy = new Date()
+  hoy.setHours(0, 0, 0, 0)
+  limite.setHours(0, 0, 0, 0)
+  const diff = limite.getTime() - hoy.getTime()
+  return Math.round(diff / (1000 * 60 * 60 * 24))
+}
