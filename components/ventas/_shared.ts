@@ -486,3 +486,24 @@ export function diasRestantes(fechaLimite?: string): number | null {
   const diff = limite.getTime() - hoy.getTime()
   return Math.round(diff / (1000 * 60 * 60 * 24))
 }
+
+// ─── Configuración: Categorías de Cliente ───────────────────────────────────
+
+export interface CategoriaCliente {
+  id: number
+  nombre: string
+  descripcion?: string | null
+  lista_precios_defecto_id?: number | null
+  cuenta_cobrar_id?: string | null
+  cuenta_cobrar_codigo?: string | null
+  cuenta_cobrar_nombre?: string | null
+  activa: boolean
+}
+
+// ─── Configuración: Categorías de Notas de Crédito ──────────────────────────
+
+export interface NcCategoria {
+  id: number
+  nombre: string
+  activa: boolean
+}

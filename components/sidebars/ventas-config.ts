@@ -1,10 +1,9 @@
 import { type SidebarConfig } from "./_shared"
 
 // Sidebar de Ventas — todos los items apuntan a rutas top-level migradas.
-// Las rutas con form complejo (Categorías de Cliente, Criterios Cotizador, NC-Categorías)
-// usan stubs que redirigen al monolito cuando se cargan, manteniendo URL limpia como entrada.
 // Clientes y Conciliación tienen extracción real (PR 12).
-// NV, OE, Remitos, Facturas, Recibos, Ajustes, NC, ND y Seña: listado + ficha read-only extraídos; creación/edición sigue en el monolito.
+// NV, OE, Remitos, Facturas, Recibos, Ajustes, NC, ND, Seña, Categorías de Cliente y NC-Categorías: listado read-only extraído; la creación/edición sigue en el monolito.
+// Criterios para Cotizador: componente standalone (mismo patrón que /informes).
 // Listas de Precios y Toma de Equipo tienen extracción completa (PRs 5 y 6).
 
 export const ventasSidebarConfig: SidebarConfig = {
