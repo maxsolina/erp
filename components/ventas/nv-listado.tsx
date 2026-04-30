@@ -65,9 +65,8 @@ export default function NvListado() {
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-amber-900">Notas de Venta</h1>
         <Link
-          href="/?module=ventas&view=notas_venta"
+          href="/ventas/nv/nueva"
           className="bg-indigo-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"
-          title="La creación de NV se hace en el módulo Ventas"
         >
           <Plus className="w-4 h-4" />
           Nueva NV
