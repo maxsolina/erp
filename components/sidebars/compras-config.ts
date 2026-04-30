@@ -21,8 +21,8 @@ export const comprasSidebarConfig: SidebarConfig = {
       id: "compras",
       label: "Compras",
       items: [
-        { label: "Órdenes de Compra", href: "/?module=compras&view=ordenes_compra", matchView: "ordenes_compra", permKey: "ordenes_compra" },
-        { label: "Recepciones", href: "/?module=compras&view=recepciones", matchView: "recepciones", permKey: "recepciones" },
+        { label: "Órdenes de Compra", href: "/compras/oc", permKey: "ordenes_compra" },
+        { label: "Recepciones", href: "/compras/recepciones", permKey: "recepciones" },
       ],
     },
     {
