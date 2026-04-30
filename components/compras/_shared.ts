@@ -103,3 +103,38 @@ export function getEstadoRecepcionLabel(estado: string) {
   }
   return labels[estado] ?? estado
 }
+
+export interface FacturaCompra {
+  id: number
+  numero: string
+  tipo?: "A" | "B" | "C"
+  fecha: string
+  fecha_vencimiento?: string
+  proveedor_id: number
+  proveedor_nombre: string
+  estado: string
+  total: number
+  saldo?: number
+  moneda?: string
+}
+
+export function getEstadoFacturaColor(estado: string) {
+  if (estado === "pagada" || estado === "publicado" || estado === "publicada") return "bg-green-100 text-green-700"
+  if (estado === "vencida" || estado === "cancelado" || estado === "cancelada") return "bg-red-100 text-red-700"
+  if (estado === "pendiente" || estado === "borrador") return "bg-amber-100 text-amber-700"
+  return "bg-gray-100 text-gray-600"
+}
+
+export function getEstadoFacturaLabel(estado: string) {
+  const labels: Record<string, string> = {
+    pendiente: "Pendiente",
+    pagada: "Pagada",
+    vencida: "Vencida",
+    borrador: "Borrador",
+    publicado: "Publicado",
+    publicada: "Publicada",
+    cancelado: "Cancelado",
+    cancelada: "Cancelada",
+  }
+  return labels[estado] ?? estado
+}
