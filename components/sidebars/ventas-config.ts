@@ -1,10 +1,10 @@
 import { type SidebarConfig } from "./_shared"
 
 // Sidebar de Ventas — todos los items apuntan a rutas top-level migradas.
-// Las rutas con form complejo (Remitos, Facturas, Recibos, NC, ND, Seña, Ajustes, Categorías)
+// Las rutas con form complejo (Facturas, Recibos, NC, ND, Seña, Ajustes, Categorías)
 // usan stubs que redirigen al monolito cuando se cargan, manteniendo URL limpia como entrada.
 // Clientes y Conciliación tienen extracción real (PR 12).
-// Notas de Venta y Órdenes de Entrega: listado + ficha read-only extraídos; creación/edición sigue en el monolito.
+// Notas de Venta, Órdenes de Entrega y Remitos: listado + ficha read-only extraídos; creación/edición sigue en el monolito.
 // Listas de Precios y Toma de Equipo tienen extracción completa (PRs 5 y 6).
 
 export const ventasSidebarConfig: SidebarConfig = {

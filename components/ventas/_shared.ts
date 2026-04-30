@@ -152,3 +152,61 @@ export function getEstadoOEColor(estado: string) {
 export function getEstadoOELabel(estado: string) {
   return ESTADO_OE_LABELS[estado] ?? estado
 }
+
+// ─── Remitos ────────────────────────────────────────────────────────────────
+
+export interface RemitoLinea {
+  producto_id?: number
+  producto_nombre: string
+  cantidad: number
+  requiere_serie?: boolean
+  series_seleccionadas?: { id: number; serie: string; detalles?: string }[]
+}
+
+export interface Remito {
+  id: number
+  numero: string
+  fecha?: string
+  cliente_id?: number
+  cliente_nombre?: string
+  orden_entrega_id?: number
+  orden_entrega_numero?: string
+  nota_venta_id?: number
+  nota_venta_numero?: string
+  domicilio_envio?: string
+  sucursal?: string
+  deposito?: string
+  ubicacion?: string
+  estado?: string
+  control_factura?: "facturado" | "pendiente"
+  factura_numero?: string | null
+  peso_kg?: number
+  peso_neto_kg?: number
+  bultos?: number
+  valor_declarado?: number
+  asiento_id?: string | null
+  lineas?: RemitoLinea[]
+  created_at?: string
+}
+
+const ESTADO_REMITO_COLORS: Record<string, string> = {
+  en_ejecucion: "bg-yellow-100 text-yellow-700",
+  aprobado: "bg-green-100 text-green-700",
+  cancelado: "bg-red-100 text-red-700",
+}
+
+const ESTADO_REMITO_LABELS: Record<string, string> = {
+  en_ejecucion: "En Ejecución",
+  aprobado: "Aprobado",
+  cancelado: "Cancelado",
+}
+
+export function getEstadoRemitoColor(estado?: string) {
+  if (!estado) return "bg-gray-100 text-gray-700"
+  return ESTADO_REMITO_COLORS[estado] ?? "bg-gray-100 text-gray-700"
+}
+
+export function getEstadoRemitoLabel(estado?: string) {
+  if (!estado) return "—"
+  return ESTADO_REMITO_LABELS[estado] ?? estado
+}
