@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useMemo } from "react"
+import { useSearchParams } from "next/navigation"
 import { useERP } from "@/contexts/erp-context"
 import { createClient } from "@/lib/supabase/client"
 import {
@@ -9424,7 +9425,14 @@ export type { RecargoTarjeta as RecargoTarjetaType }
 
 export default function ModuloFinanzas() {
   const { canSee } = useERP()
-  const [activeItem, setActiveItem] = useState<string>("extractos_caja")
+  // Sincroniza la sub-vista con ?view= en la URL (lo setea el sidebar global del layout).
+  const searchParams = useSearchParams()
+  const initialItem = searchParams?.get("view") || "extractos_caja"
+  const [activeItem, setActiveItem] = useState<string>(initialItem)
+  useEffect(() => {
+    const v = searchParams?.get("view")
+    if (v) setActiveItem(v)
+  }, [searchParams])
   const [tarjetas, setTarjetas] = useState<Tarjeta[]>([])
   const [grupos, setGrupos] = useState<GrupoTarjeta[]>([])
   const [recargos, setRecargos] = useState<RecargoTarjeta[]>([])
