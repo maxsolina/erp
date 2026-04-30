@@ -51,8 +51,9 @@ No bloqueante; el ERP está completamente funcional con clean URLs. Estos son í
 2. **Borrar dead code** en los monolitos:
    - `components/ventas-module.tsx`: render functions de listas-precios, toma-equipo (ya migradas), case del switch quitado
    - `components/modulo-compras-v2.tsx`: render functions de OC, recepciones, etc. (parcial)
-   - `components/modulo-stock.tsx`: archivo entero queda dead code (PR 9 cerró el módulo)
-   - `components/modulo-taller.tsx`: archivo entero dead code (PR 7 cerró el módulo)
+   - ~~`components/modulo-stock.tsx`~~ — borrado (PR 19, post-PR-18 cleanup)
+   - ~~`components/modulo-taller.tsx`~~ — borrado (PR 19, post-PR-18 cleanup)
+   - `app/(dashboard)/page.tsx`: helpers `renderSidebar`/`renderContent` + `renderDashboard`/`renderOrdenes`/`renderTecnicos`/etc. (~620 líneas, sólo del módulo Taller, nunca llamados desde JSX desde PR 7)
 3. **Deduplicar helpers** (`formatCurrency`, `formatDate`) — hay copias en cada `components/<modulo>/_shared.ts`. Mover a `lib/format.ts`.
 4. **Mover `app/(dashboard)/page.tsx` a un dashboard limpio** — hoy sigue siendo el "shell" del monolito completo. Idealmente queda solo como home dashboard con KPIs.
 5. **Resolver TODOs marcados** (movimientosCtaCte en proveedores, modal vs página para algunos forms, etc.)
