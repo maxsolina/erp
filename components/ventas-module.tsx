@@ -2754,6 +2754,18 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
                       </Link>
                     )
                   }
+                  if (item.id === "toma_equipo") {
+                    return (
+                      <Link
+                        key={item.id}
+                        href="/toma-equipo"
+                        className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center gap-2 ${section.id === "config_notas_credito" ? "text-xs" : "text-sm"} text-gray-600 hover:bg-gray-100`}
+                      >
+                        <item.icon className={section.id === "config_notas_credito" ? "w-3.5 h-3.5" : "w-4 h-4"} />
+                        {item.label}
+                      </Link>
+                    )
+                  }
                   return (
                   <button
                     key={item.id}
@@ -14763,8 +14775,7 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
         return renderAjustes()
       case "notas_venta":
         return renderNotasVenta()
-      case "toma_equipo":
-        return renderTomaEquipo()
+      // toma_equipo migró a /toma-equipo top-level. Sidebar tiene Link.
       case "senia_equipo":
         return renderSeniaEquipo()
       case "ordenes_entrega":
