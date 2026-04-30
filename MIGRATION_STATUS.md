@@ -122,6 +122,70 @@ Los 25 stubs de Finanzas y los 19 de Contabilidad siguen siendo los blocs grande
 
 **Net en líneas: ~−12 000 dead code borrado, +5 000 código real de extracciones.**
 
+## Plan de migración de formularios (próximas sesiones)
+
+**Decisión del usuario (sesión post-PR-67):** migrar los forms de creación/edición a rutas propias top-level. La app está en construcción, no hay apuro, prioridad sentar bases bien.
+
+**Estado actual:** los **listados + fichas read-only** están extraídos. Los **formularios de creación/edición** siguen en el monolito (`ventas-module.tsx`, `modulo-compras-v2.tsx`, etc.). Cuando alguien clickea "Editar en módulo Ventas →" desde una ficha, la URL rebota a `/?module=ventas&view=X` y el monolito monta el form ahí.
+
+### Patrón A — MVP por entidad, sin tocar el monolito
+
+Para cada entidad partida, crear:
+
+1. `components/<modulo>/<entidad>-form.tsx` — componente standalone que:
+   - Carga sus propios datos de las APIs (clientes, productos, listas, depósitos, etc).
+   - Si recibe `initialId`, fetchea la entidad y la carga como modo "editar".
+   - Renderiza el form con la misma UI/validaciones que el monolito.
+   - Al guardar: llama a las mismas APIs (`POST /api/notas-venta`, etc.).
+   - Al éxito: `router.push("/<modulo>/<entidad>/[id]")` (la ficha read-only ya extraída).
+2. `app/(dashboard)/<modulo>/<entidad>/nueva/page.tsx` — monta `<EntidadForm />` (reemplaza el redirect-stub actual).
+3. `app/(dashboard)/<modulo>/<entidad>/[id]/editar/page.tsx` — monta `<EntidadForm initialId={id} />` (nueva ruta).
+4. Actualizar el botón "Nueva X" del listado: cambiar `href="/?module=X&view=Y"` por `href="/<modulo>/<entidad>/nueva"`.
+5. Actualizar el link "Editar en módulo X" de la ficha: cambiar a `/<modulo>/<entidad>/[id]/editar`.
+
+**Importante (regla del Patrón A):** **NO se toca el monolito**. El form en `ventas-module.tsx` etc. queda intacto. Si el form nuevo tuviera un bug grave, el usuario puede volver al monolito (manualmente con `?module=ventas&view=notas_venta` o agregando temporalmente el link viejo). Cero riesgo de regresión en lo crítico.
+
+**Cuando bug zero confirmado:** en una sesión posterior, sacar `renderXxx()` y `handleXxxFinal()` del monolito (dead code real). Eso es trivial y reversible.
+
+### Decisión sobre el alcance del form (cascada vs MVP)
+
+Algunos forms (especialmente NV) hacen **cascada de múltiples llamadas HTTP** al guardar. Por ejemplo, "Crear NV venta inmediata" hoy hace:
+1. `POST /api/notas-venta`
+2. `POST /api/ordenes-entrega`
+3. `POST /api/remitos-venta`
+4. `POST /api/remitos/{id}/confirmar` (descuenta stock + asiento)
+5. `POST /api/facturas` (asiento contable)
+
+**Decisión:** la PR de cada form debe replicar la cascada **completa** del monolito. No hacer MVP-solo-borrador. El usuario validará vía UI después.
+
+Si la cascada se vuelve frágil para una entidad puntual (ej. order matters, falla parcial deja inconsistencia), parar antes del merge y consultar.
+
+### Orden sugerido de migración
+
+1. **NV** (más usada; tiene cascada NV → OE → Remito → Confirmar → Factura).
+2. **Factura** (cascada propia: factura + asiento contable + medios de pago).
+3. **Recibo** (cascada: recibo + asiento + actualización de saldo en facturas vinculadas).
+4. **OE** (más simple, sin asiento directo).
+5. **Remito** (similar a OE, dispara confirmar/asiento).
+6. **NC / ND / Ajustes** (3 forms similares — comparten tabla `ajustes_clientes`; pueden compartir componente como ya hacen el listado y la ficha).
+7. **Seña** (último, tiene varias acciones: registrar seña, confirmar cierre, cancelar).
+
+Una entidad por PR. Build verde antes de mergear. Cada PR borra el redirect-stub correspondiente y deja la entidad fuera de la lista de "Split entities" en `CLAUDE.md`.
+
+### Después de Ventas
+
+Cuando los 9 forms de Ventas estén migrados:
+- Compras: Categorías Proveedores (1 entidad). Las otras 3 (Legajos/Despachos/Conciliación) quedan como redirects hasta que tengan data real.
+- Finanzas: Cajas (1 form simple). El resto, cuando se migren los listados, irá con el form en la misma PR.
+- Contabilidad: Plan de Cuentas + Asientos Manuales. Las configs simples (años/períodos/etc) son CRUD chico y van fácil. Asientos Manuales sí necesita pensarse (debe = haber, validaciones).
+
+### Regla a futuro (post-migración)
+
+Cuando todos los forms estén en rutas propias, agregar a `CLAUDE.md`:
+- *"Cualquier feature nueva que requiera un formulario va a su ruta top-level. No se mete código nuevo en `ventas-module.tsx`, `modulo-compras-v2.tsx`, `modulo-finanzas.tsx`, `modulo-contabilidad.tsx`. Esos archivos están en proceso de retirarse — no crecen más."*
+
+Y entonces empieza el delete-fest del monolito.
+
 ## Convenciones (siguen aplicando)
 
 - Cada page es client component (`"use client"`) con permission guard `useEffect(() => { if (!canSee("modulo", "subview")) router.replace("/") }, ...)`
