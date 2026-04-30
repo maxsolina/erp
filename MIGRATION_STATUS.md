@@ -1,6 +1,6 @@
 # Estado de la migración a Routing limpio (App Router)
 
-Última actualización: 2026-04-30 — **migración completa (PRs 0–18)**
+Última actualización: 2026-04-30 — **migración completa (PRs 0–18) + cleanup masivo post-PR-18 (PRs #49–65)**
 
 ## Resumen final
 
@@ -74,13 +74,53 @@ Los 25 stubs de Finanzas y los 19 de Contabilidad siguen siendo los blocs grande
 
 **Ya extraídos (post-PR-18 cleanup):**
 - Finanzas: ~~Cajas~~ — listado real desde `/api/cajas`.
-- Contabilidad: ~~Plan de Cuentas~~ — listado real con joins a `tipo_cuenta` y `cuenta_padre` desde `/api/contabilidad/plan-cuentas`.
+- Contabilidad — **9 de 19 rutas extraídas** con APIs ya existentes:
+  - ~~Plan de Cuentas~~ (con joins a tipo_cuenta + cuenta_padre)
+  - ~~Años Fiscales~~ (con cantidad de períodos)
+  - ~~Períodos~~ (con join a año fiscal)
+  - ~~Diarios~~ (con joins a sucursal + cuentas predeterminadas)
+  - ~~Monedas~~ (con destacado para moneda base)
+  - ~~Tipos de Cotización~~
+  - ~~Tipos de Cuenta~~
+  - ~~Asientos Manuales~~ (filtra es_manual=true)
+  - ~~Asientos Automáticos~~ (filtra es_manual=false, muestra origen)
+  - Para minimizar duplicación, las 6 entidades simples comparten un `<ContabilidadConfigList>` parametrizable (en `components/contabilidad/config-list-shell.tsx`); las 2 vistas de asientos comparten `<AsientosListadoBase>`.
 
-**APIs disponibles para extraer en próxima pasada (no requieren agregar endpoint):**
-- Contabilidad: `asientos` (tanto manuales como automáticos), `anos-fiscales`, `periodos`, `diarios`, `monedas`, `tipos-cuenta`, `tipos-cotizacion`, `cotizaciones`, `cuentas`.
-- Finanzas: el resto (24 stubs) lee Supabase directo desde el cliente — requiere agregar API antes de extraer (mismo patrón que `/api/recibos` y `/api/nc-categorias` en post-PR-18).
+**Pendientes en Contabilidad (10 rutas restantes):**
+- **Reportes** (requieren más diseño que un listado simple — agregaciones, filtros por período, etc.): Balance General, Balance de Sumas y Saldos, Estado de Resultados, Libro Mayor, Libro IVA Digital, Informes Contables, Diagrama de Impuestos.
+- **Sin API o features placeholder**: Amortizaciones, Control Presupuestario, Devengamientos Diferidos.
+
+**Pendientes en Finanzas (24 rutas):**
+- 24 stubs leen Supabase directo desde el cliente — requieren agregar API antes de extraer (mismo patrón que `/api/recibos` y `/api/nc-categorias` que se agregaron post-PR-18).
+- Algunos pueden ser features placeholder sin data real, igual que los Compras stubs no extraídos.
 
 **Compras stubs sin data source real:** Legajos de Importación, Despachos Simples y Conciliación de Deuda quedan como redirect-stubs porque en el monolito sólo tienen `useState([])` sin `setX()` — son features placeholder que aún no están conectadas a Supabase. Extraerlas sin data sería deshonesto.
+
+## Resumen del cleanup masivo post-PR-18 (sesión #49–65)
+
+17 PRs adicionales después del cierre formal de la migración:
+
+| PR | Descripción |
+|----|-------------|
+| #49 | Borrar dead code de `modulo-stock.tsx` + `modulo-taller.tsx` (-6334 lns) |
+| #50 | Deduplicar `formatCurrency`/`formatDate` → `lib/format.ts` |
+| #51 | Borrar `modulo-compras.tsx` (v1, -5624 lns) |
+| #52 | Borrar render helpers muertos del módulo Taller en `page.tsx` (-1390 lns) |
+| #53 | Ventas — extracción real de Notas de Venta |
+| #54 | Ventas — extracción real de Órdenes de Entrega |
+| #55 | Ventas — extracción real de Remitos |
+| #56 | Ventas — extracción real de Facturas |
+| #57 | Ventas — extracción real de Recibos (incluye nuevo `/api/recibos`) |
+| #58 | Ventas — extracción real de Ajustes/NC/ND (3 vistas misma data) |
+| #59 | Ventas — extracción real de Seña de Equipo |
+| #60 | Ventas — configs (Categorías Cliente / NC-Cat / Criterios Cotizador) |
+| #61 | Compras — Categorías de Proveedores + actualizar MIGRATION_STATUS |
+| #62 | Home — dashboard limpio con KPIs reales (reemplaza modulo-home, -864 lns) |
+| #63 | Cajas + Plan de Cuentas (primer Finanzas + primer Contabilidad) |
+| #64 | Contabilidad — 6 configs (años/períodos/diarios/monedas/tipos cot/tipos cta) |
+| #65 | Contabilidad — Asientos Manuales + Automáticos |
+
+**Net en líneas: ~−12 000 dead code borrado, +5 000 código real de extracciones.**
 
 ## Convenciones (siguen aplicando)
 
