@@ -122,3 +122,23 @@ These come from `.github/copilot-instructions.md` and must be followed consisten
 ## Business circuits
 
 `app/circuitos/` documents the document-transition flows (e.g., confirming a sale order → reserves stock + generates GL entry). When adding a new document type, register its circuit there.
+
+## Split entities — sync rule
+
+Some entities have their **listado + ficha read-only extracted** (`components/<modulo>/<entidad>-listado.tsx` and `<entidad>-ficha.tsx`) but their **creation/edit form still lives in the monolith** (`ventas-module.tsx`, `modulo-compras-v2.tsx`, `modulo-finanzas.tsx`, `modulo-contabilidad.tsx`).
+
+Currently split (read at: extracted, write at: monolith):
+
+- **Ventas:** NV, OE, Remitos, Facturas, Recibos, Ajustes, NC, ND, Seña, Categorías Cliente, NC-Categorías, Criterios Cotizador
+- **Compras:** Categorías de Proveedores
+- **Finanzas:** Cajas
+- **Contabilidad:** Plan de Cuentas, Asientos Manuales, Asientos Automáticos, Años Fiscales, Períodos, Diarios, Monedas, Tipos de Cotización, Tipos de Cuenta
+
+**Rule:** when adding/renaming a field on a split entity, update **both** places:
+
+1. The ficha + type at `components/<modulo>/<entidad>-ficha.tsx` and `components/<modulo>/_shared.ts`.
+2. The form inside the relevant monolith file (search for the entity name to locate its `renderXxx()` and POST handler).
+
+If only one is updated, the field will appear correct in one path and stale/missing in the other. The user is non-technical and **will not catch this in code review** — verify with `grep` before considering the change done.
+
+When a form gets migrated to its own route (e.g., `/ventas/nv/nueva` and `/ventas/nv/[id]/editar`), remove that entity from the list above.
