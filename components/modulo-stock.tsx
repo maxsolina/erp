@@ -1158,24 +1158,24 @@ export default function ModuloStock() {
           {menuExpandido.operaciones && (
             <div className="ml-2">
               {itemPermitidoStock("transferencias") && (
-              <button
-                onClick={() => { setActiveView("transferencias"); setSelectedTransferencia(null); setCreandoTransferencia(false) }}
-                className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeView === "transferencias" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
+              <Link
+                href="/stock/transferencias"
+                className="w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 text-gray-600 hover:bg-gray-100"
               >
                 <ArrowLeftRight className="w-4 h-4" />
                 Transferencias Internas
                 {transferenciasPendientes > 0 && <span className="ml-auto text-xs bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded">{transferenciasPendientes}</span>}
-              </button>
+              </Link>
               )}
               {itemPermitidoStock("pedidos_abastecimiento") && (
-              <button
-                onClick={() => { setActiveView("pedidos_abastecimiento"); setSelectedPedido(null); setCreandoPedido(false) }}
-                className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 ${activeView === "pedidos_abastecimiento" ? "bg-amber-50 text-amber-700 font-medium" : "text-gray-600 hover:bg-gray-100"}`}
+              <Link
+                href="/stock/pedidos-abastecimiento"
+                className="w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 text-gray-600 hover:bg-gray-100"
               >
                 <Truck className="w-4 h-4" />
                 Pedidos de Abastecimiento
                 {pedidosPendientes > 0 && <span className="ml-auto text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">{pedidosPendientes}</span>}
-              </button>
+              </Link>
               )}
             </div>
           )}
@@ -4838,10 +4838,7 @@ export default function ModuloStock() {
   // Render principal del contenido
   const renderContent = () => {
     switch (activeView) {
-      case "transferencias":
-        return renderTransferencias()
-      case "pedidos_abastecimiento":
-        return renderPedidosAbastecimiento()
+      // transferencias y pedidos_abastecimiento migraron a /stock top-level (PR 8). Sidebar tiene Links.
       case "lotes_series":
         return renderLotesSeries()
       case "lotes_stock":
@@ -4871,8 +4868,12 @@ export default function ModuloStock() {
       case "stock_reservado":
         return renderStockReservado()
       default:
-        // Productos ahora vive en /productos (top-level). El sidebar tiene un Link.
-        return renderTransferencias()
+        // Productos vive en /productos, transferencias y pedidos en /stock — todos top-level. Sidebar tiene Links.
+        return (
+          <div className="p-12 text-center text-gray-500 text-sm">
+            Seleccioná un ítem del menú lateral.
+          </div>
+        )
     }
   }
 
