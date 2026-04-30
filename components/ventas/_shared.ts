@@ -359,3 +359,59 @@ export function getEstadoReciboColor(estado: string) {
 export function getEstadoReciboLabel(estado: string) {
   return ESTADO_RECIBO_LABELS[estado] ?? estado
 }
+
+// ─── Ajustes de Cliente / Notas de Crédito / Notas de Débito ────────────────
+// Las 3 viven en la misma tabla `ajustes_clientes`. La distinción es por
+// prefijo en `numero`:
+//   - NC-*  → Nota de Crédito
+//   - ND-*  → Nota de Débito
+//   - resto → Ajuste de Cliente "puro"
+
+export interface AjusteClienteLinea {
+  descripcion?: string
+  fecha_vencimiento?: string
+  importe: number
+}
+
+export interface AjusteCliente {
+  id: number
+  numero: string
+  fecha: string
+  cliente_id?: number
+  cliente_nombre?: string
+  estado: string
+  concepto?: string | null
+  moneda?: string
+  nota_venta_numero?: string | null
+  sucursal?: string
+  sucursal_id?: number | null
+  categoria?: string | null
+  toma_equipo_id?: number | null
+  es_automatica?: boolean | null
+  lineas?: AjusteClienteLinea[]
+  total: number
+  saldo_disponible?: number
+  created_at?: string
+}
+
+const ESTADO_AJUSTE_COLORS: Record<string, string> = {
+  borrador: "bg-gray-100 text-gray-700",
+  activo: "bg-green-100 text-green-700",
+  publicado: "bg-green-100 text-green-700",
+  cancelado: "bg-red-100 text-red-700",
+}
+
+const ESTADO_AJUSTE_LABELS: Record<string, string> = {
+  borrador: "Borrador",
+  activo: "Activo",
+  publicado: "Publicado",
+  cancelado: "Cancelado",
+}
+
+export function getEstadoAjusteColor(estado: string) {
+  return ESTADO_AJUSTE_COLORS[estado] ?? "bg-gray-100 text-gray-700"
+}
+
+export function getEstadoAjusteLabel(estado: string) {
+  return ESTADO_AJUSTE_LABELS[estado] ?? estado
+}
