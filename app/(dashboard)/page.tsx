@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { Menu } from "lucide-react"
-import ModuloHome from "@/components/modulo-home"
+import DashboardHome from "@/components/dashboard-home"
 import ModuloVentas, { type ClienteVenta } from "@/components/ventas-module"
 import ModuloCompras from "@/components/modulo-compras-v2"
 // ModuloStock fue migrado a /stock top-level (PR 9). Import eliminado.
@@ -1173,9 +1173,7 @@ function CellHomeERPContent() {
     <div className="bg-gray-100 flex-1 overflow-auto">
 {/* Layout */}
   {activeModule === "home" ? (
-  <div>
-  <ModuloHome />
-  </div>
+  <DashboardHome />
   ) : activeModule === "ventas" ? (
   <div>
         <ModuloVentas
