@@ -1,6 +1,6 @@
 # Estado de la migración a Routing limpio (App Router)
 
-Última actualización: 2026-04-29 — PR 7 completado
+Última actualización: 2026-04-29 — PR 8 completado
 
 ## Decisiones aprobadas (no volver a preguntar)
 
@@ -24,9 +24,11 @@
 - ✅ **PR 6 — Toma de Equipo**: extracción a `components/toma-equipo/` (4 archivos: `_shared.ts`, `listado.tsx`, `ficha.tsx`, `formulario.tsx`). Páginas en `/toma-equipo`, `/toma-equipo/nueva`, `/toma-equipo/[id]` (top-level, no anidado en Ventas). Sidebar de Ventas → Link. Case sacado del `renderContent` switch. Modal de "confirmar recepción" + popups de NC y Recepción viajan dentro de `ficha.tsx`. Estados `tomaEquipo*`, `selectedToma`, `tomasEquipo`, `showConfirmarRecepcionModal` y los renders viejos quedan **dead code** en `ventas-module.tsx`.
 - ✅ **PR 7 — Servicio Técnico (Taller)**: módulo completo a `/servicio-tecnico/...` (16 rutas). Componentes en `components/servicio-tecnico/` (`_shared.tsx` con tipos+constantes+`CRUDTableWithFilter`, `dashboard.tsx`, `kanban.tsx`, `ot-listado.tsx` con modal Asignador, `ot-formulario.tsx`, `ot-ficha.tsx` con state machine + modal Cancelar). `app/(dashboard)/servicio-tecnico/layout.tsx` con sidebar interno (Principal / Catálogos / Configuración / Vistas). Topbar "Taller" en `(dashboard)/page.tsx` ahora es `<Link>`. **Limitación heredada**: los modales de crear/editar de los 11 catálogos/config ya estaban a medio implementar en el monolito (sólo seteaban estado, no renderizaban modal). Mantuvimos ese comportamiento — listar y borrar funciona, crear/editar muestra alert "pendiente de UI dedicada". Todo el `modulo-taller.tsx` queda **dead code** (limpieza en PR 19).
 
+- ✅ **PR 8 — Stock parte 1 (operativo)**: 5 rutas a `/stock/...`. Componentes en `components/stock/` (`_shared.tsx` con tipos + helpers de estado + `SeguimientoPanel` + persistencia en `sessionStorage`, `dashboard.tsx`, `transferencias-listado.tsx`, `transferencias-ficha.tsx`, `transferencias-formulario.tsx`, `pedidos-listado.tsx`). `app/(dashboard)/stock/layout.tsx` con sidebar de items migrados (Dashboard, Productos, Transferencias, Pedidos de Abastecimiento) + nota apuntando al ERP clásico para el resto. Sidebar de `modulo-stock.tsx` → Links para transferencias y pedidos. Cases sacados del switch. **Topbar "Deposito" se mantiene como botón** (ModuloStock todavía es necesario para acceder a Lotes/IMEI/Control/Ajustes/Config/Informes — se cambia a Link en PR 9 cuando todo el módulo esté migrado). **Limitación heredada**: Transferencias y Pedidos en el monolito nunca tuvieron persistencia Supabase — viven en memoria. Las páginas nuevas usan `sessionStorage` para preservar ese estado entre páginas (creás → ves en listado mientras la pestaña esté abierta). Pedidos no tiene ficha ni formulario en el monolito; el botón "Solicitar Abastecimiento" muestra alert "pendiente de UI dedicada".
+
 ## PRs pendientes (orden)
-- **PR 8 — Stock parte 1**: `/stock` (dashboard del módulo), `/stock/transferencias`, `/stock/transferencias/[id]`, `/stock/transferencias/nueva`, `/stock/pedidos-abastecimiento`, etc. (operativo).
-- **PR 9 — Stock parte 2**: `/stock/lotes-series`, `/stock/imei`, `/stock/control-inventario`, `/stock/ajustes/positivos`, `/stock/ajustes/negativos`, `/stock/cubo`, `/stock/reservado`, `/stock/config/...` (7 sub-rutas de config).
+
+- 🔜 **PR 9 — Stock parte 2**: `/stock/lotes-series`, `/stock/imei`, `/stock/control-inventario`, `/stock/ajustes/positivos`, `/stock/ajustes/negativos`, `/stock/cubo`, `/stock/reservado`, `/stock/config/...` (7 sub-rutas de config). Y al cerrar el módulo: convertir botón "Deposito" del topbar a Link → `/stock` y borrar `<ModuloStock />`.
 - **PR 10 — Compras parte 1**: `/compras/oc`, `/compras/oc/nuevo`, `/compras/oc/[id]`, `/compras/recepciones`, `/compras/recepciones/[id]`. **OJO**: el componente `ProveedorFicha` (en `/proveedores/[id]`) tiene tabs Cuenta Corriente / Historial. La cuenta corriente y el historial podrían quedar como tabs internas o como rutas hijas — decidir cuando lleguemos.
 - **PR 11 — Compras parte 2**: `/compras/facturas`, `/compras/facturas/[id]`, `/compras/nc`, `/compras/nd`, `/compras/op`, `/compras/op/[id]`, `/compras/legajos`, `/compras/legajos/[id]`, `/compras/despachos-simples`, `/compras/despachos-simples/[id]`, `/compras/conciliacion-deuda`, `/compras/categorias-proveedores`.
 - **PR 12 — Ventas parte 1**: `/ventas/clientes`, `/ventas/clientes/nuevo`, `/ventas/clientes/[id]`, `/ventas/conciliacion`.
@@ -60,6 +62,6 @@
 
 Pegá esto al inicio de la nueva conversación:
 
-> "Estamos migrando el ERP de CellHome a routing limpio con App Router de Next.js. Llevamos PRs 0–7 completos. Leé `MIGRATION_STATUS.md` y `ROUTING_AUDIT.md` para el contexto completo. Arrancá con el PR 8 — Stock parte 1."
+> "Estamos migrando el ERP de CellHome a routing limpio con App Router de Next.js. Llevamos PRs 0–8 completos. Leé `MIGRATION_STATUS.md` y `ROUTING_AUDIT.md` para el contexto completo. Arrancá con el PR 9 — Stock parte 2."
 
 Eso le da al chat nuevo todo el contexto de las decisiones tomadas, el orden, las convenciones, y dónde estamos parados.
