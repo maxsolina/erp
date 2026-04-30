@@ -60,13 +60,7 @@ export interface CotizadorCriterio {
   descuento_porcentaje: number | null
 }
 
-export function formatCurrency(amount: number, currency: "ARS" | "USD" = "ARS") {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-  }).format(amount)
-}
+export { formatCurrency } from "@/lib/format"
 
 export function calcularPrecioFinalUsd(
   base: number,

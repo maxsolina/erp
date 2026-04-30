@@ -56,20 +56,7 @@ export interface RecepcionDetalle extends Recepcion {
   documento_origen_ref?: string
 }
 
-export function formatCurrency(amount: number, moneda: string = "ARS") {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: moneda,
-    minimumFractionDigits: 2,
-  }).format(amount ?? 0)
-}
-
-export function formatDate(iso: string) {
-  if (!iso) return ""
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return iso
-  return d.toLocaleDateString("es-AR")
-}
+export { formatCurrency, formatDate } from "@/lib/format"
 
 export function getEstadoOcColor(estado: OrdenCompra["estado"]) {
   if (estado === "confirmada" || estado === "completa") return "bg-green-100 text-green-700"
