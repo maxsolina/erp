@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react"
 import ReactDOM from "react-dom"
+import { useSearchParams } from "next/navigation"
 import { useERP } from "@/contexts/erp-context"
 import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
 import {
@@ -2360,7 +2361,14 @@ export default function ModuloContabilidad() {
   const { canSee } = useERP()
   const itemPermitidoCont = (id: string): boolean => canSee("contabilidad", id)
 
-  const [activeView, setActiveView] = useState("asientos-automaticos")
+  // Sincroniza la sub-vista con ?view= en la URL (lo setea el sidebar global del layout).
+  const searchParams = useSearchParams()
+  const initialView = searchParams?.get("view") || "asientos-automaticos"
+  const [activeView, setActiveView] = useState(initialView)
+  useEffect(() => {
+    const v = searchParams?.get("view")
+    if (v) setActiveView(v)
+  }, [searchParams])
   const [expandedSections, setExpandedSections] = useState<string[]>(["asientos", "configuracion"])
 
   // Guard: si la vista activa ya no es permitida, redirige al primer item visible
