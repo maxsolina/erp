@@ -95,3 +95,60 @@ export function getEstadoNVColor(estado: string) {
 export function getEstadoNVLabel(estado: string) {
   return ESTADO_NV_LABELS[estado] ?? estado
 }
+
+// ─── Órdenes de Entrega ─────────────────────────────────────────────────────
+
+export interface OrdenEntregaProducto {
+  producto_id: number
+  producto_nombre: string
+  cantidad: number
+  reserva?: number
+  estado?: string
+}
+
+export interface OrdenEntrega {
+  id: number
+  numero: string
+  nota_venta_id?: number
+  nota_venta_numero?: string
+  cliente_id?: number
+  cliente_nombre?: string
+  estado: string
+  fecha_creacion?: string
+  fecha_entrega?: string
+  domicilio_envio?: string
+  deposito?: string
+  sucursal?: string
+  remito_numero?: string | null
+  productos?: OrdenEntregaProducto[]
+  seguimiento?: unknown[]
+  created_at?: string
+}
+
+const ESTADO_OE_COLORS: Record<string, string> = {
+  borrador: "bg-gray-100 text-gray-700",
+  esperando: "bg-yellow-100 text-yellow-700",
+  parcial: "bg-orange-100 text-orange-700",
+  disponible: "bg-blue-100 text-blue-700",
+  confirmada: "bg-green-100 text-green-700",
+  finalizada: "bg-green-100 text-green-700",
+  cancelada: "bg-red-100 text-red-700",
+}
+
+const ESTADO_OE_LABELS: Record<string, string> = {
+  borrador: "Borrador",
+  esperando: "Esperando Disponibilidad",
+  parcial: "Parcialmente Disponible",
+  disponible: "Disponible",
+  confirmada: "Confirmada",
+  finalizada: "Finalizada",
+  cancelada: "Cancelada",
+}
+
+export function getEstadoOEColor(estado: string) {
+  return ESTADO_OE_COLORS[estado] ?? "bg-gray-100 text-gray-700"
+}
+
+export function getEstadoOELabel(estado: string) {
+  return ESTADO_OE_LABELS[estado] ?? estado
+}
