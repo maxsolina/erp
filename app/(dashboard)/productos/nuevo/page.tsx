@@ -36,11 +36,6 @@ export default function NuevoProductoPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Mini-topbar */}
-      <div className="bg-indigo-900 text-white px-6 py-2 flex items-center gap-4 text-sm">
-        <Link href="/" className="hover:text-indigo-200 transition-colors">← Volver al ERP</Link>
-      </div>
-
       <div className="flex items-center gap-2 px-6 py-3 border-b border-gray-200 bg-white text-sm">
         <Link
           href="/productos"

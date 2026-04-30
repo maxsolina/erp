@@ -27,9 +27,6 @@ export default function EditarUsuarioPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
-      <div className="bg-indigo-900 text-white px-6 py-2 flex items-center gap-4 text-sm">
-        <Link href="/" className="hover:text-indigo-200 transition-colors">← Volver al ERP</Link>
-      </div>
       <div className="flex-1 overflow-auto p-6">
         <FichaUsuario
           usuarioId={usuarioId}

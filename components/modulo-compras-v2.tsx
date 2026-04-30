@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import ReactDOM from "react-dom"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Settings, Lock, Unlock, FileBox, Ship, Plane, Pencil, ChevronLeft, ChevronRight as ChevronRightIcon } from "lucide-react"
 import BotonVolver from "./ui/boton-volver"
@@ -1254,7 +1255,14 @@ export default function ModuloCompras({
 
   // Active view state
   // Proveedores migrado a /proveedores (top-level). Default arranca en órdenes de compra.
-  const [activeView, setActiveView] = useState("ordenes_compra")
+  // Sincroniza la sub-vista con ?view= en la URL (lo setea el sidebar global del layout).
+  const searchParams = useSearchParams()
+  const initialView = searchParams?.get("view") || "ordenes_compra"
+  const [activeView, setActiveView] = useState(initialView)
+  useEffect(() => {
+    const v = searchParams?.get("view")
+    if (v) setActiveView(v)
+  }, [searchParams])
 
   // Guard: si el usuario está en una vista que ya no puede ver, lo mandamos al primer item permitido.
   useEffect(() => {

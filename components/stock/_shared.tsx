@@ -1,12 +1,16 @@
 "use client"
 
-// Tipos, helpers, persistencia (sessionStorage) y SeguimientoPanel para Stock.
-// Extraído de components/modulo-stock.tsx (interfaces ~125-260, SeguimientoPanel ~262-394).
-// Las transferencias y pedidos no tienen backend Supabase todavía — viven en sessionStorage
-// para preservar el comportamiento del monolito (estado por sesión) entre las nuevas páginas.
+// Tipos, helpers, persistencia (sessionStorage), SeguimientoPanel y StockListSection.
+// Extraído de components/modulo-stock.tsx (interfaces ~125-260, SeguimientoPanel ~262-394,
+// StockListSection ~574-634).
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { ArrowRight, MessageSquare, Star, User } from "lucide-react"
+import OdooFilterBar, {
+  type FilterOption,
+  type GroupByOption,
+  type SavedFilter,
+} from "@/components/odoo-filter-bar"
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
@@ -80,6 +84,10 @@ export interface ProductoStock {
   ubicacion_id: number
   ubicacion_codigo: string
   stock_virtual: number
+  stock_real?: number
+  precio_costo?: number
+  categoria_ruta?: string
+  marca?: string
   codigo_barras?: string
 }
 
@@ -96,8 +104,74 @@ export interface Ubicacion {
   deposito_id: number
   codigo: string
   nombre: string
+  tipo?: string
+  categoria_nombre?: string
   activa: boolean
+  disponible_venta?: boolean
 }
+
+export interface LoteSerie {
+  id: number
+  producto_id: number
+  producto_codigo: string
+  producto_nombre: string
+  producto_categoria: string
+  marca: string
+  numero: string
+  referencia_interna: string
+  cantidad: number
+  ubicacion_id: number
+  ubicacion_nombre: string
+  deposito_id: number
+  deposito_nombre: string
+  sucursal: string
+  fecha_vencimiento: string | null
+  bateria: number | null
+  color: string | null
+  estado: "disponible" | "reservado" | "vendido"
+}
+
+export interface ControlInventario {
+  id: number
+  numero: string
+  deposito_id: number
+  deposito_nombre: string
+  ubicacion_id: number
+  ubicacion_nombre: string
+  fecha: string
+  concepto: string
+  tipo_inventario: "todos" | "algunos"
+  estado: "borrador" | "en_proceso" | "confirmado" | "cancelado"
+  sucursal: string
+}
+
+export interface AjusteInventario {
+  id: number
+  numero: string
+  tipo: "positivo" | "negativo"
+  deposito_id: number
+  deposito_nombre: string
+  ubicacion_id: number
+  ubicacion_nombre: string
+  fecha: string
+  concepto: string
+  estado: "borrador" | "confirmado" | "cancelado"
+  sucursal: string
+}
+
+export interface CategoriaUbicacion {
+  id: number
+  codigo: string
+  nombre: string
+  descripcion: string
+}
+
+export const mockCategoriasUbicacion: CategoriaUbicacion[] = [
+  { id: 1, codigo: "STOCK", nombre: "Stock", descripcion: "Ubicaciones de stock principal" },
+  { id: 2, codigo: "TRANS", nombre: "Transitoria", descripcion: "Ubicaciones temporales" },
+  { id: 3, codigo: "CONS", nombre: "Cliente en Consignación", descripcion: "Stock en consignación" },
+  { id: 4, codigo: "BU", nombre: "Bienes de Uso", descripcion: "Activos fijos" },
+]
 
 // ─── Helpers de estado ──────────────────────────────────────────────────────
 
@@ -110,6 +184,13 @@ export function getEstadoTransferenciaColor(estado: TransferenciaInterna["estado
 export function getEstadoPedidoColor(estado: PedidoAbastecimiento["estado"]) {
   if (estado === "realizado") return "bg-green-100 text-green-800"
   if (estado === "en_ejecucion") return "bg-blue-100 text-blue-800"
+  if (estado === "cancelado") return "bg-red-100 text-red-800"
+  return "bg-gray-100 text-gray-800"
+}
+
+export function getEstadoControlColor(estado: string) {
+  if (estado === "confirmado") return "bg-green-100 text-green-800"
+  if (estado === "en_proceso") return "bg-blue-100 text-blue-800"
   if (estado === "cancelado") return "bg-red-100 text-red-800"
   return "bg-gray-100 text-gray-800"
 }
@@ -338,6 +419,128 @@ export function mapProducto(raw: any): ProductoStock {
     ubicacion_id: 0,
     ubicacion_codigo: "",
     stock_virtual: raw.stock_real ?? 0,
+    stock_real: raw.stock_real ?? 0,
+    precio_costo: raw.costo_manual ?? 0,
+    categoria_ruta: raw.categoria ?? "",
+    marca: raw.marca ?? "",
     codigo_barras: raw.codigo_barras ?? undefined,
   }
+}
+
+export function mapLoteSerie(raw: any, prodById?: Map<number, any>): LoteSerie {
+  const prod = prodById?.get(raw.producto_id) ?? {}
+  return {
+    id: raw.id,
+    producto_id: raw.producto_id,
+    producto_codigo: raw.productos?.codigo_interno ?? prod.codigo_interno ?? "",
+    producto_nombre: raw.productos?.nombre ?? prod.nombre ?? "",
+    producto_categoria: prod.categoria ?? "",
+    marca: prod.marca ?? "",
+    numero: raw.nro_serie ?? "",
+    referencia_interna: raw.nro_serie ?? "",
+    cantidad: 1,
+    ubicacion_id: raw.ubicacion_id,
+    ubicacion_nombre: raw.ubicaciones?.nombre ?? "",
+    deposito_id: raw.deposito_id,
+    deposito_nombre: raw.depositos?.nombre ?? "",
+    sucursal: "",
+    fecha_vencimiento: null,
+    bateria: raw.bateria_pct ?? null,
+    color: raw.color ?? null,
+    estado:
+      raw.estado === "disponible" ? "disponible" : raw.estado === "reservado" ? "reservado" : "vendido",
+  }
+}
+
+// ─── StockListSection (wrapper reutilizable con OdooFilterBar) ──────────────
+// Extraído de components/modulo-stock.tsx (~574-634).
+
+export function StockListSection<T extends object>({
+  title,
+  moduleName,
+  data,
+  searchFields,
+  filterFields,
+  actions,
+  children,
+}: {
+  title: string
+  moduleName: string
+  data: T[]
+  searchFields: (keyof T)[]
+  filterFields: { field: keyof T; label: string }[]
+  actions?: React.ReactNode
+  children: (filtered: T[]) => React.ReactNode
+}) {
+  const [search, setSearch] = useState("")
+  const [activeFilters, setActiveFilters] = useState<FilterOption[]>([])
+  const [activeGroupBy, setActiveGroupBy] = useState<GroupByOption[]>([])
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([])
+
+  const filtered = useMemo(() => {
+    let result = [...data]
+    if (search) {
+      const q = search.toLowerCase()
+      result = result.filter(row => searchFields.some(f => String(row[f] ?? "").toLowerCase().includes(q)))
+    }
+    for (const f of activeFilters) {
+      result = result.filter(row => String(row[f.field as keyof T] ?? "") === f.value)
+    }
+    return result
+  }, [data, search, activeFilters, searchFields])
+
+  const filterOptions = useMemo(
+    () =>
+      filterFields
+        .map(ff => {
+          const vals = [
+            ...new Set(
+              data.map(row => String(row[ff.field] ?? "")).filter(v => v && v !== "null" && v !== "undefined"),
+            ),
+          ]
+          return {
+            field: String(ff.field),
+            label: ff.label,
+            values: vals.sort().map(v => ({ value: v, label: v })),
+          }
+        })
+        .filter(f => f.values.length > 0),
+    [data, filterFields],
+  )
+
+  const groupByOptions: GroupByOption[] = filterFields.map(ff => ({
+    id: String(ff.field),
+    label: ff.label,
+    field: String(ff.field),
+  }))
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold text-amber-900">{title}</h1>
+        {actions}
+      </div>
+      <OdooFilterBar
+        moduleName={moduleName}
+        filterOptions={filterOptions}
+        groupByOptions={groupByOptions}
+        activeFilters={activeFilters}
+        activeGroupBy={activeGroupBy}
+        searchTerm={search}
+        onFiltersChange={setActiveFilters}
+        onGroupByChange={setActiveGroupBy}
+        onSearchChange={setSearch}
+        savedFilters={savedFilters}
+        onSaveFilter={f => setSavedFilters(p => [...p, { ...f, id: `f-${Date.now()}`, createdBy: "current_user" }])}
+        onDeleteFilter={id => setSavedFilters(p => p.filter(f => f.id !== id))}
+        onApplyFilter={f => {
+          setActiveFilters(f.filters)
+          setActiveGroupBy(f.groupBy)
+        }}
+        totalCount={data.length}
+        filteredCount={filtered.length}
+      />
+      <div className="mt-4">{children(filtered)}</div>
+    </div>
+  )
 }

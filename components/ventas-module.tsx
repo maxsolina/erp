@@ -3,6 +3,7 @@
 // Modulo de Ventas - Cell Home ERP v5
 import React, { useState, useMemo, useRef, useEffect, useCallback } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { useClientes } from "@/hooks/use-clientes"
 import { crearCliente as apiCrearCliente, actualizarCliente as apiActualizarCliente } from "@/hooks/use-clientes"
 import type { ClienteDB } from "@/hooks/use-clientes"
@@ -1194,7 +1195,14 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
   // Navigation state
   const [activeSection, setActiveSection] = useState<string>("clientes")
-  const [activeView, setActiveView] = useState<string>("listado")
+  // Sincroniza la sub-vista con ?view= en la URL (lo setea el sidebar global del layout).
+  const searchParams = useSearchParams()
+  const initialView = searchParams?.get("view") || "listado"
+  const [activeView, setActiveView] = useState<string>(initialView)
+  useEffect(() => {
+    const v = searchParams?.get("view")
+    if (v) setActiveView(v)
+  }, [searchParams])
   const [menuExpandido, setMenuExpandido] = useState<{ [key: string]: boolean }>({
     clientes: true,
     ventas: true,
