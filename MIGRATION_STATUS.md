@@ -1,6 +1,6 @@
 # Estado de la migración a Routing limpio (App Router)
 
-Última actualización: 2026-04-29 fin de sesión
+Última actualización: 2026-04-29 — PR 6 completado
 
 ## Decisiones aprobadas (no volver a preguntar)
 
@@ -21,11 +21,11 @@
 - ✅ **PR 3 — Usuarios**: `/usuarios`, `/usuarios/nuevo`, `/usuarios/[id]` (con tabs Configuraciones/Accesos/Permisos/Sesiones). Sidebar de Config → Link. `<ModuloUsuarios />` ya no se renderiza inline. `FichaUsuario`, `FichaCrearUsuario`, `Avatar`, `formatRelative`, `UsuarioRow` exportados.
 - ✅ **PR 4 — Proveedores**: extracción a `components/proveedores/` (listado.tsx, ficha.tsx, formulario.tsx). Páginas en `/proveedores`, `/proveedores/nuevo`, `/proveedores/[id]`, `/proveedores/[id]/editar`. Sidebar de Compras → Link. Default `activeView` de Compras cambió a `"ordenes_compra"`.
 - ✅ **PR 5 — Listas de Precios**: extracción a `components/listas-precios/` (8 archivos: listado, ficha, formulario, version-ficha, version-formulario, versiones-listado, _shared, seguimiento-panel). Páginas en `/listas-precios`, `/nueva`, `/[id]`, `/[id]/editar`, `/[id]/versiones/nueva`, `/[id]/versiones/[vid]`, `/[id]/versiones/[vid]/editar`, `/versiones`. Sidebar de Ventas → Links. Cases sacados del `renderContent` switch.
+- ✅ **PR 6 — Toma de Equipo**: extracción a `components/toma-equipo/` (4 archivos: `_shared.ts`, `listado.tsx`, `ficha.tsx`, `formulario.tsx`). Páginas en `/toma-equipo`, `/toma-equipo/nueva`, `/toma-equipo/[id]` (top-level, no anidado en Ventas). Sidebar de Ventas → Link. Case sacado del `renderContent` switch. Modal de "confirmar recepción" + popups de NC y Recepción viajan dentro de `ficha.tsx`. Estados `tomaEquipo*`, `selectedToma`, `tomasEquipo`, `showConfirmarRecepcionModal` y los renders viejos quedan **dead code** en `ventas-module.tsx`.
 
 ## PRs pendientes (orden)
 
-- 🔜 **PR 6 — Toma de Equipo**: vive parte adentro de Ventas. Decisión: queda como sub-ruta `/ventas/toma-equipo` o top-level `/toma-equipo`. **El prompt original sugiere top-level** — usar `/toma-equipo`.
-- **PR 7 — Servicio Técnico (Taller)**: módulo independiente. `/servicio-tecnico/...` con OT, Kanban, catálogos (técnicos, equipos, fallas), config (áreas, categorías, tipos OT, etc.).
+- 🔜 **PR 7 — Servicio Técnico (Taller)**: módulo independiente. `/servicio-tecnico/...` con OT, Kanban, catálogos (técnicos, equipos, fallas), config (áreas, categorías, tipos OT, etc.).
 - **PR 8 — Stock parte 1**: `/stock` (dashboard del módulo), `/stock/transferencias`, `/stock/transferencias/[id]`, `/stock/transferencias/nueva`, `/stock/pedidos-abastecimiento`, etc. (operativo).
 - **PR 9 — Stock parte 2**: `/stock/lotes-series`, `/stock/imei`, `/stock/control-inventario`, `/stock/ajustes/positivos`, `/stock/ajustes/negativos`, `/stock/cubo`, `/stock/reservado`, `/stock/config/...` (7 sub-rutas de config).
 - **PR 10 — Compras parte 1**: `/compras/oc`, `/compras/oc/nuevo`, `/compras/oc/[id]`, `/compras/recepciones`, `/compras/recepciones/[id]`. **OJO**: el componente `ProveedorFicha` (en `/proveedores/[id]`) tiene tabs Cuenta Corriente / Historial. La cuenta corriente y el historial podrían quedar como tabs internas o como rutas hijas — decidir cuando lleguemos.
@@ -61,6 +61,6 @@
 
 Pegá esto al inicio de la nueva conversación:
 
-> "Estamos migrando el ERP de CellHome a routing limpio con App Router de Next.js. Llevamos PRs 0–5 completos. Leé `MIGRATION_STATUS.md` y `ROUTING_AUDIT.md` para el contexto completo. Arrancá con el PR 6 — Toma de Equipo."
+> "Estamos migrando el ERP de CellHome a routing limpio con App Router de Next.js. Llevamos PRs 0–6 completos. Leé `MIGRATION_STATUS.md` y `ROUTING_AUDIT.md` para el contexto completo. Arrancá con el PR 7 — Servicio Técnico (Taller)."
 
 Eso le da al chat nuevo todo el contexto de las decisiones tomadas, el orden, las convenciones, y dónde estamos parados.
