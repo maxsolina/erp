@@ -72,6 +72,16 @@ Los 25 stubs de Finanzas y los 19 de Contabilidad siguen siendo los blocs grande
 - Reemplazar la `page.tsx` del stub por el listado real.
 - Mantener el botón "Editar en monolito" para creación/edición compleja (mismo patrón que Compras OC/Ventas NV).
 
+**Ya extraídos (post-PR-18 cleanup):**
+- Finanzas: ~~Cajas~~ — listado real desde `/api/cajas`.
+- Contabilidad: ~~Plan de Cuentas~~ — listado real con joins a `tipo_cuenta` y `cuenta_padre` desde `/api/contabilidad/plan-cuentas`.
+
+**APIs disponibles para extraer en próxima pasada (no requieren agregar endpoint):**
+- Contabilidad: `asientos` (tanto manuales como automáticos), `anos-fiscales`, `periodos`, `diarios`, `monedas`, `tipos-cuenta`, `tipos-cotizacion`, `cotizaciones`, `cuentas`.
+- Finanzas: el resto (24 stubs) lee Supabase directo desde el cliente — requiere agregar API antes de extraer (mismo patrón que `/api/recibos` y `/api/nc-categorias` en post-PR-18).
+
+**Compras stubs sin data source real:** Legajos de Importación, Despachos Simples y Conciliación de Deuda quedan como redirect-stubs porque en el monolito sólo tienen `useState([])` sin `setX()` — son features placeholder que aún no están conectadas a Supabase. Extraerlas sin data sería deshonesto.
+
 ## Convenciones (siguen aplicando)
 
 - Cada page es client component (`"use client"`) con permission guard `useEffect(() => { if (!canSee("modulo", "subview")) router.replace("/") }, ...)`
