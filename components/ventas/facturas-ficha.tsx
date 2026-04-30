@@ -69,12 +69,14 @@ export default function FacturasFicha({ facturaId }: { facturaId: number }) {
           {getEstadoFacturaLabel(factura.estado)}
         </span>
         <div className="ml-auto flex items-center gap-3">
-          <Link
-            href={`/?module=ventas&view=facturas&id=${factura.id}`}
-            className="text-sm text-indigo-700 hover:underline"
-          >
-            Editar en el módulo Ventas →
-          </Link>
+          {factura.estado === "borrador" && (
+            <Link
+              href={`/ventas/facturas/${factura.id}/editar`}
+              className="text-sm text-indigo-700 hover:underline"
+            >
+              Editar →
+            </Link>
+          )}
         </div>
       </div>
 
