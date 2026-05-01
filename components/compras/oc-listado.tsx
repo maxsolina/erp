@@ -64,9 +64,8 @@ export default function OcListado() {
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-amber-900">Órdenes de Compra</h1>
         <Link
-          href="/?module=compras&view=ordenes_compra"
+          href="/compras/oc/nuevo"
           className="bg-indigo-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"
-          title="La creación de OC se hace en el módulo Compras"
         >
           <Plus className="w-4 h-4" />
           Nueva OC
