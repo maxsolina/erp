@@ -13,7 +13,7 @@ export default function FacturasComprasPage() {
     <FacturasListado
       apiUrl="/api/compras/facturas"
       title="Facturas de Compra"
-      newHref="/?module=compras&view=facturas_compra"
+      newHref="/compras/facturas/nueva"
       fichaBaseHref="/compras/facturas"
       moduleName="compras_facturas"
     />
