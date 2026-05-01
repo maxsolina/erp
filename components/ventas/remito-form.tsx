@@ -30,7 +30,7 @@ interface ClienteOpt { id: number; codigo?: string; nombre?: string; direccion?:
 interface Deposito { id: number; nombre: string; sucursal_id?: number | null }
 interface Ubicacion { id: number; deposito_id: number; nombre: string; codigo?: string }
 
-export default function RemitoForm() {
+export default function RemitoForm({ prefillOeId }: { prefillOeId?: number }) {
   const router = useRouter()
 
   const [oes, setOes] = useState<OrdenEntrega[]>([])
@@ -74,6 +74,14 @@ export default function RemitoForm() {
   const oesDisponibles = oes.filter(oe =>
     oe.estado !== "cancelada" && !oeIdsConRemito.has(oe.id)
   )
+
+  // Pre-seleccionar OE si vino por query param
+  useEffect(() => {
+    if (!prefillOeId || cargando || oeId !== null) return
+    if (oesDisponibles.some(oe => oe.id === prefillOeId)) {
+      setOeId(prefillOeId)
+    }
+  }, [prefillOeId, cargando, oesDisponibles, oeId])
 
   const oeSeleccionada = oes.find(oe => oe.id === oeId)
   const clienteOE = oeSeleccionada
