@@ -1,6 +1,6 @@
 # Estado de la migración a Routing limpio (App Router)
 
-Última actualización: 2026-04-30 — **migración completa (PRs 0–18) + cleanup masivo post-PR-18 (PRs #49–65)**
+Última actualización: 2026-04-30 — **forms de Ventas migrados a rutas propias (PRs #69-76)**. Migración App Router completa (PRs 0-18) + cleanup post-PR-18 (#49-65) + extracciones de listados (#66-68) + forms de Ventas (#69-76).
 
 ## Resumen final
 
@@ -122,11 +122,32 @@ Los 25 stubs de Finanzas y los 19 de Contabilidad siguen siendo los blocs grande
 
 **Net en líneas: ~−12 000 dead code borrado, +5 000 código real de extracciones.**
 
-## Plan de migración de formularios (próximas sesiones)
+## Migración de formularios
 
 **Decisión del usuario (sesión post-PR-67):** migrar los forms de creación/edición a rutas propias top-level. La app está en construcción, no hay apuro, prioridad sentar bases bien.
 
-**Estado actual:** los **listados + fichas read-only** están extraídos. Los **formularios de creación/edición** siguen en el monolito (`ventas-module.tsx`, `modulo-compras-v2.tsx`, etc.). Cuando alguien clickea "Editar en módulo Ventas →" desde una ficha, la URL rebota a `/?module=ventas&view=X` y el monolito monta el form ahí.
+### Forms de Ventas — COMPLETADOS (PRs #69-76)
+
+| PR | Entidad | Notas |
+|----|---------|-------|
+| #69 | **Notas de Venta** | Cascada NV → OE → Remito (confirmar) → Factura. Endpoint nuevo `PUT /api/notas-venta/[id]` para editar borradores. |
+| #70 | **Facturas** | Cascada POST `abierta` → (opt) convertir-a-ars → POST `/confirmar`. Reusa `BloquesMediosPago`. PUT para editar borradores. |
+| #71 | **Recibos — API endpoints** | Prep PR: `POST /api/recibos`, `PUT /api/recibos/[id]`, `POST /api/recibos/[id]/publicar`, `POST /api/recibos/[id]/cancelar`. Mueve toda la lógica multi-tabla y la cascada al servidor. |
+| #72 | **Recibos — Form** | Form que usa los endpoints de #71. Sin acceso directo a supabase desde el cliente. Tabs Pagos + Comprobantes con CC bimonetaria. |
+| #73 | **Órdenes de Entrega** | Form simple a partir de NV pendiente. |
+| #74 | **Remitos** | Form a partir de OE pendiente, con toggle "Confirmar al generar" que descuenta stock + emite asiento CMV. Cierra el TODO ("Crear remito desde OE") del monolito. |
+| #75 | **Ajustes / NC / ND** | 3 entidades en una PR (comparten tabla `ajustes_clientes`). Form parametrizado por `tipo`. |
+| #76 | **Seña de Equipo** | Form con cascada server-side (crea seña + NV + OE) en `POST /api/senias-equipo`. Selector de IMEI/serie cuando el producto lo requiere. |
+
+**Lo que queda en "Split entities"** (en `CLAUDE.md`):
+- Categorías Cliente / NC-Categorías / Criterios Cotizador (configs) — fuera del scope del orden inicial.
+- Compras: Categorías Proveedores.
+- Finanzas: Cajas.
+- Contabilidad: Plan de Cuentas, Asientos Manuales/Automáticos, 6 configs.
+
+**Lo que queda por hacer en Ventas (no urgente):**
+- Form de Categorías Cliente, NC-Categorías, Criterios Cotizador.
+- Borrar el dead code de los `renderXxx`/`handleXxx` correspondientes en `ventas-module.tsx` cuando se confirme cero bug.
 
 ### Patrón A — MVP por entidad, sin tocar el monolito
 
@@ -160,21 +181,8 @@ Algunos forms (especialmente NV) hacen **cascada de múltiples llamadas HTTP** a
 
 Si la cascada se vuelve frágil para una entidad puntual (ej. order matters, falla parcial deja inconsistencia), parar antes del merge y consultar.
 
-### Orden sugerido de migración
+### Después de Ventas (próximas fases)
 
-1. **NV** (más usada; tiene cascada NV → OE → Remito → Confirmar → Factura).
-2. **Factura** (cascada propia: factura + asiento contable + medios de pago).
-3. **Recibo** (cascada: recibo + asiento + actualización de saldo en facturas vinculadas).
-4. **OE** (más simple, sin asiento directo).
-5. **Remito** (similar a OE, dispara confirmar/asiento).
-6. **NC / ND / Ajustes** (3 forms similares — comparten tabla `ajustes_clientes`; pueden compartir componente como ya hacen el listado y la ficha).
-7. **Seña** (último, tiene varias acciones: registrar seña, confirmar cierre, cancelar).
-
-Una entidad por PR. Build verde antes de mergear. Cada PR borra el redirect-stub correspondiente y deja la entidad fuera de la lista de "Split entities" en `CLAUDE.md`.
-
-### Después de Ventas
-
-Cuando los 9 forms de Ventas estén migrados:
 - Compras: Categorías Proveedores (1 entidad). Las otras 3 (Legajos/Despachos/Conciliación) quedan como redirects hasta que tengan data real.
 - Finanzas: Cajas (1 form simple). El resto, cuando se migren los listados, irá con el form en la misma PR.
 - Contabilidad: Plan de Cuentas + Asientos Manuales. Las configs simples (años/períodos/etc) son CRUD chico y van fácil. Asientos Manuales sí necesita pensarse (debe = haber, validaciones).
