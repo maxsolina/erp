@@ -66,12 +66,14 @@ export default function RecibosFicha({ reciboId }: { reciboId: string }) {
           {getEstadoReciboLabel(recibo.estado)}
         </span>
         <div className="ml-auto flex items-center gap-3">
-          <Link
-            href={`/?module=ventas&view=recibos&id=${recibo.id}`}
-            className="text-sm text-indigo-700 hover:underline"
-          >
-            Editar en el módulo Ventas →
-          </Link>
+          {recibo.estado === "borrador" && (
+            <Link
+              href={`/ventas/recibos/${recibo.id}/editar`}
+              className="text-sm text-indigo-700 hover:underline"
+            >
+              Editar →
+            </Link>
+          )}
         </div>
       </div>
 
