@@ -25,8 +25,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (facErr || !factura) {
     return NextResponse.json({ error: "Factura no encontrada" }, { status: 404 })
   }
-  if (factura.estado !== "abierta") {
-    return NextResponse.json({ error: `Solo se pueden convertir facturas en estado "abierta" (estado actual: "${factura.estado}")` }, { status: 422 })
+  if (factura.estado !== "abierta" && factura.estado !== "borrador") {
+    return NextResponse.json({ error: `Solo se pueden convertir facturas en estado "abierta" o "borrador" (estado actual: "${factura.estado}")` }, { status: 422 })
   }
   if (factura.moneda === "ARS") {
     return NextResponse.json({ error: "La factura ya está en ARS" }, { status: 422 })
