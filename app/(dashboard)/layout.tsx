@@ -24,11 +24,17 @@ const TOPBAR_TO_VISTA: Record<string, string | null> = {
 
 // URL para cada pestaña del topbar.
 // Módulos migrados a rutas top-level → su ruta. El resto usa /?module=X que page.tsx interpreta.
+// Para Ventas/Compras/Finanzas/Contabilidad apuntamos a una sub-vista por defecto que
+// monta el sidebar nuevo (vs el monolito que tiene su propio sidebar con links viejos).
 function tabHref(mod: string): string {
   if (mod === "home") return "/"
   if (mod === "taller") return "/servicio-tecnico"
   if (mod === "deposito") return "/stock"
   if (mod === "informes") return "/informes"
+  if (mod === "ventas") return "/ventas/clientes"
+  if (mod === "compras") return "/compras/oc"
+  if (mod === "finanzas") return "/finanzas/cajas"
+  if (mod === "contabilidad") return "/contabilidad/plan-cuentas"
   return `/?module=${mod}`
 }
 
