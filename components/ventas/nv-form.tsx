@@ -368,7 +368,7 @@ export default function NvForm({ initialId }: { initialId?: number }) {
     setErrorGuardado(null)
     setGuardando(true)
 
-    const payload = construirPayloadNV("abierta")
+    const payload = construirPayloadNV("borrador")
 
     try {
       let res: Response
@@ -571,7 +571,7 @@ export default function NvForm({ initialId }: { initialId?: number }) {
     }
   }
 
-  const construirPayloadNV = (estado: "abierta" | "facturada") => {
+  const construirPayloadNV = (estado: "borrador" | "abierta" | "facturada") => {
     const lineasPayload = lineasValidas.map(l => ({
       producto_id: l.producto_id,
       producto_nombre: l.producto_nombre,
@@ -610,14 +610,14 @@ export default function NvForm({ initialId }: { initialId?: number }) {
       </div>
     )
   }
-  if (isEdit && nvEstadoExistente && nvEstadoExistente !== "abierta") {
+  if (isEdit && nvEstadoExistente && nvEstadoExistente !== "abierta" && nvEstadoExistente !== "borrador") {
     return (
       <div className="p-12 text-center">
         <p className="text-amber-700 mb-2">
           Esta NV está en estado <strong>{nvEstadoExistente}</strong> y no puede editarse.
         </p>
         <p className="text-gray-500 text-sm mb-4">
-          Solo las NVs en estado "abierta" (sin factura/remito generado) pueden modificarse.
+          Solo las NVs en estado "borrador" o "abierta" (sin factura/remito generado) pueden modificarse.
         </p>
         <button onClick={() => router.push(`/ventas/nv/${initialId}`)} className="text-indigo-700 hover:underline">
           Ver ficha de la NV
