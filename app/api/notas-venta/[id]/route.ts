@@ -32,7 +32,37 @@ export async function GET(
     .select("*")
     .eq("nota_venta_id", id)
 
-  return NextResponse.json({ ...nv, notas_venta_lineas: lineas ?? [] })
+  // Enriquecer con cliente_nombre/codigo y nombre del depósito (mismo patrón que el listado)
+  let cliente_nombre: string = nv.cliente_nombre ?? ""
+  let cliente_codigo = ""
+  if (nv.cliente_id) {
+    const { data: cli } = await supabase
+      .from("clientes")
+      .select("nombre, codigo")
+      .eq("id", nv.cliente_id)
+      .maybeSingle()
+    if (cli) {
+      cliente_nombre = cli.nombre ?? cliente_nombre
+      cliente_codigo = cli.codigo ?? ""
+    }
+  }
+  let deposito = nv.deposito ?? ""
+  if (nv.sucursal_id) {
+    const { data: suc } = await supabase
+      .from("sucursales")
+      .select("nombre")
+      .eq("id", nv.sucursal_id)
+      .maybeSingle()
+    if (suc?.nombre) deposito = suc.nombre
+  }
+
+  return NextResponse.json({
+    ...nv,
+    cliente_nombre,
+    cliente_codigo,
+    deposito,
+    notas_venta_lineas: lineas ?? [],
+  })
 }
 
 // PUT — reemplazar cabecera + líneas de una NV (modo edición)
