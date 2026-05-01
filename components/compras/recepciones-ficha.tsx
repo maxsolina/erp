@@ -15,6 +15,7 @@ export default function RecepcionFicha({ recId }: { recId: number }) {
   const router = useRouter()
   const [rec, setRec] = useState<RecepcionDetalle | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
+  const [ocId, setOcId] = useState<number | null>(null)
 
   useEffect(() => {
     fetch(`/api/compras/recepciones/${recId}`)
@@ -32,6 +33,14 @@ export default function RecepcionFicha({ recId }: { recId: number }) {
         setRec(null)
       })
   }, [recId])
+
+  // Resolver id de OC vinculada (la recepción tiene orden_compra_id o documento_origen_id)
+  useEffect(() => {
+    if (!rec) return
+    const id = (rec as any).orden_compra_id ?? (rec as any).documento_origen_id
+    if (id && (rec as any).documento_origen_tipo === "oc") setOcId(Number(id))
+    else if ((rec as any).orden_compra_id) setOcId(Number((rec as any).orden_compra_id))
+  }, [rec])
 
   if (rec === undefined) {
     return <div className="p-12 text-center text-gray-500">Cargando recepción...</div>
@@ -55,13 +64,16 @@ export default function RecepcionFicha({ recId }: { recId: number }) {
         <span className={`px-3 py-1 rounded-full text-sm font-medium ${getEstadoRecepcionColor(rec.estado)}`}>
           {getEstadoRecepcionLabel(rec.estado)}
         </span>
-        <div className="ml-auto">
-          <Link
-            href={`/?module=compras&view=recepciones`}
-            className="text-sm text-indigo-700 hover:underline"
-          >
-            Editar en el módulo Compras →
-          </Link>
+        <div className="ml-auto flex items-center gap-2">
+          {(rec.estado === "borrador" || rec.estado === "esperando_recepcion" || rec.estado === "recibida_parcial") && (
+            <Link
+              href={`/?module=compras&view=recepciones&id=${rec.id}`}
+              className="text-sm bg-indigo-900 hover:bg-indigo-800 text-white rounded-lg px-3 py-1.5"
+              title="La gestión de cantidades recibidas (con series, colores, etc.) sigue en el módulo Compras"
+            >
+              Recibir / Editar
+            </Link>
+          )}
         </div>
       </div>
 
@@ -72,7 +84,18 @@ export default function RecepcionFicha({ recId }: { recId: number }) {
             <Row label="Número" value={rec.numero} />
             <Row label="Fecha" value={formatDate(rec.fecha)} />
             <Row label="Proveedor" value={rec.proveedor_nombre} />
-            {rec.orden_compra_numero && <Row label="OC Origen" value={rec.orden_compra_numero} />}
+            {rec.orden_compra_numero && (
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500 shrink-0">OC Origen</span>
+                {ocId ? (
+                  <Link href={`/compras/oc/${ocId}`} className="font-medium text-emerald-700 hover:underline font-mono text-right">
+                    {rec.orden_compra_numero}
+                  </Link>
+                ) : (
+                  <span className="font-medium text-gray-900 text-right">{rec.orden_compra_numero}</span>
+                )}
+              </div>
+            )}
             {rec.sucursal && <Row label="Sucursal" value={rec.sucursal} />}
             {rec.deposito_destino && <Row label="Depósito destino" value={rec.deposito_destino} />}
             {rec.ubicacion && <Row label="Ubicación" value={rec.ubicacion} />}

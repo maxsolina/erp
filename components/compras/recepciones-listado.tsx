@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { Plus } from "lucide-react"
 import OdooFilterBar, {
   type FilterOption,
   type GroupByOption,
@@ -62,14 +61,12 @@ export default function RecepcionesListado() {
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold text-amber-900">Recepciones</h1>
-        <Link
-          href="/?module=compras&view=recepciones"
-          className="bg-indigo-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Nueva Recepción
-        </Link>
+        <div>
+          <h1 className="text-2xl font-bold text-amber-900">Recepciones</h1>
+          <p className="text-xs text-gray-500 mt-1">
+            Las recepciones se generan automáticamente al confirmar una OC, una Toma de Equipo o una Transferencia.
+          </p>
+        </div>
       </div>
 
       <OdooFilterBar
