@@ -19,6 +19,8 @@ export default function RecibosFicha({ reciboId }: { reciboId: string }) {
   const [showCancelarModal, setShowCancelarModal] = useState(false)
   const [motivoCancel, setMotivoCancel] = useState("")
   const [cancelando, setCancelando] = useState(false)
+  const [nvVinculadaId, setNvVinculadaId] = useState<number | null>(null)
+  const [facturaVinculadaId, setFacturaVinculadaId] = useState<number | null>(null)
 
   const cancelarRecibo = async () => {
     if (!motivoCancel.trim()) { alert("Ingresá un motivo"); return }
@@ -66,6 +68,25 @@ export default function RecibosFicha({ reciboId }: { reciboId: string }) {
         setRecibo(null)
       })
   }, [reciboId])
+
+  // Resolver IDs de docs vinculados
+  useEffect(() => {
+    if (!recibo) return
+    if (recibo.factura_id) {
+      setFacturaVinculadaId(Number(recibo.factura_id))
+    }
+    if (recibo.nota_venta_id) {
+      setNvVinculadaId(Number(recibo.nota_venta_id))
+    } else if (recibo.nota_venta_numero) {
+      fetch(`/api/notas-venta?numero=${encodeURIComponent(recibo.nota_venta_numero)}`)
+        .then(r => r.json())
+        .then((data: any) => {
+          const nv = Array.isArray(data) ? data[0] : data
+          if (nv?.id) setNvVinculadaId(nv.id)
+        })
+        .catch(() => {})
+    }
+  }, [recibo])
 
   if (recibo === undefined) {
     return <div className="p-12 text-center text-gray-500">Cargando recibo...</div>
@@ -121,7 +142,26 @@ export default function RecibosFicha({ reciboId }: { reciboId: string }) {
             <Row label="Cliente" value={recibo.cliente_nombre ?? "—"} />
             {recibo.caja_nombre && <Row label="Caja" value={recibo.caja_nombre} />}
             {recibo.cobrador_nombre && <Row label="Cobrador" value={recibo.cobrador_nombre} />}
-            {recibo.nota_venta_numero && <Row label="Nota de Venta" value={recibo.nota_venta_numero} />}
+            {recibo.nota_venta_numero && (
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500 shrink-0">Nota de Venta</span>
+                {nvVinculadaId ? (
+                  <Link href={`/ventas/nv/${nvVinculadaId}`} className="font-medium text-emerald-700 hover:underline font-mono text-right">
+                    {recibo.nota_venta_numero}
+                  </Link>
+                ) : (
+                  <span className="font-medium text-gray-900 text-right">{recibo.nota_venta_numero}</span>
+                )}
+              </div>
+            )}
+            {facturaVinculadaId && (
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500 shrink-0">Factura</span>
+                <Link href={`/ventas/facturas/${facturaVinculadaId}`} className="font-medium text-emerald-700 hover:underline text-right">
+                  Ver factura →
+                </Link>
+              </div>
+            )}
             {recibo.concepto && <Row label="Concepto" value={recibo.concepto} />}
             {recibo.sucursal && <Row label="Sucursal" value={recibo.sucursal} />}
             <Row label="Moneda" value={moneda} />

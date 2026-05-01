@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Truck } from "lucide-react"
 import {
   formatDate,
   getEstadoOEColor,
@@ -15,6 +15,7 @@ export default function OeFicha({ oeId }: { oeId: number }) {
   const router = useRouter()
   const [oe, setOe] = useState<OrdenEntrega | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
+  const [remitoVinculado, setRemitoVinculado] = useState<{ id: number; numero: string; estado: string } | null>(null)
 
   useEffect(() => {
     // /api/ordenes-entrega no tiene subroute [id]; usa ?id= y devuelve un array.
@@ -41,6 +42,19 @@ export default function OeFicha({ oeId }: { oeId: number }) {
       })
   }, [oeId])
 
+  // Buscar remito vinculado (la OE solo tiene remito_numero, falta el id)
+  useEffect(() => {
+    if (!oe) return
+    fetch("/api/remitos-venta")
+      .then(r => r.json())
+      .then((data: any[]) => {
+        if (!Array.isArray(data)) return
+        const r = data.find(x => Number(x.orden_entrega_id) === oeId)
+        if (r) setRemitoVinculado({ id: r.id, numero: r.numero, estado: r.estado })
+      })
+      .catch(() => {})
+  }, [oe, oeId])
+
   if (oe === undefined) {
     return <div className="p-12 text-center text-gray-500">Cargando OE...</div>
   }
@@ -65,7 +79,17 @@ export default function OeFicha({ oeId }: { oeId: number }) {
         <span className={`px-3 py-1 rounded-full text-sm font-medium ${getEstadoOEColor(oe.estado)}`}>
           {getEstadoOELabel(oe.estado)}
         </span>
-        <div className="ml-auto flex items-center gap-3" />
+        <div className="ml-auto flex items-center gap-2">
+          {!remitoVinculado && oe.estado !== "cancelada" && (
+            <Link
+              href={`/ventas/remitos/nueva?oe_id=${oe.id}`}
+              className="text-sm bg-indigo-900 hover:bg-indigo-800 text-white rounded-lg px-3 py-1.5 flex items-center gap-1"
+            >
+              <Truck className="w-4 h-4" />
+              Generar Remito
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-6 mb-6">
@@ -73,7 +97,18 @@ export default function OeFicha({ oeId }: { oeId: number }) {
           <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Datos</h3>
           <div className="space-y-3 text-sm">
             <Row label="Número" value={oe.numero} />
-            {oe.nota_venta_numero && <Row label="Nota de Venta" value={oe.nota_venta_numero} />}
+            {oe.nota_venta_numero && (
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-500 shrink-0">Nota de Venta</span>
+                {oe.nota_venta_id ? (
+                  <Link href={`/ventas/nv/${oe.nota_venta_id}`} className="font-medium text-emerald-700 hover:underline font-mono text-right">
+                    {oe.nota_venta_numero}
+                  </Link>
+                ) : (
+                  <span className="font-medium text-gray-900 text-right">{oe.nota_venta_numero}</span>
+                )}
+              </div>
+            )}
             <Row label="Cliente" value={oe.cliente_nombre ?? "—"} />
             {oe.fecha_creacion && <Row label="Fecha creación" value={formatDate(oe.fecha_creacion)} />}
             {oe.fecha_entrega && <Row label="Fecha entrega" value={formatDate(oe.fecha_entrega)} />}
@@ -84,10 +119,17 @@ export default function OeFicha({ oeId }: { oeId: number }) {
         </div>
         <div className="bg-white rounded-lg border p-5">
           <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Remito</h3>
-          {oe.remito_numero ? (
+          {remitoVinculado ? (
+            <Link href={`/ventas/remitos/${remitoVinculado.id}`} className="text-2xl font-bold text-emerald-600 font-mono hover:underline">
+              {remitoVinculado.numero}
+            </Link>
+          ) : oe.remito_numero ? (
             <p className="text-2xl font-bold text-emerald-600 font-mono">{oe.remito_numero}</p>
           ) : (
             <p className="text-sm text-gray-400">Sin remito generado</p>
+          )}
+          {remitoVinculado && (
+            <p className="text-xs text-gray-500 mt-1">Estado: {remitoVinculado.estado}</p>
           )}
         </div>
       </div>
