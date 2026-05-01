@@ -101,8 +101,8 @@ export default function DashboardHome() {
       { href: "/stock", icon: Package, titulo: "Stock", descripcion: "Inventario y movimientos", color: "from-teal-500 to-teal-600", permModulo: "stock" },
       { href: "/servicio-tecnico", icon: Wrench, titulo: "Servicio Técnico", descripcion: "Órdenes de trabajo y kanban", color: "from-orange-500 to-orange-600", permModulo: "servicio_tecnico" },
       { href: "/productos", icon: Package, titulo: "Productos", descripcion: "Catálogo y precios", color: "from-violet-500 to-violet-600", permModulo: "productos" },
-      { href: "/?module=finanzas", icon: Banknote, titulo: "Finanzas", descripcion: "Tesorería y movimientos", color: "from-pink-500 to-pink-600", permModulo: "finanzas" },
-      { href: "/?module=contabilidad", icon: FileText, titulo: "Contabilidad", descripcion: "Plan de cuentas y asientos", color: "from-purple-500 to-purple-600", permModulo: "contabilidad" },
+      { href: "/finanzas/cajas", icon: Banknote, titulo: "Finanzas", descripcion: "Tesorería y movimientos", color: "from-pink-500 to-pink-600", permModulo: "finanzas" },
+      { href: "/contabilidad/plan-cuentas", icon: FileText, titulo: "Contabilidad", descripcion: "Plan de cuentas y asientos", color: "from-purple-500 to-purple-600", permModulo: "contabilidad" },
       { href: "/informes", icon: FileText, titulo: "Informes", descripcion: "Reportes y métricas", color: "from-slate-500 to-slate-600", permModulo: "reportes" },
     ]
     return items.filter(it => it.permKey ? canSee(it.permModulo, it.permKey) : canSee(it.permModulo))
