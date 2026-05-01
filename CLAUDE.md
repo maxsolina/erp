@@ -129,9 +129,9 @@ Some entities have their **listado + ficha read-only extracted** (`components/<m
 
 Currently split (read at: extracted, write at: monolith):
 
-- **Ventas:** Categorías Cliente, NC-Categorías, Criterios Cotizador (configs)
-- **Finanzas:** Cajas
-- **Contabilidad:** Plan de Cuentas, Asientos Manuales, Asientos Automáticos, Años Fiscales, Períodos, Diarios, Monedas, Tipos de Cotización, Tipos de Cuenta
+- **Ventas:** Criterios Cotizador (componente standalone, no necesita migración)
+- **Finanzas:** Cajas (config; el form sigue en monolito embedded)
+- **Contabilidad:** los forms de Plan de Cuentas / Asientos Manuales / configs siguen en el monolito (montado embedded en `/contabilidad/X` con URL clean — el listado extraído sigue siendo el mismo)
 
 **Rule:** when adding/renaming a field on a split entity, update **both** places:
 

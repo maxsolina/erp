@@ -62,9 +62,8 @@ export default function CategoriasClienteListado() {
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-amber-900">Categorías de Clientes</h1>
         <Link
-          href="/?module=ventas&view=categorias_cliente"
+          href="/ventas/categorias-cliente/nueva"
           className="bg-indigo-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"
-          title="La gestión de categorías se hace en el módulo Ventas"
         >
           <Plus className="w-4 h-4" />
           Nueva Categoría
@@ -108,17 +107,25 @@ export default function CategoriasClienteListado() {
             )}
             {!cargando && filtered.map(c => (
               <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="py-3 px-4 font-medium text-sm text-amber-900">{c.nombre}</td>
-                <td className="py-3 px-4 text-sm text-gray-600">{c.descripcion ?? "—"}</td>
-                <td className="py-3 px-4 text-sm">
-                  {c.cuenta_cobrar_codigo
-                    ? <span><span className="font-mono text-xs text-gray-500">{c.cuenta_cobrar_codigo}</span> <span className="text-gray-700">{c.cuenta_cobrar_nombre}</span></span>
-                    : <span className="text-gray-400">—</span>}
+                <td className="p-0">
+                  <Link href={`/ventas/categorias-cliente/${c.id}/editar`} className="block py-3 px-4 font-medium text-sm text-amber-900">{c.nombre}</Link>
                 </td>
-                <td className="py-3 px-4 text-center">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${c.activa ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                    {c.activa ? "Activa" : "Inactiva"}
-                  </span>
+                <td className="p-0">
+                  <Link href={`/ventas/categorias-cliente/${c.id}/editar`} className="block py-3 px-4 text-sm text-gray-600">{c.descripcion ?? "—"}</Link>
+                </td>
+                <td className="p-0">
+                  <Link href={`/ventas/categorias-cliente/${c.id}/editar`} className="block py-3 px-4 text-sm">
+                    {c.cuenta_cobrar_codigo
+                      ? <span><span className="font-mono text-xs text-gray-500">{c.cuenta_cobrar_codigo}</span> <span className="text-gray-700">{c.cuenta_cobrar_nombre}</span></span>
+                      : <span className="text-gray-400">—</span>}
+                  </Link>
+                </td>
+                <td className="p-0">
+                  <Link href={`/ventas/categorias-cliente/${c.id}/editar`} className="block py-3 px-4 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${c.activa ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                      {c.activa ? "Activa" : "Inactiva"}
+                    </span>
+                  </Link>
                 </td>
               </tr>
             ))}
