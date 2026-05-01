@@ -15,6 +15,8 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const id = searchParams.get("id")
   const numero = searchParams.get("numero")
+  const clienteId = searchParams.get("cliente_id")
+  const saldoMin = searchParams.get("saldo_min") // ej: "0" para facturas con saldo > 0
 
   let query = supabase
     .from("facturas")
@@ -28,6 +30,9 @@ export async function GET(req: Request) {
 
   if (id) query = query.eq("id", Number(id))
   else if (numero) query = query.eq("numero", numero)
+
+  if (clienteId) query = query.eq("cliente_id", Number(clienteId))
+  if (saldoMin !== null) query = query.gt("saldo", Number(saldoMin))
 
   const { data, error } = await query
   if (error) return dbError(error)
