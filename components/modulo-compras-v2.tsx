@@ -1162,7 +1162,9 @@ interface ModuloComprasProps {
 export default function ModuloCompras({
   initialRecepcionNumero,
   onNavigationHandled,
-}: ModuloComprasProps = {}) {
+  forcedView,
+  embedded = false,
+}: ModuloComprasProps & { forcedView?: string; embedded?: boolean } = {}) {
   // Estado global persistente
   const {
     proveedores,
@@ -1254,15 +1256,18 @@ export default function ModuloCompras({
   }, [])
 
   // Active view state
-  // Proveedores migrado a /proveedores (top-level). Default arranca en órdenes de compra.
-  // Sincroniza la sub-vista con ?view= en la URL (lo setea el sidebar global del layout).
+  // Si embedded=true, forcedView define la vista. Si no, sincroniza con ?view= en la URL.
   const searchParams = useSearchParams()
-  const initialView = searchParams?.get("view") || "ordenes_compra"
+  const initialView = forcedView ?? searchParams?.get("view") ?? "ordenes_compra"
   const [activeView, setActiveView] = useState(initialView)
   useEffect(() => {
+    if (forcedView) {
+      setActiveView(forcedView)
+      return
+    }
     const v = searchParams?.get("view")
     if (v) setActiveView(v)
-  }, [searchParams])
+  }, [searchParams, forcedView])
 
   // Guard: si el usuario está en una vista que ya no puede ver, lo mandamos al primer item permitido.
   useEffect(() => {
@@ -9289,6 +9294,15 @@ export default function ModuloCompras({
       default:
         return renderProveedores()
     }
+  }
+
+  // Modo embedded — sin sidebar propio (lo aporta el layout de Next)
+  if (embedded) {
+    return (
+      <div className="p-6 bg-gray-50 min-h-screen">
+        {renderContent()}
+      </div>
+    )
   }
 
   return (

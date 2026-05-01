@@ -9423,16 +9423,24 @@ function FinanzasListSection<T extends object>({
 // Export de los datos para que ventas-module pueda usarlos
 export type { RecargoTarjeta as RecargoTarjetaType }
 
-export default function ModuloFinanzas() {
+export default function ModuloFinanzas({
+  forcedView,
+  embedded = false,
+}: { forcedView?: string; embedded?: boolean } = {}) {
   const { canSee } = useERP()
-  // Sincroniza la sub-vista con ?view= en la URL (lo setea el sidebar global del layout).
+  // Cuando embedded=true (montado dentro de una ruta /finanzas/X), forcedView define la sub-vista
+  // y se ignora ?view=. Caso contrario sincroniza con ?view= como antes.
   const searchParams = useSearchParams()
-  const initialItem = searchParams?.get("view") || "extractos_caja"
+  const initialItem = forcedView ?? searchParams?.get("view") ?? "extractos_caja"
   const [activeItem, setActiveItem] = useState<string>(initialItem)
   useEffect(() => {
+    if (forcedView) {
+      setActiveItem(forcedView)
+      return
+    }
     const v = searchParams?.get("view")
     if (v) setActiveItem(v)
-  }, [searchParams])
+  }, [searchParams, forcedView])
   const [tarjetas, setTarjetas] = useState<Tarjeta[]>([])
   const [grupos, setGrupos] = useState<GrupoTarjeta[]>([])
   const [recargos, setRecargos] = useState<RecargoTarjeta[]>([])
@@ -9714,6 +9722,39 @@ export default function ModuloFinanzas() {
       </div>
     </div>
   )
+
+  // En modo embedded, sólo el área de contenido — el sidebar lo aporta el layout de Next.
+  if (embedded) {
+    return (
+      <div className="p-6">
+        {activeItem === "tarjetas" && <SeccionTarjetas tarjetas={tarjetas} setTarjetas={setTarjetas} />}
+        {activeItem === "grupos" && <SeccionGrupos tarjetas={tarjetas} grupos={grupos} setGrupos={setGrupos} />}
+        {activeItem === "recargos" && <SeccionRecargos tarjetas={tarjetas} grupos={grupos} recargos={recargos} setRecargos={setRecargos} />}
+        {activeItem === "extractos_caja" && <SeccionExtractosCaja />}
+        {activeItem === "registros_caja" && <RegistrosCaja />}
+        {activeItem === "ajustes_caja" && <AjustesCaja />}
+        {activeItem === "registros_banco" && <RegistrosBanco />}
+        {activeItem === "ajustes_banco" && <AjustesBanco />}
+        {activeItem === "transferencias_caja" && <TransferenciasCaja />}
+        {activeItem === "depositos" && <Depositos />}
+        {activeItem === "extracciones" && <Extracciones />}
+        {activeItem === "transferencias_bancarias" && <TransferenciasBancarias />}
+        {activeItem === "conversion_monedas" && <ConversionMonedas />}
+        {activeItem === "prestamos" && <Prestamos />}
+        {activeItem === "negociacion_cheques" && <NegociacionChequesComp />}
+        {activeItem === "cheques_terceros" && <ChequesTerceros />}
+        {activeItem === "cheques_propios" && <ChequesPropios />}
+        {activeItem === "conciliacion_bancaria" && <ConciliacionBancaria />}
+        {activeItem === "cupones" && <Cupones />}
+        {activeItem === "conciliacion_tarjetas" && <ConciliacionTarjetas />}
+        {activeItem === "simulador" && <SeccionSimulador tarjetas={tarjetas} grupos={grupos} recargos={recargos} />}
+        {activeItem === "cajas" && <ConfigCajas />}
+        {activeItem === "bancos_config" && <BancosConfig />}
+        {activeItem === "conceptos" && <Conceptos />}
+        {activeItem === "tipos_prestamos" && <TiposPrestamos />}
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-[calc(100vh-44px)]">
