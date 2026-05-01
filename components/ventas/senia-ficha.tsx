@@ -73,14 +73,7 @@ export default function SeniaFicha({ seniaId }: { seniaId: number }) {
             Vencida hace {Math.abs(dias!)} días
           </span>
         )}
-        <div className="ml-auto flex items-center gap-3">
-          <Link
-            href={`/?module=ventas&view=senia_equipo&id=${senia.id}`}
-            className="text-sm text-indigo-700 hover:underline"
-          >
-            Editar en el módulo Ventas →
-          </Link>
-        </div>
+        <div className="ml-auto flex items-center gap-3" />
       </div>
 
       <div className="grid grid-cols-2 gap-6 mb-6">
