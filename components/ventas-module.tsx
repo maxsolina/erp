@@ -1172,7 +1172,12 @@ const SIDEBAR_VENTAS_TO_VISTA: Record<string, string | null> = {
   nc_categorias:       "nc_categorias",
 }
 
-export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: ModuloVentasProps = {}) {
+export default function ModuloVentas({
+  clientesIniciales,
+  onNuevoCliente,
+  forcedView,
+  embedded = false,
+}: ModuloVentasProps & { forcedView?: string; embedded?: boolean } = {}) {
   const { sucursales, sucursalActiva, currentUser, canSee } = useERP()
   const [depositos, setDepositos] = useState<{ id: number; nombre: string; codigo: string; sucursal_id?: number | null }[]>([])
   const [ubicaciones, setUbicaciones] = useState<{ id: number; deposito_id: number; codigo: string; nombre: string }[]>([])
@@ -1195,14 +1200,18 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
 
   // Navigation state
   const [activeSection, setActiveSection] = useState<string>("clientes")
-  // Sincroniza la sub-vista con ?view= en la URL (lo setea el sidebar global del layout).
+  // Si embedded=true, forcedView define la vista. Si no, sincroniza con ?view= en la URL.
   const searchParams = useSearchParams()
-  const initialView = searchParams?.get("view") || "listado"
+  const initialView = forcedView ?? searchParams?.get("view") ?? "listado"
   const [activeView, setActiveView] = useState<string>(initialView)
   useEffect(() => {
+    if (forcedView) {
+      setActiveView(forcedView)
+      return
+    }
     const v = searchParams?.get("view")
     if (v) setActiveView(v)
-  }, [searchParams])
+  }, [searchParams, forcedView])
   const [menuExpandido, setMenuExpandido] = useState<{ [key: string]: boolean }>({
     clientes: true,
     ventas: true,
@@ -15916,6 +15925,22 @@ export default function ModuloVentas({ clientesIniciales, onNuevoCliente }: Modu
           </div>
         </div>
       </div>
+    )
+  }
+
+  // Modo embedded — sin sidebar propio (lo aporta el layout de Next)
+  if (embedded) {
+    return (
+      <main className="overflow-auto p-6">
+        {renderContent()}
+
+        {/* Modals (siguen disponibles en embedded) */}
+        {showModal && modalType === "cliente" && renderClienteModal()}
+        {showModal && modalType === "nota_venta" && renderNotaVentaModal()}
+        {showModal && modalType === "recibo" && renderReciboModal()}
+        {renderNcDetallePopup()}
+        {renderRecDetallePopup()}
+      </main>
     )
   }
 

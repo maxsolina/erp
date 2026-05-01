@@ -2357,18 +2357,25 @@ const menuConfig = [
 
 // â”€â”€â”€ COMPONENTE PRINCIPAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-export default function ModuloContabilidad() {
+export default function ModuloContabilidad({
+  forcedView,
+  embedded = false,
+}: { forcedView?: string; embedded?: boolean } = {}) {
   const { canSee } = useERP()
   const itemPermitidoCont = (id: string): boolean => canSee("contabilidad", id)
 
-  // Sincroniza la sub-vista con ?view= en la URL (lo setea el sidebar global del layout).
+  // Si embedded=true, forcedView define la vista. Si no, sincroniza con ?view= en la URL.
   const searchParams = useSearchParams()
-  const initialView = searchParams?.get("view") || "asientos-automaticos"
+  const initialView = forcedView ?? searchParams?.get("view") ?? "asientos-automaticos"
   const [activeView, setActiveView] = useState(initialView)
   useEffect(() => {
+    if (forcedView) {
+      setActiveView(forcedView)
+      return
+    }
     const v = searchParams?.get("view")
     if (v) setActiveView(v)
-  }, [searchParams])
+  }, [searchParams, forcedView])
   const [expandedSections, setExpandedSections] = useState<string[]>(["asientos", "configuracion"])
 
   // Guard: si la vista activa ya no es permitida, redirige al primer item visible
@@ -2407,6 +2414,15 @@ export default function ModuloContabilidad() {
       case "diagrama-impuestos":          return <PlaceholderView title="Diagrama de Impuestos" icon={Layers} />
       default:                            return <PlaceholderView title="Vista no encontrada" icon={BookOpen} />
     }
+  }
+
+  // Modo embedded — sin sidebar propio (lo aporta el layout de Next)
+  if (embedded) {
+    return (
+      <div className="bg-gray-50 p-6 h-full overflow-y-auto">
+        {renderView()}
+      </div>
+    )
   }
 
   return (
