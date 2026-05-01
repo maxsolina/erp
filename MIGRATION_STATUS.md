@@ -1,6 +1,6 @@
 # Estado de la migración a Routing limpio (App Router)
 
-Última actualización: 2026-04-30 — **forms de Ventas migrados a rutas propias (PRs #69-76)**. Migración App Router completa (PRs 0-18) + cleanup post-PR-18 (#49-65) + extracciones de listados (#66-68) + forms de Ventas (#69-76).
+Última actualización: 2026-04-30 — **migración funcionalmente completa (PRs 0–90)**. Todos los módulos accesibles vía URLs limpias `/modulo/vista`, sin redirects al monolito. Forms críticos migrados a rutas propias (Patrón A); el resto mounta el monolito inline en modo embedded (sin sidebar duplicado).
 
 ## Resumen final
 
@@ -126,7 +126,37 @@ Los 25 stubs de Finanzas y los 19 de Contabilidad siguen siendo los blocs grande
 
 **Decisión del usuario (sesión post-PR-67):** migrar los forms de creación/edición a rutas propias top-level. La app está en construcción, no hay apuro, prioridad sentar bases bien.
 
-### Forms de Ventas — COMPLETADOS (PRs #69-76)
+### Forms de Ventas — COMPLETADOS (PRs #69-77)
+Ver tabla detallada abajo. Después continúa con flujos cross-doc (#78-82) y luego Compras + Configs Ventas + Embedded refactor (#83-90).
+
+### Resumen rápido de PRs #69-90
+
+| PR | Módulo | Tipo |
+|----|--------|------|
+| #69 | Ventas | Form NV con cascada NV→OE→Remito→Factura |
+| #70 | Ventas | Form Factura con confirmar IVA + recargos |
+| #71 | API | Endpoints prep para Recibos (POST/PUT/publicar/cancelar) |
+| #72 | Ventas | Form Recibo (usa endpoints de #71) |
+| #73 | Ventas | Form OE |
+| #74 | Ventas | Form Remito (con Confirmar al generar) |
+| #75 | Ventas | Forms Ajustes/NC/ND parametrizado por tipo |
+| #76 | Ventas | Form Seña |
+| #77 | docs | Update MIGRATION_STATUS post-Ventas |
+| #78 | Ventas fichas | Cross-doc: Factura→Registrar Cobro, Cancelar, etc. |
+| #79 | Ventas fichas | Remito Confirmar/Cancelar + OE Generar Remito + cross-refs |
+| #80 | Ventas | Confirmar Factura desde edit borrador |
+| #81 | Ventas fichas | Acciones Seña: registrar pago, cierre, cancelar |
+| #82 | layout | Topbar tabs apuntan a rutas nuevas |
+| #83 | Compras | Form OC |
+| #84 | Compras fichas | OC Confirmar + cross-refs Recepción/Factura |
+| #85 | Compras | Form Factura Compra |
+| #86 | Compras | Forms NC/ND Compra (cierra TODO del monolito) |
+| #87 | Compras | Form OP |
+| #88 | Compras | Form Categorías Proveedor |
+| #89 | layout | Stubs mountan monolito inline (embedded) — URLs clean |
+| #90 | Ventas | Forms Categorías Cliente + NC-Categorías |
+
+**Estado funcional:** todas las URLs `/modulo/X` son limpias, sin redirects. Los forms más usados están migrados a Patrón A. Las vistas no migradas (cheques, conciliación bancaria, reportes contables, etc.) mountan el monolito inline en modo `embedded` — la URL queda limpia y la sidebar/topbar global se mantiene.
 
 | PR | Entidad | Notas |
 |----|---------|-------|
