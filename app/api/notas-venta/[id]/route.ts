@@ -12,10 +12,11 @@ function getSupabase() {
 // GET — obtener una NV por ID
 export async function GET(
   _req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const supabase = getSupabase()
-  const id = Number(params.id)
+  const { id: idParam } = await params
+  const id = Number(idParam)
   if (!id) return NextResponse.json({ error: "ID inválido" }, { status: 400 })
 
   const { data: nv, error } = await supabase
@@ -38,10 +39,11 @@ export async function GET(
 // Solo permitido si la NV está en estado 'abierta' (sin cascada disparada).
 export async function PUT(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const supabase = getSupabase()
-  const id = Number(params.id)
+  const { id: idParam } = await params
+  const id = Number(idParam)
   if (!id) return NextResponse.json({ error: "ID inválido" }, { status: 400 })
 
   const body = await req.json()
@@ -141,10 +143,11 @@ export async function PUT(
 //   - liberar_stock:  libera todas las unidades reservadas para esta NV (estado → 'disponible')
 export async function PATCH(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const supabase = getSupabase()
-  const nvId = Number(params.id)
+  const { id: idParam } = await params
+  const nvId = Number(idParam)
   if (!nvId) return NextResponse.json({ error: "ID inválido" }, { status: 400 })
 
   const body = await req.json()
