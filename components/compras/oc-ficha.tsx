@@ -58,12 +58,14 @@ export default function OcFicha({ ocId }: { ocId: number }) {
           {getEstadoOcLabel(oc.estado)}
         </span>
         <div className="ml-auto flex items-center gap-3">
-          <Link
-            href={`/?module=compras&view=ordenes_compra`}
-            className="text-sm text-indigo-700 hover:underline"
-          >
-            Editar en el módulo Compras →
-          </Link>
+          {oc.estado === "borrador" && (
+            <Link
+              href={`/compras/oc/${oc.id}/editar`}
+              className="text-sm text-indigo-700 hover:underline"
+            >
+              Editar →
+            </Link>
+          )}
         </div>
       </div>
 
