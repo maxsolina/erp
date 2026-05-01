@@ -9,30 +9,50 @@ function getSupabase() {
   )
 }
 
-// GET — listar recibos (opcional filtro por id)
-export async function GET(req: Request) {
+// GET — leer un recibo con sus pagos e imputaciones
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   const supabase = getSupabase()
-  const { searchParams } = new URL(req.url)
-  const id = searchParams.get("id")
-  let query = supabase.from("recibos").select("*").order("created_at", { ascending: false })
-  if (id) query = query.eq("id", id)
-  const { data, error } = await query
-  if (error) return dbError(error)
-  return NextResponse.json(data ?? [])
+  const { id } = await params
+
+  const { data: rec, error } = await supabase
+    .from("recibos")
+    .select("*")
+    .eq("id", id)
+    .single()
+  if (error || !rec) {
+    return NextResponse.json({ error: error?.message ?? "Recibo no encontrado" }, { status: 404 })
+  }
+
+  const { data: pagos } = await supabase
+    .from("recibo_pagos")
+    .select("*")
+    .eq("recibo_id", id)
+  const { data: imputaciones } = await supabase
+    .from("recibo_imputaciones")
+    .select("*")
+    .eq("recibo_id", id)
+
+  return NextResponse.json({
+    ...rec,
+    pagos: pagos ?? [],
+    imputaciones: imputaciones ?? [],
+  })
 }
 
-// POST — crear recibo (cabecera + pagos + imputaciones) en una sola operación
-//
-// El cliente solo manda los datos del form. El servidor:
-// - Genera el número con la RPC `generar_numero_recibo`
-// - Inserta cabecera con estado='borrador' (publicar es una acción separada)
-// - Inserta recibo_pagos asociados
-// - Inserta recibo_imputaciones con asignacion > 0
-export async function POST(req: Request) {
+// PUT — reemplazar cabecera + pagos + imputaciones de un recibo en estado 'borrador'.
+// Recibos publicados o cancelados no se editan.
+export async function PUT(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   const supabase = getSupabase()
+  const { id } = await params
+
   const body = await req.json()
   const {
-    sucursal,
     cliente_id,
     cliente_nombre,
     caja_id,
@@ -50,30 +70,28 @@ export async function POST(req: Request) {
     tipo_cotizacion,
     cotizacion,
     observaciones,
-    fecha,
     pagos = [],
     imputaciones = [],
   } = body
 
-  // 1. Generar número
-  let numero: string
-  try {
-    const { data: numData, error: numErr } = await supabase.rpc("generar_numero_recibo", {
-      p_sucursal: sucursal ?? "",
-    })
-    if (numErr || !numData) {
-      numero = `REC X 00000-${Date.now()}`
-    } else {
-      numero = numData as string
-    }
-  } catch {
-    numero = `REC X 00000-${Date.now()}`
+  // Validar estado
+  const { data: actual, error: actualErr } = await supabase
+    .from("recibos")
+    .select("estado")
+    .eq("id", id)
+    .single()
+  if (actualErr || !actual) {
+    return NextResponse.json({ error: "Recibo no encontrado" }, { status: 404 })
+  }
+  if (actual.estado !== "borrador") {
+    return NextResponse.json(
+      { error: `No se puede editar un recibo en estado '${actual.estado}'. Solo borradores son editables.` },
+      { status: 422 }
+    )
   }
 
-  // 2. Insertar cabecera
-  const cabeceraPayload: Record<string, unknown> = {
-    numero,
-    sucursal: sucursal ?? null,
+  // Update cabecera
+  const updatePayload: Record<string, unknown> = {
     cliente_id: cliente_id ?? null,
     cliente_nombre: cliente_nombre ?? null,
     caja_id: caja_id ?? null,
@@ -91,21 +109,20 @@ export async function POST(req: Request) {
     tipo_cotizacion: tipo_cotizacion ?? null,
     cotizacion: cotizacion ?? null,
     observaciones: observaciones ?? null,
-    estado: "borrador",
-    fecha: fecha ?? new Date().toISOString().split("T")[0],
+    updated_at: new Date().toISOString(),
   }
 
-  const { data: rec, error: recErr } = await supabase
+  const { error: updErr } = await supabase
     .from("recibos")
-    .insert(cabeceraPayload)
-    .select()
-    .single()
-  if (recErr) return dbError(recErr)
+    .update(updatePayload)
+    .eq("id", id)
+  if (updErr) return dbError(updErr)
 
-  // 3. Insertar pagos
+  // Reemplazar pagos
+  await supabase.from("recibo_pagos").delete().eq("recibo_id", id)
   if (Array.isArray(pagos) && pagos.length > 0) {
     const pagosInsert = pagos.map((p: any) => ({
-      recibo_id: rec.id,
+      recibo_id: id,
       valor_id: p.valor_id ?? null,
       valor_nombre: p.valor_nombre ?? null,
       tipo_valor: p.tipo_valor ?? null,
@@ -124,19 +141,15 @@ export async function POST(req: Request) {
       cupon_tarjeta_id: p.cupon_tarjeta_id ?? null,
     }))
     const { error: pagosErr } = await supabase.from("recibo_pagos").insert(pagosInsert)
-    if (pagosErr) {
-      return NextResponse.json(
-        { error: `Recibo creado (id:${rec.id}) pero error en pagos: ${pagosErr.message}` },
-        { status: 207 }
-      )
-    }
+    if (pagosErr) return dbError(pagosErr)
   }
 
-  // 4. Insertar imputaciones (solo las que tienen asignacion > 0)
+  // Reemplazar imputaciones (solo asignacion > 0)
+  await supabase.from("recibo_imputaciones").delete().eq("recibo_id", id)
   const impsConAsig = (imputaciones ?? []).filter((i: any) => Number(i.asignacion ?? 0) > 0)
   if (impsConAsig.length > 0) {
     const impsInsert = impsConAsig.map((i: any) => ({
-      recibo_id: rec.id,
+      recibo_id: id,
       tipo_comprobante: i.tipo_comprobante ?? null,
       comprobante_id: i.comprobante_id ?? null,
       comprobante_referencia: i.comprobante_referencia ?? null,
@@ -152,13 +165,8 @@ export async function POST(req: Request) {
       asignacion: Number(i.asignacion ?? 0),
     }))
     const { error: impsErr } = await supabase.from("recibo_imputaciones").insert(impsInsert)
-    if (impsErr) {
-      return NextResponse.json(
-        { error: `Recibo creado (id:${rec.id}) pero error en imputaciones: ${impsErr.message}` },
-        { status: 207 }
-      )
-    }
+    if (impsErr) return dbError(impsErr)
   }
 
-  return NextResponse.json({ ok: true, id: rec.id, numero: rec.numero })
+  return NextResponse.json({ ok: true, id })
 }
