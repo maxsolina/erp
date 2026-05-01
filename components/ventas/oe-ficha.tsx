@@ -65,14 +65,7 @@ export default function OeFicha({ oeId }: { oeId: number }) {
         <span className={`px-3 py-1 rounded-full text-sm font-medium ${getEstadoOEColor(oe.estado)}`}>
           {getEstadoOELabel(oe.estado)}
         </span>
-        <div className="ml-auto flex items-center gap-3">
-          <Link
-            href={`/?module=ventas&view=ordenes_entrega&id=${oe.id}`}
-            className="text-sm text-indigo-700 hover:underline"
-          >
-            Editar en el módulo Ventas →
-          </Link>
-        </div>
+        <div className="ml-auto flex items-center gap-3" />
       </div>
 
       <div className="grid grid-cols-2 gap-6 mb-6">
