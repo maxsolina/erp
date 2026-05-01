@@ -13,7 +13,7 @@ export default function NcComprasPage() {
     <FacturasListado
       apiUrl="/api/compras/notas-credito"
       title="Notas de Crédito (Compras)"
-      newHref="/?module=compras&view=nc_compra"
+      newHref="/compras/nc/nueva"
       fichaBaseHref="/compras/nc"
       moduleName="compras_nc"
     />
