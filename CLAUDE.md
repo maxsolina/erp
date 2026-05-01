@@ -129,7 +129,7 @@ Some entities have their **listado + ficha read-only extracted** (`components/<m
 
 Currently split (read at: extracted, write at: monolith):
 
-- **Ventas:** Ajustes, NC, ND, Seña, Categorías Cliente, NC-Categorías, Criterios Cotizador
+- **Ventas:** Seña, Categorías Cliente, NC-Categorías, Criterios Cotizador
 - **Compras:** Categorías de Proveedores
 - **Finanzas:** Cajas
 - **Contabilidad:** Plan de Cuentas, Asientos Manuales, Asientos Automáticos, Años Fiscales, Períodos, Diarios, Monedas, Tipos de Cotización, Tipos de Cuenta

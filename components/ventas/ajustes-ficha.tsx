@@ -81,14 +81,7 @@ export default function AjustesFicha({ ajusteId, backHref, view }: Props) {
         <span className={`px-3 py-1 rounded-full text-sm font-medium ${getEstadoAjusteColor(ajuste.estado)}`}>
           {getEstadoAjusteLabel(ajuste.estado)}
         </span>
-        <div className="ml-auto flex items-center gap-3">
-          <Link
-            href={`/?module=ventas&view=${view}&id=${ajuste.id}`}
-            className="text-sm text-indigo-700 hover:underline"
-          >
-            Editar en el módulo Ventas →
-          </Link>
-        </div>
+        <div className="ml-auto flex items-center gap-3" />
       </div>
 
       <div className="grid grid-cols-2 gap-6 mb-6">
