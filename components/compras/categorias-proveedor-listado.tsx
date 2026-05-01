@@ -45,9 +45,8 @@ export default function CategoriasProveedorListado() {
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-amber-900">Categorías de Proveedores</h1>
         <Link
-          href="/?module=compras&view=cat_proveedores"
+          href="/compras/categorias-proveedores/nueva"
           className="bg-indigo-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"
-          title="La gestión de categorías se hace en el módulo Compras"
         >
           <Plus className="w-4 h-4" />
           Nueva Categoría
@@ -92,11 +91,21 @@ export default function CategoriasProveedorListado() {
             )}
             {!cargando && filtered.map(c => (
               <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="py-3 px-4 font-medium text-sm text-amber-900">{c.nombre}</td>
-                <td className="py-3 px-4 text-sm text-gray-600">{c.cuenta_cobrar_defecto ?? "—"}</td>
-                <td className="py-3 px-4 text-sm text-gray-600">{c.cuenta_pagar_defecto ?? "—"}</td>
-                <td className="py-3 px-4 text-center text-sm">{c.requiere_oc_para_facturar ? "Sí" : "No"}</td>
-                <td className="py-3 px-4 text-center text-sm">{c.comprobantes_confidenciales ? "Sí" : "No"}</td>
+                <td className="p-0">
+                  <Link href={`/compras/categorias-proveedores/${c.id}/editar`} className="block py-3 px-4 font-medium text-sm text-amber-900">{c.nombre}</Link>
+                </td>
+                <td className="p-0">
+                  <Link href={`/compras/categorias-proveedores/${c.id}/editar`} className="block py-3 px-4 text-sm text-gray-600">{c.cuenta_cobrar_defecto ?? "—"}</Link>
+                </td>
+                <td className="p-0">
+                  <Link href={`/compras/categorias-proveedores/${c.id}/editar`} className="block py-3 px-4 text-sm text-gray-600">{c.cuenta_pagar_defecto ?? "—"}</Link>
+                </td>
+                <td className="p-0">
+                  <Link href={`/compras/categorias-proveedores/${c.id}/editar`} className="block py-3 px-4 text-center text-sm">{c.requiere_oc_para_facturar ? "Sí" : "No"}</Link>
+                </td>
+                <td className="p-0">
+                  <Link href={`/compras/categorias-proveedores/${c.id}/editar`} className="block py-3 px-4 text-center text-sm">{c.comprobantes_confidenciales ? "Sí" : "No"}</Link>
+                </td>
               </tr>
             ))}
             {!cargando && filtered.length === 0 && (
