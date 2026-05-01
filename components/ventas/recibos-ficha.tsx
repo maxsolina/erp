@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, X } from "lucide-react"
 import {
   formatCurrency,
   formatDate,
@@ -16,6 +16,32 @@ export default function RecibosFicha({ reciboId }: { reciboId: string }) {
   const router = useRouter()
   const [recibo, setRecibo] = useState<Recibo | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
+  const [showCancelarModal, setShowCancelarModal] = useState(false)
+  const [motivoCancel, setMotivoCancel] = useState("")
+  const [cancelando, setCancelando] = useState(false)
+
+  const cancelarRecibo = async () => {
+    if (!motivoCancel.trim()) { alert("Ingresá un motivo"); return }
+    if (cancelando) return
+    setCancelando(true)
+    try {
+      const res = await fetch(`/api/recibos/${reciboId}/cancelar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motivo: motivoCancel }),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        alert(`Error al cancelar: ${text}`)
+        setCancelando(false)
+        return
+      }
+      window.location.reload()
+    } catch (e: any) {
+      alert(`Error de red: ${e?.message ?? e}`)
+      setCancelando(false)
+    }
+  }
 
   useEffect(() => {
     fetch(`/api/recibos?id=${encodeURIComponent(reciboId)}`)
@@ -65,14 +91,23 @@ export default function RecibosFicha({ reciboId }: { reciboId: string }) {
         <span className={`px-3 py-1 rounded-full text-sm font-medium ${getEstadoReciboColor(recibo.estado)}`}>
           {getEstadoReciboLabel(recibo.estado)}
         </span>
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-2">
           {recibo.estado === "borrador" && (
             <Link
               href={`/ventas/recibos/${recibo.id}/editar`}
-              className="text-sm text-indigo-700 hover:underline"
+              className="text-sm text-indigo-700 hover:underline px-3 py-1.5"
             >
               Editar →
             </Link>
+          )}
+          {recibo.estado === "publicado" && (
+            <button
+              onClick={() => setShowCancelarModal(true)}
+              className="text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg px-3 py-1.5 flex items-center gap-1"
+            >
+              <X className="w-4 h-4" />
+              Cancelar Recibo
+            </button>
           )}
         </div>
       </div>
@@ -126,6 +161,39 @@ export default function RecibosFicha({ reciboId }: { reciboId: string }) {
         <div className="bg-white rounded-lg border p-5">
           <h3 className="font-semibold text-gray-900 mb-2 pb-2 border-b">Observaciones</h3>
           <p className="text-sm text-gray-700 whitespace-pre-wrap">{recibo.observaciones}</p>
+        </div>
+      )}
+
+      {showCancelarModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Cancelar Recibo {recibo.numero}</h3>
+            <p className="text-sm text-gray-500 mb-3">
+              Se revertirán los movimientos de caja, los saldos de las facturas imputadas, los cupones y el asiento contable.
+            </p>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Motivo *</label>
+            <textarea
+              value={motivoCancel}
+              onChange={e => setMotivoCancel(e.target.value)}
+              rows={3}
+              className="w-full border rounded px-2 py-1.5 text-sm"
+            />
+            <div className="flex gap-3 justify-end mt-4">
+              <button
+                onClick={() => setShowCancelarModal(false)}
+                className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                Volver
+              </button>
+              <button
+                onClick={cancelarRecibo}
+                disabled={cancelando || !motivoCancel.trim()}
+                className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50"
+              >
+                {cancelando ? "Cancelando…" : "Cancelar Recibo"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
