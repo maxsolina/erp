@@ -61,7 +61,10 @@ interface CCResumen {
 
 const CUOTAS_OPTS = [1, 2, 3, 4, 5, 6, 9, 12, 18, 24]
 
-export default function ReciboForm({ initialId }: { initialId?: string }) {
+export default function ReciboForm({
+  initialId,
+  prefillFacturaId,
+}: { initialId?: string; prefillFacturaId?: number }) {
   const router = useRouter()
   const isEdit = initialId != null
   const { sucursalActiva } = useERP()
@@ -102,6 +105,16 @@ export default function ReciboForm({ initialId }: { initialId?: string }) {
   const [guardando, setGuardando] = useState(false)
   const [publicando, setPublicando] = useState(false)
   const [errorAccion, setErrorAccion] = useState<string | null>(null)
+
+  // Pre-fill desde factura (Registrar Cobro)
+  const [prefillData, setPrefillData] = useState<{
+    factura_id: number
+    cliente_id: number
+    saldo: number
+    moneda: "ARS" | "USD"
+    medios: { medio: string; importe: number }[]
+  } | null>(null)
+  const [prefillCargado, setPrefillCargado] = useState(false)
 
   // Cancelar publicado
   const [showCancelarModal, setShowCancelarModal] = useState(false)
@@ -187,6 +200,81 @@ export default function ReciboForm({ initialId }: { initialId?: string }) {
       .then(d => { if (Array.isArray(d)) setValoresCaja(d) })
       .catch(() => setValoresCaja([]))
   }, [reciboCajaId])
+
+  // ─── Pre-fill desde factura (Registrar Cobro) ──────────────────────────
+  // 1. Fetch factura → setear cliente + factura_id + guardar medios para mapear después
+  useEffect(() => {
+    if (isEdit || !prefillFacturaId || prefillCargado) return
+    fetch(`/api/facturas?id=${prefillFacturaId}`)
+      .then(r => r.json())
+      .then((data: any) => {
+        const fac = Array.isArray(data) ? data[0] : data
+        if (!fac?.id) return
+        const medios = (fac.factura_medios_pago ?? []).map((mp: any) => ({
+          medio: mp.medio ?? "efectivo",
+          importe: Number(mp.monto_total ?? mp.monto_base ?? 0),
+        }))
+        setPrefillData({
+          factura_id: fac.id,
+          cliente_id: fac.cliente_id,
+          saldo: Number(fac.saldo ?? 0),
+          moneda: fac.moneda === "USD" ? "USD" : "ARS",
+          medios,
+        })
+        setReciboClienteId(fac.cliente_id)
+        setReciboFacturaId(fac.id)
+        // Caja default: primera caja filtrada por sucursal
+        const primeraCaja = cajas.find(c => sucursalActiva?.nombre ? c.sucursal === sucursalActiva.nombre : true)
+        if (primeraCaja) setReciboCajaId(primeraCaja.id)
+        setPrefillCargado(true)
+      })
+      .catch(() => {})
+  }, [isEdit, prefillFacturaId, prefillCargado, cajas, sucursalActiva])
+
+  // 2. Cuando cargaron valoresCaja + el prefill ya tiene datos, mapear medios → pagos
+  useEffect(() => {
+    if (!prefillData || pagos.length > 0 || valoresCaja.length === 0) return
+    const mapearMedio = (medio: string) => {
+      if (medio === "efectivo") return valoresCaja.find(v => v.tipo === "efectivo")
+      if (medio === "tarjeta") return valoresCaja.find(v => v.subtipo === "tarjeta")
+      if (medio === "transferencia") return valoresCaja.find(v => v.subtipo === "banco")
+      return undefined
+    }
+    const nuevosPagos: Pago[] = prefillData.medios.map(mp => {
+      const cv = mapearMedio(mp.medio)
+      return {
+        id: crypto.randomUUID(),
+        valor_id: cv?.id ?? "",
+        valor_nombre: cv?.nombre ?? "",
+        tipo_valor: cv?.tipo ?? "",
+        importe: mp.importe,
+        moneda: prefillData.moneda,
+        importe_comprobante: mp.importe,
+        moneda_comprobante: prefillData.moneda,
+        es_tarjeta: mp.medio === "tarjeta",
+        tarjeta_nombre: null,
+        cantidad_cuotas: 1,
+        numero_cupon: null,
+        recargo_porcentaje: 0,
+        recargo_importe: 0,
+        es_cheque: false,
+        cheque_id: null,
+      }
+    })
+    setPagos(nuevosPagos)
+  }, [prefillData, valoresCaja, pagos.length])
+
+  // 3. Cuando cargan las imputaciones, asignar el saldo a la factura del prefill
+  useEffect(() => {
+    if (!prefillData || imputaciones.length === 0) return
+    const ya = imputaciones.find(i => i.comprobante_id === prefillData.factura_id && i.asignacion > 0)
+    if (ya) return
+    setImputaciones(prev => prev.map(i =>
+      i.comprobante_id === prefillData.factura_id
+        ? { ...i, asignacion: Math.min(i.saldo_actual, prefillData.saldo) }
+        : i
+    ))
+  }, [prefillData, imputaciones.length])
 
   // ─── Cargar facturas pendientes y CC al cambiar cliente ─────────────────
   useEffect(() => {

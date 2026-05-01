@@ -12,10 +12,21 @@ import {
   type NotaVentaDetalle,
 } from "./_shared"
 
+interface DocVinculado {
+  id: number | string
+  numero: string
+  estado?: string
+  href: string
+}
+
 export default function NvFicha({ nvId }: { nvId: number }) {
   const router = useRouter()
   const [nv, setNv] = useState<NotaVentaDetalle | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
+  const [oes, setOes] = useState<DocVinculado[]>([])
+  const [remitos, setRemitos] = useState<DocVinculado[]>([])
+  const [facturas, setFacturas] = useState<DocVinculado[]>([])
+  const [recibos, setRecibos] = useState<DocVinculado[]>([])
 
   useEffect(() => {
     fetch(`/api/notas-venta/${nvId}`)
@@ -34,6 +45,38 @@ export default function NvFicha({ nvId }: { nvId: number }) {
         setNv(null)
       })
   }, [nvId])
+
+  // Cargar docs vinculados después de tener la NV
+  useEffect(() => {
+    if (!nv) return
+    Promise.all([
+      fetch("/api/ordenes-entrega").then(r => r.json()).catch(() => []),
+      fetch("/api/remitos-venta").then(r => r.json()).catch(() => []),
+      fetch(`/api/facturas?nota_venta_id=${nvId}`).then(r => r.json()).catch(() => []),
+      fetch("/api/recibos").then(r => r.json()).catch(() => []),
+    ]).then(([oeList, remList, facList, recList]) => {
+      if (Array.isArray(oeList)) {
+        setOes(oeList
+          .filter((oe: any) => Number(oe.nota_venta_id) === nvId)
+          .map((oe: any) => ({ id: oe.id, numero: oe.numero, estado: oe.estado, href: `/ventas/oe/${oe.id}` })))
+      }
+      if (Array.isArray(remList)) {
+        setRemitos(remList
+          .filter((r: any) => Number(r.nota_venta_id) === nvId || r.nota_venta_numero === nv.numero)
+          .map((r: any) => ({ id: r.id, numero: r.numero, estado: r.estado, href: `/ventas/remitos/${r.id}` })))
+      }
+      if (Array.isArray(facList)) {
+        setFacturas(facList.map((f: any) => ({
+          id: f.id, numero: f.numero, estado: f.estado, href: `/ventas/facturas/${f.id}`,
+        })))
+      }
+      if (Array.isArray(recList)) {
+        setRecibos(recList
+          .filter((r: any) => r.nota_venta_id === nvId || r.nota_venta_numero === nv.numero)
+          .map((r: any) => ({ id: r.id, numero: r.numero, estado: r.estado, href: `/ventas/recibos/${r.id}` })))
+      }
+    })
+  }, [nv, nvId])
 
   if (nv === undefined) {
     return <div className="p-12 text-center text-gray-500">Cargando NV...</div>
@@ -101,6 +144,18 @@ export default function NvFicha({ nvId }: { nvId: number }) {
         </div>
       </div>
 
+      {(oes.length > 0 || remitos.length > 0 || facturas.length > 0 || recibos.length > 0) && (
+        <div className="bg-white rounded-lg border p-5 mb-6">
+          <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Documentos vinculados</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <DocCol titulo="Órdenes de Entrega" docs={oes} emptyText="—" />
+            <DocCol titulo="Remitos" docs={remitos} emptyText="—" />
+            <DocCol titulo="Facturas" docs={facturas} emptyText="—" />
+            <DocCol titulo="Recibos" docs={recibos} emptyText="—" />
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-lg border p-5">
         <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Líneas</h3>
         <table className="w-full">
@@ -143,6 +198,28 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex justify-between">
       <span className="text-gray-500">{label}</span>
       <span className="font-medium text-gray-900">{value || "—"}</span>
+    </div>
+  )
+}
+
+function DocCol({ titulo, docs, emptyText }: { titulo: string; docs: DocVinculado[]; emptyText: string }) {
+  return (
+    <div>
+      <p className="text-xs uppercase font-semibold text-gray-500 mb-2">{titulo}</p>
+      {docs.length === 0 ? (
+        <p className="text-xs text-gray-400">{emptyText}</p>
+      ) : (
+        <ul className="space-y-1">
+          {docs.map(d => (
+            <li key={d.id}>
+              <Link href={d.href} className="text-sm text-emerald-700 hover:underline font-mono">
+                {d.numero}
+              </Link>
+              {d.estado && <span className="text-xs text-gray-400 ml-2">({d.estado})</span>}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
