@@ -62,12 +62,14 @@ export default function FacturasGenericoFicha({ apiUrl, backHref, monolitoEditVi
           </span>
         )}
         <div className="ml-auto">
-          <Link
-            href={`/?module=compras&view=${monolitoEditView}`}
-            className="text-sm text-indigo-700 hover:underline"
-          >
-            Editar en el módulo Compras →
-          </Link>
+          {data.estado === "borrador" && data.id && (
+            <Link
+              href={`${backHref}/${data.id}/editar`}
+              className="text-sm text-indigo-700 hover:underline"
+            >
+              Editar →
+            </Link>
+          )}
         </div>
       </div>
 
