@@ -37,7 +37,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (facErr || !factura) {
     return NextResponse.json({ error: "Factura no encontrada" }, { status: 404 })
   }
-  if (factura.estado !== "abierta") {
+  if (factura.estado !== "abierta" && factura.estado !== "borrador") {
     return NextResponse.json({ error: `La factura está en estado "${factura.estado}", no se puede confirmar` }, { status: 422 })
   }
 

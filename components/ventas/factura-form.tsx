@@ -346,20 +346,40 @@ export default function FacturaForm({ initialId }: { initialId?: number }) {
     setGuardando(true)
 
     try {
-      // 1. Crear factura "abierta" (sin IVA, total = subtotal)
-      const facRes = await fetch("/api/facturas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(construirPayloadCabecera("abierta")),
-      })
-      if (!facRes.ok) {
-        const text = await facRes.text()
-        setErrorGuardado(`Error al crear factura: ${text}`)
-        setGuardando(false)
-        return
+      // 1. Crear factura "abierta" (nuevo) o guardar borrador (edit) → /confirmar
+      //    promueve a "confirmada" al final igual.
+      let facId: number
+      let facNumero: string
+      if (isEdit && initialId) {
+        const putRes = await fetch(`/api/facturas/${initialId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(construirPayloadCabecera("borrador")),
+        })
+        if (!putRes.ok) {
+          const text = await putRes.text()
+          setErrorGuardado(`Error al guardar antes de confirmar: ${text}`)
+          setGuardando(false)
+          return
+        }
+        facId = initialId
+        facNumero = facturaNumeroExistente ?? ""
+      } else {
+        const facRes = await fetch("/api/facturas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(construirPayloadCabecera("abierta")),
+        })
+        if (!facRes.ok) {
+          const text = await facRes.text()
+          setErrorGuardado(`Error al crear factura: ${text}`)
+          setGuardando(false)
+          return
+        }
+        const facData = await facRes.json()
+        facId = facData.id
+        facNumero = facData.numero
       }
-      const facData = await facRes.json()
-      const facId: number = facData.id
 
       // 2. Construir medios para /confirmar
       let monedaActual: "ARS" | "USD" = facturaMoneda
@@ -409,7 +429,7 @@ export default function FacturaForm({ initialId }: { initialId?: number }) {
         )
         if (!ok) {
           setErrorGuardado(
-            `La factura ${facData.numero} quedó "abierta" en ${facturaMoneda}. Podés cancelarla o completarla más tarde.`
+            `La factura ${facNumero} quedó pendiente en ${facturaMoneda}. Podés cancelarla o completarla más tarde.`
           )
           setGuardando(false)
           router.push(`/ventas/facturas/${facId}`)
@@ -437,7 +457,7 @@ export default function FacturaForm({ initialId }: { initialId?: number }) {
       })
       if (!confRes.ok) {
         const ce = await confRes.json().catch(() => ({ error: "Error al confirmar factura" }))
-        setErrorGuardado(`Factura ${facData.numero} creada pero no confirmada: ${ce.error ?? "error"}`)
+        setErrorGuardado(`Factura ${facNumero} pendiente, no confirmada: ${ce.error ?? "error"}`)
         setGuardando(false)
         router.push(`/ventas/facturas/${facId}`)
         return
@@ -512,16 +532,14 @@ export default function FacturaForm({ initialId }: { initialId?: number }) {
             <Save className="w-4 h-4" />
             {guardando ? "Guardando…" : isEdit ? "Guardar cambios" : "Guardar Borrador"}
           </button>
-          {!isEdit && (
-            <button
-              onClick={confirmarFactura}
-              disabled={guardando || !facturaClienteId || lineasValidas.length === 0}
-              className="px-4 py-2 text-sm bg-indigo-900 hover:bg-indigo-800 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-            >
-              <CheckCircle className="w-4 h-4" />
-              {guardando ? "Procesando…" : "Confirmar Factura"}
-            </button>
-          )}
+          <button
+            onClick={confirmarFactura}
+            disabled={guardando || !facturaClienteId || lineasValidas.length === 0}
+            className="px-4 py-2 text-sm bg-indigo-900 hover:bg-indigo-800 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+          >
+            <CheckCircle className="w-4 h-4" />
+            {guardando ? "Procesando…" : "Confirmar Factura"}
+          </button>
         </div>
       </div>
 
@@ -753,10 +771,9 @@ export default function FacturaForm({ initialId }: { initialId?: number }) {
             </div>
           </div>
 
-          {/* Medios de Pago — solo en modo crear (no se editan en borradores) */}
-          {!isEdit && (
-            <div className="bg-white rounded-lg shadow-sm">
-              <BloquesMediosPago
+          {/* Medios de Pago — visible en crear y al editar borradores */}
+          <div className="bg-white rounded-lg shadow-sm">
+            <BloquesMediosPago
                 key={`fac-${facturaClienteId}-${facturaMoneda}`}
                 tarjetas={tarjetas}
                 grupos={gruposTarjeta}
@@ -783,8 +800,7 @@ export default function FacturaForm({ initialId }: { initialId?: number }) {
                   saldo: subtotal,
                 } as any}
               />
-            </div>
-          )}
+          </div>
         </div>
 
         {/* Sidebar */}
