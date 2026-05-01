@@ -17,7 +17,7 @@ export default function OpComprasPage() {
     <FacturasListado
       apiUrl="/api/compras/ordenes-pago"
       title="Órdenes de Pago"
-      newHref="/?module=compras&view=ordenes_pago"
+      newHref="/compras/op/nueva"
       fichaBaseHref="/compras/op"
       moduleName="compras_op"
     />
