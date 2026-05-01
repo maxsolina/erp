@@ -13,7 +13,7 @@ export default function NdComprasPage() {
     <FacturasListado
       apiUrl="/api/compras/notas-debito"
       title="Notas de Débito (Compras)"
-      newHref="/?module=compras&view=nd_compra"
+      newHref="/compras/nd/nueva"
       fichaBaseHref="/compras/nd"
       moduleName="compras_nd"
     />
