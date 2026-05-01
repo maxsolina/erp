@@ -121,7 +121,7 @@ export async function POST(req: Request) {
   }
 
   // Mapear estado al enum válido de Supabase
-  const ESTADOS_VALIDOS = ["abierta", "facturada", "cancelada", "parcial"]
+  const ESTADOS_VALIDOS = ["borrador", "abierta", "a_facturar", "verificacion_factura", "verificacion_oe", "facturada", "finalizada", "parcial", "cancelada"]
   const estadoNormalizado = ESTADOS_VALIDOS.includes(estado) ? estado : "abierta"
 
   // Insertar cabecera de NV

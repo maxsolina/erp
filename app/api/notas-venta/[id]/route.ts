@@ -99,14 +99,14 @@ export async function PUT(
   if (actualErr || !actual) {
     return NextResponse.json({ error: "NV no encontrada" }, { status: 404 })
   }
-  if (actual.estado !== "abierta") {
+  if (actual.estado !== "abierta" && actual.estado !== "borrador") {
     return NextResponse.json(
-      { error: `No se puede editar una NV en estado '${actual.estado}'. Solo NVs en estado 'abierta' son editables.` },
+      { error: `No se puede editar una NV en estado '${actual.estado}'. Solo NVs en estado 'borrador' o 'abierta' son editables.` },
       { status: 422 }
     )
   }
 
-  const ESTADOS_VALIDOS = ["abierta", "facturada", "cancelada", "parcial"]
+  const ESTADOS_VALIDOS = ["borrador", "abierta", "a_facturar", "verificacion_factura", "verificacion_oe", "facturada", "finalizada", "parcial", "cancelada"]
   const estadoNormalizado = ESTADOS_VALIDOS.includes(estado) ? estado : "abierta"
 
   // Update cabecera
