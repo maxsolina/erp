@@ -18,3 +18,15 @@ export async function GET() {
   if (error) return dbError(error)
   return NextResponse.json(data ?? [])
 }
+
+export async function POST(req: Request) {
+  const supabase = getSupabase()
+  const body = await req.json()
+  const { data, error } = await supabase
+    .from("nc_categorias")
+    .insert({ nombre: body.nombre, activa: body.activa ?? true })
+    .select("id")
+    .single()
+  if (error) return dbError(error)
+  return NextResponse.json({ ok: true, id: data.id })
+}
