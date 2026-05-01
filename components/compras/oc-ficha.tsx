@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, CheckCircle } from "lucide-react"
 import {
   formatCurrency,
   formatDate,
@@ -11,11 +11,15 @@ import {
   getEstadoOcLabel,
   type OrdenCompraDetalle,
 } from "./_shared"
+import { guardarOrdenCompra, guardarRecepcion } from "@/lib/compras-actions"
 
 export default function OcFicha({ ocId }: { ocId: number }) {
   const router = useRouter()
   const [oc, setOc] = useState<OrdenCompraDetalle | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
+  const [confirmando, setConfirmando] = useState(false)
+  const [recepcionId, setRecepcionId] = useState<number | null>(null)
+  const [facturaId, setFacturaId] = useState<number | null>(null)
 
   useEffect(() => {
     fetch(`/api/compras/ordenes-compra/${ocId}`)
@@ -34,6 +38,94 @@ export default function OcFicha({ ocId }: { ocId: number }) {
         setOc(null)
       })
   }, [ocId])
+
+  // Buscar recepción/factura vinculadas
+  useEffect(() => {
+    if (!oc) return
+    fetch("/api/compras/recepciones")
+      .then(r => r.json())
+      .then((data: any[]) => {
+        if (!Array.isArray(data)) return
+        const r = data.find(x => Number(x.documento_origen_id) === ocId && x.documento_origen_tipo === "oc")
+        if (r) setRecepcionId(r.id)
+      })
+      .catch(() => {})
+    if ((oc as any).factura_circuito_id) {
+      setFacturaId((oc as any).factura_circuito_id)
+    }
+  }, [oc, ocId])
+
+  const confirmarOC = async () => {
+    if (!oc || confirmando) return
+    if (!confirm(`Confirmar la OC ${oc.numero}? Se generará la Recepción asociada.`)) return
+    setConfirmando(true)
+    try {
+      // Buscar el proveedor para saber si aplica circuito de compras
+      const provRes = await fetch(`/api/compras/proveedores/${oc.proveedor_id}`)
+      const prov = provRes.ok ? await provRes.json() : null
+      const aplicaCircuito = prov?.aplica_circuito_compras === true
+
+      if (aplicaCircuito) {
+        // Endpoint atómico: crea OC confirmada + Factura + Recepción
+        const res = await fetch(`/api/compras/ordenes-compra/${oc.id}/confirmar`, { method: "POST" })
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}))
+          alert(`Error al confirmar OC: ${json.error ?? res.statusText}`)
+          setConfirmando(false)
+          return
+        }
+        window.location.reload()
+        return
+      }
+
+      // Flujo estándar: crear Recepción + actualizar OC
+      const ahora = new Date().toISOString()
+      const esInmediato = (oc as any).metodo_compra === "inmediato"
+      const lineas = (oc as any).lineas ?? (oc as any).items ?? []
+      const recPayload = {
+        fecha: ahora,
+        orden_compra_id: oc.id,
+        orden_compra_numero: oc.numero,
+        proveedor_id: oc.proveedor_id,
+        proveedor_nombre: oc.proveedor_nombre,
+        estado: esInmediato ? "confirmada" : "borrador",
+        documento_origen_tipo: "oc",
+        documento_origen_id: oc.id,
+        documento_origen_ref: oc.numero,
+        sucursal: (oc as any).sucursal ?? "",
+        deposito_destino: (oc as any).deposito_destino ?? "",
+        deposito_destino_id: (oc as any).deposito_destino_id ?? null,
+        ubicacion: (oc as any).ubicacion ?? "",
+        fecha_esperada: (oc as any).fecha_entrega_esperada ?? null,
+        items: lineas.map((l: any) => ({
+          producto_id: l.producto_id,
+          producto_nombre: l.producto_nombre,
+          producto_sku: l.producto_sku ?? "",
+          cantidad_pedida: l.cantidad,
+          cantidad_recibida: esInmediato ? l.cantidad : 0,
+          precio_unitario: l.precio_unitario,
+          udm: l.udm ?? "un",
+          estado_linea: esInmediato ? "recibido" : "pendiente",
+          tiene_serie: l.tiene_serie ?? false,
+          requiere_color: l.requiere_color ?? false,
+          requiere_bateria: l.requiere_bateria ?? false,
+          requiere_outlet: l.requiere_outlet ?? false,
+          requiere_observaciones: l.requiere_observaciones ?? false,
+          nac: l.nac ?? false,
+        })),
+        total: esInmediato ? oc.total : 0,
+      }
+      const ocEstadoNuevo = esInmediato ? "completa" : "confirmada"
+      await Promise.all([
+        guardarRecepcion(recPayload),
+        guardarOrdenCompra({ estado: ocEstadoNuevo }, oc.id),
+      ])
+      window.location.reload()
+    } catch (e: any) {
+      alert(`Error al confirmar OC: ${e?.message ?? e}`)
+      setConfirmando(false)
+    }
+  }
 
   if (oc === undefined) {
     return <div className="p-12 text-center text-gray-500">Cargando OC...</div>
@@ -57,13 +149,39 @@ export default function OcFicha({ ocId }: { ocId: number }) {
         <span className={`px-3 py-1 rounded-full text-sm font-medium ${getEstadoOcColor(oc.estado)}`}>
           {getEstadoOcLabel(oc.estado)}
         </span>
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-2">
           {oc.estado === "borrador" && (
+            <>
+              <Link
+                href={`/compras/oc/${oc.id}/editar`}
+                className="text-sm text-indigo-700 hover:underline px-3 py-1.5"
+              >
+                Editar →
+              </Link>
+              <button
+                onClick={confirmarOC}
+                disabled={confirmando}
+                className="text-sm bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg px-3 py-1.5 flex items-center gap-1 disabled:opacity-50"
+              >
+                <CheckCircle className="w-4 h-4" />
+                {confirmando ? "Confirmando…" : "Confirmar OC"}
+              </button>
+            </>
+          )}
+          {recepcionId && (
             <Link
-              href={`/compras/oc/${oc.id}/editar`}
-              className="text-sm text-indigo-700 hover:underline"
+              href={`/compras/recepciones/${recepcionId}`}
+              className="text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-3 py-1.5"
             >
-              Editar →
+              Ver Recepción
+            </Link>
+          )}
+          {facturaId && (
+            <Link
+              href={`/compras/facturas/${facturaId}`}
+              className="text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-3 py-1.5"
+            >
+              Ver Factura
             </Link>
           )}
         </div>
