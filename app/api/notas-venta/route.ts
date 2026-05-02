@@ -125,22 +125,36 @@ export async function POST(req: Request) {
   const estadoNormalizado = ESTADOS_VALIDOS.includes(estado) ? estado : "abierta"
 
   // Insertar cabecera de NV
-  const { data: nv, error: nvErr } = await supabase
+  const buildPayload = (estadoUsado: string) => ({
+    numero: numeroFinal,
+    cliente_id: cliente_id ?? null,
+    vendedor_id: vendedor_id ?? null,
+    sucursal_id: sucursal_id ?? null,
+    moneda: moneda ?? "ARS",
+    estado: estadoUsado,
+    subtotal: Number(subtotal ?? 0),
+    impuestos: Number(impuestos ?? 0),
+    total: Number(total ?? 0),
+    notas: notas ?? null,
+  })
+
+  let { data: nv, error: nvErr } = await supabase
     .from("notas_venta")
-    .insert({
-      numero: numeroFinal,
-      cliente_id: cliente_id ?? null,
-      vendedor_id: vendedor_id ?? null,
-      sucursal_id: sucursal_id ?? null,
-      moneda: moneda ?? "ARS",
-      estado: estadoNormalizado,
-      subtotal: Number(subtotal ?? 0),
-      impuestos: Number(impuestos ?? 0),
-      total: Number(total ?? 0),
-      notas: notas ?? null,
-    })
+    .insert(buildPayload(estadoNormalizado))
     .select()
     .single()
+
+  // Compat: si la DB todavía no tiene "borrador" en el CHECK, caemos a "abierta"
+  // (correr scripts/091_notas_venta_estado_borrador.sql para habilitar borrador real)
+  if (nvErr?.code === "23514" && estadoNormalizado === "borrador") {
+    const fb = await supabase
+      .from("notas_venta")
+      .insert(buildPayload("abierta"))
+      .select()
+      .single()
+    nv = fb.data
+    nvErr = fb.error
+  }
 
   if (nvErr) return NextResponse.json({ error: nvErr.message }, { status: 500 })
 
