@@ -401,7 +401,6 @@ export default function NvForm({ initialId }: { initialId?: number }) {
   }
 
   const confirmarVenta = async () => {
-    if (isEdit) return
     const err = validar()
     if (err) { setErrorGuardado(err); return }
     if (guardando) return
@@ -415,21 +414,39 @@ export default function NvForm({ initialId }: { initialId?: number }) {
     const payloadNV = construirPayloadNV("facturada")
 
     try {
-      // 1. Crear NV
-      const nvRes = await fetch("/api/notas-venta", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payloadNV),
-      })
-      if (!nvRes.ok) {
-        const text = await nvRes.text()
-        setErrorGuardado(`Error al crear NV (HTTP ${nvRes.status}): ${text}`)
-        setGuardando(false)
-        return
+      // 1. Crear o actualizar NV con estado=facturada
+      let nvIdFinal: number
+      let nvNumeroFinal: string
+      if (isEdit && initialId) {
+        const nvRes = await fetch(`/api/notas-venta/${initialId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payloadNV),
+        })
+        if (!nvRes.ok) {
+          const text = await nvRes.text()
+          setErrorGuardado(`Error al actualizar NV (HTTP ${nvRes.status}): ${text}`)
+          setGuardando(false)
+          return
+        }
+        nvIdFinal = initialId
+        nvNumeroFinal = nvNumeroExistente ?? ""
+      } else {
+        const nvRes = await fetch("/api/notas-venta", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payloadNV),
+        })
+        if (!nvRes.ok) {
+          const text = await nvRes.text()
+          setErrorGuardado(`Error al crear NV (HTTP ${nvRes.status}): ${text}`)
+          setGuardando(false)
+          return
+        }
+        const nvData = await nvRes.json()
+        nvIdFinal = nvData.id
+        nvNumeroFinal = nvData.numero
       }
-      const nvData = await nvRes.json()
-      const nvIdFinal: number = nvData.id
-      const nvNumeroFinal: string = nvData.numero
 
       // 2. OE
       let oeNumero = ""
@@ -651,12 +668,14 @@ export default function NvForm({ initialId }: { initialId?: number }) {
           >
             Cancelar
           </button>
-          {!isEdit && (
+          {(!isEdit || nvEstadoExistente === "borrador") && (
             <button
               onClick={confirmarVenta}
               disabled={guardando || !nvClienteId || lineasValidas.length === 0}
               className="px-4 py-2 text-sm bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Crea NV + OE + Remito + Factura abierta y descuenta stock"
+              title={isEdit
+                ? "Pasa la NV a facturada y genera OE + Remito + Factura abierta (descuenta stock)"
+                : "Crea NV + OE + Remito + Factura abierta y descuenta stock"}
             >
               {guardando ? "Procesando…" : "Confirmar Venta"}
             </button>
