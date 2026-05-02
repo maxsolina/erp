@@ -104,12 +104,14 @@ export default function NvFicha({ nvId }: { nvId: number }) {
           {getEstadoNVLabel(nv.estado)}
         </span>
         <div className="ml-auto flex items-center gap-3">
-          <Link
-            href={`/ventas/nv/${nv.id}/editar`}
-            className="text-sm text-indigo-700 hover:underline"
-          >
-            Editar →
-          </Link>
+          {(nv.estado === "borrador" || nv.estado === "abierta") && (
+            <Link
+              href={`/ventas/nv/${nv.id}/editar`}
+              className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            >
+              Editar
+            </Link>
+          )}
         </div>
       </div>
 
