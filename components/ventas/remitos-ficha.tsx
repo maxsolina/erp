@@ -3,15 +3,64 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, CheckCircle, X } from "lucide-react"
+import { CheckCircle, Download, X } from "lucide-react"
+import BotonVolver from "@/components/ui/boton-volver"
 import {
+  formatCurrency,
   formatDate,
-  getEstadoRemitoColor,
-  getEstadoRemitoLabel,
   type Remito,
 } from "./_shared"
 
 interface DocLink { id: number | string; numero: string; href: string }
+
+interface Cliente {
+  id: number
+  nombre: string
+  tipo_documento?: string
+  numero_documento?: string | null
+  telefono?: string | null
+  celular?: string | null
+  email?: string | null
+}
+
+function formatDateTime(iso?: string) {
+  if (!iso) return ""
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+function getEstadoColorRem(estado?: string) {
+  switch (estado) {
+    case "entregado": return "bg-green-100 text-green-700"
+    case "en_transito": return "bg-blue-100 text-blue-700"
+    case "aprobado": return "bg-emerald-100 text-emerald-700"
+    case "borrador": return "bg-amber-100 text-amber-700"
+    case "emitido": return "bg-amber-100 text-amber-700"
+    case "en_ejecucion": return "bg-yellow-100 text-yellow-700"
+    case "cancelado": return "bg-red-100 text-red-700"
+    default: return "bg-gray-100 text-gray-700"
+  }
+}
+
+function getEstadoLabelRem(estado?: string) {
+  switch (estado) {
+    case "entregado": return "Entregado"
+    case "en_transito": return "En Tránsito"
+    case "aprobado": return "Aprobado"
+    case "borrador": return "Borrador"
+    case "emitido": return "Emitido"
+    case "en_ejecucion": return "En Ejecución"
+    case "cancelado": return "Cancelado"
+    default: return estado ?? "—"
+  }
+}
 
 export default function RemitosFicha({ remitoId }: { remitoId: number }) {
   const router = useRouter()
@@ -22,6 +71,7 @@ export default function RemitosFicha({ remitoId }: { remitoId: number }) {
   const [nvLink, setNvLink] = useState<DocLink | null>(null)
   const [oeLink, setOeLink] = useState<DocLink | null>(null)
   const [facturaLink, setFacturaLink] = useState<DocLink | null>(null)
+  const [cliente, setCliente] = useState<Cliente | null>(null)
 
   useEffect(() => {
     fetch(`/api/remitos-venta?id=${remitoId}`)
@@ -47,7 +97,6 @@ export default function RemitosFicha({ remitoId }: { remitoId: number }) {
       })
   }, [remitoId])
 
-  // Cross-refs
   useEffect(() => {
     if (!remito) return
     if (remito.nota_venta_id) {
@@ -57,13 +106,18 @@ export default function RemitosFicha({ remitoId }: { remitoId: number }) {
       setOeLink({ id: remito.orden_entrega_id, numero: remito.orden_entrega_numero ?? `#${remito.orden_entrega_id}`, href: `/ventas/oe/${remito.orden_entrega_id}` })
     }
     if (remito.factura_numero) {
-      // Resolver id de factura por número
       fetch(`/api/facturas?numero=${encodeURIComponent(remito.factura_numero)}`)
         .then(r => r.json())
         .then((data: any) => {
           const f = Array.isArray(data) ? data[0] : data
           if (f?.id) setFacturaLink({ id: f.id, numero: remito.factura_numero!, href: `/ventas/facturas/${f.id}` })
         })
+        .catch(() => {})
+    }
+    if (remito.cliente_id) {
+      fetch(`/api/clientes/${remito.cliente_id}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(c => { if (c) setCliente(c) })
         .catch(() => {})
     }
   }, [remito])
@@ -138,112 +192,198 @@ export default function RemitosFicha({ remitoId }: { remitoId: number }) {
   }
 
   const lineas = remito.lineas ?? []
-  const esEmitido = remito.estado === "emitido" || remito.estado === "en_ejecucion"
-  const esConfirmado = remito.estado === "entregado" || remito.estado === "aprobado"
+  // Si el remito ya tiene asiento CMV vinculado, está confirmado de hecho
+  // (aunque la columna "estado" pueda haber quedado en "emitido" por un bug
+  // previo). Tratamos asiento_id como fuente de verdad.
+  const yaConfirmadoPorAsiento = !!remito.asiento_id
+  const estadoEfectivo =
+    yaConfirmadoPorAsiento && (remito.estado === "emitido" || remito.estado === "en_ejecucion")
+      ? "entregado"
+      : (remito.estado ?? "")
+  const esEmitido =
+    !yaConfirmadoPorAsiento &&
+    (remito.estado === "emitido" || remito.estado === "en_ejecucion")
+  const esConfirmado =
+    yaConfirmadoPorAsiento ||
+    remito.estado === "entregado" ||
+    remito.estado === "aprobado"
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => router.push("/ventas/remitos")} className="p-2 hover:bg-gray-100 rounded-lg">
-          <ArrowLeft className="w-4 h-4" />
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+        <button onClick={() => router.push("/ventas/remitos")} className="hover:text-emerald-700">
+          Remitos
         </button>
-        <h1 className="text-2xl font-bold text-amber-900">{remito.numero}</h1>
-        <span className={`px-3 py-1 rounded-full text-sm font-medium ${getEstadoRemitoColor(remito.estado)}`}>
-          {getEstadoRemitoLabel(remito.estado)}
+        <span>/</span>
+        <span className="font-medium text-gray-900">{remito.numero}</span>
+      </div>
+
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <BotonVolver onClick={() => router.push("/ventas/remitos")} variant="minimal" texto="" />
+          <div>
+            <h1 className="text-2xl font-bold text-amber-900">{remito.numero}</h1>
+            <p className="text-sm text-gray-500">
+              {formatDateTime(remito.fecha)}
+              {remito.sucursal && ` | ${remito.sucursal}`}
+            </p>
+          </div>
+        </div>
+        <span className={`px-4 py-2 rounded-full text-sm font-semibold ${getEstadoColorRem(estadoEfectivo)}`}>
+          {getEstadoLabelRem(estadoEfectivo)}
         </span>
-        <div className="ml-auto flex items-center gap-2">
-          {esEmitido && (
-            <button
-              onClick={confirmar}
-              disabled={accionando}
-              className="text-sm bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg px-3 py-1.5 flex items-center gap-1 disabled:opacity-50"
-            >
-              <CheckCircle className="w-4 h-4" />
-              {accionando ? "Confirmando…" : "Confirmar"}
-            </button>
-          )}
-          {(esEmitido || esConfirmado) && (
-            <button
-              onClick={() => setShowCancelarModal(true)}
-              className="text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg px-3 py-1.5 flex items-center gap-1"
-            >
-              <X className="w-4 h-4" />
-              Cancelar
-            </button>
-          )}
-        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-6 mb-6">
-        <div className="bg-white rounded-lg border p-5">
-          <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Datos</h3>
-          <div className="space-y-3 text-sm">
-            <Row label="Número" value={remito.numero} />
-            {remito.fecha && <Row label="Fecha" value={formatDate(remito.fecha)} />}
-            <Row label="Cliente" value={remito.cliente_nombre ?? "—"} />
-            {oeLink && (
-              <div className="flex justify-between gap-4">
-                <span className="text-gray-500 shrink-0">OE</span>
-                <Link href={oeLink.href} className="font-medium text-emerald-700 hover:underline font-mono text-right">
-                  {oeLink.numero}
-                </Link>
-              </div>
-            )}
-            {nvLink && (
-              <div className="flex justify-between gap-4">
-                <span className="text-gray-500 shrink-0">NV</span>
-                <Link href={nvLink.href} className="font-medium text-emerald-700 hover:underline font-mono text-right">
-                  {nvLink.numero}
-                </Link>
-              </div>
-            )}
-            {facturaLink && (
-              <div className="flex justify-between gap-4">
-                <span className="text-gray-500 shrink-0">Factura</span>
-                <Link href={facturaLink.href} className="font-medium text-emerald-700 hover:underline font-mono text-right">
-                  {facturaLink.numero}
-                </Link>
-              </div>
-            )}
-            {remito.domicilio_envio && <Row label="Domicilio" value={remito.domicilio_envio} />}
-            {remito.deposito && <Row label="Depósito" value={remito.deposito} />}
-            {remito.sucursal && <Row label="Sucursal" value={remito.sucursal} />}
-          </div>
-        </div>
-        <div className="bg-white rounded-lg border p-5">
-          <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Logística</h3>
-          <div className="space-y-3 text-sm">
-            {remito.peso_kg != null && <Row label="Peso bruto" value={`${remito.peso_kg} kg`} />}
-            {remito.peso_neto_kg != null && <Row label="Peso neto" value={`${remito.peso_neto_kg} kg`} />}
-            {remito.bultos != null && <Row label="Bultos" value={String(remito.bultos)} />}
-            {remito.valor_declarado != null && <Row label="Valor declarado" value={String(remito.valor_declarado)} />}
-            <Row label="Control Factura" value={remito.control_factura === "facturado" ? "Facturado" : "Pendiente"} />
-          </div>
-        </div>
+      {/* Barra de acciones */}
+      <div className="bg-gray-800 rounded-t-lg px-4 py-3 flex items-center gap-2 mb-0">
+        <button
+          disabled
+          className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1 opacity-60 cursor-not-allowed"
+          title="Descarga de PDF próximamente"
+        >
+          <Download className="w-4 h-4" /> Descargar PDF
+        </button>
+        {nvLink && (
+          <Link href={nvLink.href} className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">
+            Ver Nota de Venta
+          </Link>
+        )}
+        {oeLink && (
+          <Link href={oeLink.href} className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">
+            Ver Orden de Entrega
+          </Link>
+        )}
+        {facturaLink && (
+          <Link href={facturaLink.href} className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">
+            Ver Factura
+          </Link>
+        )}
+        {esEmitido && (
+          <button
+            onClick={confirmar}
+            disabled={accionando}
+            className="ml-auto px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+          >
+            <CheckCircle className="w-4 h-4" />
+            {accionando ? "Confirmando..." : "Confirmar Entrega"}
+          </button>
+        )}
+        {(esEmitido || esConfirmado) && (
+          <button
+            onClick={() => setShowCancelarModal(true)}
+            className={`${esEmitido ? "" : "ml-auto"} px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1`}
+          >
+            <X className="w-4 h-4" /> Cancelar
+          </button>
+        )}
       </div>
 
-      <div className="bg-white rounded-lg border p-5">
-        <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Líneas</h3>
-        <table className="w-full">
+      {/* Contenido */}
+      <div className="bg-white rounded-b-lg shadow-sm p-6">
+        <div className="grid grid-cols-2 gap-8 mb-6">
+          <div className="space-y-4">
+            <h3 className="font-semibold text-gray-900 border-b pb-2">Datos del Remito</h3>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div><span className="text-gray-500">Número:</span> <span className="font-medium">{remito.numero}</span></div>
+              <div>
+                <span className="text-gray-500">OE:</span>{" "}
+                {oeLink ? (
+                  <Link href={oeLink.href} className="font-medium text-emerald-700 hover:underline">{oeLink.numero}</Link>
+                ) : (
+                  <span className="font-medium">{remito.orden_entrega_numero ?? "-"}</span>
+                )}
+              </div>
+              <div>
+                <span className="text-gray-500">NV:</span>{" "}
+                {nvLink ? (
+                  <Link href={nvLink.href} className="font-medium text-emerald-700 hover:underline">{nvLink.numero}</Link>
+                ) : (
+                  <span className="font-medium">{remito.nota_venta_numero ?? "-"}</span>
+                )}
+              </div>
+              <div>
+                <span className="text-gray-500">Factura:</span>{" "}
+                {facturaLink ? (
+                  <Link href={facturaLink.href} className="font-medium text-emerald-700 hover:underline">{facturaLink.numero}</Link>
+                ) : (
+                  <span className="font-medium">{remito.factura_numero ?? "-"}</span>
+                )}
+              </div>
+              <div><span className="text-gray-500">Depósito:</span> <span className="font-medium">{remito.deposito ?? "-"}</span></div>
+              <div><span className="text-gray-500">Sucursal:</span> <span className="font-medium">{remito.sucursal ?? "-"}</span></div>
+              <div className="col-span-2">
+                <span className="text-gray-500">Asiento CMV:</span>{" "}
+                {remito.asiento_id ? (
+                  <span className="font-medium text-indigo-700" title={remito.asiento_id}>Generado</span>
+                ) : (
+                  <span className="text-gray-400">Sin asiento generado</span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="space-y-4">
+            <h3 className="font-semibold text-gray-900 border-b pb-2">Entrega</h3>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div><span className="text-gray-500">Fecha Entrega:</span> <span className="font-medium">{remito.fecha ? formatDate(remito.fecha) : "-"}</span></div>
+              <div><span className="text-gray-500">Bultos:</span> <span className="font-medium">{remito.bultos ?? "-"}</span></div>
+              <div><span className="text-gray-500">Control Factura:</span> <span className="font-medium">{remito.control_factura === "facturado" ? "Facturado" : "Pendiente"}</span></div>
+              <div><span className="text-gray-500">Ubicación:</span> <span className="font-medium">{remito.ubicacion ?? "-"}</span></div>
+              <div className="col-span-2"><span className="text-gray-500">Domicilio:</span> <span className="font-medium">{remito.domicilio_envio ?? "-"}</span></div>
+            </div>
+          </div>
+        </div>
+
+        <h3 className="font-semibold text-gray-900 border-b pb-2 mb-4">Cliente</h3>
+        {cliente ? (
+          <div className="grid grid-cols-4 gap-4 text-sm mb-6">
+            <div><span className="text-gray-500">Nombre:</span> <span className="font-medium">{cliente.nombre}</span></div>
+            <div>
+              <span className="text-gray-500">Documento:</span>{" "}
+              <span className="font-medium">
+                {cliente.tipo_documento ?? ""}{cliente.numero_documento ? `: ${cliente.numero_documento}` : ""}
+              </span>
+            </div>
+            <div><span className="text-gray-500">Teléfono:</span> <span className="font-medium">{cliente.telefono || cliente.celular || "-"}</span></div>
+            <div><span className="text-gray-500">Email:</span> <span className="font-medium">{cliente.email || "-"}</span></div>
+          </div>
+        ) : (
+          <div className="text-sm mb-6 text-gray-500">{remito.cliente_nombre ?? "—"}</div>
+        )}
+
+        <div className="grid grid-cols-4 gap-4 text-sm bg-gray-50 p-4 rounded-lg mb-6">
+          <div><span className="text-gray-500">Peso Bruto:</span> <span className="font-medium">{remito.peso_kg ?? 0} kg</span></div>
+          <div><span className="text-gray-500">Peso Neto:</span> <span className="font-medium">{remito.peso_neto_kg ?? 0} kg</span></div>
+          <div><span className="text-gray-500">Bultos:</span> <span className="font-medium">{remito.bultos ?? 0}</span></div>
+          <div><span className="text-gray-500">Valor Declarado:</span> <span className="font-medium">{formatCurrency(remito.valor_declarado ?? 0)}</span></div>
+        </div>
+
+        <h3 className="font-semibold text-gray-900 border-b pb-2 mb-4">Líneas</h3>
+        <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-xs text-gray-500 uppercase">
-              <th className="text-left py-2 px-2 font-medium">Producto</th>
-              <th className="text-center py-2 px-2 font-medium">Cantidad</th>
-              <th className="text-left py-2 px-2 font-medium">Series</th>
+              <th className="text-left py-2 font-semibold">Producto</th>
+              <th className="text-center py-2 font-semibold">Cantidad</th>
+              <th className="text-left py-2 font-semibold">Series / IMEI</th>
             </tr>
           </thead>
           <tbody>
             {lineas.map((l, i) => (
               <tr key={i} className="border-b border-gray-100">
-                <td className="py-2 px-2 text-sm">{l.producto_nombre}</td>
-                <td className="py-2 px-2 text-center text-sm">{l.cantidad}</td>
-                <td className="py-2 px-2 text-sm font-mono text-xs text-gray-600">
+                <td className="py-3">
+                  <p className="font-medium">{l.producto_nombre}</p>
+                </td>
+                <td className="py-3 text-center">{l.cantidad}</td>
+                <td className="py-3 font-mono text-xs text-gray-600">
                   {(l.series_seleccionadas ?? []).map(s => s.serie).join(", ") || "—"}
                 </td>
               </tr>
             ))}
             {lineas.length === 0 && (
-              <tr><td colSpan={3} className="py-4 text-center text-gray-400 text-sm">Sin líneas</td></tr>
+              <tr>
+                <td colSpan={3} className="py-4 text-center text-gray-400">Sin líneas</td>
+              </tr>
             )}
           </tbody>
         </table>
@@ -268,21 +408,12 @@ export default function RemitosFicha({ remitoId }: { remitoId: number }) {
                 disabled={accionando}
                 className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50"
               >
-                {accionando ? "Cancelando…" : "Cancelar Remito"}
+                {accionando ? "Cancelando..." : "Cancelar Remito"}
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between gap-4">
-      <span className="text-gray-500 shrink-0">{label}</span>
-      <span className="font-medium text-gray-900 text-right">{value || "—"}</span>
     </div>
   )
 }

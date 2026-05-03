@@ -158,47 +158,110 @@ export async function POST(
     }
   }
 
-  // 4. Imputar comprobantes — actualizar saldo + estado de cada factura
+  // 4. Imputar comprobantes — actualizar saldo + estado según el tipo:
+  //    - factura: bajar `saldo` y marcar conciliada si llega a 0
+  //    - nota_credito / ajuste: bajar `saldo_disponible` del ajuste
   for (const imp of (imputaciones ?? []) as any[]) {
     if (!imp.asignacion || imp.asignacion <= 0) continue
-    const { data: fac } = await supabase
-      .from("facturas")
-      .select("saldo, estado, total")
-      .eq("id", imp.comprobante_id)
-      .single()
-    if (fac) {
-      const nuevoSaldo = Math.max(0, (Number(fac.saldo) || 0) - Number(imp.asignacion))
-      const nuevoEstado = nuevoSaldo <= 0.01 ? "conciliada" : fac.estado
-      await supabase
+
+    const tipo = imp.tipo_comprobante ?? "factura"
+
+    if (tipo === "factura") {
+      const { data: fac } = await supabase
         .from("facturas")
-        .update({ saldo: nuevoSaldo, estado: nuevoEstado })
+        .select("saldo, estado, total")
         .eq("id", imp.comprobante_id)
+        .single()
+      if (fac) {
+        const nuevoSaldo = Math.max(0, (Number(fac.saldo) || 0) - Number(imp.asignacion))
+        const nuevoEstado = nuevoSaldo <= 0.01 ? "conciliada" : fac.estado
+        await supabase
+          .from("facturas")
+          .update({ saldo: nuevoSaldo, estado: nuevoEstado })
+          .eq("id", imp.comprobante_id)
+      }
+    } else if (tipo === "nota_credito" || tipo === "ajuste") {
+      // Crédito del cliente (NC/ajuste): reducir su saldo_disponible
+      const { data: aj } = await supabase
+        .from("ajustes_clientes")
+        .select("saldo_disponible, total")
+        .eq("id", imp.comprobante_id)
+        .single()
+      if (aj) {
+        const nuevoSaldoDisp = Math.max(0, (Number(aj.saldo_disponible ?? aj.total) || 0) - Number(imp.asignacion))
+        await supabase
+          .from("ajustes_clientes")
+          .update({ saldo_disponible: Math.round(nuevoSaldoDisp * 100) / 100 })
+          .eq("id", imp.comprobante_id)
+      }
     }
   }
 
-  // 5. Calcular no conciliado (USD-aware)
+  // 5. Calcular no conciliado (USD-aware) — modelo correcto:
+  //
+  //   Las NCs/ajustes ticked son una FUENTE de fondos adicional al cash.
+  //   Las facturas son DESTINOS (asignación = deuda pagada).
+  //   Conservación:  sum(pagos cash) + sum(NC asig) == sum(factura asig)
+  //
+  //   noConciliado = max(0, pagos_cash + NC_asig - factura_asig)
+  //
+  //   El bug previo sumaba TODAS las imputaciones (factura + NC) como si
+  //   fueran "destinos", lo que daba un resultado mentiroso (e.g. 0 sin
+  //   conciliar cuando en realidad faltaban 169.40 USD por aplicar).
+  const imps = (imputaciones ?? []) as any[]
+  const sumAsig = (filterFn: (i: any) => boolean) =>
+    imps.filter(filterFn).reduce((s, i) => s + Number(i.asignacion ?? 0), 0)
+  const esFactura = (i: any) => i.tipo_comprobante === "factura" || i.tipo_comprobante === "nota_debito"
+  const esCredito = (i: any) => i.tipo_comprobante === "nota_credito" || i.tipo_comprobante === "ajuste"
+
+  // Cross-currency: si una moneda está corta y la otra tiene excedente, se
+  // compensan usando la cotización del recibo. Caso típico: factura USD que
+  // se pagó parte en cash USD + parte en cash ARS (al cambio). Sin esto, el
+  // ARS del cash queda como "no conciliado" cuando en realidad cubrió el
+  // shortfall USD.
+  const cotXChange = Number(recibo.cotizacion ?? 0) || 0
+  const totalUSDPagos = (pagos as any[]).reduce(
+    (s: number, p: any) => s + (p.moneda === "USD" ? Number(p.importe ?? 0) : 0), 0,
+  )
+  const totalARSPagos = (pagos as any[]).reduce(
+    (s: number, p: any) => s + (p.moneda === "ARS" ? Number(p.importe ?? 0) : 0), 0,
+  )
+  const totalUSDFacturas = sumAsig(i => esFactura(i) && (i.moneda_comprobante ?? "USD") === "USD")
+  const totalUSDCreditos = sumAsig(i => esCredito(i) && (i.moneda_comprobante ?? "USD") === "USD")
+  const totalARSFacturas = sumAsig(i => esFactura(i) && (i.moneda_comprobante ?? "ARS") === "ARS")
+  const totalARSCreditos = sumAsig(i => esCredito(i) && (i.moneda_comprobante ?? "ARS") === "ARS")
+
+  // Net per currency: positivo = excedente, negativo = faltante
+  let netUSD = totalUSDPagos + totalUSDCreditos - totalUSDFacturas
+  let netARS = totalARSPagos + totalARSCreditos - totalARSFacturas
+
+  // Cross-fill ARS → USD (ARS sobrante cubre USD faltante)
+  if (netUSD < -0.005 && netARS > 0.005 && cotXChange > 0) {
+    const necesidadARS = (-netUSD) * cotXChange
+    const transferARS = Math.min(necesidadARS, netARS)
+    netARS -= transferARS
+    netUSD += transferARS / cotXChange
+  }
+  // Cross-fill USD → ARS
+  if (netARS < -0.005 && netUSD > 0.005 && cotXChange > 0) {
+    const necesidadUSD = (-netARS) / cotXChange
+    const transferUSD = Math.min(necesidadUSD, netUSD)
+    netUSD -= transferUSD
+    netARS += transferUSD * cotXChange
+  }
+
   const hasUSDPayment = (pagos as any[]).some((p: any) => p.moneda === "USD")
+  // Modelo histórico de campos:
+  //   - importe_no_conciliado:     en moneda principal del recibo
+  //   - importe_no_conciliado_ars: solo cuando hay USD payment (resto ARS)
   let noConciliado: number
   let noConciliadoARS: number
   if (hasUSDPayment) {
-    const totalUSDPagos = (pagos as any[]).reduce(
-      (s: number, p: any) => s + (p.moneda === "USD" ? Number(p.importe ?? 0) : 0), 0,
-    )
-    const totalUSDAsig = ((imputaciones ?? []) as any[])
-      .filter((i: any) => (i.moneda_comprobante ?? "USD") === "USD")
-      .reduce((s: number, i: any) => s + Number(i.asignacion ?? 0), 0)
-    noConciliado = Math.max(0, totalUSDPagos - totalUSDAsig)
-    const totalARSPagosDirectos = (pagos as any[])
-      .filter((p: any) => p.moneda === "ARS")
-      .reduce((s: number, p: any) => s + Number(p.importe ?? 0), 0)
-    noConciliadoARS = Math.max(0, totalARSPagosDirectos)
+    noConciliado = Math.max(0, Math.round(netUSD * 100) / 100)
+    noConciliadoARS = Math.max(0, Math.round(netARS * 100) / 100)
   } else {
-    const totalPagos = (pagos as any[]).reduce(
-      (s: number, p: any) => s + Number(p.importe_comprobante ?? p.importe ?? 0), 0,
-    )
-    const totalAsig = ((imputaciones ?? []) as any[])
-      .reduce((s: number, i: any) => s + Number(i.asignacion ?? 0), 0)
-    noConciliado = Math.max(0, totalPagos - totalAsig)
+    // Recibo 100% ARS — la moneda principal es ARS, el campo "ars" es 0
+    noConciliado = Math.max(0, Math.round(netARS * 100) / 100)
     noConciliadoARS = 0
   }
 

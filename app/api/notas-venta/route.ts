@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+import { registrarEvento } from "@/lib/seguimiento"
 
 function getSupabase() {
   return createClient(
@@ -93,6 +94,7 @@ export async function POST(req: Request) {
     total,
     notas,
     lineas = [],
+    usuario,
   } = body
 
   // Generar número en el servidor de forma atómica
@@ -189,6 +191,27 @@ export async function POST(req: Request) {
       )
     }
   }
+
+  // Registrar evento de creación en el seguimiento (con label friendly)
+  const ESTADO_NV_LABELS: Record<string, string> = {
+    abierta: "Abierta",
+    borrador: "Borrador",
+    a_facturar: "A Facturar",
+    verificacion_factura: "Verif. Factura",
+    verificacion_oe: "Verif. OE",
+    facturada: "Confirmada",
+    finalizada: "Finalizada",
+    parcial: "Parcial",
+    cancelada: "Cancelada",
+  }
+  const labelEstado = ESTADO_NV_LABELS[nv.estado] ?? nv.estado
+  await registrarEvento(supabase, {
+    tipo_documento: "nota_venta",
+    documento_id: nv.id,
+    usuario,
+    tipo_evento: "creacion",
+    descripcion: `Documento creado en estado ${labelEstado}`,
+  })
 
   return NextResponse.json({ ok: true, id: nv.id, numero: nv.numero ?? numeroFinal })
 }

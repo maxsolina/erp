@@ -2,12 +2,34 @@ import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
-export async function GET() {
+export async function GET(req: Request) {
   const supabase = await createClient()
-  const { data, error } = await supabase
+  const { searchParams } = new URL(req.url)
+  const clienteId = searchParams.get("cliente_id")
+  const estado = searchParams.get("estado")
+  const conSaldo = searchParams.get("con_saldo") === "true"
+  const categoria = searchParams.get("categoria")
+
+  let query = supabase
     .from("ajustes_clientes")
     .select("*, sucursales(nombre)")
     .order("created_at", { ascending: false })
+
+  if (clienteId) query = query.eq("cliente_id", clienteId)
+  // estado="activo" acepta también "publicado" (compat con dos convenciones).
+  // Cuando el caller pide un estado específico, devolvemos las que matchean,
+  // pero también las del estado "primo" (activo↔publicado) para tolerar el
+  // comentario en la DB que dice "ajustes_clientes solo permite 'activo'".
+  if (estado) {
+    if (estado === "activo" || estado === "publicado") {
+      query = query.in("estado", ["activo", "publicado"])
+    } else {
+      query = query.eq("estado", estado)
+    }
+  }
+  if (categoria) query = query.eq("categoria", categoria)
+
+  const { data, error } = await query
   if (error) return dbError(error)
 
   const mapped = (data ?? []).map((a: any) => ({
@@ -17,7 +39,12 @@ export async function GET() {
     saldo_disponible: a.saldo_disponible ?? a.total,
     sucursales: undefined,
   }))
-  return NextResponse.json(mapped)
+
+  const filtered = conSaldo
+    ? mapped.filter((a: any) => Number(a.saldo_disponible ?? 0) > 0)
+    : mapped
+
+  return NextResponse.json(filtered)
 }
 
 export async function POST(req: Request) {

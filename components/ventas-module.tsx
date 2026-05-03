@@ -1494,6 +1494,7 @@ export default function ModuloVentas({
       credito_moneda?: string
       cotizacion?: number | null
     }[]
+    creditos_consumidos?: { tipo: string; numero: string; monto: number; moneda: string }[]
     total_conciliado: number
     usuario: string
     estado: 'activa' | 'cancelada'
@@ -3171,7 +3172,7 @@ export default function ModuloVentas({
                     className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-3 mb-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Tipo Documento *</label>
                   <select name="tipo_documento" defaultValue={editingItem?.tipo_documento || "DNI"} required
@@ -3194,6 +3195,26 @@ export default function ModuloVentas({
                     <option value="responsable_inscripto">Responsable Inscripto</option>
                     <option value="monotributista">Monotributista</option>
                     <option value="exento">Exento</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Categoría de Cliente *</label>
+                  <select
+                    name="categoria_id"
+                    value={formClienteCategoriaId ?? ""}
+                    onChange={(e) => {
+                      const catId = e.target.value ? Number(e.target.value) : null
+                      setFormClienteCategoriaId(catId)
+                    }}
+                    required
+                    className="w-full border border-violet-500 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  >
+                    <option value="">Seleccione una categoría</option>
+                    {categoriasCliente.filter(c => c.activa).map(c => (
+                      <option key={c.id} value={c.id}>{c.nombre}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -3264,25 +3285,7 @@ export default function ModuloVentas({
               <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
                 <DollarSign className="w-3.5 h-3.5" /> Información Comercial
               </h3>
-              <div className="grid grid-cols-3 gap-3 mb-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-0.5">Categoría de Cliente *</label>
-                  <select
-                    name="categoria_id"
-                    value={formClienteCategoriaId ?? ""}
-                    onChange={(e) => {
-                      const catId = e.target.value ? Number(e.target.value) : null
-                      setFormClienteCategoriaId(catId)
-                    }}
-                    required
-                    className="w-full border border-violet-500 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                  >
-                    <option value="">Seleccione una categoría</option>
-                    {categoriasCliente.filter(c => c.activa).map(c => (
-                      <option key={c.id} value={c.id}>{c.nombre}</option>
-                    ))}
-                  </select>
-                </div>
+              <div className="grid grid-cols-2 gap-3 mb-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Vendedor</label>
                   <select name="vendedor_id" defaultValue={editingItem?.vendedor_id || ""}
@@ -9003,12 +9006,17 @@ export default function ModuloVentas({
             tarjetas={tarjetasDB}
             grupos={gruposDB}
             recargos={recargosDB}
-            textoBoton="Listo (los IVA y recargos se calculan al confirmar)"
+            textoBoton="Confirmar medios de pago"
             textoConfirmado="Medios de pago listos."
             onEstadoPagoChange={(estado) => setPrevEstadoPago(estado)}
             onConfirmarCobro={(lineas, totalConRecargos, totalRecargos) => {
               setPrevMediosLineas(lineas)
               setPrevRecargosConfirmados({ totalRecargos, desglose: [] })
+            }}
+            onRetrocederMedios={() => {
+              setPrevMediosLineas([])
+              setPrevRecargosConfirmados(null)
+              setPrevEstadoPago({ cobrado: false, tieneLineas: false, diferenciaOk: false })
             }}
             onCobroConfirmado={(totalRecargos, desglose) => {
               setPrevRecargosConfirmados({ totalRecargos, desglose })
@@ -9348,6 +9356,17 @@ export default function ModuloVentas({
                       }
                       setFacturas(prev => prev.filter(f => f.id !== selectedFactura.id))
                       setSelectedFactura(null)
+                      // Resetear el form para que la próxima factura nueva no traiga datos
+                      // residuales de la borrada (cliente, líneas, lista, moneda, etc.)
+                      setFacturaClienteId(null)
+                      setFacturaLineas([])
+                      setFacturaListaPreciosId(1)
+                      setFacturaMoneda("ARS")
+                      setFacturaCotizacion(1)
+                      setFacturaPrevisualizando(false)
+                      setPrevMediosLineas([])
+                      setPrevRecargosConfirmados(null)
+                      setPrevEstadoPago({ cobrado: false, tieneLineas: false, diferenciaOk: false })
                     } catch (err) {
                       alert("Error al suprimir factura: " + (err as Error).message)
                     }
@@ -11563,10 +11582,13 @@ export default function ModuloVentas({
             if (fu) fu.saldoNuevo -= monto
             else facturaUpdates.push({ id: deb.id, saldoNuevo: factInfo.saldo - monto })
             if (cred.tipo === 'recibo') {
-              const ru = reciboUpdates.find(u => u.id === cred.id)
               const rInfo = recibos.find(r => r.id === cred.id)
               // Si el crédito es ARS pero el recibo es USD, usar porción ARS
               const usaARSPorcion = moneda === 'ARS' && rInfo?.moneda === 'USD'
+              // Buscar UPDATE específico para esta porción del recibo (USD o ARS).
+              // Un recibo mixto puede tener entradas separadas en reciboUpdates,
+              // una para cada porción.
+              const ru = reciboUpdates.find(u => u.id === cred.id && (u.usaARSPorcion ?? false) === usaARSPorcion)
               if (ru) ru.importeNoConciliadoNuevo -= monto
               else reciboUpdates.push({ id: cred.id, importeNoConciliadoNuevo: (usaARSPorcion ? (rInfo?.importe_no_conciliado_ars ?? 0) : (rInfo?.importe_no_conciliado ?? 0)) - monto, usaARSPorcion })
             } else {
@@ -11615,11 +11637,22 @@ export default function ModuloVentas({
         }
 
         // ARS créditos → USD débitos
+        // Si el crédito ARS viene de un recibo USD mixto, su saldo está en
+        // `importe_no_conciliado_ars` (porción ARS), NO en `importe_no_conciliado`
+        // (porción USD). Hay que reducir el campo correcto Y buscar el update
+        // que corresponda a la porción ARS específicamente.
         const arsCreds = selCreditosARS.map(c => {
-          const ru = reciboUpdates.find(u => u.id === c.id)
           const rInfo = recibos.find(r => r.id === c.id)
           const nInfo = ajustes.find(a => a.id === c.id)
-          return { ...c, montoAplicar: ru ? ru.importeNoConciliadoNuevo : c.tipo === 'recibo' ? (rInfo?.importe_no_conciliado ?? c.montoAplicar) : (nInfo?.saldo_disponible ?? nInfo?.total ?? c.montoAplicar) }
+          const usaARSPorcion = c.tipo === 'recibo' && rInfo?.moneda === 'USD'
+          const ru = c.tipo === 'recibo'
+            ? reciboUpdates.find(u => u.id === c.id && (u.usaARSPorcion ?? false) === usaARSPorcion)
+            : undefined
+          const saldoInicial = c.tipo === 'recibo'
+            ? (usaARSPorcion ? (rInfo?.importe_no_conciliado_ars ?? c.montoAplicar)
+                             : (rInfo?.importe_no_conciliado ?? c.montoAplicar))
+            : (nInfo?.saldo_disponible ?? nInfo?.total ?? c.montoAplicar)
+          return { ...c, montoAplicar: ru ? ru.importeNoConciliadoNuevo : saldoInicial, usaARSPorcion }
         })
         const usdDebs = selDebitosUSD.map(d => {
           const fu = facturaUpdates.find(u => u.id === d.id)
@@ -11640,10 +11673,17 @@ export default function ModuloVentas({
             const fu = facturaUpdates.find(u => u.id === deb.id)
             if (fu) fu.saldoNuevo = Math.max(0, fu.saldoNuevo - montoAplicadoUSD)
             else facturaUpdates.push({ id: deb.id, saldoNuevo: Math.max(0, factInfo.saldo - montoAplicadoUSD) })
-            const ru = reciboUpdates.find(u => u.id === cred.id)
+            // Buscar el reciboUpdate de la porción correcta (USD vs ARS)
+            const ru = reciboUpdates.find(u => u.id === cred.id && (u.usaARSPorcion ?? false) === (cred.usaARSPorcion ?? false))
             if (cred.tipo === 'recibo') {
-              if (ru) ru.importeNoConciliadoNuevo = Math.max(0, ru.importeNoConciliadoNuevo - montoAplicadoARS)
-              else reciboUpdates.push({ id: cred.id, importeNoConciliadoNuevo: Math.max(0, (rInfo?.importe_no_conciliado ?? 0) - montoAplicadoARS) })
+              if (ru) {
+                ru.importeNoConciliadoNuevo = Math.max(0, ru.importeNoConciliadoNuevo - montoAplicadoARS)
+              } else {
+                const saldoBase = cred.usaARSPorcion
+                  ? (rInfo?.importe_no_conciliado_ars ?? 0)
+                  : (rInfo?.importe_no_conciliado ?? 0)
+                reciboUpdates.push({ id: cred.id, importeNoConciliadoNuevo: Math.max(0, saldoBase - montoAplicadoARS), usaARSPorcion: cred.usaARSPorcion })
+              }
             } else {
               const nu = ncUpdates.find(u => u.id === cred.id)
               const saldoBase = nInfo?.saldo_disponible ?? nInfo?.total ?? 0
@@ -11764,7 +11804,18 @@ export default function ModuloVentas({
       if (aplErr || !apls) { alert('Error al obtener aplicaciones: ' + aplErr?.message); return }
 
       for (const apl of apls) {
-        // Restaurar saldo de factura (débito) — buscar en DB directamente para no depender del estado local
+        // En aplicaciones cross-currency, `apl.monto` se guarda en moneda
+        // del DÉBITO (no del crédito). Para restaurar el crédito en su propia
+        // moneda hay que convertir usando la cotización.
+        //   debito=USD, credito=ARS, monto=100 → restaurar ARS += 100*1400
+        //   debito=ARS, credito=USD, monto=280000 → restaurar USD += 280000/1400
+        const cot = Number(apl.cotizacion ?? 0) || 0
+        const esCross = apl.debito_moneda !== apl.credito_moneda
+        const montoEnCredito = esCross && cot > 0
+          ? (apl.credito_moneda === 'ARS' ? apl.monto * cot : apl.monto / cot)
+          : apl.monto
+
+        // Restaurar saldo de factura (débito) — el monto ya está en debit moneda
         if (apl.debito_numero) {
           const { data: facDB } = await supabase.from('facturas').select('id, saldo, total').eq('numero', apl.debito_numero).maybeSingle()
           if (facDB) {
@@ -11774,13 +11825,13 @@ export default function ModuloVentas({
           }
         }
 
-        // Restaurar crédito (recibo o NC) — buscar en DB directamente
+        // Restaurar crédito (recibo o NC) — usar montoEnCredito (convertido si cross)
         const esNC = apl.credito_tipo?.startsWith('NC')
         if (esNC) {
           if (apl.credito_numero) {
             const { data: ncDB } = await supabase.from('ajustes_clientes').select('id, saldo_disponible').eq('numero', apl.credito_numero).maybeSingle()
             if (ncDB) {
-              const saldoRestaurado = (ncDB.saldo_disponible ?? 0) + apl.monto
+              const saldoRestaurado = (ncDB.saldo_disponible ?? 0) + montoEnCredito
               await supabase.from('ajustes_clientes').update({ saldo_disponible: saldoRestaurado }).eq('id', ncDB.id)
               setAjustes(prev => prev.map(a => a.id === ncDB.id ? { ...a, saldo_disponible: saldoRestaurado } : a))
             }
@@ -11792,11 +11843,11 @@ export default function ModuloVentas({
             if (reciboDB) {
               const creditoEsARSDeReciboUSD = apl.credito_moneda === 'ARS' && reciboDB.moneda === 'USD'
               if (creditoEsARSDeReciboUSD) {
-                const importeRestaurado = (reciboDB.importe_no_conciliado_ars || 0) + apl.monto
+                const importeRestaurado = (reciboDB.importe_no_conciliado_ars || 0) + montoEnCredito
                 await supabase.from('recibos').update({ importe_no_conciliado_ars: importeRestaurado }).eq('id', reciboDB.id)
                 setRecibos(prev => prev.map(r => r.id === reciboDB.id ? { ...r, importe_no_conciliado_ars: importeRestaurado } : r))
               } else {
-                const importeRestaurado = (reciboDB.importe_no_conciliado || 0) + apl.monto
+                const importeRestaurado = (reciboDB.importe_no_conciliado || 0) + montoEnCredito
                 await supabase.from('recibos').update({ importe_no_conciliado: importeRestaurado }).eq('id', reciboDB.id)
                 setRecibos(prev => prev.map(r => r.id === reciboDB.id ? { ...r, importe_no_conciliado: importeRestaurado } : r))
               }
@@ -11854,36 +11905,47 @@ export default function ModuloVentas({
 
       for (const imp of imps) {
         if (!imp.asignacion || imp.asignacion <= 0) continue
-        // Restaurar saldo de factura
-        const { data: fac } = await supabase.from('facturas').select('saldo, total').eq('id', imp.comprobante_id).single()
-        if (fac) {
-          const saldoRestaurado = Math.min((fac.saldo || 0) + imp.asignacion, fac.total)
-          await supabase.from('facturas').update({ saldo: saldoRestaurado, estado: 'abierta' }).eq('id', imp.comprobante_id)
-          setFacturas(prev => prev.map(f => String(f.id) === String(imp.comprobante_id) ? { ...f, saldo: saldoRestaurado, estado: 'abierta' } : f))
+        const tipo = imp.tipo_comprobante ?? 'factura'
+        if (tipo === 'factura' || tipo === 'nota_debito') {
+          // Restaurar saldo de factura/ND
+          const { data: fac } = await supabase.from('facturas').select('saldo, total').eq('id', imp.comprobante_id).single()
+          if (fac) {
+            const saldoRestaurado = Math.min((fac.saldo || 0) + imp.asignacion, fac.total)
+            await supabase.from('facturas').update({ saldo: saldoRestaurado, estado: 'abierta' }).eq('id', imp.comprobante_id)
+            setFacturas(prev => prev.map(f => String(f.id) === String(imp.comprobante_id) ? { ...f, saldo: saldoRestaurado, estado: 'abierta' } : f))
+          }
+        } else if (tipo === 'nota_credito' || tipo === 'ajuste') {
+          // Restaurar saldo_disponible del crédito (NC/ajuste)
+          const { data: aj } = await supabase.from('ajustes_clientes').select('saldo_disponible, total').eq('id', imp.comprobante_id).single()
+          if (aj) {
+            const saldoRestaurado = Math.min((aj.saldo_disponible || 0) + imp.asignacion, aj.total)
+            await supabase.from('ajustes_clientes').update({ saldo_disponible: Math.round(saldoRestaurado * 100) / 100 }).eq('id', imp.comprobante_id)
+          }
         }
       }
 
       // Eliminar las imputaciones del recibo
       await supabase.from('recibo_imputaciones').delete().eq('recibo_id', reciboId)
 
-      // Restaurar importe_no_conciliado del recibo al importe total de pagos en su moneda
+      // Restaurar importe_no_conciliado del recibo a los pagos NETOS en cash
+      // (sin contar las NCs, que ya quedaron restauradas como crédito disponible).
+      // Para mixtos USD/ARS guardamos las dos porciones por separado.
       const recibo = recibos.find(r => String(r.id) === String(reciboId))
       if (recibo) {
-        const { data: pagos } = await supabase.from('recibo_pagos').select('importe, moneda, cotizacion_cruce').eq('recibo_id', reciboId)
+        const { data: pagos } = await supabase.from('recibo_pagos').select('importe, moneda').eq('recibo_id', reciboId)
         const monedaRecibo = recibo.moneda ?? 'ARS'
-        const totalEnMoneda = (pagos ?? []).reduce((s: number, p: any) =>
-          p.moneda === monedaRecibo ? s + (p.importe || 0) : s, 0)
-        // Restaurar también la porción ARS para recibos mixtos
-        const totalARSDirectos = monedaRecibo === 'USD'
-          ? (pagos ?? []).reduce((s: number, p: any) =>
-              p.moneda === 'ARS' && !p.cotizacion_cruce ? s + (p.importe || 0) : s, 0)
-          : 0
+        const totalUSDDirectos = (pagos ?? []).reduce((s: number, p: any) =>
+          p.moneda === 'USD' ? s + (p.importe || 0) : s, 0)
+        const totalARSDirectos = (pagos ?? []).reduce((s: number, p: any) =>
+          p.moneda === 'ARS' ? s + (p.importe || 0) : s, 0)
+        const importeNoConc = monedaRecibo === 'USD' ? totalUSDDirectos : totalARSDirectos
+        const importeNoConcARS = monedaRecibo === 'USD' ? totalARSDirectos : 0
         await supabase.from('recibos').update({
-          importe_no_conciliado: totalEnMoneda,
-          importe_no_conciliado_ars: totalARSDirectos,
+          importe_no_conciliado: importeNoConc,
+          importe_no_conciliado_ars: importeNoConcARS,
         }).eq('id', reciboId)
         setRecibos(prev => prev.map(r => String(r.id) === String(reciboId)
-          ? { ...r, importe_no_conciliado: totalEnMoneda, importe_no_conciliado_ars: totalARSDirectos }
+          ? { ...r, importe_no_conciliado: importeNoConc, importe_no_conciliado_ars: importeNoConcARS }
           : r))
       }
 
@@ -11947,7 +12009,19 @@ export default function ModuloVentas({
       .filter(r => (r.recibo_imputaciones ?? []).some((i: any) => i.asignacion > 0))
       .map(r => {
         const imps = (r.recibo_imputaciones ?? []).filter((i: any) => i.asignacion > 0)
-        const aplicaciones = imps.map((i: any) => ({
+        // Modelo correcto:
+        //   - facturas/ND  = DESTINOS (deuda pagada por el recibo)
+        //   - NC/ajustes   = FUENTES de fondos consumidos (parte del pago, no
+        //                    deuda independiente)
+        // El historial muestra las facturas pagadas. Las NCs se anotan como
+        // "incluye crédito consumido" para que el operador sepa que parte del
+        // pago vino de un crédito disponible. El total_conciliado es solo
+        // la suma de facturas (deuda real cancelada).
+        const facturasImps = imps.filter((i: any) =>
+          i.tipo_comprobante === 'factura' || i.tipo_comprobante === 'nota_debito')
+        const creditosImps = imps.filter((i: any) =>
+          i.tipo_comprobante === 'nota_credito' || i.tipo_comprobante === 'ajuste')
+        const aplicaciones = facturasImps.map((i: any) => ({
           debito_tipo: i.tipo_comprobante === 'factura' ? 'Factura' : 'ND',
           debito_numero: i.comprobante_referencia ?? '',
           credito_tipo: 'Recibo',
@@ -11957,12 +12031,20 @@ export default function ModuloVentas({
           credito_moneda: i.moneda_comprobante ?? 'ARS',
           cotizacion: i.cotizacion_actual ?? null,
         }))
+        // Si hubo créditos consumidos, agregar nota de pie (no se suman al total)
+        const creditosConsumidos = creditosImps.map((i: any) => ({
+          tipo: i.tipo_comprobante === 'nota_credito' ? 'NC' : 'Ajuste',
+          numero: i.comprobante_referencia ?? '',
+          monto: i.asignacion as number,
+          moneda: i.moneda_comprobante ?? 'ARS',
+        }))
         return {
           id: -(r.id as number),   // ID negativo para distinguir de conciliaciones_deuda
           fecha: r.fecha as string,
           cliente_id: clienteId,
           cliente_nombre: clienteNombre,
           aplicaciones,
+          creditos_consumidos: creditosConsumidos,
           total_conciliado: aplicaciones.reduce((s: number, a: any) => s + a.monto, 0) as number,
           usuario: '',
           estado: (r.estado === 'cancelado' ? 'cancelada' : 'activa') as 'activa' | 'cancelada',
@@ -12059,8 +12141,12 @@ export default function ModuloVentas({
     }
     const toggleCredito = (id: number, tipo: 'recibo' | 'nc', moneda: 'ARS' | 'USD', saldo: number) => {
       setConciliacionSeleccionCreditos(prev => {
-        const existe = prev.find(c => c.id === id && c.tipo === tipo)
-        return existe ? prev.filter(c => !(c.id === id && c.tipo === tipo))
+        // Identificar por (id, tipo, moneda): un recibo mixto puede tener
+        // su porción USD y su porción ARS como dos selecciones independientes
+        // (el operador puede elegir aplicar solo una). Sin la moneda en la
+        // clave ambas filas se sincronizaban juntas.
+        const existe = prev.find(c => c.id === id && c.tipo === tipo && c.moneda === moneda)
+        return existe ? prev.filter(c => !(c.id === id && c.tipo === tipo && c.moneda === moneda))
           : [...prev, { id, tipo, moneda, montoAplicar: saldo }]
       })
     }
@@ -12202,7 +12288,7 @@ export default function ModuloVentas({
               <tbody>
                 {recibosFilt.map(r => {
                   const saldo = r.importe_no_conciliado
-                  const sel = conciliacionSeleccionCreditos.find(c => c.id === r.id && c.tipo === 'recibo')
+                  const sel = conciliacionSeleccionCreditos.find(c => c.id === r.id && c.tipo === 'recibo' && c.moneda === moneda)
                   const conciliado = saldo <= 0
                   return (
                     <tr key={`r-${r.id}`} onClick={() => !conciliado && toggleCredito(r.id, 'recibo', moneda, saldo)}
@@ -12220,7 +12306,7 @@ export default function ModuloVentas({
                 })}
                 {ncFilt.map(n => {
                   const saldo = n.saldo_disponible ?? n.total
-                  const sel = conciliacionSeleccionCreditos.find(c => c.id === n.id && c.tipo === 'nc')
+                  const sel = conciliacionSeleccionCreditos.find(c => c.id === n.id && c.tipo === 'nc' && c.moneda === moneda)
                   const conciliado = saldo <= 0
                   return (
                     <tr key={`nc-${n.id}`} onClick={() => !conciliado && toggleCredito(n.id, 'nc', moneda, saldo)}
@@ -12380,28 +12466,54 @@ export default function ModuloVentas({
               </div>
             </div>
 
-            {/* ── Cotización (modo cruzado) ──────────────────────────────── */}
-            {hayMixto && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex flex-wrap items-center gap-3">
-                <span className="text-sm font-semibold text-amber-800">Conciliación cruzada USD ↔ ARS</span>
-                <span className="text-sm text-gray-600">Cotización 1 USD =</span>
-                <input
-                  type="number"
-                  value={conciliacionCotizacion || ''}
-                  onChange={e => setConciliacionCotizacion(Number(e.target.value))}
-                  className="border rounded px-2 py-1 text-sm w-32 text-right"
-                  placeholder="ej: 1000"
-                  min={0.01}
-                  step={0.01}
-                />
-                <span className="text-sm text-gray-500">ARS (blue)</span>
-                {conciliacionCotizacion > 0 && totalSelCreditosUSD > 0 && (
-                  <span className="text-xs text-gray-600 bg-white border rounded px-2 py-0.5">
-                    USD {totalSelCreditosUSD.toLocaleString('es-AR', {minimumFractionDigits:2})} = ARS {(totalSelCreditosUSD * conciliacionCotizacion).toLocaleString('es-AR', {minimumFractionDigits:2})}
-                  </span>
-                )}
-              </div>
-            )}
+            {/* ── Cotización (modo cruzado) ────────────────────────────────
+                El cruce solo se aplica al SHORTFALL en cada moneda, no al
+                total de créditos. Ej: si USD débito > USD crédito directo,
+                el ARS sobrante cubre el faltante de USD usando la cotización. */}
+            {hayMixto && (() => {
+              const shortfallUSD = Math.max(0, totalSelDebitosUSD - totalSelCreditosUSD)
+              const shortfallARS = Math.max(0, totalSelDebitosARS - totalSelCreditosARS)
+              const surplusUSD = Math.max(0, totalSelCreditosUSD - totalSelDebitosUSD)
+              const surplusARS = Math.max(0, totalSelCreditosARS - totalSelDebitosARS)
+              const cot = conciliacionCotizacion
+              // ARS surplus cubre USD shortfall
+              const transferARStoUSD_ars = cot > 0 ? Math.min(surplusARS, shortfallUSD * cot) : 0
+              const transferARStoUSD_usd = cot > 0 ? transferARStoUSD_ars / cot : 0
+              // USD surplus cubre ARS shortfall
+              const transferUSDtoARS_usd = cot > 0 ? Math.min(surplusUSD, shortfallARS / cot) : 0
+              const transferUSDtoARS_ars = cot > 0 ? transferUSDtoARS_usd * cot : 0
+              return (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex flex-wrap items-center gap-3">
+                  <span className="text-sm font-semibold text-amber-800">Conciliación cruzada USD ↔ ARS</span>
+                  <span className="text-sm text-gray-600">Cotización 1 USD =</span>
+                  <input
+                    type="number"
+                    value={conciliacionCotizacion || ''}
+                    onChange={e => setConciliacionCotizacion(Number(e.target.value))}
+                    className="border rounded px-2 py-1 text-sm w-32 text-right"
+                    placeholder="ej: 1000"
+                    min={0.01}
+                    step={0.01}
+                  />
+                  <span className="text-sm text-gray-500">ARS (blue)</span>
+                  {cot > 0 && transferARStoUSD_ars > 0 && (
+                    <span className="text-xs text-gray-700 bg-white border rounded px-2 py-0.5">
+                      ARS {transferARStoUSD_ars.toLocaleString('es-AR', {minimumFractionDigits:2})} cubre USD {transferARStoUSD_usd.toLocaleString('es-AR', {minimumFractionDigits:2})}
+                    </span>
+                  )}
+                  {cot > 0 && transferUSDtoARS_usd > 0 && (
+                    <span className="text-xs text-gray-700 bg-white border rounded px-2 py-0.5">
+                      USD {transferUSDtoARS_usd.toLocaleString('es-AR', {minimumFractionDigits:2})} cubre ARS {transferUSDtoARS_ars.toLocaleString('es-AR', {minimumFractionDigits:2})}
+                    </span>
+                  )}
+                  {cot > 0 && transferARStoUSD_ars === 0 && transferUSDtoARS_usd === 0 && (
+                    <span className="text-xs text-gray-500 italic">
+                      Sin shortfall a cubrir cruzado
+                    </span>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* ── Botón ejecutar ─────────────────────────────────────────── */}
             <div className="flex justify-end items-center gap-3">
@@ -12528,6 +12640,18 @@ export default function ModuloVentas({
                         })}
                       </tbody>
                     </table>
+                    {/* Créditos consumidos como parte del pago — no se suman al total */}
+                    {h.creditos_consumidos && h.creditos_consumidos.length > 0 && (
+                      <div className="px-3 py-2 mt-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+                        <span className="font-semibold">Incluye crédito consumido:</span>{" "}
+                        {h.creditos_consumidos.map((c, i) => (
+                          <span key={i}>
+                            {c.tipo} {c.numero} ({c.moneda} {c.monto.toLocaleString('es-AR', { minimumFractionDigits: 2 })})
+                            {i < h.creditos_consumidos!.length - 1 ? ", " : ""}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

@@ -82,7 +82,7 @@ const ESTADO_NV_LABELS: Record<string, string> = {
   a_facturar: "A Facturar",
   verificacion_factura: "Verif. Factura",
   verificacion_oe: "Verif. OE",
-  facturada: "Facturada",
+  facturada: "Confirmada",
   finalizada: "Finalizada",
   parcial: "Parcial",
   cancelada: "Cancelada",
@@ -190,14 +190,22 @@ export interface Remito {
 }
 
 const ESTADO_REMITO_COLORS: Record<string, string> = {
+  borrador: "bg-gray-100 text-gray-700",
+  emitido: "bg-amber-100 text-amber-700",
   en_ejecucion: "bg-yellow-100 text-yellow-700",
   aprobado: "bg-green-100 text-green-700",
+  entregado: "bg-green-100 text-green-700",
+  en_transito: "bg-blue-100 text-blue-700",
   cancelado: "bg-red-100 text-red-700",
 }
 
 const ESTADO_REMITO_LABELS: Record<string, string> = {
+  borrador: "Borrador",
+  emitido: "Emitido",
   en_ejecucion: "En Ejecución",
   aprobado: "Aprobado",
+  entregado: "Entregado",
+  en_transito: "En Tránsito",
   cancelado: "Cancelado",
 }
 

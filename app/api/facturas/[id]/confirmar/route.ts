@@ -10,11 +10,13 @@ function getSupabase() {
 }
 
 interface MedioPagoInput {
-  medio: "efectivo" | "transferencia" | "tarjeta"
-  monto: number          // monto base que paga el cliente sobre el subtotal en negro
+  medio: "efectivo" | "transferencia" | "tarjeta" | "credito_toma"
+  monto: number          // monto base que paga el cliente, YA convertido a la moneda de la factura
+  moneda?: "ARS" | "USD" // moneda original con la que el cliente pagó (para diferenciar Efectivo USD vs ARS)
   tarjeta_id?: number
   cuotas?: number
   recargo_pct?: number   // % de recargo de tarjeta (0 si no aplica)
+  nc_id?: number         // FAC-11: para credito_toma, FK a ajustes_clientes
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -41,7 +43,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: `La factura está en estado "${factura.estado}", no se puede confirmar` }, { status: 422 })
   }
 
-  // 2. Leer líneas de factura con la alícuota de IVA del producto
+  // 2. Leer líneas de factura
   const { data: lineas, error: linErr } = await supabase
     .from("facturas_lineas")
     .select("id, producto_id, subtotal")
@@ -52,7 +54,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "La factura no tiene líneas" }, { status: 422 })
   }
 
-  // Resolver alícuotas desde productos
+  // Resolver alícuotas desde productos (la tabla facturas_lineas no tiene
+  // columna `iva` propia — el % se obtiene del producto vía iva_venta).
   const productoIds = [...new Set(lineas.map(l => l.producto_id).filter((x): x is number => x != null))]
   const alicuotaPorProducto = new Map<number, number>()
   if (productoIds.length > 0) {
@@ -64,6 +67,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       alicuotaPorProducto.set(p.id, Number((p as { iva_venta?: number }).iva_venta ?? 21))
     }
   }
+  const alicuotaDeLinea = (l: any): number =>
+    l.producto_id != null ? (alicuotaPorProducto.get(l.producto_id) ?? 21) : 21
 
   const subtotalNegro = Number(factura.subtotal ?? 0)
   if (subtotalNegro <= 0) {
@@ -78,49 +83,100 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }, { status: 422 })
   }
 
-  // 4. Calcular recargo + IVA proporcional por cada medio facturable
-  // Para cada medio NO efectivo:
-  //   - Recargo (solo tarjeta) = monto * recargo_pct / 100
-  //   - ratio = monto / subtotalNegro (qué porción del total cubre)
-  //   - por cada línea: base imponible = (línea.subtotal + recargo de la línea) * ratio
-  //                     IVA = base * alicuota/100
-  //   - IVA del medio = suma de los IVA por línea (calculado sobre monto + recargo)
+  // 4. FAC-10: IVA preponderante de la factura.
+  // Agrupar el subtotal por % de IVA y elegir el % con mayor monto.
+  const subtotalPorIva = new Map<number, number>()
+  for (const l of lineas) {
+    const iva = alicuotaDeLinea(l)
+    subtotalPorIva.set(iva, (subtotalPorIva.get(iva) ?? 0) + Number(l.subtotal ?? 0))
+  }
+  let ivaPreponderante = 21
+  let maxSubtotalPrep = 0
+  subtotalPorIva.forEach((sub, iva) => {
+    if (sub > maxSubtotalPrep) { maxSubtotalPrep = sub; ivaPreponderante = iva }
+  })
+
+  // 5. FAC-10: Para cada medio NO efectivo:
+  //   - recargoMedio = monto * recargo_pct / 100 (de la tabla recargos_tarjeta)
+  //   - comisionMedio = sum(monto * cargo.arancel / 100) por cada cargo del grupo
+  //                     CUYO NOMBRE NO CONTENGA "IVA" (los cargos administrativos
+  //                     llamados "IVA" no son el IVA fiscal y no deben duplicar)
+  //   - ivaMedio = (monto + recargoMedio + comisionMedio) * ivaPreponderante / 100
+  //   - "recargo" en la tabla factura_medios_pago = recargoMedio + comisionMedio
   let ivaTotal = 0
   let recargoTotal = 0
 
+  // Resolver grupos de tarjeta para mapear recargo→cargos
+  const recargosIds = [...new Set(medios.filter(m => m.medio === "tarjeta" && m.tarjeta_id).map(m => m.tarjeta_id!))]
+  const cargosPorTarjeta = new Map<number, { nombre: string; arancel: number }[]>()
+  if (recargosIds.length > 0) {
+    // Para cada tarjeta + cuotas, buscar el recargo que aplica y el grupo correspondiente
+    const { data: recargosData } = await supabase
+      .from("recargos_tarjeta")
+      .select("id, tarjeta_id, grupo_id, desde_cuota, hasta_cuota, recargo_pct, activo, dias")
+      .in("tarjeta_id", recargosIds)
+      .eq("activo", true)
+    const { data: gruposData } = await supabase
+      .from("grupos_tarjeta")
+      .select("id, nombre, cargos")
+    const gruposMap = new Map<number, { nombre: string; arancel: number }[]>()
+    for (const g of gruposData ?? []) {
+      gruposMap.set(g.id, Array.isArray(g.cargos) ? g.cargos : [])
+    }
+    // Mapeamos por (tarjeta_id, cuotas) → cargos
+    for (const m of medios) {
+      if (m.medio !== "tarjeta" || !m.tarjeta_id) continue
+      const cuotas = m.cuotas ?? 1
+      const rec = (recargosData ?? []).find(r =>
+        r.tarjeta_id === m.tarjeta_id &&
+        cuotas >= r.desde_cuota && cuotas <= r.hasta_cuota
+      )
+      if (rec) {
+        cargosPorTarjeta.set(m.tarjeta_id, gruposMap.get(rec.grupo_id) ?? [])
+      }
+    }
+  }
+
   const mediosCalculados = medios.map((m) => {
     const monto = Number(m.monto) || 0
-    let ivaMedio = 0
     let recargoMedio = 0
+    let comisionMedio = 0
 
-    // Recargo va primero — se calcula sobre el monto base
     if (m.medio === "tarjeta" && (m.recargo_pct ?? 0) > 0) {
       recargoMedio = Math.round(monto * (Number(m.recargo_pct) / 100) * 100) / 100
     }
-
-    // IVA se calcula sobre (monto base + recargo) en proporción a las alícuotas de cada línea
-    if (m.medio !== "efectivo") {
-      const baseConRecargo = monto + recargoMedio
-      const ratio = baseConRecargo / subtotalNegro
-      for (const linea of lineas) {
-        const alicuota = linea.producto_id != null ? (alicuotaPorProducto.get(linea.producto_id) ?? 21) : 21
-        const baseImponible = Number(linea.subtotal ?? 0) * ratio
-        ivaMedio += baseImponible * (alicuota / 100)
+    if (m.medio === "tarjeta" && m.tarjeta_id) {
+      const cargos = cargosPorTarjeta.get(m.tarjeta_id) ?? []
+      for (const c of cargos) {
+        // Excluir cargos llamados "IVA*" (son cargos admin de la tarjeta, no IVA fiscal)
+        if (!/iva/i.test(c.nombre)) {
+          comisionMedio += monto * (Number(c.arancel) / 100)
+        }
       }
-      ivaMedio = Math.round(ivaMedio * 100) / 100
+      comisionMedio = Math.round(comisionMedio * 100) / 100
     }
 
+    // FAC-11: credito_toma y efectivo NO generan IVA fiscal ni recargos
+    let ivaMedio = 0
+    if (m.medio === "tarjeta" || m.medio === "transferencia") {
+      const base = monto + recargoMedio + comisionMedio
+      ivaMedio = Math.round(base * (ivaPreponderante / 100) * 100) / 100
+    }
+
+    const recargoCombinado = Math.round((recargoMedio + comisionMedio) * 100) / 100
     ivaTotal += ivaMedio
-    recargoTotal += recargoMedio
+    recargoTotal += recargoCombinado
 
     return {
       medio: m.medio,
+      moneda: m.moneda ?? (factura.moneda ?? "ARS"),
       tarjeta_id: m.medio === "tarjeta" ? (m.tarjeta_id ?? null) : null,
       cuotas: m.medio === "tarjeta" ? (m.cuotas ?? 1) : null,
+      nc_id: m.medio === "credito_toma" ? (m.nc_id ?? null) : null,
       monto_base: monto,
       iva_calculado: ivaMedio,
-      recargo: recargoMedio,
-      monto_total: Math.round((monto + ivaMedio + recargoMedio) * 100) / 100,
+      recargo: recargoCombinado,
+      monto_total: Math.round((monto + ivaMedio + recargoCombinado) * 100) / 100,
     }
   })
 
@@ -128,13 +184,35 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   recargoTotal = Math.round(recargoTotal * 100) / 100
   const totalFinal = Math.round((subtotalNegro + ivaTotal + recargoTotal) * 100) / 100
 
+  // FAC-11: total cobrado por créditos de toma de equipo (las NCs aplicadas).
+  // Se descuenta del saldo de la factura al final (la NC se "consume").
+  const totalCreditoToma = mediosCalculados
+    .filter(m => m.medio === "credito_toma")
+    .reduce((s, m) => s + Number(m.monto_total), 0)
+
   // 5. Insertar las filas en factura_medios_pago
+  const filasMedios = mediosCalculados.map(m => ({ ...m, factura_id: factura.id }))
   const { error: mpErr } = await supabase
     .from("factura_medios_pago")
-    .insert(mediosCalculados.map(m => ({ ...m, factura_id: factura.id })))
+    .insert(filasMedios)
 
   if (mpErr) {
-    return NextResponse.json({ error: `Error guardando medios de pago: ${mpErr.message}` }, { status: 500 })
+    // Compat: si la columna `moneda` no existe (script 095 no aplicado),
+    // reintentamos sin ella en vez de romper el flujo.
+    const colFaltante = mpErr.message.match(/Could not find the '([^']+)' column/)?.[1]
+    if (colFaltante) {
+      const filasSinCol = filasMedios.map(f => {
+        const copia = { ...f } as Record<string, unknown>
+        delete copia[colFaltante]
+        return copia
+      })
+      const retry = await supabase.from("factura_medios_pago").insert(filasSinCol)
+      if (retry.error) {
+        return NextResponse.json({ error: `Error guardando medios de pago: ${retry.error.message}` }, { status: 500 })
+      }
+    } else {
+      return NextResponse.json({ error: `Error guardando medios de pago: ${mpErr.message}` }, { status: 500 })
+    }
   }
 
   // 6. Generar Asiento 2 (IVA diferido + recargo TC)
@@ -157,6 +235,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   // 7. Actualizar factura: estado, totales, asiento_iva_id
+  // FAC-11 (Opción B): saldo = totalFinal completo. La línea credito_toma
+  // es solo un marcador visual en factura_medios_pago — no afecta el saldo.
+  // El operador concilia la NC contra la factura en el recibo (tab Comprobantes),
+  // y ahí baja el saldo de la factura Y el saldo_disponible de la NC.
+  // (Variable totalCreditoToma se calcula igual por si se necesita en logs.)
+  void totalCreditoToma
   const { error: updErr } = await supabase
     .from("facturas")
     .update({
@@ -172,6 +256,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (updErr) {
     return NextResponse.json({ error: `Factura confirmada parcialmente: ${updErr.message}` }, { status: 500 })
   }
+
+  // FAC-11 (Opción B): la NC NO se descuenta al confirmar la factura.
+  // El crédito por toma de equipo es informativo en la factura — el saldo
+  // de la factura ya quedó reducido por `totalCreditoToma`, y el operador
+  // matchea la NC manualmente en el recibo (panel "Créditos del cliente"),
+  // donde se hace la conciliación real.
 
   return NextResponse.json({
     ok: true,

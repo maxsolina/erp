@@ -30,6 +30,7 @@ export async function GET() {
     .from("ordenes_compra")
     .select("*")
     .order("created_at", { ascending: false })
+    .range(0, 49999)
 
   if (error) return dbError(error)
   return NextResponse.json(data)
@@ -53,12 +54,23 @@ export async function POST(request: Request) {
   const nextNum = match ? parseInt(match[1], 10) + 1 : 1
   payload.numero = `OC-${String(nextNum).padStart(5, "0")}`
 
-  const { data, error } = await supabase
-    .from("ordenes_compra")
-    .insert([payload])
-    .select()
-    .single()
-
-  if (error) return dbError(error)
-  return NextResponse.json(data, { status: 201 })
+  // Insert con fallback: si una columna del payload no existe en la DB
+  // (típico cuando falta correr una migración), la sacamos y reintentamos.
+  // Hasta 30 intentos — soporta tablas a las que les faltan muchas columnas.
+  let intentos = 0
+  let payloadActual: Record<string, any> = payload
+  while (intentos < 30) {
+    const { data, error } = await supabase
+      .from("ordenes_compra")
+      .insert([payloadActual])
+      .select()
+      .single()
+    if (!error) return NextResponse.json(data, { status: 201 })
+    const colFaltante = error.message.match(/Could not find the '([^']+)' column/)?.[1]
+    if (!colFaltante || !(colFaltante in payloadActual)) return dbError(error)
+    const { [colFaltante]: _omit, ...resto } = payloadActual
+    payloadActual = resto
+    intentos++
+  }
+  return NextResponse.json({ error: "Demasiados reintentos al guardar OC" }, { status: 500 })
 }

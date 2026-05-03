@@ -23,13 +23,24 @@ export default function RecepcionesListado() {
   const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([])
 
   useEffect(() => {
-    fetch("/api/compras/recepciones")
-      .then(r => r.json())
-      .then(data => {
-        if (Array.isArray(data)) setRecs(data)
-      })
-      .catch(console.error)
-      .finally(() => setCargando(false))
+    // El listado de "Recepciones" unifica DOS fuentes (igual que el monolito):
+    //  - /api/compras/recepciones        → tabla `recepciones` (originadas en OC)
+    //  - /api/recepciones-toma           → tabla `recepciones_toma` (originadas en
+    //                                       Toma de Equipo desde Ventas)
+    // La unión se hace acá en el cliente porque cada endpoint ya devuelve los
+    // datos en el formato esperado, no es necesario un endpoint de unión nuevo.
+    Promise.all([
+      fetch("/api/compras/recepciones").then(r => r.ok ? r.json() : []).catch(() => []),
+      fetch("/api/recepciones-toma").then(r => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([oc, toma]) => {
+      const all = [
+        ...(Array.isArray(oc)   ? oc   : []),
+        ...(Array.isArray(toma) ? toma : []),
+      ]
+      // Ordenar por fecha desc
+      all.sort((a, b) => String(b.fecha ?? "").localeCompare(String(a.fecha ?? "")))
+      setRecs(all)
+    }).finally(() => setCargando(false))
   }, [])
 
   const filtered = useMemo(() => {
@@ -107,13 +118,21 @@ export default function RecepcionesListado() {
           <tbody>
             {cargando && <tr><td colSpan={5} className="py-8 text-center text-gray-400">Cargando...</td></tr>}
             {!cargando && filtered.map(r => {
-              const href = `/compras/recepciones/${r.id}`
+              // Las recepciones de toma de equipo no tienen ficha App Router todavía
+              // (su gestión completa con IMEI/color/batería sigue en el monolito).
+              // Las de OC sí tienen ficha en /compras/recepciones/[id].
+              const esToma = (r as any).documento_origen_tipo === "toma_equipo"
+              const href = esToma
+                ? `/?module=compras&view=recepciones&id=${r.id}`
+                : `/compras/recepciones/${r.id}`
+              const ocOrigen = esToma ? (r as any).documento_origen_ref : r.orden_compra_numero
+              const rowKey = `${esToma ? "toma" : "oc"}-${r.id}`
               return (
-                <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50">
+                <tr key={rowKey} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="p-0"><Link href={href} className="block py-3 px-4 font-mono text-sm text-amber-700 font-medium">{r.numero}</Link></td>
                   <td className="p-0"><Link href={href} className="block py-3 px-4 text-sm">{formatDate(r.fecha)}</Link></td>
                   <td className="p-0"><Link href={href} className="block py-3 px-4 text-sm">{r.proveedor_nombre}</Link></td>
-                  <td className="p-0"><Link href={href} className="block py-3 px-4 text-sm font-mono text-gray-600">{r.orden_compra_numero ?? "—"}</Link></td>
+                  <td className="p-0"><Link href={href} className="block py-3 px-4 text-sm font-mono text-gray-600">{ocOrigen ?? "—"}</Link></td>
                   <td className="p-0"><Link href={href} className="block py-3 px-4 text-center">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getEstadoRecepcionColor(r.estado)}`}>{getEstadoRecepcionLabel(r.estado)}</span>
                   </Link></td>

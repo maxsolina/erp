@@ -48,7 +48,30 @@ export async function GET(req: Request) {
 
   const { data, error } = await query
   if (error) return dbError(error)
-  return NextResponse.json(id ? (data?.[0] ?? null) : (data ?? []))
+
+  // Enriquecer cada asiento con campos derivados que el front espera:
+  // - descripcion ← concepto (alias para que la UI use un solo nombre)
+  // - total_debe / total_haber ← suma de las líneas
+  // - documento_origen_numero ← referencia o "tipo #id" como fallback
+  const enriched = (data ?? []).map((a: any) => {
+    const lineas = Array.isArray(a.lineas) ? a.lineas : []
+    const total_debe = lineas.reduce((s: number, l: any) => s + Number(l.debe ?? 0), 0)
+    const total_haber = lineas.reduce((s: number, l: any) => s + Number(l.haber ?? 0), 0)
+    const documento_origen_numero =
+      a.referencia ??
+      (a.comprobante_tipo && a.comprobante_id
+        ? `${a.comprobante_tipo} #${a.comprobante_id}`
+        : null)
+    return {
+      ...a,
+      descripcion: a.descripcion ?? a.concepto ?? null,
+      total_debe,
+      total_haber,
+      documento_origen_numero,
+    }
+  })
+
+  return NextResponse.json(id ? (enriched[0] ?? null) : enriched)
 }
 
 // ─── POST: crear asiento (nace en no_asentado) ───────────────────────────────
