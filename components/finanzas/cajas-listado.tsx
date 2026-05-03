@@ -116,19 +116,26 @@ export default function CajasListado() {
             {cargando && (
               <tr><td colSpan={5} className="py-8 text-center text-gray-400">Cargando...</td></tr>
             )}
-            {!cargando && filtered.map(c => (
-              <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="py-3 px-4 font-mono text-sm text-gray-500">{c.codigo ?? "—"}</td>
-                <td className="py-3 px-4 font-medium text-sm text-amber-900">{c.nombre}</td>
-                <td className="py-3 px-4 text-sm text-gray-600">{c.sucursal ?? "—"}</td>
-                <td className="py-3 px-4 text-center text-sm">{c.cierre_diario_obligatorio ? "Sí" : "No"}</td>
-                <td className="py-3 px-4 text-center">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${c.activo ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                    {c.activo ? "Activa" : "Inactiva"}
-                  </span>
-                </td>
-              </tr>
-            ))}
+            {!cargando && filtered.map(c => {
+              // Click en la fila → abrir la ficha de la caja en el monolito
+              // (la gestión completa de valores/bancos/usuarios sigue ahí)
+              const href = `/?module=finanzas&view=cajas&caja_id=${c.id}`
+              return (
+                <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
+                  <td className="p-0"><Link href={href} className="block py-3 px-4 font-mono text-sm text-gray-500">{c.codigo ?? "—"}</Link></td>
+                  <td className="p-0"><Link href={href} className="block py-3 px-4 font-medium text-sm text-amber-900">{c.nombre}</Link></td>
+                  <td className="p-0"><Link href={href} className="block py-3 px-4 text-sm text-gray-600">{c.sucursal ?? "—"}</Link></td>
+                  <td className="p-0"><Link href={href} className="block py-3 px-4 text-center text-sm">{c.cierre_diario_obligatorio ? "Sí" : "No"}</Link></td>
+                  <td className="p-0">
+                    <Link href={href} className="block py-3 px-4 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${c.activo ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                        {c.activo ? "Activa" : "Inactiva"}
+                      </span>
+                    </Link>
+                  </td>
+                </tr>
+              )
+            })}
             {!cargando && filtered.length === 0 && (
               <tr><td colSpan={5} className="py-8 text-center text-gray-400 text-sm">No hay cajas</td></tr>
             )}

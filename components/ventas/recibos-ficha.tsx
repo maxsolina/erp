@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, X } from "lucide-react"
+import { CheckCircle, Download, Edit, X } from "lucide-react"
+import BotonVolver from "@/components/ui/boton-volver"
 import {
   formatCurrency,
   formatDate,
@@ -12,6 +13,19 @@ import {
   type Recibo,
 } from "./_shared"
 
+function formatDateTime(iso?: string) {
+  if (!iso) return ""
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
 export default function RecibosFicha({ reciboId }: { reciboId: string }) {
   const router = useRouter()
   const [recibo, setRecibo] = useState<Recibo | null | undefined>(undefined)
@@ -19,8 +33,32 @@ export default function RecibosFicha({ reciboId }: { reciboId: string }) {
   const [showCancelarModal, setShowCancelarModal] = useState(false)
   const [motivoCancel, setMotivoCancel] = useState("")
   const [cancelando, setCancelando] = useState(false)
+  const [confirmando, setConfirmando] = useState(false)
   const [nvVinculadaId, setNvVinculadaId] = useState<number | null>(null)
   const [facturaVinculadaId, setFacturaVinculadaId] = useState<number | null>(null)
+
+  const confirmarRecibo = async () => {
+    if (confirmando) return
+    if (!confirm("¿Confirmar el recibo? Se publicará y se generarán los movimientos de caja, asiento contable e imputaciones.")) return
+    setConfirmando(true)
+    try {
+      const res = await fetch(`/api/recibos/${reciboId}/publicar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        alert(`No se pudo confirmar el recibo: ${err.error ?? res.statusText}`)
+        setConfirmando(false)
+        return
+      }
+      window.location.reload()
+    } catch (e: any) {
+      alert(`Error de red: ${e?.message ?? e}`)
+      setConfirmando(false)
+    }
+  }
 
   const cancelarRecibo = async () => {
     if (!motivoCancel.trim()) { alert("Ingresá un motivo"); return }
@@ -69,7 +107,6 @@ export default function RecibosFicha({ reciboId }: { reciboId: string }) {
       })
   }, [reciboId])
 
-  // Resolver IDs de docs vinculados
   useEffect(() => {
     if (!recibo) return
     if (recibo.factura_id) {
@@ -104,106 +141,276 @@ export default function RecibosFicha({ reciboId }: { reciboId: string }) {
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => router.push("/ventas/recibos")} className="p-2 hover:bg-gray-100 rounded-lg">
-          <ArrowLeft className="w-4 h-4" />
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+        <button onClick={() => router.push("/ventas/recibos")} className="hover:text-emerald-700">
+          Recibos
         </button>
-        <h1 className="text-2xl font-bold text-amber-900">{recibo.numero}</h1>
-        <span className={`px-3 py-1 rounded-full text-sm font-medium ${getEstadoReciboColor(recibo.estado)}`}>
-          {getEstadoReciboLabel(recibo.estado)}
-        </span>
-        <div className="ml-auto flex items-center gap-2">
+        <span>/</span>
+        <span className="font-medium text-gray-900">{recibo.numero}</span>
+      </div>
+
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <BotonVolver onClick={() => router.push("/ventas/recibos")} variant="minimal" texto="" />
+          <div>
+            <h1 className="text-2xl font-bold text-amber-900">{recibo.numero}</h1>
+            <p className="text-sm text-gray-500">
+              {formatDateTime(recibo.fecha)}
+              {recibo.sucursal && ` | ${recibo.sucursal}`}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
           {recibo.estado === "borrador" && (
-            <Link
-              href={`/ventas/recibos/${recibo.id}/editar`}
-              className="text-sm text-indigo-700 hover:underline px-3 py-1.5"
-            >
-              Editar →
-            </Link>
+            <>
+              <Link
+                href={`/ventas/recibos/${recibo.id}/editar`}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 flex items-center gap-1"
+              >
+                <Edit className="w-4 h-4" /> Editar
+              </Link>
+              <button
+                onClick={confirmarRecibo}
+                disabled={confirmando}
+                className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 disabled:opacity-50 flex items-center gap-1"
+              >
+                <CheckCircle className="w-4 h-4" />
+                {confirmando ? "Confirmando..." : "Confirmar"}
+              </button>
+            </>
           )}
-          {recibo.estado === "publicado" && (
-            <button
-              onClick={() => setShowCancelarModal(true)}
-              className="text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg px-3 py-1.5 flex items-center gap-1"
-            >
-              <X className="w-4 h-4" />
-              Cancelar Recibo
-            </button>
-          )}
+          <span className={`px-4 py-2 rounded-full text-sm font-semibold ${getEstadoReciboColor(recibo.estado)}`}>
+            {getEstadoReciboLabel(recibo.estado)}
+          </span>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-6 mb-6">
-        <div className="bg-white rounded-lg border p-5">
-          <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Datos</h3>
-          <div className="space-y-3 text-sm">
-            <Row label="Número" value={recibo.numero} />
-            <Row label="Fecha" value={formatDate(recibo.fecha)} />
-            <Row label="Cliente" value={recibo.cliente_nombre ?? "—"} />
-            {recibo.caja_nombre && <Row label="Caja" value={recibo.caja_nombre} />}
-            {recibo.cobrador_nombre && <Row label="Cobrador" value={recibo.cobrador_nombre} />}
-            {recibo.nota_venta_numero && (
-              <div className="flex justify-between gap-4">
-                <span className="text-gray-500 shrink-0">Nota de Venta</span>
-                {nvVinculadaId ? (
-                  <Link href={`/ventas/nv/${nvVinculadaId}`} className="font-medium text-emerald-700 hover:underline font-mono text-right">
-                    {recibo.nota_venta_numero}
-                  </Link>
-                ) : (
-                  <span className="font-medium text-gray-900 text-right">{recibo.nota_venta_numero}</span>
+      {/* Barra de acciones */}
+      <div className="bg-gray-800 rounded-t-lg px-4 py-3 flex items-center gap-2 mb-0">
+        <button
+          disabled
+          className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1 opacity-60 cursor-not-allowed"
+          title="Descarga de PDF próximamente"
+        >
+          <Download className="w-4 h-4" /> Descargar PDF
+        </button>
+        {nvVinculadaId && (
+          <Link
+            href={`/ventas/nv/${nvVinculadaId}`}
+            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Ver Nota de Venta
+          </Link>
+        )}
+        {facturaVinculadaId && (
+          <Link
+            href={`/ventas/facturas/${facturaVinculadaId}`}
+            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Ver Factura
+          </Link>
+        )}
+        {recibo.estado === "publicado" && recibo.cliente_id && (
+          <Link
+            href={`/ventas/conciliacion?cliente_id=${recibo.cliente_id}&tab=historial`}
+            className="px-3 py-1.5 text-sm bg-emerald-700 text-white rounded-md hover:bg-emerald-800"
+          >
+            Ver Conciliación de Deuda
+          </Link>
+        )}
+        {recibo.estado === "publicado" && (
+          <button
+            onClick={() => setShowCancelarModal(true)}
+            className="ml-auto px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center gap-1"
+          >
+            <X className="w-4 h-4" /> Cancelar Recibo
+          </button>
+        )}
+      </div>
+
+      {/* Contenido */}
+      <div className="bg-white rounded-b-lg shadow-sm p-6">
+        <div className="grid grid-cols-2 gap-8 mb-6">
+          <div className="space-y-4">
+            <h3 className="font-semibold text-gray-900 border-b pb-2">Datos del Recibo</h3>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div><span className="text-gray-500">Número:</span> <span className="font-medium">{recibo.numero}</span></div>
+              <div><span className="text-gray-500">Fecha:</span> <span className="font-medium">{formatDate(recibo.fecha)}</span></div>
+              <div><span className="text-gray-500">Sucursal:</span> <span className="font-medium">{recibo.sucursal ?? "-"}</span></div>
+              <div><span className="text-gray-500">Caja:</span> <span className="font-medium">{recibo.caja_nombre ?? "-"}</span></div>
+              {recibo.cobrador_nombre && (
+                <div><span className="text-gray-500">Cobrador:</span> <span className="font-medium">{recibo.cobrador_nombre}</span></div>
+              )}
+              <div className="col-span-2">
+                <span className="text-gray-500">Moneda:</span>{" "}
+                <span className="font-medium">{moneda}</span>
+                {moneda !== "ARS" && (recibo.cotizacion ?? 0) > 0 && (
+                  <span className="text-gray-500 ml-2">
+                    · {recibo.tipo_cotizacion ?? "blue"} · 1 {moneda} = ${(recibo.cotizacion ?? 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                  </span>
                 )}
               </div>
-            )}
-            {facturaVinculadaId && (
-              <div className="flex justify-between gap-4">
-                <span className="text-gray-500 shrink-0">Factura</span>
-                <Link href={`/ventas/facturas/${facturaVinculadaId}`} className="font-medium text-emerald-700 hover:underline text-right">
-                  Ver factura →
-                </Link>
+              <div>
+                <span className="text-gray-500">NV:</span>{" "}
+                {nvVinculadaId ? (
+                  <Link href={`/ventas/nv/${nvVinculadaId}`} className="font-medium text-emerald-700 hover:underline">
+                    {recibo.nota_venta_numero ?? `#${nvVinculadaId}`}
+                  </Link>
+                ) : (
+                  <span className="font-medium">{recibo.nota_venta_numero ?? "-"}</span>
+                )}
               </div>
-            )}
-            {recibo.concepto && <Row label="Concepto" value={recibo.concepto} />}
-            {recibo.sucursal && <Row label="Sucursal" value={recibo.sucursal} />}
-            <Row label="Moneda" value={moneda} />
-            {recibo.cotizacion != null && <Row label="Cotización" value={String(recibo.cotizacion)} />}
+              <div>
+                <span className="text-gray-500">Factura:</span>{" "}
+                {facturaVinculadaId ? (
+                  <Link href={`/ventas/facturas/${facturaVinculadaId}`} className="font-medium text-emerald-700 hover:underline">
+                    Ver →
+                  </Link>
+                ) : (
+                  <span className="font-medium">-</span>
+                )}
+              </div>
+              {recibo.concepto && (
+                <div className="col-span-2"><span className="text-gray-500">Concepto:</span> <span className="font-medium">{recibo.concepto}</span></div>
+              )}
+            </div>
+          </div>
+          <div className="space-y-4">
+            <h3 className="font-semibold text-gray-900 border-b pb-2">Cliente</h3>
+            <div className="grid grid-cols-1 gap-4 text-sm">
+              <div><span className="text-gray-500">Nombre:</span> <span className="font-medium">{recibo.cliente_nombre ?? "—"}</span></div>
+            </div>
           </div>
         </div>
-        <div className="bg-white rounded-lg border p-5">
-          <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Importe</h3>
-          <p className="text-3xl font-bold text-emerald-600">{formatCurrency(recibo.importe, moneda)}</p>
-          {(recibo.importe_no_conciliado != null || recibo.importe_no_conciliado_ars != null) && (
-            <div className="mt-4 pt-4 border-t space-y-1.5 text-sm">
-              {recibo.importe_no_conciliado != null && (
-                <Row label="Sin conciliar" value={formatCurrency(recibo.importe_no_conciliado, moneda)} />
-              )}
-              {recibo.importe_no_conciliado_ars != null && moneda !== "ARS" && (
-                <Row label="Sin conciliar (ARS)" value={formatCurrency(recibo.importe_no_conciliado_ars, "ARS")} />
-              )}
+
+        {/* Importe destacado */}
+        <div className="grid grid-cols-4 gap-4 text-sm bg-gray-50 p-4 rounded-lg mb-6">
+          <div>
+            <span className="text-gray-500 block">Importe</span>
+            <span className="font-bold text-2xl text-emerald-600">{formatCurrency(recibo.importe, moneda)}</span>
+          </div>
+          {recibo.importe_no_conciliado != null && (
+            <div>
+              <span className="text-gray-500 block">Sin conciliar</span>
+              <span className="font-medium">{formatCurrency(recibo.importe_no_conciliado, moneda)}</span>
+            </div>
+          )}
+          {recibo.importe_no_conciliado_ars != null && moneda !== "ARS" && (
+            <div>
+              <span className="text-gray-500 block">Sin conciliar (ARS)</span>
+              <span className="font-medium">{formatCurrency(recibo.importe_no_conciliado_ars, "ARS")}</span>
             </div>
           )}
           {recibo.fecha_publicacion && (
-            <div className="mt-4 pt-4 border-t text-sm">
-              <Row label="Publicado" value={formatDate(recibo.fecha_publicacion)} />
+            <div>
+              <span className="text-gray-500 block">Publicado</span>
+              <span className="font-medium">{formatDate(recibo.fecha_publicacion)}</span>
             </div>
           )}
           {recibo.fecha_cancelacion && (
-            <div className="mt-2 text-sm">
-              <Row label="Cancelado" value={formatDate(recibo.fecha_cancelacion)} />
-              {recibo.motivo_cancelacion && (
-                <p className="text-xs text-gray-500 mt-1">{recibo.motivo_cancelacion}</p>
-              )}
+            <div>
+              <span className="text-gray-500 block">Cancelado</span>
+              <span className="font-medium">{formatDate(recibo.fecha_cancelacion)}</span>
             </div>
           )}
         </div>
+
+        {recibo.motivo_cancelacion && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-6 text-sm">
+            <span className="text-red-700 font-medium">Motivo de cancelación: </span>
+            <span className="text-red-600">{recibo.motivo_cancelacion}</span>
+          </div>
+        )}
+
+        {/* Pagos / Medios de pago */}
+        {Array.isArray((recibo as any).recibo_pagos) && (recibo as any).recibo_pagos.length > 0 && (
+          <>
+            <h3 className="font-semibold text-gray-900 border-b pb-2 mb-3">Pagos</h3>
+            <table className="w-full text-sm mb-6">
+              <thead>
+                <tr className="bg-gray-50 border-b text-xs font-semibold text-gray-600 uppercase">
+                  <th className="text-left py-2 px-3">Valor</th>
+                  <th className="text-left py-2 px-3">Tarjeta</th>
+                  <th className="text-center py-2 px-3">Cuotas</th>
+                  <th className="text-right py-2 px-3">Importe Comp.</th>
+                  <th className="text-center py-2 px-3">Mon. Comp.</th>
+                  <th className="text-right py-2 px-3">Importe</th>
+                  <th className="text-center py-2 px-3">Moneda</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(recibo as any).recibo_pagos.map((p: any, i: number) => (
+                  <tr key={p.id ?? i} className="border-b border-gray-100">
+                    <td className="py-2 px-3 font-medium">{p.valor_nombre ?? "—"}</td>
+                    <td className="py-2 px-3 text-gray-600">{p.es_tarjeta ? (p.tarjeta_nombre ?? "Tarjeta") : "—"}</td>
+                    <td className="py-2 px-3 text-center">{p.es_tarjeta ? p.cantidad_cuotas ?? 1 : "—"}</td>
+                    <td className="py-2 px-3 text-right">{formatCurrency(Number(p.importe_comprobante ?? p.importe ?? 0), (p.moneda_comprobante ?? p.moneda) as "ARS" | "USD")}</td>
+                    <td className="py-2 px-3 text-center text-gray-500">{p.moneda_comprobante ?? p.moneda}</td>
+                    <td className="py-2 px-3 text-right font-medium">{formatCurrency(Number(p.importe ?? 0), p.moneda as "ARS" | "USD")}</td>
+                    <td className="py-2 px-3 text-center text-gray-500">{p.moneda}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        {/* Comprobantes imputados */}
+        {Array.isArray((recibo as any).recibo_imputaciones) && (recibo as any).recibo_imputaciones.filter((i: any) => Number(i.asignacion ?? 0) > 0).length > 0 && (
+          <>
+            <h3 className="font-semibold text-gray-900 border-b pb-2 mb-3">Comprobantes conciliados</h3>
+            <table className="w-full text-sm mb-6">
+              <thead>
+                <tr className="bg-gray-50 border-b text-xs font-semibold text-gray-600 uppercase">
+                  <th className="text-left py-2 px-3">Tipo</th>
+                  <th className="text-left py-2 px-3">Comprobante</th>
+                  <th className="text-left py-2 px-3">Fecha</th>
+                  <th className="text-right py-2 px-3">Saldo</th>
+                  <th className="text-right py-2 px-3">Asignación</th>
+                  <th className="text-center py-2 px-3">Moneda</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(recibo as any).recibo_imputaciones
+                  .filter((i: any) => Number(i.asignacion ?? 0) > 0)
+                  .map((i: any, idx: number) => {
+                    const tipoLabel = i.tipo_comprobante === "factura" ? "Factura"
+                      : i.tipo_comprobante === "nota_credito" ? "NC"
+                      : i.tipo_comprobante === "nota_debito"  ? "ND"
+                      : i.tipo_comprobante === "ajuste"       ? "Ajuste"
+                      : (i.tipo_comprobante ?? "—")
+                    const tipoColor = i.tipo_comprobante === "factura" ? "bg-blue-100 text-blue-700"
+                      : i.tipo_comprobante === "nota_credito" ? "bg-amber-100 text-amber-700"
+                      : "bg-gray-100 text-gray-700"
+                    return (
+                      <tr key={i.id ?? idx} className="border-b border-gray-100">
+                        <td className="py-2 px-3">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${tipoColor}`}>{tipoLabel}</span>
+                        </td>
+                        <td className="py-2 px-3 font-mono">{i.comprobante_referencia ?? "—"}</td>
+                        <td className="py-2 px-3 text-gray-600">{i.fecha_comprobante ? formatDate(i.fecha_comprobante) : "—"}</td>
+                        <td className="py-2 px-3 text-right text-gray-600">{formatCurrency(Number(i.saldo_actual ?? i.saldo_moneda ?? 0), (i.moneda_comprobante ?? "ARS") as "ARS" | "USD")}</td>
+                        <td className="py-2 px-3 text-right font-medium text-emerald-700">{formatCurrency(Number(i.asignacion ?? 0), (i.moneda_comprobante ?? "ARS") as "ARS" | "USD")}</td>
+                        <td className="py-2 px-3 text-center text-gray-500">{i.moneda_comprobante ?? "ARS"}</td>
+                      </tr>
+                    )
+                  })}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        {recibo.observaciones && (
+          <>
+            <h3 className="font-semibold text-gray-900 border-b pb-2 mb-3">Observaciones</h3>
+            <p className="text-sm text-gray-700 whitespace-pre-wrap mb-4">{recibo.observaciones}</p>
+          </>
+        )}
       </div>
 
-      {recibo.observaciones && (
-        <div className="bg-white rounded-lg border p-5">
-          <h3 className="font-semibold text-gray-900 mb-2 pb-2 border-b">Observaciones</h3>
-          <p className="text-sm text-gray-700 whitespace-pre-wrap">{recibo.observaciones}</p>
-        </div>
-      )}
-
+      {/* Modal Cancelar */}
       {showCancelarModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
@@ -230,21 +437,12 @@ export default function RecibosFicha({ reciboId }: { reciboId: string }) {
                 disabled={cancelando || !motivoCancel.trim()}
                 className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50"
               >
-                {cancelando ? "Cancelando…" : "Cancelar Recibo"}
+                {cancelando ? "Cancelando..." : "Cancelar Recibo"}
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between gap-4">
-      <span className="text-gray-500 shrink-0">{label}</span>
-      <span className="font-medium text-gray-900 text-right">{value || "—"}</span>
     </div>
   )
 }

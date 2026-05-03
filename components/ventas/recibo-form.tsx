@@ -12,7 +12,7 @@ import {
   X,
 } from "lucide-react"
 import { useERP } from "@/contexts/erp-context"
-import { formatCurrency } from "@/lib/format"
+import { formatCurrency, formatDate } from "@/lib/format"
 
 // ─── Tipos ──────────────────────────────────────────────────────────────────
 interface ClienteOpt { id: number; codigo?: string; nombre: string }
@@ -41,7 +41,8 @@ interface Pago {
 
 interface Imputacion {
   id: string
-  tipo_comprobante: "factura"
+  // factura = deuda (saldo positivo en CC). nc/ajuste = crédito (negativo).
+  tipo_comprobante: "factura" | "nota_credito" | "ajuste"
   comprobante_id: number
   comprobante_referencia: string
   fecha_comprobante: string | null
@@ -50,6 +51,9 @@ interface Imputacion {
   moneda_comprobante: "ARS" | "USD"
   saldo_actual: number
   asignacion: number
+  // Categoría de la NC/ajuste (texto plain, ej. "Equipos en parte de pago").
+  // Sirve para destacar las NCs especiales con color en la UI.
+  categoria?: string | null
 }
 
 interface CCResumen {
@@ -89,6 +93,10 @@ export default function ReciboForm({
   const [pagos, setPagos] = useState<Pago[]>([])
   const [imputaciones, setImputaciones] = useState<Imputacion[]>([])
   const [ccResumen, setCcResumen] = useState<CCResumen | null>(null)
+  // Paso 3: cotización blue del día — usada para cruce ARS↔USD al matchear
+  const [cotizacionBlue, setCotizacionBlue] = useState<number>(1)
+  // Set de IDs de pagos del recibo que están machiados (aplicados a débitos)
+  const [pagosMachiados, setPagosMachiados] = useState<Set<string>>(new Set())
 
   // Tabs
   const [tab, setTab] = useState<"pagos" | "comprobantes">("pagos")
@@ -112,7 +120,7 @@ export default function ReciboForm({
     cliente_id: number
     saldo: number
     moneda: "ARS" | "USD"
-    medios: { medio: string; importe: number }[]
+    medios: { medio: string; importe: number; moneda: "ARS" | "USD" | null }[]
   } | null>(null)
   const [prefillCargado, setPrefillCargado] = useState(false)
 
@@ -128,11 +136,14 @@ export default function ReciboForm({
       fetch("/api/clientes").then(r => r.json()).catch(() => []),
       fetch("/api/cajas").then(r => r.json()).catch(() => []),
       fetch("/api/tarjetas").then(r => r.json()).catch(() => []),
-    ]).then(([cl, ca, tar]) => {
+      fetch("/api/contabilidad/cotizaciones?moneda_codigo=USD&tipo=blue&latest=true")
+        .then(r => r.json()).catch(() => null),
+    ]).then(([cl, ca, tar, cot]) => {
       if (!activo) return
       if (Array.isArray(cl)) setClientes(cl)
       if (Array.isArray(ca)) setCajas(ca)
       if (Array.isArray(tar)) setTarjetas(tar)
+      if (cot?.tasa) setCotizacionBlue(Number(cot.tasa))
       setCargandoBase(false)
     })
     return () => { activo = false }
@@ -201,6 +212,17 @@ export default function ReciboForm({
       .catch(() => setValoresCaja([]))
   }, [reciboCajaId])
 
+  // Auto-seleccionar la primera caja del usuario cuando es un recibo nuevo y
+  // todavía no se eligió ninguna. `cajasFiltradas` ya restringe por sucursal
+  // y por permisos del usuario (el endpoint /api/cajas filtra por accesos),
+  // así que el primer ítem de esa lista es la "caja por defecto" del usuario.
+  useEffect(() => {
+    if (isEdit) return
+    if (reciboCajaId) return
+    if (cajasFiltradas.length === 0) return
+    setReciboCajaId(cajasFiltradas[0].id)
+  }, [isEdit, reciboCajaId, cajasFiltradas])
+
   // ─── Pre-fill desde factura (Registrar Cobro) ──────────────────────────
   // 1. Fetch factura → setear cliente + factura_id + guardar medios para mapear después
   useEffect(() => {
@@ -210,10 +232,42 @@ export default function ReciboForm({
       .then((data: any) => {
         const fac = Array.isArray(data) ? data[0] : data
         if (!fac?.id) return
-        const medios = (fac.factura_medios_pago ?? []).map((mp: any) => ({
-          medio: mp.medio ?? "efectivo",
-          importe: Number(mp.monto_total ?? mp.monto_base ?? 0),
-        }))
+        // FAC-11: excluir los medios "credito_toma" del prefill — esos no son
+        // cobros reales, son marcadores de NC que el operador concilia manualmente
+        // en el panel "Créditos del cliente" del recibo.
+        //
+        // OJO con monedas mixtas: en factura_medios_pago el `monto_base/monto_total`
+        // está SIEMPRE en la moneda de la factura, NO en la moneda original del
+        // cobro. Para reconstruir el importe original (lo que efectivamente
+        // recibió el cliente en su moneda) hay que convertir devuelta usando
+        // la cotización de la factura.
+        //
+        // Ej: factura USD con cot=1400 + cobro de 140.000 ARS guarda
+        //     monto_base=100 (USD equivalente). Al cargar al recibo queremos
+        //     volver a 140.000 ARS, no a 100 ARS literales.
+        const monedaFac = fac.moneda === "USD" ? "USD" : "ARS"
+        const cotFac = Number(fac.cotizacion ?? 0)
+        const medios = (fac.factura_medios_pago ?? [])
+          .filter((mp: any) => mp.medio !== "credito_toma")
+          .map((mp: any) => {
+            const monedaOriginal = mp.moneda === "USD" ? "USD" : mp.moneda === "ARS" ? "ARS" : monedaFac
+            const importeEnFactura = Number(mp.monto_total ?? mp.monto_base ?? 0)
+            // Convertir de la moneda de la factura a la moneda original
+            let importeOriginal = importeEnFactura
+            if (monedaOriginal !== monedaFac && cotFac > 0) {
+              if (monedaFac === "USD" && monedaOriginal === "ARS") {
+                importeOriginal = importeEnFactura * cotFac   // USD → ARS
+              } else if (monedaFac === "ARS" && monedaOriginal === "USD") {
+                importeOriginal = importeEnFactura / cotFac   // ARS → USD
+              }
+            }
+            importeOriginal = Math.round(importeOriginal * 100) / 100
+            return {
+              medio: mp.medio ?? "efectivo",
+              importe: importeOriginal,
+              moneda: monedaOriginal,
+            }
+          })
         setPrefillData({
           factura_id: fac.id,
           cliente_id: fac.cliente_id,
@@ -234,23 +288,41 @@ export default function ReciboForm({
   // 2. Cuando cargaron valoresCaja + el prefill ya tiene datos, mapear medios → pagos
   useEffect(() => {
     if (!prefillData || pagos.length > 0 || valoresCaja.length === 0) return
-    const mapearMedio = (medio: string) => {
-      if (medio === "efectivo") return valoresCaja.find(v => v.tipo === "efectivo")
-      if (medio === "tarjeta") return valoresCaja.find(v => v.subtipo === "tarjeta")
-      if (medio === "transferencia") return valoresCaja.find(v => v.subtipo === "banco")
+    // Mapear (medio, moneda) → caja_valor. Cada caja tiene un valor por
+    // moneda (ej: "Efectivo USD" y "Efectivo ARS"). El mapeo viejo solo
+    // miraba el `tipo` y caía siempre en el primer efectivo, sin importar
+    // la moneda del pago. Ahora primero buscamos coincidencia exacta por
+    // moneda; si no hay valor en esa moneda, caemos al primero del tipo.
+    const mapearMedio = (medio: string, moneda: "ARS" | "USD") => {
+      if (medio === "efectivo") {
+        return valoresCaja.find(v => v.tipo === "efectivo" && v.moneda === moneda)
+            ?? valoresCaja.find(v => v.tipo === "efectivo")
+      }
+      if (medio === "tarjeta") {
+        return valoresCaja.find(v => v.subtipo === "tarjeta" && v.moneda === moneda)
+            ?? valoresCaja.find(v => v.subtipo === "tarjeta")
+      }
+      if (medio === "transferencia") {
+        return valoresCaja.find(v => v.subtipo === "banco" && v.moneda === moneda)
+            ?? valoresCaja.find(v => v.subtipo === "banco")
+      }
       return undefined
     }
     const nuevosPagos: Pago[] = prefillData.medios.map(mp => {
-      const cv = mapearMedio(mp.medio)
+      // Moneda del pago = la que el cliente usó originalmente. Si el medio no
+      // tiene `moneda` guardada (facturas viejas pre-script 095), caemos a la
+      // moneda de la factura.
+      const monedaPago = mp.moneda ?? prefillData.moneda
+      const cv = mapearMedio(mp.medio, monedaPago)
       return {
         id: crypto.randomUUID(),
         valor_id: cv?.id ?? "",
         valor_nombre: cv?.nombre ?? "",
         tipo_valor: cv?.tipo ?? "",
         importe: mp.importe,
-        moneda: prefillData.moneda,
+        moneda: monedaPago,
         importe_comprobante: mp.importe,
-        moneda_comprobante: prefillData.moneda,
+        moneda_comprobante: monedaPago,
         es_tarjeta: mp.medio === "tarjeta",
         tarjeta_nombre: null,
         cantidad_cuotas: 1,
@@ -283,28 +355,58 @@ export default function ReciboForm({
       setCcResumen(null)
       return
     }
-    fetch(`/api/facturas?cliente_id=${reciboClienteId}&saldo_min=0`)
-      .then(r => r.json())
-      .then((data: any[]) => {
-        if (!Array.isArray(data)) return
-        // Ordenar por fecha de vencimiento ascendente
-        const sorted = [...data].sort((a, b) =>
-          (a.fecha_vencimiento ?? a.fecha ?? "").localeCompare(b.fecha_vencimiento ?? b.fecha ?? "")
-        )
-        setImputaciones(sorted.map((f: any) => ({
-          id: crypto.randomUUID(),
-          tipo_comprobante: "factura",
-          comprobante_id: f.id,
-          comprobante_referencia: f.numero,
-          fecha_comprobante: f.fecha,
-          fecha_vencimiento: f.fecha_vencimiento ?? f.fecha,
-          saldo_moneda: Number(f.saldo ?? 0),
-          moneda_comprobante: f.moneda === "USD" ? "USD" : "ARS",
-          saldo_actual: Number(f.saldo ?? 0),
-          asignacion: 0,
-        })))
-      })
-      .catch(() => {})
+    // Cargar facturas pendientes (deudas) + NCs/ajustes con saldo (créditos).
+    // Mostramos ambos como imputaciones para que el operador pueda matchear.
+    Promise.all([
+      fetch(`/api/facturas?cliente_id=${reciboClienteId}&saldo_min=0`)
+        .then(r => r.ok ? r.json() : []).catch(() => []),
+      fetch(`/api/ajustes-clientes?cliente_id=${reciboClienteId}&estado=activo&con_saldo=true`)
+        .then(r => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([facts, ajustes]) => {
+      const facturas: Imputacion[] = (Array.isArray(facts) ? facts : []).map((f: any) => ({
+        id: crypto.randomUUID(),
+        tipo_comprobante: "factura",
+        comprobante_id: f.id,
+        comprobante_referencia: f.numero,
+        fecha_comprobante: f.fecha,
+        fecha_vencimiento: f.fecha_vencimiento ?? f.fecha,
+        // Importe original de la factura (total) — para que el operador vea
+        // el monto facturado, aunque parte ya esté cubierto por créditos previos.
+        saldo_moneda: Number(f.total ?? f.saldo ?? 0),
+        moneda_comprobante: f.moneda === "USD" ? "USD" : "ARS",
+        // Saldo pendiente a cobrar (después de aplicar credito_toma si hubo)
+        saldo_actual: Number(f.saldo ?? 0),
+        asignacion: 0,
+        categoria: null,
+      }))
+      const creditos: Imputacion[] = (Array.isArray(ajustes) ? ajustes : [])
+        .filter((a: any) => Number(a.saldo_disponible ?? 0) > 0)
+        .map((a: any) => {
+          const tipo: "nota_credito" | "ajuste" = a.numero?.startsWith("NC") ? "nota_credito" : "ajuste"
+          // Saldo negativo porque es CRÉDITO (lo que el cliente tiene a favor).
+          // Para imputar, "absorbe" deuda. Lo mostramos como saldo positivo en
+          // la UI (el operador lo asigna como cualquier crédito) pero el
+          // tipo_comprobante distingue del flujo "factura".
+          return {
+            id: crypto.randomUUID(),
+            tipo_comprobante: tipo,
+            comprobante_id: a.id,
+            comprobante_referencia: a.numero,
+            fecha_comprobante: a.fecha,
+            fecha_vencimiento: a.fecha,
+            saldo_moneda: Number(a.saldo_disponible ?? 0),
+            moneda_comprobante: a.moneda === "USD" ? "USD" : "ARS",
+            saldo_actual: Number(a.saldo_disponible ?? 0),
+            asignacion: 0,
+            categoria: a.categoria ?? null,
+          }
+        })
+      // Ordenar por fecha de vencimiento ascendente (FIFO). Mezclar facturas y créditos.
+      const all = [...facturas, ...creditos].sort((x, y) =>
+        (x.fecha_vencimiento ?? x.fecha_comprobante ?? "").localeCompare(y.fecha_vencimiento ?? y.fecha_comprobante ?? "")
+      )
+      setImputaciones(all)
+    })
 
     fetch(`/api/clientes/${reciboClienteId}/cc`)
       .then(r => r.ok ? r.json() : null)
@@ -322,11 +424,38 @@ export default function ReciboForm({
   }, [reciboClienteId])
 
   // ─── Helpers ────────────────────────────────────────────────────────────
-  const totalPagos = pagos.reduce((s, p) => s + (p.importe_comprobante || 0), 0)
-  const totalAsig = imputaciones.reduce((s, i) => s + (i.asignacion || 0), 0)
-  const noConciliado = Math.max(0, totalPagos - totalAsig)
-
+  // Moneda principal del recibo: si hay al menos un pago USD, el recibo es USD.
+  // (Caso mixto típico: factura USD + parte del cobro en ARS al cambio).
   const monedaRecibo: "ARS" | "USD" = pagos.some(p => p.moneda === "USD") ? "USD" : "ARS"
+
+  // Total de pagos convertido a la moneda del recibo. Sin conversión los
+  // mixtos quedan completamente incorrectos (ej: 100 USD + 140.000 ARS suma
+  // 140.100 si se ignora la cotización; convertido da 200 USD).
+  const cotRecibo = cotizacionBlue || 1
+  const aMonedaRecibo = (importe: number, moneda: "ARS" | "USD"): number => {
+    if (moneda === monedaRecibo) return importe
+    if (cotRecibo <= 0) return importe
+    if (moneda === "ARS" && monedaRecibo === "USD") return importe / cotRecibo
+    if (moneda === "USD" && monedaRecibo === "ARS") return importe * cotRecibo
+    return importe
+  }
+  const totalPagos = pagos.reduce(
+    (s, p) => s + aMonedaRecibo(p.importe_comprobante || 0, p.moneda_comprobante as "ARS" | "USD"),
+    0,
+  )
+
+  // Modelo correcto: las facturas son DESTINOS (deuda pagada), las NCs/ajustes
+  // son FUENTES de fondos (suman al cash). Por eso noConciliado se calcula:
+  //   noConciliado = pagos_cash + NC_asignadas - factura_asignadas
+  const totalAsigFacturas = imputaciones
+    .filter(i => i.tipo_comprobante === "factura" || i.tipo_comprobante === "nota_debito")
+    .reduce((s, i) => s + aMonedaRecibo(i.asignacion || 0, (i.moneda_comprobante ?? monedaRecibo) as "ARS" | "USD"), 0)
+  const totalAsigCreditos = imputaciones
+    .filter(i => i.tipo_comprobante === "nota_credito" || i.tipo_comprobante === "ajuste")
+    .reduce((s, i) => s + aMonedaRecibo(i.asignacion || 0, (i.moneda_comprobante ?? monedaRecibo) as "ARS" | "USD"), 0)
+  // totalAsig (lo que se ve como "asignado" en la UI) = solo facturas, no las NCs
+  const totalAsig = totalAsigFacturas
+  const noConciliado = Math.max(0, totalPagos + totalAsigCreditos - totalAsigFacturas)
 
   const validar = (): string | null => {
     if (!reciboClienteId) return "Debe seleccionar un cliente"
@@ -349,8 +478,10 @@ export default function ReciboForm({
     importe: totalPagos,
     importe_no_conciliado: noConciliado,
     moneda: monedaRecibo,
-    tipo_cotizacion: null,
-    cotizacion: null,
+    // Si hay pagos en monedas mixtas (ej: USD + ARS), guardamos la cotización
+    // para que el publicar API pueda hacer el cruce ARS↔USD correctamente.
+    tipo_cotizacion: pagos.some(p => p.moneda !== monedaRecibo) ? "blue" : null,
+    cotizacion: pagos.some(p => p.moneda !== monedaRecibo) ? (cotizacionBlue || null) : null,
     pagos: pagos.map(p => ({
       valor_id: p.valor_id,
       valor_nombre: p.valor_nombre,
@@ -539,6 +670,146 @@ export default function ReciboForm({
   const quitarPago = (id: string) => setPagos(prev => prev.filter(p => p.id !== id))
   const cambiarAsignacion = (id: string, val: number) =>
     setImputaciones(prev => prev.map(i => i.id === id ? { ...i, asignacion: Math.max(0, Math.min(val, i.saldo_actual)) } : i))
+
+  // Helper genérico para machear un crédito (en cualquier moneda) contra
+  // facturas pendientes FIFO. Recibe id, monto, moneda, y una función
+  // para setear la asignación interna del crédito (para mostrar visualmente
+  // que está machiado). Devuelve true si pudo machear algo.
+  const machearGenerico = (
+    monto: number,
+    monedaCredito: "ARS" | "USD",
+    yaAsignado: boolean,
+    onSetAsignacion: (consumido: number) => void
+  ) => {
+    if (yaAsignado) {
+      // Desmachear: limpiar todas las asignaciones de facturas + reset propio
+      setImputaciones(prev => prev.map(i => i.tipo_comprobante === "factura"
+        ? { ...i, asignacion: 0 } : i
+      ))
+      onSetAsignacion(0)
+      return
+    }
+    let deudas = imputaciones
+      .filter(i => i.tipo_comprobante === "factura" && i.saldo_actual > 0 && i.moneda_comprobante === monedaCredito)
+      .sort((a, b) => (a.fecha_vencimiento ?? "").localeCompare(b.fecha_vencimiento ?? ""))
+    let usandoCruce = false
+    if (deudas.length === 0) {
+      deudas = imputaciones
+        .filter(i => i.tipo_comprobante === "factura" && i.saldo_actual > 0)
+        .sort((a, b) => (a.fecha_vencimiento ?? "").localeCompare(b.fecha_vencimiento ?? ""))
+      usandoCruce = true
+    }
+    if (deudas.length === 0) return
+
+    const monedaDeuda = deudas[0].moneda_comprobante
+    const cot = cotizacionBlue || 1
+    let saldoEnDeuda = monto
+    if (usandoCruce && cot > 0) {
+      if (monedaCredito === "USD" && monedaDeuda === "ARS") saldoEnDeuda = monto * cot
+      else if (monedaCredito === "ARS" && monedaDeuda === "USD") saldoEnDeuda = monto / cot
+    }
+
+    let restante = saldoEnDeuda
+    const asignacionesDeuda = new Map<string, number>()
+    for (const d of deudas) {
+      if (restante <= 0.005) break
+      const asigPrevia = d.asignacion || 0
+      const espacio = d.saldo_actual - asigPrevia
+      const asig = Math.min(espacio, restante)
+      asignacionesDeuda.set(d.id, asigPrevia + asig)
+      restante -= asig
+    }
+    const consumidoEnDeuda = saldoEnDeuda - restante
+    let consumidoEnCredito = consumidoEnDeuda
+    if (usandoCruce && cot > 0) {
+      if (monedaCredito === "USD" && monedaDeuda === "ARS") consumidoEnCredito = consumidoEnDeuda / cot
+      else if (monedaCredito === "ARS" && monedaDeuda === "USD") consumidoEnCredito = consumidoEnDeuda * cot
+    }
+    consumidoEnCredito = Math.round(consumidoEnCredito * 100) / 100
+
+    setImputaciones(prev => prev.map(i =>
+      asignacionesDeuda.has(i.id)
+        ? { ...i, asignacion: Math.round(asignacionesDeuda.get(i.id)! * 100) / 100 }
+        : i
+    ))
+    onSetAsignacion(consumidoEnCredito)
+  }
+
+  // Macheo de pago del recibo (medio de pago) contra deudas. Usa el helper genérico.
+  // Trackeamos qué pagos están machiados con `pagosMachiados` (set de IDs).
+  const machearPago = (pagoId: string) => {
+    const pago = pagos.find(p => p.id === pagoId)
+    if (!pago) return
+    const yaMachiado = pagosMachiados.has(pagoId)
+    machearGenerico(
+      pago.importe,
+      pago.moneda,
+      yaMachiado,
+      () => {
+        setPagosMachiados(prev => {
+          const s = new Set(prev)
+          if (yaMachiado) s.delete(pagoId)
+          else s.add(pagoId)
+          return s
+        })
+      }
+    )
+  }
+
+  // Tickear/destickear un crédito (NC/ajuste) en el recibo.
+  //
+  // Modelo:
+  //  - El crédito (NC) consume su saldo_disponible cuando se ticka.
+  //  - Al ticarlo, también ADICIONA su monto a la asignación de las facturas
+  //    abiertas FIFO (preserva lo que ya estaba asignado por el prefill o por
+  //    los pagos). Así factura.asig = (cash aplicado) + (NCs aplicadas).
+  //  - Al destickear, resta del factura.asig lo que el NC había sumado.
+  const machearCredito = (creditoId: string) => {
+    const credito = imputaciones.find(i => i.id === creditoId)
+    if (!credito || credito.tipo_comprobante === "factura") return
+
+    if (credito.asignacion > 0) {
+      // Destickear — solo limpia la NC. No tocamos las asignaciones de
+      // facturas: pueden venir del prefill, de pagos ticked, o ediciones
+      // manuales del operador, y no podemos saber con certeza cuánto puso
+      // este NC ahí. Si el operador necesita reducir factura.asig, lo edita
+      // manualmente.
+      setImputaciones(prev => prev.map(i =>
+        i.id === creditoId ? { ...i, asignacion: 0 } : i
+      ))
+      return
+    }
+
+    // Tickear — la NC siempre se marca por su saldo total (es la "fuente de
+    // fondos" que el operador eligió aplicar). En paralelo, si las facturas
+    // tienen espacio (asig < saldo), incrementamos su asig FIFO para reflejar
+    // que ahora la NC está cubriendo parte de la deuda. Si no tienen espacio
+    // (típico cuando el prefill ya asignó full saldo), igual la NC queda
+    // marcada — la conservación se valida en el publicar API:
+    //     factura.asig  ==  pagos cash + NC.asig
+    const deudas = imputaciones
+      .filter(i => i.tipo_comprobante === "factura" && i.saldo_actual > 0
+        && i.moneda_comprobante === credito.moneda_comprobante)
+      .sort((a, b) => (a.fecha_vencimiento ?? "").localeCompare(b.fecha_vencimiento ?? ""))
+    let restante = credito.saldo_actual
+    const sumas = new Map<string, number>()
+    for (const d of deudas) {
+      if (restante <= 0.005) break
+      const asigPrevia = d.asignacion || 0
+      const espacio = d.saldo_actual - asigPrevia
+      if (espacio <= 0.005) continue
+      const aSumar = Math.min(espacio, restante)
+      sumas.set(d.id, asigPrevia + aSumar)
+      restante -= aSumar
+    }
+    // NC.asig = saldo siempre (no `consumido`). Si las facturas estaban llenas,
+    // sumas queda vacío y solo se ticka la NC sin tocar facturas.
+    setImputaciones(prev => prev.map(i => {
+      if (i.id === creditoId) return { ...i, asignacion: credito.saldo_actual }
+      if (sumas.has(i.id)) return { ...i, asignacion: Math.round(sumas.get(i.id)! * 100) / 100 }
+      return i
+    }))
+  }
 
   // ─── Render guards ──────────────────────────────────────────────────────
   if (cargandoBase || cargandoRec) {
@@ -781,61 +1052,268 @@ export default function ReciboForm({
             </div>
           )}
 
-          {tab === "comprobantes" && (
-            <div>
-              {!reciboClienteId ? (
-                <p className="text-sm text-gray-400 py-6 text-center">Seleccioná un cliente primero.</p>
-              ) : imputaciones.length === 0 ? (
-                <p className="text-sm text-gray-400 py-6 text-center">El cliente no tiene facturas pendientes.</p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-xs text-gray-500 uppercase">
-                      <th className="py-2 px-3">Comprobante</th>
-                      <th className="px-3">Vencimiento</th>
-                      <th className="text-right px-3">Saldo</th>
-                      <th className="px-3">Mon.</th>
-                      <th className="text-right px-3">Asignar</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {imputaciones.map(i => (
-                      <tr key={i.id} className="border-b">
-                        <td className="py-1.5 px-3 font-mono text-emerald-700">{i.comprobante_referencia}</td>
-                        <td className="px-3 text-xs text-gray-600">{i.fecha_vencimiento ?? "—"}</td>
-                        <td className="text-right px-3">{formatCurrency(i.saldo_actual, i.moneda_comprobante)}</td>
-                        <td className="px-3">{i.moneda_comprobante}</td>
-                        <td className="text-right px-3">
-                          <input
-                            type="number"
-                            value={i.asignacion}
-                            min={0}
-                            max={i.saldo_actual}
-                            step={0.01}
-                            disabled={!esBorrador}
-                            onChange={e => cambiarAsignacion(i.id, parseFloat(e.target.value) || 0)}
-                            className="w-32 border rounded px-2 py-1 text-sm text-right"
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="bg-gray-50 font-semibold">
-                      <td colSpan={4} className="py-2 px-3 text-right">Asignado:</td>
-                      <td className="text-right px-3">
-                        {formatCurrency(totalAsig, monedaRecibo)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              )}
-              {ccResumen && (
-                <div className="mt-4 text-xs text-gray-500 border-t pt-3 flex gap-4">
-                  <span>CC ARS: {formatCurrency(ccResumen.saldo_ars, "ARS")}</span>
-                  <span>CC USD: {formatCurrency(ccResumen.saldo_usd, "USD")}</span>
+          {tab === "comprobantes" && (() => {
+            if (!reciboClienteId) {
+              return <p className="text-sm text-gray-400 py-6 text-center">Seleccioná un cliente primero.</p>
+            }
+            const debitosARS = imputaciones.filter(i => i.tipo_comprobante === "factura" && (i.moneda_comprobante === "ARS"))
+            const debitosUSD = imputaciones.filter(i => i.tipo_comprobante === "factura" && (i.moneda_comprobante === "USD"))
+            const creditosClienteARS = imputaciones.filter(i => i.tipo_comprobante !== "factura" && i.moneda_comprobante === "ARS")
+            const creditosClienteUSD = imputaciones.filter(i => i.tipo_comprobante !== "factura" && i.moneda_comprobante === "USD")
+            const totalAsigARS = imputaciones.filter(i => i.moneda_comprobante === "ARS" && i.tipo_comprobante === "factura").reduce((s, i) => s + (i.asignacion || 0), 0)
+            const totalAsigUSD = imputaciones.filter(i => i.moneda_comprobante === "USD" && i.tipo_comprobante === "factura").reduce((s, i) => s + (i.asignacion || 0), 0)
+            const totalCreditosARS = pagos.filter(p => p.moneda === "ARS").reduce((s, p) => s + p.importe, 0)
+            const totalCreditosUSD = pagos.filter(p => p.moneda === "USD").reduce((s, p) => s + p.importe, 0)
+
+            const renderPanelMoneda = (
+              moneda: "ARS" | "USD",
+              debitos: Imputacion[],
+              creditosCliente: Imputacion[]
+            ) => {
+              const totalAsigMon = debitos.reduce((s, i) => s + (i.asignacion || 0), 0)
+              const todosMarcados = debitos.length > 0 && debitos.every(i => i.asignacion > 0)
+              const algunoMarcado = debitos.some(i => i.asignacion > 0)
+              const toggleTodos = () => {
+                const marcar = !todosMarcados
+                const ids = new Set(debitos.map(i => i.id))
+                setImputaciones(prev => prev.map(x =>
+                  ids.has(x.id) ? { ...x, asignacion: marcar ? x.saldo_actual : 0 } : x
+                ))
+              }
+              const toggleImp = (imp: Imputacion) => {
+                const nueva = imp.asignacion > 0 ? 0 : imp.saldo_actual
+                cambiarAsignacion(imp.id, nueva)
+              }
+              return (
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="px-4 py-3 border-b bg-white">
+                    <h3 className="text-sm font-bold text-gray-800">Cuenta Corriente {moneda}</h3>
+                  </div>
+                  {/* Débitos */}
+                  <div className="bg-rose-50 border-b">
+                    <div className="flex items-center justify-between px-4 py-2">
+                      <span className="text-xs font-semibold text-rose-700">Débitos {moneda}</span>
+                      <span className="text-xs font-medium text-rose-600">{debitos.length}</span>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="border-b bg-gray-50">
+                        <tr className="text-xs font-semibold text-gray-600 uppercase">
+                          <th className="text-left py-2 px-3">Comprobante</th>
+                          <th className="text-left py-2 px-3">Venc.</th>
+                          <th className="text-right py-2 px-3">Importe</th>
+                          <th className="text-right py-2 px-3">Saldo</th>
+                          <th className="text-center py-2 px-3 w-12">
+                            {esBorrador && debitos.length > 0 && (
+                              <input
+                                type="checkbox"
+                                checked={todosMarcados}
+                                ref={el => { if (el) el.indeterminate = algunoMarcado && !todosMarcados }}
+                                onChange={toggleTodos}
+                                className="w-4 h-4 cursor-pointer accent-indigo-700"
+                                title="Marcar / desmarcar todos"
+                              />
+                            )}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {debitos.length === 0 ? (
+                          <tr><td colSpan={5} className="py-4 text-center text-sm text-gray-400">Sin facturas pendientes en {moneda}</td></tr>
+                        ) : debitos.map(imp => {
+                          const seleccionado = imp.asignacion > 0
+                          return (
+                            <tr
+                              key={imp.id}
+                              onClick={() => esBorrador && toggleImp(imp)}
+                              className={`border-b border-gray-100 transition-colors ${esBorrador ? "cursor-pointer" : ""} ${seleccionado ? "bg-indigo-50 hover:bg-indigo-100" : "hover:bg-gray-50"}`}
+                            >
+                              <td className="py-2 px-3 text-sm font-medium text-blue-700">{imp.comprobante_referencia}</td>
+                              <td className="py-2 px-3 text-sm">{imp.fecha_vencimiento ? formatDate(imp.fecha_vencimiento) : "—"}</td>
+                              <td className="py-2 px-3 text-sm text-right">{formatCurrency(imp.saldo_moneda, moneda)}</td>
+                              <td className="py-2 px-3 text-sm text-right font-medium">{formatCurrency(imp.saldo_actual, moneda)}</td>
+                              <td className="py-2 px-3 text-center" onClick={e => e.stopPropagation()}>
+                                {esBorrador ? (
+                                  <input
+                                    type="checkbox"
+                                    checked={seleccionado}
+                                    onChange={() => toggleImp(imp)}
+                                    className="w-4 h-4 cursor-pointer accent-indigo-700"
+                                  />
+                                ) : seleccionado ? (
+                                  <span className="text-indigo-600 font-bold text-xs">{formatCurrency(imp.asignacion, moneda)}</span>
+                                ) : <span className="text-gray-300">—</span>}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                      {debitos.length > 0 && (
+                        <tfoot className="bg-gray-50 font-semibold text-sm">
+                          <tr>
+                            <td colSpan={4} className="py-2 px-3 text-right text-gray-600">Total conciliado:</td>
+                            <td className="py-2 px-3 text-center text-indigo-800">{formatCurrency(totalAsigMon, moneda)}</td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+
+                  {/* Créditos del cliente (NCs/ajustes) en esta moneda — click toggle macheo */}
+                  {creditosCliente.length > 0 && (
+                    <>
+                      <div className="bg-emerald-50 border-y">
+                        <div className="flex items-center justify-between px-4 py-2">
+                          <span className="text-xs font-semibold text-emerald-700">Créditos del cliente {moneda}</span>
+                          <span className="text-xs font-medium text-emerald-600">{creditosCliente.length}</span>
+                        </div>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="border-b bg-gray-50">
+                            <tr className="text-xs font-semibold text-gray-600 uppercase">
+                              <th className="text-left py-2 px-3">Comprobante</th>
+                              <th className="text-left py-2 px-3">Tipo</th>
+                              <th className="text-right py-2 px-3">Saldo</th>
+                              <th className="text-center py-2 px-3 w-12"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {creditosCliente.map(c => {
+                              const esTomaEquipo = /equipos? en parte de pago/i.test(c.categoria ?? "")
+                              const tipoLabel = c.tipo_comprobante === "nota_credito" ? "NC" : "Ajuste"
+                              const seleccionado = c.asignacion > 0
+                              return (
+                                <tr
+                                  key={c.id}
+                                  onClick={() => esBorrador && machearCredito(c.id)}
+                                  className={`border-b border-gray-100 transition-colors ${esBorrador ? "cursor-pointer" : ""} ${
+                                    seleccionado
+                                      ? "bg-emerald-100 hover:bg-emerald-200"
+                                      : esTomaEquipo ? "bg-amber-50 hover:bg-amber-100" : "hover:bg-gray-50"
+                                  }`}
+                                >
+                                  <td className="py-2 px-3">
+                                    <span className="font-mono text-blue-700 text-sm">{c.comprobante_referencia}</span>
+                                    {esTomaEquipo && (
+                                      <span className="ml-2 inline-block px-1.5 py-0.5 text-[10px] font-semibold bg-amber-200 text-amber-900 rounded">Toma de equipo</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2 px-3 text-xs text-gray-600">{tipoLabel}</td>
+                                  <td className="py-2 px-3 text-sm text-right font-medium">{formatCurrency(c.saldo_actual, moneda)}</td>
+                                  <td className="py-2 px-3 text-center" onClick={e => e.stopPropagation()}>
+                                    {esBorrador ? (
+                                      <input
+                                        type="checkbox"
+                                        checked={seleccionado}
+                                        onChange={() => machearCredito(c.id)}
+                                        className="w-4 h-4 cursor-pointer accent-emerald-600"
+                                      />
+                                    ) : seleccionado ? (
+                                      <span className="text-emerald-700 font-bold text-xs">{formatCurrency(c.asignacion, moneda)}</span>
+                                    ) : <span className="text-gray-300">—</span>}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
                 </div>
-              )}
-            </div>
-          )}
+              )
+            }
+
+            return (
+              <div className="space-y-4">
+                {/* Panel Créditos del Recibo (medios de pago) — fila clickeable
+                    para machear contra deudas del cliente */}
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="px-4 py-3 border-b bg-white flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-gray-800">Créditos de este Recibo</h3>
+                    <span className="text-xs text-gray-400">Click en la fila para machear con débitos</span>
+                  </div>
+                  {pagos.length === 0 ? (
+                    <p className="text-sm text-gray-400 px-4 py-4">Sin medios de pago cargados todavía.</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="border-b bg-gray-50">
+                          <tr className="text-xs font-semibold text-gray-600 uppercase">
+                            <th className="text-left py-2 px-3">Medio de Pago</th>
+                            <th className="text-right py-2 px-3">Importe</th>
+                            <th className="text-center py-2 px-3">Moneda</th>
+                            <th className="text-center py-2 px-3 w-12"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pagos.map(p => {
+                            const machiado = pagosMachiados.has(p.id)
+                            const labelMoneda = ` ${p.moneda}`
+                            return (
+                              <tr
+                                key={p.id}
+                                onClick={() => esBorrador && machearPago(p.id)}
+                                className={`border-b border-gray-100 transition-colors ${esBorrador ? "cursor-pointer" : ""} ${machiado ? "bg-emerald-50 hover:bg-emerald-100" : "hover:bg-gray-50"}`}
+                              >
+                                <td className="py-2 px-3 text-sm font-medium">
+                                  {p.valor_nombre}{labelMoneda}
+                                  {p.tarjeta_nombre && <span className="ml-2 text-xs text-gray-400">({p.tarjeta_nombre})</span>}
+                                </td>
+                                <td className="py-2 px-3 text-sm text-right font-medium">{formatCurrency(p.importe, p.moneda)}</td>
+                                <td className="py-2 px-3 text-center">
+                                  <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${p.moneda === "USD" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>{p.moneda}</span>
+                                </td>
+                                <td className="py-2 px-3 text-center" onClick={e => e.stopPropagation()}>
+                                  {esBorrador ? (
+                                    <input
+                                      type="checkbox"
+                                      checked={machiado}
+                                      onChange={() => machearPago(p.id)}
+                                      className="w-4 h-4 cursor-pointer accent-emerald-600"
+                                    />
+                                  ) : <span className="text-gray-300">—</span>}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                        <tfoot className="bg-gray-50 text-xs font-semibold text-gray-600">
+                          {totalCreditosARS > 0 && (
+                            <tr>
+                              <td className="py-2 px-3">Total ARS</td>
+                              <td className="py-2 px-3 text-right">{formatCurrency(totalCreditosARS, "ARS")}</td>
+                              <td colSpan={2}></td>
+                            </tr>
+                          )}
+                          {totalCreditosUSD > 0 && (
+                            <tr>
+                              <td className="py-2 px-3">Total USD</td>
+                              <td className="py-2 px-3 text-right">{formatCurrency(totalCreditosUSD, "USD")}</td>
+                              <td colSpan={2}></td>
+                            </tr>
+                          )}
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {renderPanelMoneda("ARS", debitosARS, creditosClienteARS)}
+                {renderPanelMoneda("USD", debitosUSD, creditosClienteUSD)}
+
+                {ccResumen && (totalAsigARS > 0 || totalAsigUSD > 0) && (
+                  <div className="border-t pt-3 flex flex-wrap gap-4 text-xs text-gray-500">
+                    <span>CC ARS: {formatCurrency(ccResumen.saldo_ars, "ARS")}</span>
+                    <span>CC USD: {formatCurrency(ccResumen.saldo_usd, "USD")}</span>
+                    {cotizacionBlue > 1 && <span>Cotización blue: 1 USD = ${cotizacionBlue.toLocaleString("es-AR")}</span>}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
         </div>
       </div>
 

@@ -1,20 +1,23 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { Fragment, useState, useEffect } from "react"
 import { Plus, X, CreditCard, CheckCircle, AlertCircle } from "lucide-react"
 
 // ── Tipos locales ─────────────────────────────────────────────
 export interface LineaPago {
   id: number
-  medio: "efectivo" | "transferencia" | "tarjeta"
+  medio: "efectivo" | "transferencia" | "tarjeta" | "credito_toma"
   // Moneda en la que el cliente paga esta línea. Solo es independiente del
-  // factura.moneda para "efectivo" (ARS/USD). Para tarjeta/transferencia
-  // siempre coincide con factura.moneda.
+  // factura.moneda para "efectivo" (ARS/USD). Para tarjeta/transferencia/
+  // credito_toma siempre coincide con factura.moneda.
   moneda: "ARS" | "USD"
   // Monto en la moneda indicada por `moneda` (no necesariamente la de la factura)
   monto: number
   tarjeta_id?: number
   cuotas?: number
+  // FAC-11: para credito_toma, referencia a la NC (ajustes_clientes.id)
+  nc_id?: number
+  nc_numero?: string  // visual: ej. "NC-TE-00012"
 }
 
 interface CargoGrupo {
@@ -79,6 +82,13 @@ interface BloquesMediosPagoProps {
   onConfirmarCobro?: (lineas: LineaPago[], totalConRecargos: number, totalRecargos: number) => void
   onCobroConfirmado?: (totalRecargos: number, desglose: { nombre: string; importe: number }[]) => void
   onEstadoPagoChange?: (estado: { cobrado: boolean; tieneLineas: boolean; diferenciaOk: boolean }) => void
+  /** Si se provee, aparece un botón "Modificar medios de pago" tras confirmar.
+   * El parent debe usar esto para limpiar su estado (mediosLineas, etc.). */
+  onRetrocederMedios?: () => void
+  /** FAC-11: líneas pre-cargadas (típicamente "credito_toma" desde NCs activas
+   * del cliente). El componente las muestra como medios iniciales — el
+   * operador puede quitarlas con la X o mantenerlas. */
+  lineasIniciales?: LineaPago[]
 }
 
 const CUOTAS_OPTS = [1, 2, 3, 4, 5, 6, 9, 12, 18, 24]
@@ -119,9 +129,32 @@ export default function BloquesMediosPago({
   onConfirmarCobro,
   onCobroConfirmado,
   onEstadoPagoChange,
+  onRetrocederMedios,
+  lineasIniciales,
 }: BloquesMediosPagoProps) {
-  const [lineas, setLineas] = useState<LineaPago[]>([])
+  const [lineas, setLineas] = useState<LineaPago[]>(() => lineasIniciales ?? [])
   const [cobrado, setCobrado] = useState(false)
+
+  // FAC-11: cuando lineasIniciales cambia (porque cambió el cliente o se
+  // detectaron nuevas NCs), reemplazar las líneas. Solo en estado no cobrado.
+  useEffect(() => {
+    if (cobrado) return
+    if (!lineasIniciales) return
+    // Si las líneas iniciales coinciden con lo que ya tenemos, no tocar
+    const lineasInicialesIds = new Set(lineasIniciales.map(l => l.id))
+    const tieneTodasIniciales = lineasIniciales.every(li => lineas.some(l => l.id === li.id))
+    if (tieneTodasIniciales && lineas.length === lineasIniciales.length) return
+    // Si el operador quitó alguna inicial (X), no la re-agregamos
+    const yaQuitadasIds = new Set<number>()
+    // (no tracking explícito de quitadas — más simple: solo agregar las que
+    // todavía no están en lineas, sin remover las que el operador agregó manual)
+    setLineas(prev => {
+      const idsExistentes = new Set(prev.map(l => l.id))
+      const nuevas = lineasIniciales.filter(li => !idsExistentes.has(li.id) && !yaQuitadasIds.has(li.id))
+      return nuevas.length > 0 ? [...nuevas, ...prev] : prev
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(lineasIniciales?.map(l => `${l.id}-${l.monto}`) ?? [])])
 
   // Suma todas las líneas convertidas a la moneda de la factura
   const sumarEnFacturaMoneda = (lns: LineaPago[]) =>
@@ -161,11 +194,20 @@ export default function BloquesMediosPago({
     const grupo = grupos.find(g => g.id === rec.grupo_id)
     const tarjeta = tarjetas.find(t => t.id === linea.tarjeta_id)
     const importeRecargo = linea.monto * (rec.recargo_pct / 100)
-    const cargos = (grupo?.cargos || []).map(c => ({
-      nombre: c.nombre,
-      pct: c.arancel,
-      importe: linea.monto * (c.arancel / 100),
-    }))
+    // FAC-10: separar cargos en "comisión" (no IVA) y "IVA fiscal" (cargos
+    // del grupo cuyo nombre contenga "IVA"). El IVA se calcula sobre la base
+    // CON recargo + comisión incluidos, no sobre el monto puro.
+    const cargosOrig = grupo?.cargos ?? []
+    const cargosComision = cargosOrig
+      .filter(c => !/iva/i.test(c.nombre))
+      .map(c => ({ nombre: c.nombre, pct: c.arancel, importe: linea.monto * (c.arancel / 100) }))
+    const totalComision = cargosComision.reduce((s, c) => s + c.importe, 0)
+    const baseConRecargoYComision = linea.monto + importeRecargo + totalComision
+    const cargosIva = cargosOrig
+      .filter(c => /iva/i.test(c.nombre))
+      .map(c => ({ nombre: c.nombre, pct: c.arancel, importe: baseConRecargoYComision * (c.arancel / 100) }))
+    // Orden visual: recargo, comisiones, IVA fiscal al final (refleja el cálculo)
+    const cargos = [...cargosComision, ...cargosIva]
     const totalRecargo = importeRecargo + cargos.reduce((s, c) => s + c.importe, 0)
     return { recargo: rec, grupo, tarjeta, importeRecargo, cargos, totalRecargo, totalConRecargo: linea.monto + totalRecargo }
   }
@@ -212,20 +254,192 @@ export default function BloquesMediosPago({
   const diferencia = totalIngresado - factura.total
 
   if (cobrado) {
+    const monedaFac = (factura.moneda ?? "ARS") as "ARS" | "USD"
+    const totalRecargosConfirmado = lineas.reduce((s, l) => s + (calcularLinea(l)?.totalRecargo || 0), 0)
+    const totalIngresadoConfirmado = sumarEnFacturaMoneda(lineas)
+    const totalConRecargosConfirmado = totalIngresadoConfirmado + totalRecargosConfirmado
+
     return (
-      <div className="mt-6 border-t pt-4">
-        <div className="flex items-center gap-2 text-emerald-700 font-medium text-sm">
-          <CheckCircle className="w-4 h-4" />
-          {textoConfirmado}
+      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+        <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-b border-emerald-200">
+          <div className="flex items-center gap-2 text-emerald-700 font-medium text-sm">
+            <CheckCircle className="w-4 h-4" />
+            {textoConfirmado}
+          </div>
+          {onRetrocederMedios && (
+            <button
+              onClick={() => {
+                setCobrado(false)
+                onRetrocederMedios()
+              }}
+              className="text-xs text-indigo-700 hover:text-indigo-900 font-medium hover:underline"
+            >
+              Modificar medios de pago
+            </button>
+          )}
         </div>
+
+        {/* FAC-8: detalle de cómo pagó — tabla flat, sin colapsable.
+            Cada fila es independiente; los recargos/comisión/IVA/total a acreditar
+            usan badges de colores distintos en la columna Concepto para que el
+            operador identifique de un vistazo cada componente. */}
+        <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wide mb-2">
+          Detalle del pago
+        </p>
+        {(() => {
+          const cot = factura.cotizacion ?? 0
+          const showAR = monedaFac === "USD" && cot > 0
+          const arsCell = (v: number) =>
+            showAR ? <span className="text-gray-500">≈ {formatARS(v * cot)}</span> : <span>—</span>
+
+          // Filas planas. Cada `linea` es un medio principal; los recargos/comisión/IVA
+          // se identifican por una pequeña marca a la izquierda del concepto y un
+          // tamaño de texto menor. El "Total a acreditar" cierra cada bloque con
+          // borde superior. Sin colores — sólo tipografía y dividers.
+          type FilaTipo = "medio" | "equiv" | "recargo" | "comision" | "iva" | "total_acreditar"
+          interface Fila {
+            tipo: FilaTipo
+            concepto: string
+            monto: number
+            monedaMonto: "ARS" | "USD"
+            equivMonto?: number
+            grupoIdx: number  // índice del medio al que pertenece esta fila
+            esUltimaDelGrupo?: boolean
+          }
+          const filas: Fila[] = []
+          lineas.forEach((linea, i) => {
+            const calc = calcularLinea(linea)
+            const labelMedio =
+              linea.medio === "credito_toma"
+                ? `Crédito por toma de equipo${linea.nc_numero ? ` (${linea.nc_numero})` : ""}`
+                : linea.medio === "tarjeta" && calc
+                  ? `${calc.tarjeta?.nombre ?? "Tarjeta"} — ${linea.cuotas ?? 1} cuota${(linea.cuotas ?? 1) > 1 ? "s" : ""}`
+                  : linea.medio === "transferencia" ? "Transferencia"
+                  : `Efectivo ${linea.moneda}`
+            filas.push({
+              tipo: "medio",
+              concepto: labelMedio,
+              monto: linea.monto,
+              monedaMonto: linea.moneda,
+              equivMonto: linea.moneda === monedaFac ? linea.monto : undefined,
+              grupoIdx: i,
+            })
+            if (linea.medio === "efectivo" && linea.moneda !== monedaFac) {
+              filas.push({
+                tipo: "equiv",
+                concepto: `Equivalente en ${monedaFac}`,
+                monto: montoEnFacturaMoneda(linea.monto, linea.moneda, factura),
+                monedaMonto: monedaFac,
+                grupoIdx: i,
+              })
+            }
+            if (calc && calc.totalRecargo > 0) {
+              if (calc.recargo.recargo_pct > 0) {
+                filas.push({
+                  tipo: "recargo",
+                  concepto: `Recargo ${calc.recargo.recargo_pct}%`,
+                  monto: calc.importeRecargo,
+                  monedaMonto: monedaFac,
+                  equivMonto: calc.importeRecargo,
+                  grupoIdx: i,
+                })
+              }
+              for (const c of calc.cargos) {
+                const esIva = /iva/i.test(c.nombre)
+                filas.push({
+                  tipo: esIva ? "iva" : "comision",
+                  concepto: `${c.nombre} (${c.pct}%)`,
+                  monto: c.importe,
+                  monedaMonto: monedaFac,
+                  equivMonto: c.importe,
+                  grupoIdx: i,
+                })
+              }
+              filas.push({
+                tipo: "total_acreditar",
+                concepto: "Total a acreditar",
+                monto: calc.totalConRecargo,
+                monedaMonto: monedaFac,
+                equivMonto: calc.totalConRecargo,
+                grupoIdx: i,
+              })
+            }
+          })
+          // Marcar la última fila de cada grupo (para divider más fuerte entre medios)
+          for (let i = 0; i < filas.length; i++) {
+            if (i === filas.length - 1 || filas[i + 1].grupoIdx !== filas[i].grupoIdx) {
+              filas[i].esUltimaDelGrupo = true
+            }
+          }
+
+          return (
+            <div className="overflow-hidden rounded-md border border-gray-200 bg-white">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr className="text-[11px] font-semibold text-gray-600 uppercase tracking-wider">
+                    <th className="text-left py-2 px-3">Concepto</th>
+                    <th className="text-right py-2 px-3 w-40">Monto</th>
+                    <th className="text-right py-2 px-3 w-40">Equiv. ARS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filas.map((f, idx) => {
+                    const isMedio = f.tipo === "medio"
+                    const isTotal = f.tipo === "total_acreditar"
+                    const isSub = !isMedio && !isTotal
+                    const fontWeight = isMedio
+                      ? "font-semibold text-gray-900"
+                      : isTotal ? "font-semibold text-gray-900"
+                      : "font-normal text-gray-600"
+                    const textSize = isSub ? "text-xs" : "text-sm"
+                    // Borde inferior: línea fina entre filas del mismo grupo;
+                    // borde más fuerte al cerrar grupo (separador entre medios)
+                    const borderBot = f.esUltimaDelGrupo
+                      ? "border-b border-gray-200"
+                      : "border-b border-gray-100"
+                    const borderTop = isTotal ? "border-t border-gray-200" : ""
+                    return (
+                      <tr key={idx} className={`${borderBot} ${borderTop}`}>
+                        <td className={`py-2 px-3 ${fontWeight} ${textSize}`}>
+                          {isSub
+                            ? <span className="pl-4 text-gray-500">— {f.concepto}</span>
+                            : f.concepto}
+                        </td>
+                        <td className={`py-2 px-3 text-right ${fontWeight} ${textSize}`}>
+                          {formatMoneda(f.monto, f.monedaMonto)}
+                        </td>
+                        <td className={`py-2 px-3 text-right ${textSize} text-gray-500`}>
+                          {f.equivMonto != null ? arsCell(f.equivMonto) : <span className="text-gray-400">—</span>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+                  <tr>
+                    <td className="py-2 px-3 font-bold text-gray-900">Total cobrado</td>
+                    <td className="py-2 px-3 text-right font-bold text-gray-900">
+                      {formatMoneda(totalConRecargosConfirmado, monedaFac)}
+                    </td>
+                    <td className="py-2 px-3 text-right text-xs font-semibold text-gray-700">
+                      {showAR
+                        ? <>≈ {formatARS(totalConRecargosConfirmado * cot)}</>
+                        : "—"}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )
+        })()}
       </div>
     )
   }
 
   return (
-    <div className="mt-6 border-t pt-5">
+    <div className="bg-white rounded-lg shadow-sm p-4">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-gray-900 text-sm uppercase tracking-wide">Medios de Pago</h3>
+        <h3 className="font-semibold text-gray-900">Medios de Pago</h3>
         <button
           onClick={agregarLinea}
           className="flex items-center gap-1.5 text-sm text-emerald-700 hover:text-emerald-900 font-medium"
@@ -240,6 +454,41 @@ export default function BloquesMediosPago({
 
       <div className="space-y-3">
         {lineas.map((linea, idx) => {
+          // FAC-11: render especial para crédito por toma de equipo
+          if (linea.medio === "credito_toma") {
+            return (
+              <div key={linea.id} className="rounded-lg border-2 border-amber-300 overflow-hidden bg-amber-50">
+                <div className="flex flex-wrap items-center gap-2 p-3">
+                  <span className="px-2 py-1 bg-amber-200 text-amber-900 rounded text-xs font-semibold">
+                    Crédito por toma de equipo
+                  </span>
+                  {linea.nc_numero && (
+                    <span className="font-mono text-xs text-amber-800">{linea.nc_numero}</span>
+                  )}
+                  <div className="ml-auto flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-500 font-medium shrink-0">{linea.moneda}</span>
+                      <input
+                        type="number"
+                        value={linea.monto || ""}
+                        onChange={e => actualizarLinea(linea.id, { monto: parseFloat(e.target.value) || 0 })}
+                        className="w-32 border border-amber-300 rounded px-2 py-1.5 text-sm text-right focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                        placeholder="0,00"
+                      />
+                    </div>
+                    <button
+                      onClick={() => eliminarLinea(linea.id)}
+                      className="p-1 text-gray-400 hover:text-red-600"
+                      title="Quitar este crédito (no se aplicará al confirmar)"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          }
+
           const calc = calcularLinea(linea)
           const esPrimeraLineaEfectivo = linea.medio === "efectivo" && lineas.findIndex(l => l.medio === "efectivo") === idx
           const montoOtrasFac = lineas.filter(l => l.id !== linea.id).reduce((s, l) => s + montoEnFacturaMoneda(l.monto || 0, l.moneda, factura), 0)
@@ -287,17 +536,26 @@ export default function BloquesMediosPago({
                 )}
 
                 <div className="ml-auto flex items-center gap-2">
-                  {esPrimeraLineaEfectivo && (
-                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={Math.abs(linea.monto - restanteParaEstaLineaEnMonedaLinea) < 0.5 && restanteParaEstaLineaEnMonedaLinea > 0}
-                        onChange={e => actualizarLinea(linea.id, { monto: e.target.checked ? restanteParaEstaLineaEnMonedaLinea : 0 })}
-                        className="w-3.5 h-3.5 accent-emerald-600"
-                      />
-                      <span className="text-xs text-gray-500 whitespace-nowrap">Todo efectivo</span>
-                    </label>
-                  )}
+                  {esPrimeraLineaEfectivo && (() => {
+                    // FAC-5: si ya hay otra línea con monto cargado, "Todo efectivo"
+                    // confundiría (tomaría sólo el resto, no el total). Lo deshabilito.
+                    const otraLineaConMonto = lineas.some(l => l.id !== linea.id && (l.monto || 0) > 0)
+                    return (
+                      <label
+                        className={`flex items-center gap-1.5 select-none ${otraLineaConMonto ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+                        title={otraLineaConMonto ? "Eliminá los otros medios de pago para usar Todo efectivo" : ""}
+                      >
+                        <input
+                          type="checkbox"
+                          disabled={otraLineaConMonto}
+                          checked={Math.abs(linea.monto - restanteParaEstaLineaEnMonedaLinea) < 0.5 && restanteParaEstaLineaEnMonedaLinea > 0}
+                          onChange={e => actualizarLinea(linea.id, { monto: e.target.checked ? restanteParaEstaLineaEnMonedaLinea : 0 })}
+                          className="w-3.5 h-3.5 accent-emerald-600 disabled:cursor-not-allowed"
+                        />
+                        <span className="text-xs text-gray-500 whitespace-nowrap">Todo efectivo</span>
+                      </label>
+                    )
+                  })()}
                   <div className="flex flex-col items-end gap-1">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs text-gray-500 font-medium shrink-0">{linea.moneda}</span>
@@ -336,39 +594,48 @@ export default function BloquesMediosPago({
 
               {linea.medio === "tarjeta" && linea.tarjeta_id && linea.monto > 0 && (
                 <div className="px-4 pb-3 pt-2.5 bg-white border-t border-gray-100 text-xs">
-                  {calc ? (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1.5 mb-2 text-gray-500 font-medium">
-                        <CreditCard className="w-3.5 h-3.5" />
-                        {calc.tarjeta?.nombre} {calc.tarjeta?.tipo === "credito" ? "Crédito" : "Débito"} — {linea.cuotas} cuota{(linea.cuotas || 1) > 1 ? "s" : ""} · {calc.grupo?.nombre}
-                      </div>
-                      <div className="flex justify-between text-gray-500">
-                        <span>Monto abonado c/tarjeta:</span>
-                        <span>{formatARS(linea.monto)}</span>
-                      </div>
-                      {calc.recargo.recargo_pct > 0 && (
+                  {calc ? (() => {
+                    // FAC-6: si la factura es USD, mostrar equivalente ARS al lado.
+                    // (Los importes calculados están en la moneda de la factura.)
+                    const monedaFac = (factura.moneda ?? "ARS") as "ARS" | "USD"
+                    const cot = factura.cotizacion ?? 0
+                    const showAR = monedaFac === "USD" && cot > 0
+                    const fmt = (v: number) => formatMoneda(v, monedaFac)
+                    const ars = (v: number) => showAR ? <span className="text-gray-400 ml-2">≈ {formatARS(v * cot)}</span> : null
+                    return (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5 mb-2 text-gray-500 font-medium">
+                          <CreditCard className="w-3.5 h-3.5" />
+                          {calc.tarjeta?.nombre} {calc.tarjeta?.tipo === "credito" ? "Crédito" : "Débito"} — {linea.cuotas} cuota{(linea.cuotas || 1) > 1 ? "s" : ""} · {calc.grupo?.nombre}
+                        </div>
                         <div className="flex justify-between text-gray-500">
-                          <span>Recargo ({calc.recargo.recargo_pct}%):</span>
-                          <span>{formatARS(calc.importeRecargo)}</span>
+                          <span>Monto abonado c/tarjeta:</span>
+                          <span>{fmt(linea.monto)}{ars(linea.monto)}</span>
                         </div>
-                      )}
-                      {calc.cargos.map((c, i) => (
-                        <div key={i} className="flex justify-between text-gray-500">
-                          <span>{c.nombre} ({c.pct}%):</span>
-                          <span>{formatARS(c.importe)}</span>
+                        {calc.recargo.recargo_pct > 0 && (
+                          <div className="flex justify-between text-gray-500">
+                            <span>Recargo ({calc.recargo.recargo_pct}%):</span>
+                            <span>{fmt(calc.importeRecargo)}{ars(calc.importeRecargo)}</span>
+                          </div>
+                        )}
+                        {calc.cargos.map((c, i) => (
+                          <div key={i} className="flex justify-between text-gray-500">
+                            <span>{c.nombre} ({c.pct}%):</span>
+                            <span>{fmt(c.importe)}{ars(c.importe)}</span>
+                          </div>
+                        ))}
+                        <div className="border-t border-gray-200 my-1" />
+                        <div className="flex justify-between text-amber-700 font-semibold">
+                          <span>Total recargo:</span>
+                          <span>{fmt(calc.totalRecargo)}{ars(calc.totalRecargo)}</span>
                         </div>
-                      ))}
-                      <div className="border-t border-gray-200 my-1" />
-                      <div className="flex justify-between text-amber-700 font-semibold">
-                        <span>Total recargo:</span>
-                        <span>{formatARS(calc.totalRecargo)}</span>
+                        <div className="flex justify-between font-bold text-gray-900">
+                          <span>Total a acreditar:</span>
+                          <span>{fmt(calc.totalConRecargo)}{ars(calc.totalConRecargo)}</span>
+                        </div>
                       </div>
-                      <div className="flex justify-between font-bold text-gray-900">
-                        <span>Total a acreditar:</span>
-                        <span>{formatARS(calc.totalConRecargo)}</span>
-                      </div>
-                    </div>
-                  ) : (
+                    )
+                  })() : (
                     <div className="flex items-center gap-2 text-amber-600">
                       <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                       No hay recargo configurado para esta combinación. Revisá Finanzas &rarr; Recargos de Tarjetas.

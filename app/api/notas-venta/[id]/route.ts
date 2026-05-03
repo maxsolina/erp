@@ -1,4 +1,5 @@
 ﻿import { dbError } from "@/lib/api-utils"
+import { registrarDiff, registrarEvento } from "@/lib/seguimiento"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 
@@ -88,12 +89,13 @@ export async function PUT(
     total,
     notas,
     lineas = [],
+    usuario,
   } = body
 
-  // Verificar estado actual
+  // Snapshot completo del estado anterior — necesario para el seguimiento
   const { data: actual, error: actualErr } = await supabase
     .from("notas_venta")
-    .select("estado")
+    .select("*")
     .eq("id", id)
     .single()
   if (actualErr || !actual) {
@@ -109,20 +111,22 @@ export async function PUT(
   const ESTADOS_VALIDOS = ["borrador", "abierta", "a_facturar", "verificacion_factura", "verificacion_oe", "facturada", "finalizada", "parcial", "cancelada"]
   const estadoNormalizado = ESTADOS_VALIDOS.includes(estado) ? estado : "abierta"
 
+  const nuevosValores = {
+    cliente_id: cliente_id ?? null,
+    vendedor_id: vendedor_id ?? null,
+    sucursal_id: sucursal_id ?? null,
+    moneda: moneda ?? "ARS",
+    estado: estadoNormalizado,
+    subtotal: Number(subtotal ?? 0),
+    impuestos: Number(impuestos ?? 0),
+    total: Number(total ?? 0),
+    notas: notas ?? null,
+  }
+
   // Update cabecera
   const { error: updErr } = await supabase
     .from("notas_venta")
-    .update({
-      cliente_id: cliente_id ?? null,
-      vendedor_id: vendedor_id ?? null,
-      sucursal_id: sucursal_id ?? null,
-      moneda: moneda ?? "ARS",
-      estado: estadoNormalizado,
-      subtotal: Number(subtotal ?? 0),
-      impuestos: Number(impuestos ?? 0),
-      total: Number(total ?? 0),
-      notas: notas ?? null,
-    })
+    .update(nuevosValores)
     .eq("id", id)
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
 
@@ -161,6 +165,63 @@ export async function PUT(
       )
     }
   }
+
+  // ─── Seguimiento ──────────────────────────────────────────────────────
+  // 1. Cambio de estado (más prominente). Traducimos a labels friendly para
+  // que la timeline muestre "Borrador → Confirmada" en lugar de
+  // "borrador → facturada".
+  const ESTADO_NV_LABELS: Record<string, string> = {
+    abierta: "Abierta",
+    borrador: "Borrador",
+    a_facturar: "A Facturar",
+    verificacion_factura: "Verif. Factura",
+    verificacion_oe: "Verif. OE",
+    facturada: "Confirmada",
+    finalizada: "Finalizada",
+    parcial: "Parcial",
+    cancelada: "Cancelada",
+  }
+  const labelEstado = (e: string) => ESTADO_NV_LABELS[e] ?? e
+
+  if (actual.estado !== estadoNormalizado) {
+    await registrarEvento(supabase, {
+      tipo_documento: "nota_venta",
+      documento_id: id,
+      usuario,
+      tipo_evento: "cambio_estado",
+      valor_anterior: labelEstado(actual.estado),
+      valor_nuevo: labelEstado(estadoNormalizado),
+    })
+  }
+
+  // 2. Cambios de campos clave (cliente, vendedor, depósito, total, moneda)
+  await registrarDiff(supabase, {
+    tipo_documento: "nota_venta",
+    documento_id: id,
+    usuario,
+    antes: actual,
+    despues: nuevosValores,
+    campos: [
+      { key: "cliente_id", label: "Cliente" },
+      { key: "vendedor_id", label: "Vendedor" },
+      { key: "sucursal_id", label: "Depósito" },
+      { key: "moneda", label: "Moneda" },
+      { key: "subtotal", label: "Subtotal" },
+      { key: "total", label: "Total" },
+      { key: "notas", label: "Notas" },
+    ],
+    formato: (key, value) => {
+      if (value == null || value === "") return null
+      if (key === "subtotal" || key === "total") {
+        return new Intl.NumberFormat("es-AR", {
+          style: "currency",
+          currency: nuevosValores.moneda || "ARS",
+          minimumFractionDigits: 2,
+        }).format(Number(value))
+      }
+      return String(value)
+    },
+  })
 
   return NextResponse.json({ ok: true, id })
 }

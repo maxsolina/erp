@@ -15,7 +15,9 @@ import {
   X,
 } from "lucide-react"
 import ProductoDropdown from "@/components/producto-dropdown"
+import { useERP } from "@/contexts/erp-context"
 import { formatCurrency } from "@/lib/format"
+import { getEstadoNVLabel } from "./_shared"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -122,6 +124,8 @@ interface LineaForm {
 
 export default function NvForm({ initialId }: { initialId?: number }) {
   const router = useRouter()
+  const { currentUser } = useERP()
+  const usuarioNombre = currentUser?.nombre ?? currentUser?.username ?? "sistema"
   const isEdit = initialId != null
 
   // Loaders
@@ -145,6 +149,15 @@ export default function NvForm({ initialId }: { initialId?: number }) {
   const [nvDepositoId, setNvDepositoId] = useState<number>(0)
   const [nvUbicacionId, setNvUbicacionId] = useState<number>(0)
   const [nvLineas, setNvLineas] = useState<LineaForm[]>([])
+  // Override de moneda: cuando entrás a editar una NV en USD pero la lista de
+  // precios del cliente es ARS, monedaForm caería a ARS incorrectamente. Este
+  // override mantiene la moneda original de la NV hasta que el usuario cambie
+  // manualmente la lista de precios.
+  const [nvMonedaOverride, setNvMonedaOverride] = useState<"ARS" | "USD" | null>(null)
+  // Cotización del USD del día (se fetch al cargar; queda en 1 para facturas ARS).
+  // Se propaga a la factura al confirmar venta para que la ficha de factura
+  // muestre la cotización real (no 1).
+  const [nvCotizacionUsd, setNvCotizacionUsd] = useState<number>(1)
 
   // Producto search / dropdown
   const [productoSearchIndex, setProductoSearchIndex] = useState<number | null>(null)
@@ -229,6 +242,7 @@ export default function NvForm({ initialId }: { initialId?: number }) {
         setNvEstadoExistente(nv.estado ?? null)
         setNvClienteId(nv.cliente_id ?? null)
         setNvDepositoId(nv.sucursal_id ?? 0)
+        setNvMonedaOverride(nv.moneda === "USD" ? "USD" : "ARS")
         setNvLineas((nv.notas_venta_lineas ?? []).map((l: any, idx: number) => ({
           uid: idx + 1,
           producto_id: l.producto_id ?? 0,
@@ -278,10 +292,20 @@ export default function NvForm({ initialId }: { initialId?: number }) {
       .catch(() => setProductosNV(productosMaestro))
   }, [nvListaPreciosId, productosMaestro])
 
+  // Auto-fetch cotización USD del día (mismo patrón que factura-form).
+  // Si la NV es ARS, queda en 1.
+  useEffect(() => {
+    fetch("/api/contabilidad/cotizaciones?moneda_codigo=USD&tipo=blue&latest=true")
+      .then(r => r.json())
+      .then((d: any) => { if (d?.tasa) setNvCotizacionUsd(Number(d.tasa)) })
+      .catch(() => {})
+  }, [])
+
   // ─── Helpers ────────────────────────────────────────────────────────────
   const selectedCliente = clientes.find(c => c.id === nvClienteId)
   const listaSel = listasPrecios.find(l => l.id === nvListaPreciosId)
-  const monedaForm = (listaSel?.moneda_base ?? "ARS") as "ARS" | "USD"
+  // Prioridad: override (NV existente en USD/ARS) > moneda de la lista > ARS
+  const monedaForm = (nvMonedaOverride ?? listaSel?.moneda_base ?? "ARS") as "ARS" | "USD"
   const esUsdForm = monedaForm === "USD"
 
   const subtotalEnMoneda = (l: LineaForm) =>
@@ -450,6 +474,7 @@ export default function NvForm({ initialId }: { initialId?: number }) {
 
       // 2. OE
       let oeNumero = ""
+      let oeIdFinal: number | null = null
       try {
         const oeRes = await fetch("/api/ordenes-entrega", {
           method: "POST",
@@ -477,6 +502,7 @@ export default function NvForm({ initialId }: { initialId?: number }) {
         if (oeRes.ok) {
           const oeData = await oeRes.json()
           oeNumero = oeData.numero || ""
+          oeIdFinal = oeData.id ?? null
         }
       } catch (_) {}
 
@@ -491,6 +517,7 @@ export default function NvForm({ initialId }: { initialId?: number }) {
             numero: null,
             nota_venta_id: nvIdFinal,
             nota_venta_numero: nvNumeroFinal,
+            orden_entrega_id: oeIdFinal,
             orden_entrega_numero: oeNumero,
             cliente_id: cliente.id,
             cliente_nombre: cliente.nombre,
@@ -556,6 +583,8 @@ export default function NvForm({ initialId }: { initialId?: number }) {
             fecha: fechaHoy,
             estado: "abierta",
             moneda: monedaForm,
+            tipo_cotizacion: "blue",
+            cotizacion: monedaForm === "USD" ? nvCotizacionUsd : 1,
             termino_pago: null,
             subtotal: payloadNV.subtotal,
             descuento: 0,
@@ -610,6 +639,7 @@ export default function NvForm({ initialId }: { initialId?: number }) {
       impuestos: impuestosCalc,
       total,
       lineas: lineasPayload,
+      usuario: usuarioNombre,
     }
   }
 
@@ -631,7 +661,7 @@ export default function NvForm({ initialId }: { initialId?: number }) {
     return (
       <div className="p-12 text-center">
         <p className="text-amber-700 mb-2">
-          Esta NV está en estado <strong>{nvEstadoExistente}</strong> y no puede editarse.
+          Esta NV está en estado <strong>{getEstadoNVLabel(nvEstadoExistente)}</strong> y no puede editarse.
         </p>
         <p className="text-gray-500 text-sm mb-4">
           Solo las NVs en estado "borrador" o "abierta" (sin factura/remito generado) pueden modificarse.
@@ -712,6 +742,7 @@ export default function NvForm({ initialId }: { initialId?: number }) {
                   onChange={e => {
                     const id = e.target.value ? parseInt(e.target.value, 10) : null
                     setNvClienteId(id)
+                    setNvMonedaOverride(null) // user cambia cliente → ya no aplica la moneda original de la NV
                     if (id) {
                       const cli = clientes.find(c => c.id === id)
                       if (cli?.lista_precios_id) setNvListaPreciosId(cli.lista_precios_id)
@@ -766,7 +797,10 @@ export default function NvForm({ initialId }: { initialId?: number }) {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Lista de precios *</label>
                   <select
                     value={nvListaPreciosId ?? ""}
-                    onChange={e => setNvListaPreciosId(e.target.value ? parseInt(e.target.value, 10) : null)}
+                    onChange={e => {
+                      setNvMonedaOverride(null) // user cambia lista → respetar la moneda de esta lista
+                      setNvListaPreciosId(e.target.value ? parseInt(e.target.value, 10) : null)
+                    }}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
                     <option value="">Seleccionar lista…</option>

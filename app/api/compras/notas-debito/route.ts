@@ -8,6 +8,7 @@ export async function GET() {
     .from("notas_debito_compra")
     .select("*")
     .order("created_at", { ascending: false })
+    .range(0, 49999)
 
   if (error) return dbError(error)
   return NextResponse.json(data)

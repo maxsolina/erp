@@ -47,6 +47,10 @@ interface LineaForm {
   subtotal: number
   nac: boolean
   tiene_serie?: boolean
+  requiere_color?: boolean
+  requiere_bateria?: boolean
+  requiere_outlet?: boolean
+  requiere_observaciones?: boolean
 }
 
 const MONEDAS_DEFAULT: Moneda[] = [
@@ -161,6 +165,10 @@ export default function OcForm({ initialId }: { initialId?: number }) {
           subtotal: Number(l.subtotal ?? l.cantidad * l.precio_unitario ?? 0),
           nac: !!l.nac,
           tiene_serie: !!l.tiene_serie,
+          requiere_color: !!l.requiere_color,
+          requiere_bateria: !!l.requiere_bateria,
+          requiere_outlet: !!l.requiere_outlet,
+          requiere_observaciones: !!l.requiere_observaciones,
         })))
         setCargandoOC(false)
       })
@@ -233,7 +241,13 @@ export default function OcForm({ initialId }: { initialId?: number }) {
       descripcion: linea.descripcion || p.descripcion || p.observaciones || "",
       precio_unitario: precio,
       subtotal: linea.cantidad * precio,
+      // Flags del producto — viajan a la OC y a la recepción para que
+      // el wizard de registro de unidades pida color/batería/outlet/obs cuando aplica
       tiene_serie: !!p.tiene_numero_serie,
+      requiere_color: !!p.requiere_color,
+      requiere_bateria: !!p.requiere_bateria,
+      requiere_outlet: !!p.requiere_outlet,
+      requiere_observaciones: !!p.requiere_observaciones,
     }
     setLineas(updated)
     setProductoSearch(prev => ({ ...prev, [idx]: p.nombre }))

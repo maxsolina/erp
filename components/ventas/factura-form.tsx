@@ -550,10 +550,10 @@ export default function FacturaForm({ initialId }: { initialId?: number }) {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 space-y-6">
+      <div className="space-y-6">
+        <div className="grid grid-cols-3 gap-6">
           {/* Cliente */}
-          <div className="bg-white rounded-lg shadow-sm p-4">
+          <div className="col-span-2 bg-white rounded-lg shadow-sm p-4">
             <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <User className="w-4 h-4" /> Cliente
             </h3>
@@ -597,18 +597,54 @@ export default function FacturaForm({ initialId }: { initialId?: number }) {
             )}
           </div>
 
-          {/* Líneas */}
-          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-            <div className="bg-gray-50 px-4 py-3 border-b">
-              <h3 className="font-semibold text-gray-900">Líneas de Factura</h3>
+          {/* Resumen al lado del Cliente */}
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <h3 className="font-semibold text-gray-900 mb-4">
+              Resumen{" "}
+              {facturaMoneda !== "ARS" && (
+                <span className="text-sm font-normal text-blue-600 ml-1">en {facturaMoneda}</span>
+              )}
+            </h3>
+            <div className="space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Subtotal:</span>
+                <span className="font-medium">{formatCurrency(subtotal, facturaMoneda)}</span>
+              </div>
+              <div className="border-t pt-3">
+                <div className="flex justify-between text-lg font-bold">
+                  <span>Total:</span>
+                  <span className="text-emerald-700 whitespace-nowrap">
+                    {formatCurrency(subtotal, facturaMoneda)}
+                  </span>
+                </div>
+              </div>
+              {facturaMoneda === "USD" && facturaCotizacion > 1 && (
+                <div className="border-t pt-2 text-xs text-gray-500 flex justify-between">
+                  <span>Equivalente ARS (TC ${facturaCotizacion.toLocaleString("es-AR")}):</span>
+                  <span className="font-medium text-gray-700">
+                    {formatCurrency(subtotal * facturaCotizacion, "ARS")}
+                  </span>
+                </div>
+              )}
+              <p className="text-xs text-gray-400 border-t pt-2">
+                IVA y recargos se calculan al confirmar según los medios de pago.
+              </p>
             </div>
+          </div>
+        </div>
+
+        {/* Líneas — full width */}
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          <div className="bg-gray-50 px-4 py-3 border-b">
+            <h3 className="font-semibold text-gray-900">Líneas de Factura</h3>
+          </div>
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
                   <th className="text-left py-2 px-3">Producto</th>
                   <th className="text-center py-2 px-3 w-20">Cant.</th>
                   <th className="text-right py-2 px-3 w-32">Precio ({facturaMoneda})</th>
-                  <th className="text-center py-2 px-3 w-16">Dto. %</th>
+                  <th className="text-center py-2 px-3 w-24">Dto. %</th>
                   <th className="text-right py-2 px-3 w-32">Subtotal ({facturaMoneda})</th>
                   <th className="w-10"></th>
                 </tr>
@@ -771,17 +807,22 @@ export default function FacturaForm({ initialId }: { initialId?: number }) {
             </div>
           </div>
 
-          {/* Medios de Pago — visible en crear y al editar borradores */}
-          <div className="bg-white rounded-lg shadow-sm">
+          {/* Medios de Pago — el componente arma su propia card (blanca cuando
+              está editando, verde cuando ya hay medios confirmados). */}
+          <div>
             <BloquesMediosPago
                 key={`fac-${facturaClienteId}-${facturaMoneda}`}
                 tarjetas={tarjetas}
                 grupos={gruposTarjeta}
                 recargos={recargosTarjeta}
-                textoBoton="Listo (los IVA y recargos se calculan al confirmar)"
+                textoBoton="Confirmar medios de pago"
                 textoConfirmado="Medios de pago listos."
                 onEstadoPagoChange={setEstadoPago}
                 onConfirmarCobro={(lineas) => setMediosLineas(lineas)}
+                onRetrocederMedios={() => {
+                  setMediosLineas([])
+                  setEstadoPago({ cobrado: false, tieneLineas: false, diferenciaOk: false })
+                }}
                 factura={{
                   id: 0,
                   numero: "",
@@ -801,44 +842,6 @@ export default function FacturaForm({ initialId }: { initialId?: number }) {
                 } as any}
               />
           </div>
-        </div>
-
-        {/* Sidebar */}
-        <div className="space-y-4">
-          <div className="bg-white rounded-lg shadow-sm p-4">
-            <h3 className="font-semibold text-gray-900 mb-4">
-              Resumen{" "}
-              {facturaMoneda !== "ARS" && (
-                <span className="text-sm font-normal text-blue-600 ml-1">en {facturaMoneda}</span>
-              )}
-            </h3>
-            <div className="space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Subtotal:</span>
-                <span className="font-medium">{formatCurrency(subtotal, facturaMoneda)}</span>
-              </div>
-              <div className="border-t pt-3">
-                <div className="flex justify-between text-lg font-bold">
-                  <span>Total:</span>
-                  <span className="text-emerald-700 whitespace-nowrap">
-                    {formatCurrency(subtotal, facturaMoneda)}
-                  </span>
-                </div>
-              </div>
-              {facturaMoneda === "USD" && facturaCotizacion > 1 && (
-                <div className="border-t pt-2 text-xs text-gray-500 flex justify-between">
-                  <span>Equivalente ARS (TC ${facturaCotizacion.toLocaleString("es-AR")}):</span>
-                  <span className="font-medium text-gray-700">
-                    {formatCurrency(subtotal * facturaCotizacion, "ARS")}
-                  </span>
-                </div>
-              )}
-              <p className="text-xs text-gray-400 border-t pt-2">
-                IVA y recargos se calculan al confirmar según los medios de pago.
-              </p>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Modal validación */}

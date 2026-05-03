@@ -129,31 +129,38 @@ export default function AsientosListadoBase({ esManual, title, monolithView, emp
             {cargando && (
               <tr><td colSpan={esManual ? 8 : 9} className="py-8 text-center text-gray-400">Cargando...</td></tr>
             )}
-            {!cargando && filtered.map(a => (
-              <tr key={a.id} className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="py-3 px-4 font-mono text-sm text-emerald-700 font-medium">{a.numero ?? `#${a.id}`}</td>
-                <td className="py-3 px-4 text-sm text-gray-600">{formatDate(a.fecha)}</td>
-                <td className="py-3 px-4 text-sm">{a.diario?.nombre ?? "—"}</td>
-                <td className="py-3 px-4 text-sm text-gray-600">{a.periodo?.nombre ?? "—"}</td>
-                <td className="py-3 px-4 text-sm max-w-xs truncate">{a.descripcion ?? "—"}</td>
-                {!esManual && (
-                  <td className="py-3 px-4 text-sm text-blue-600">
-                    {a.documento_origen_numero ?? a.origen ?? "—"}
+            {!cargando && filtered.map(a => {
+              const href = `/contabilidad/asientos/${a.id}`
+              return (
+                <tr key={a.id} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="p-0"><Link href={href} className="block py-3 px-4 font-mono text-sm text-emerald-700 font-medium">{a.numero ?? `#${a.id}`}</Link></td>
+                  <td className="p-0"><Link href={href} className="block py-3 px-4 text-sm text-gray-600">{formatDate(a.fecha)}</Link></td>
+                  <td className="p-0"><Link href={href} className="block py-3 px-4 text-sm">{a.diario?.nombre ?? "—"}</Link></td>
+                  <td className="p-0"><Link href={href} className="block py-3 px-4 text-sm text-gray-600">{a.periodo?.nombre ?? "—"}</Link></td>
+                  <td className="p-0"><Link href={href} className="block py-3 px-4 text-sm max-w-xs truncate">{a.descripcion ?? "—"}</Link></td>
+                  {!esManual && (
+                    <td className="p-0">
+                      <Link href={href} className="block py-3 px-4 text-sm text-blue-600">
+                        {a.documento_origen_numero ?? a.origen ?? "—"}
+                      </Link>
+                    </td>
+                  )}
+                  <td className="p-0"><Link href={href} className="block py-3 px-4 text-sm text-right">{a.total_debe != null ? formatCurrency(a.total_debe) : "—"}</Link></td>
+                  <td className="p-0"><Link href={href} className="block py-3 px-4 text-sm text-right">{a.total_haber != null ? formatCurrency(a.total_haber) : "—"}</Link></td>
+                  <td className="p-0">
+                    <Link href={href} className="block py-3 px-4 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        a.estado === "publicado" ? "bg-green-100 text-green-700" :
+                        a.estado === "cancelado" ? "bg-red-100 text-red-700" :
+                        "bg-yellow-100 text-yellow-700"
+                      }`}>
+                        {a.estado}
+                      </span>
+                    </Link>
                   </td>
-                )}
-                <td className="py-3 px-4 text-sm text-right">{a.total_debe != null ? formatCurrency(a.total_debe) : "—"}</td>
-                <td className="py-3 px-4 text-sm text-right">{a.total_haber != null ? formatCurrency(a.total_haber) : "—"}</td>
-                <td className="py-3 px-4 text-center">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                    a.estado === "publicado" ? "bg-green-100 text-green-700" :
-                    a.estado === "cancelado" ? "bg-red-100 text-red-700" :
-                    "bg-yellow-100 text-yellow-700"
-                  }`}>
-                    {a.estado}
-                  </span>
-                </td>
-              </tr>
-            ))}
+                </tr>
+              )
+            })}
             {!cargando && filtered.length === 0 && (
               <tr><td colSpan={esManual ? 8 : 9} className="py-8 text-center text-gray-400 text-sm">{emptyText ?? "No hay asientos"}</td></tr>
             )}

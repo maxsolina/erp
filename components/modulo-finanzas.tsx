@@ -3284,6 +3284,8 @@ function TabUsuarios({ cajaId, usuarios, soloTransferencias, onActualizar, modoE
 }
 
 function ConfigCajas() {
+  const searchParams = useSearchParams()
+  const cajaIdFromUrl = searchParams?.get("caja_id") ?? null
   const [cajas, setCajas] = useState<Caja[]>([])
   const [loading, setLoading] = useState(true)
   const [vista, setVista] = useState<"lista" | "detalle">("lista")
@@ -3292,6 +3294,7 @@ function ConfigCajas() {
   const [guardando, setGuardando] = useState(false)
   const [modoEdicion, setModoEdicion] = useState(false)
   const [triggerSave, setTriggerSave] = useState(0)
+  const [autoOpened, setAutoOpened] = useState(false)
 
   const cargarCajas = async () => {
     setLoading(true)
@@ -3305,6 +3308,18 @@ function ConfigCajas() {
   }
 
   useEffect(() => { cargarCajas() }, [])
+
+  // Si la URL trae ?caja_id=X (entrada desde el listado App Router), abrir
+  // automáticamente la ficha de esa caja una vez cargadas.
+  useEffect(() => {
+    if (autoOpened || loading || !cajaIdFromUrl) return
+    const caja = cajas.find(c => String(c.id) === String(cajaIdFromUrl))
+    if (caja) {
+      cargarDetalleCaja(caja)
+      setAutoOpened(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cajas, loading, cajaIdFromUrl, autoOpened])
 
   const cargarDetalleCaja = async (caja: Caja) => {
     const supabase = createClient()

@@ -115,7 +115,8 @@ export interface AsientoLinea {
 }
 
 export interface Asiento {
-  id: number
+  // En la DB es UUID (string). Algunos endpoints todavía devuelven number — los aceptamos.
+  id: string | number
   numero?: string | null
   fecha: string
   descripcion?: string | null

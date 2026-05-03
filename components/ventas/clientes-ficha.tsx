@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft } from "lucide-react"
+import { Edit } from "lucide-react"
+import BotonVolver from "@/components/ui/boton-volver"
 import { formatCurrency, type Cliente } from "./_shared"
 
 export default function ClienteFicha({ clienteId }: { clienteId: number }) {
@@ -40,21 +41,23 @@ export default function ClienteFicha({ clienteId }: { clienteId: number }) {
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => router.push("/ventas/clientes")} className="p-2 hover:bg-gray-100 rounded-lg">
-          <ArrowLeft className="w-4 h-4" />
-        </button>
-        <h1 className="text-2xl font-bold text-gray-900">{cliente.nombre}</h1>
-        {cliente.codigo && <span className="font-mono text-sm text-gray-500">{cliente.codigo}</span>}
-        <span className={`px-2 py-0.5 rounded text-xs font-medium ${cliente.activo ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-600"}`}>
-          {cliente.activo ? "Activo" : "Inactivo"}
-        </span>
-        <div className="ml-auto">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <BotonVolver onClick={() => router.push("/ventas/clientes")} variant="minimal" texto="" />
+          <div>
+            <h1 className="text-2xl font-bold text-amber-900">{cliente.nombre}</h1>
+            {cliente.codigo && <p className="text-sm text-gray-500 font-mono">{cliente.codigo}</p>}
+          </div>
+          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${cliente.activo ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-600"}`}>
+            {cliente.activo ? "Activo" : "Inactivo"}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
           <Link
-            href={`/?module=ventas&view=listado`}
-            className="text-sm text-indigo-700 hover:underline"
+            href={`/ventas/clientes/${cliente.id}/editar`}
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50 flex items-center gap-1"
           >
-            Editar en el módulo Ventas →
+            <Edit className="w-4 h-4" /> Editar
           </Link>
         </div>
       </div>

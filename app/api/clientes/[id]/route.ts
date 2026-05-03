@@ -19,7 +19,18 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 404 })
   }
 
-  return NextResponse.json(data)
+  // Enriquecer con nombre de categoría
+  let categoria_nombre: string | null = null
+  if (data?.categoria_id) {
+    const { data: cat } = await supabase
+      .from("categorias_cliente")
+      .select("nombre")
+      .eq("id", data.categoria_id)
+      .maybeSingle()
+    categoria_nombre = cat?.nombre ?? null
+  }
+
+  return NextResponse.json({ ...data, categoria_nombre })
 }
 
 export async function PUT(

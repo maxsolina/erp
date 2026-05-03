@@ -9,14 +9,27 @@ function getSupabase() {
   )
 }
 
-// GET — listar recibos (opcional filtro por id)
+// GET — listar recibos.
+// Si se pasa ?id=X devuelve un único recibo CON pagos + imputaciones embebidos
+// (para que la ficha pueda mostrar el detalle completo). Sin ?id, devuelve la
+// lista pelada para el listado.
 export async function GET(req: Request) {
   const supabase = getSupabase()
   const { searchParams } = new URL(req.url)
   const id = searchParams.get("id")
-  let query = supabase.from("recibos").select("*").order("created_at", { ascending: false })
-  if (id) query = query.eq("id", id)
-  const { data, error } = await query
+  if (id) {
+    const { data, error } = await supabase
+      .from("recibos")
+      .select("*, recibo_pagos(*), recibo_imputaciones(*)")
+      .eq("id", id)
+    if (error) return dbError(error)
+    return NextResponse.json(data ?? [])
+  }
+  const { data, error } = await supabase
+    .from("recibos")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .range(0, 49999)
   if (error) return dbError(error)
   return NextResponse.json(data ?? [])
 }
