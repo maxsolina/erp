@@ -1,7 +1,11 @@
 ﻿import { dbError } from "@/lib/api-utils"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
-import { generarAsientoRecibo } from "@/lib/contabilidad-asiento-factory"
+import {
+  generarAsientoRecibo,
+  generarAsientoRemito,
+  generarAsientoFacturaVenta,
+} from "@/lib/contabilidad-asiento-factory"
 
 function getSupabase() {
   return createClient(
@@ -44,14 +48,31 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     // Cotización al momento del pago: la que viene del form, fallback 1
     const cotizPago: number = Number(cotizacion_senia) > 0 ? Number(cotizacion_senia) : 1
-    // El recibo siempre se imputa en USD.
-    // La moneda del pago viene del caja_valor seleccionado (no de la moneda del equipo).
-    // Si el pago fue en ARS → convertir: monto_usd = monto_ars / cotizacion
-    // Si el pago fue en USD → monto_usd = monto_senia directo
-    const esMonedaUSD = (moneda_pago ?? 'ARS') === 'USD'
-    const montoUSD = esMonedaUSD
-      ? Number(monto_senia)
-      : parseFloat((Number(monto_senia) / cotizPago).toFixed(4))
+
+    // Conversión de moneda CORRECTA en ambas direcciones:
+    //   - moneda_pago = moneda en la que entró el cash (caja_valor)
+    //   - senia.moneda = moneda en que está expresada la seña (típicamente USD)
+    //
+    // El recibo se imputa en LA MONEDA DEL SEÑA, con `importe` convertido. Los
+    // `recibo_pagos` guardan la moneda y monto original del cash que llegó.
+    // Si las monedas coinciden, no hay conversión. Si difieren se aplica
+    // `cotizPago` en la dirección que corresponda.
+    const monedaSenia = (senia.moneda ?? "ARS") as "ARS" | "USD"
+    const monedaPago = (moneda_pago ?? monedaSenia) as "ARS" | "USD"
+    let importeEnSenia = Number(monto_senia)
+    if (monedaPago !== monedaSenia && cotizPago > 0) {
+      if (monedaPago === "ARS" && monedaSenia === "USD") {
+        importeEnSenia = Number(monto_senia) / cotizPago   // ARS → USD
+      } else if (monedaPago === "USD" && monedaSenia === "ARS") {
+        importeEnSenia = Number(monto_senia) * cotizPago   // USD → ARS
+      }
+    }
+    importeEnSenia = parseFloat(importeEnSenia.toFixed(4))
+    // Para el ventas_cc_movimientos seguimos persistiendo en USD por
+    // consistencia con el resto del módulo (CC bimonetaria con USD como base).
+    const montoUSD = monedaSenia === "USD"
+      ? importeEnSenia
+      : (cotizPago > 0 ? parseFloat((importeEnSenia / cotizPago).toFixed(4)) : importeEnSenia)
 
     // Generar recibo por la seña
     let reciboNumero = ""
@@ -87,7 +108,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         if (sucRow?.nombre) sucursalNombre = sucRow.nombre
       }
 
-      // Insertar recibo en la moneda real del pago (ARS o USD según caja_valor)
+      // El recibo se imputa en la MONEDA DEL SEÑA con el importe convertido.
+      // El detalle del cash (moneda + monto original) va en recibo_pagos.
+      // Así la CC del cliente y el listado de recibos siempre ven la moneda
+      // del seña (típicamente USD), sin importar en qué moneda llegó el efectivo.
+      const observacionesRecibo = monedaPago === monedaSenia
+        ? `Seña: ${senia.equipo_nombre} (${senia.numero})`
+        : `Seña: ${senia.equipo_nombre} (${senia.numero}) | ${monedaPago} ${Number(monto_senia).toLocaleString("es-AR")} @ $${cotizPago}`
       const { data: recData, error: recErr } = await supabase
         .from("recibos")
         .insert({
@@ -99,11 +126,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           fecha: new Date().toISOString().split("T")[0],
           estado: "publicado",
           fecha_publicacion: new Date().toISOString(),
-          moneda: moneda_pago ?? "ARS",
-          importe: Number(monto_senia),
-          importe_no_conciliado: Number(monto_senia),
-          observaciones: `Seña: ${senia.equipo_nombre} (${senia.numero})${!esMonedaUSD ? ` | USD ${montoUSD} @ $${cotizPago}` : ''}`,
-          cotizacion: cotizPago,
+          moneda: monedaSenia,
+          importe: importeEnSenia,
+          importe_no_conciliado: importeEnSenia,
+          observaciones: observacionesRecibo,
+          cotizacion: monedaPago !== monedaSenia ? cotizPago : null,
         })
         .select()
         .single()
@@ -111,17 +138,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         console.error("[senias] recibo insert error:", recErr.message, recErr.details)
       } else if (recData) {
         reciboId = recData.id
-        // Línea de pago del recibo — en la moneda real del pago
+        // Línea de pago del recibo — preserva la moneda y monto ORIGINAL del cash
         await supabase.from("recibo_pagos").insert({
           recibo_id: recData.id,
           valor_id: body.caja_valor_id ?? null,
           valor_nombre: medio_pago_senia ?? null,
           tipo_valor: "efectivo",
-          importe_comprobante: Number(monto_senia),
-          moneda_comprobante: moneda_pago ?? "ARS",
+          // moneda_comprobante / importe_comprobante = moneda del recibo (seña),
+          // moneda / importe = moneda del cash que llegó.
+          importe_comprobante: importeEnSenia,
+          moneda_comprobante: monedaSenia,
           importe: Number(monto_senia),
-          moneda: moneda_pago ?? "ARS",
-          cotizacion: cotizPago,
+          moneda: monedaPago,
+          cotizacion: monedaPago !== monedaSenia ? cotizPago : null,
           es_tarjeta: false,
           es_cheque: false,
           cantidad_cuotas: 1,
@@ -130,6 +159,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         })
 
         // ── Movimiento en caja (si hay extracto abierto) ───────────────────────
+        // El movimiento de caja preserva la moneda y monto ORIGINAL del cash
+        // (no la moneda del seña), porque la caja tracks el efectivo real recibido.
         if (body.caja_id) {
           const { data: extracto } = await supabase
             .from("extractos_caja")
@@ -144,7 +175,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
               valor_nombre: medio_pago_senia ?? null,
               tipo_movimiento: "ingreso",
               importe: Number(monto_senia),
-              moneda: moneda_pago ?? "ARS",
+              moneda: monedaPago,
               concepto: `Seña ${senia.numero} - ${senia.cliente_nombre}`,
               documento_origen_tipo: "recibo",
               documento_origen_numero: reciboNumero,
@@ -190,15 +221,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       console.error("[senias] recibo error:", e)
     }
 
+    const fmtImp = (n: number) => n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    const detalleSeguimiento = monedaPago === monedaSenia
+      ? `${monedaPago} ${fmtImp(Number(monto_senia))}. Medio: ${medio_pago_senia}`
+      : `${monedaPago} ${fmtImp(Number(monto_senia))} → ${monedaSenia} ${fmtImp(importeEnSenia)} @ $${cotizPago}. Medio: ${medio_pago_senia}`
     const seguimiento = [
       ...(senia.seguimiento ?? []),
       {
         fecha: new Date().toISOString(),
         usuario: usuario ?? "Operador",
         accion: "Seña registrada",
-        detalle: esMonedaUSD
-          ? `USD ${montoUSD.toLocaleString('es-AR', { minimumFractionDigits: 2 })}. Medio: ${medio_pago_senia}`
-          : `ARS $${Number(monto_senia).toLocaleString('es-AR')} → USD ${montoUSD.toLocaleString('es-AR', { minimumFractionDigits: 2 })} @ $${cotizPago}. Medio: ${medio_pago_senia}`,
+        detalle: detalleSeguimiento,
       },
     ]
 
@@ -418,9 +451,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { medios_pago_cierre, toma_equipo_id, usuario } = body
     const ahora = new Date().toISOString()
 
-    // 1. Crear Remito confirmado
+    // 1. Crear Remito confirmado + asiento contable de salida de stock
     let remitoId: number | null = null
     let remitoNumero = ""
+    let remitoAsientoId: string | null = null
     const { data: lastRem } = await supabase
       .from("remitos")
       .select("numero")
@@ -430,6 +464,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       .limit(1)
       .maybeSingle()
     remitoNumero = `R X 10000-${String(parseNum(lastRem?.numero, 5035) + 1).padStart(8, "0")}`
+    // Líneas del remito en formato compatible con generarAsientoRemito
+    const remitoLineas = [{
+      producto_id: senia.stock_item_id ?? 0,
+      producto_nombre: senia.equipo_nombre,
+      cantidad: 1,
+      precio_unitario: senia.precio_final,
+    }]
     const { data: remData, error: remErr } = await supabase
       .from("remitos")
       .insert({
@@ -445,12 +486,32 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         tipo: "salida",
         total_bultos: 1,
         productos: [{ nombre: senia.equipo_nombre, imei: senia.equipo_imei, cantidad: 1 }],
-        lineas: [],
+        lineas: remitoLineas,
         seguimiento: [{ fecha: ahora, usuario: usuario ?? "Operador", accion: "Remito confirmado (cierre seña)" }],
       })
       .select()
       .single()
-    if (!remErr && remData) remitoId = remData.id
+    if (!remErr && remData) {
+      remitoId = remData.id
+      // Asiento contable del remito (Costo Mercadería / Stock).
+      // Si falla, loggeamos pero no abortamos — el operador puede regenerar el asiento desde la ficha.
+      if (senia.stock_item_id) {
+        const asientoRem = await generarAsientoRemito(supabase, {
+          id: String(remData.id),
+          numero: remitoNumero,
+          fecha: ahora.split("T")[0],
+          cliente_nombre: senia.cliente_nombre,
+          sucursal: null,
+          lineas: [{ producto_id: senia.stock_item_id, cantidad: 1 }],
+        })
+        if (asientoRem.ok && asientoRem.asiento_id) {
+          remitoAsientoId = asientoRem.asiento_id
+          await supabase.from("remitos").update({ asiento_id: asientoRem.asiento_id }).eq("id", remData.id)
+        } else if (!asientoRem.ok) {
+          console.error("[senias cierre] asiento remito error:", asientoRem.error)
+        }
+      }
+    }
 
     // 1b. Descontar stock — marcar unidad como entregada y registrar movimiento
     if (senia.stock_item_id) {
@@ -485,9 +546,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
     }
 
-    // 2. Crear Factura abierta
+    // 2. Crear Factura confirmada + asiento contable de venta.
+    // Antes nacía "abierta" y sin asiento; ahora completa el circuito contable
+    // en el momento del cierre (DR Deudores / CR Ventas + IVA si corresponde).
     let facturaId: number | null = null
     let facturaNumero = ""
+    let facturaAsientoId: string | null = null
     const { data: lastFac } = await supabase
       .from("facturas")
       .select("numero")
@@ -510,8 +574,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         vendedor_id: senia.vendedor_id ?? null,
         sucursal_id: senia.sucursal_id ?? null,
         fecha: ahora,
-        estado: "abierta",
-        moneda: senia.moneda ?? 'ARS',
+        estado: "confirmada",
+        moneda: senia.moneda ?? "ARS",
         subtotal: senia.precio_final,
         descuento: senia.descuento ?? 0,
         impuestos: 0,
@@ -533,6 +597,27 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         descuento: senia.descuento ?? 0,
         subtotal: senia.precio_final,
       })
+
+      // Asiento contable de la factura (DR Deudores / CR Ventas).
+      // Si falla, loggeamos pero no abortamos.
+      const asientoFac = await generarAsientoFacturaVenta(supabase, {
+        id: facData.id,
+        numero: facturaNumero,
+        fecha: ahora.split("T")[0],
+        cliente_id: senia.cliente_id != null ? String(senia.cliente_id) : null,
+        cliente_nombre: senia.cliente_nombre,
+        sucursal: null,
+        subtotal: Number(senia.precio_final),
+        impuestos: 0,
+        total: Number(senia.precio_final),
+        moneda: senia.moneda ?? "ARS",
+      })
+      if (asientoFac.ok && asientoFac.asiento_id) {
+        facturaAsientoId = asientoFac.asiento_id
+        await supabase.from("facturas").update({ asiento_id: asientoFac.asiento_id }).eq("id", facData.id)
+      } else if (!asientoFac.ok) {
+        console.error("[senias cierre] asiento factura error:", asientoFac.error)
+      }
     }
 
     // 3. Actualizar NV a facturada
@@ -551,13 +636,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         .eq("id", senia.oe_id)
     }
 
+    const detalleCierre = [
+      `Remito: ${remitoNumero}${remitoAsientoId ? " (con asiento)" : ""}`,
+      `Factura: ${facturaNumero} confirmada${facturaAsientoId ? " (con asiento)" : ""}`,
+      `Medios cierre: ${medios_pago_cierre?.length ?? 0}`,
+    ].join(". ")
     const seguimiento = [
       ...(senia.seguimiento ?? []),
       {
         fecha: ahora,
         usuario: usuario ?? "Operador",
-        accion: "Seña confirmada — equipo entregado",
-        detalle: `Remito: ${remitoNumero}. Factura: ${facturaNumero}. Medios cierre: ${medios_pago_cierre?.length ?? 0}`,
+        accion: "Operación confirmada — equipo entregado",
+        detalle: detalleCierre,
       },
     ]
 

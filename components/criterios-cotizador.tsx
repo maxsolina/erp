@@ -268,21 +268,25 @@ function ModelosTab({
     )
   }, [modelos, search])
 
-  // Cuántas categorías de tipo "descuento" o "cartel_sistema" tienen al menos
-  // una opción con descuento=0 (Impecable). El wizard de Toma de Equipo
-  // requiere que TODAS estas categorías tengan su opción Impecable cargada.
+  // Por cada modelo:
+  //   - cargados: cantidad total de criterios activos (lo que el operador "ve")
+  //   - conImpecable: cantidad de categorías de descuento/cartel_sistema que
+  //     tienen al menos una opción con descuento=0 (regla de validez para que
+  //     el wizard de Toma de Equipo pueda cotizar la opción "sin daño")
+  //   - faltantes: nombres de las categorías sin opción Impecable cargada
   const completitudPorModelo = useMemo(() => {
-    const map: Record<string, { total: number; conImpecable: number; faltantes: string[] }> = {}
+    const map: Record<string, { total: number; conImpecable: number; cargados: number; faltantes: string[] }> = {}
     const cats = categorias.filter(c => c.activo && (c.accion === "descuento" || c.accion === "cartel_sistema"))
     for (const m of modelos) {
       let conImpecable = 0
       const faltantes: string[] = []
+      const cargados = criterios.filter(cr => cr.modelo_id === m.id && cr.activo).length
       for (const cat of cats) {
         const opciones = criterios.filter(cr => cr.modelo_id === m.id && cr.categoria_id === cat.id && cr.activo)
         if (opciones.some(o => Number(o.descuento_usd) === 0)) conImpecable++
         else faltantes.push(cat.nombre)
       }
-      map[m.id] = { total: cats.length, conImpecable, faltantes }
+      map[m.id] = { total: cats.length, conImpecable, cargados, faltantes }
     }
     return map
   }, [modelos, criterios, categorias])
@@ -352,7 +356,7 @@ function ModelosTab({
           </thead>
           <tbody>
             {filtered.map((m, idx) => {
-              const compl = completitudPorModelo[m.id] ?? { total: 0, conImpecable: 0, faltantes: [] }
+              const compl = completitudPorModelo[m.id] ?? { total: 0, conImpecable: 0, cargados: 0, faltantes: [] }
               const completo = compl.total > 0 && compl.conImpecable === compl.total
               return (
                 <tr key={m.id} className={`border-b border-gray-100 hover:bg-gray-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
@@ -365,14 +369,24 @@ function ModelosTab({
                     {compl.total === 0 ? (
                       <span className="text-xs text-gray-400">—</span>
                     ) : completo ? (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">{compl.conImpecable}/{compl.total} OK</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                        {compl.cargados} criterio{compl.cargados !== 1 ? "s" : ""} · OK
+                      </span>
+                    ) : compl.cargados === 0 ? (
+                      <button
+                        onClick={onJumpToCriterios}
+                        className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        title="Sin criterios cargados. Cargá la opción 'Impecable' (USD 0) en cada categoría."
+                      >
+                        Sin criterios
+                      </button>
                     ) : (
                       <button
                         onClick={onJumpToCriterios}
                         className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200"
                         title={`Falta opción "Impecable" (USD 0) en: ${compl.faltantes.join(", ")}`}
                       >
-                        {compl.conImpecable}/{compl.total} Pendiente
+                        {compl.cargados} criterio{compl.cargados !== 1 ? "s" : ""} · falta Impecable
                       </button>
                     )}
                   </td>
@@ -532,20 +546,46 @@ function CriteriosTab({
 
   const crearImpecablesFaltantes = async () => {
     if (!filtroModelo || impecablesFaltantes.length === 0) return
-    if (!confirm(`Crear ${impecablesFaltantes.length} opciones "Impecable" (USD 0) para: ${impecablesFaltantes.map(c => c.nombre).join(", ")}?`)) return
+    if (!confirm(`Crear/ajustar ${impecablesFaltantes.length} opciones "Impecable" (USD 0) para: ${impecablesFaltantes.map(c => c.nombre).join(", ")}?\n\nSi ya existe un criterio "Impecable" con descuento > 0, se ajusta a USD 0.`)) return
     let errors = 0
     for (const cat of impecablesFaltantes) {
-      const res = await fetch("/api/cotizador/criterios", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          modelo_id: filtroModelo, categoria_id: cat.id,
-          etiqueta: "Impecable", descuento_usd: 0, orden: 0, activo: true,
-        }),
-      })
-      if (!res.ok) errors++
+      // Si ya existe un criterio "Impecable" (cualquier descuento) para este
+      // modelo+categoría, lo actualizamos a USD 0 en vez de crear duplicado.
+      const existente = criterios.find(c =>
+        c.modelo_id === filtroModelo &&
+        c.categoria_id === cat.id &&
+        c.activo &&
+        (c.etiqueta ?? "").toLowerCase().trim() === "impecable"
+      )
+      if (existente) {
+        const res = await fetch(`/api/cotizador/criterios/${existente.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            modelo_id: existente.modelo_id,
+            categoria_id: existente.categoria_id,
+            etiqueta: existente.etiqueta,
+            descuento_usd: 0,
+            descuento_porcentaje: existente.descuento_porcentaje ?? null,
+            orden: existente.orden ?? 0,
+            activo: true,
+            web_deriva_atencion: existente.web_deriva_atencion ?? false,
+          }),
+        })
+        if (!res.ok) errors++
+      } else {
+        const res = await fetch("/api/cotizador/criterios", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            modelo_id: filtroModelo, categoria_id: cat.id,
+            etiqueta: "Impecable", descuento_usd: 0, orden: 0, activo: true,
+          }),
+        })
+        if (!res.ok) errors++
+      }
     }
-    if (errors > 0) onError(`${errors} de ${impecablesFaltantes.length} no se pudieron crear`)
+    if (errors > 0) onError(`${errors} de ${impecablesFaltantes.length} no se pudieron procesar`)
     else onError(null)
     onChange()
   }

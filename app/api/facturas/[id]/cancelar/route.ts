@@ -71,6 +71,59 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     else advertencias.push(`Reversa de asiento IVA falló: ${r.error}`)
   }
 
+  // 5. Si la factura proviene de una seña, liberar la referencia y volver
+  //    el estado de la seña a "registrada" para que el operador pueda
+  //    reintentar el cierre con otra factura sin tener que cancelar la seña
+  //    completa. También cancelar el remito asociado y revertir su asiento.
+  const { data: senia } = await supabase
+    .from("senias_equipo")
+    .select("id, numero, remito_id, remito_numero, seguimiento, monto_senia")
+    .eq("factura_id", id)
+    .maybeSingle()
+  if (senia) {
+    // Cancelar el remito + revertir su asiento
+    if (senia.remito_id) {
+      const { data: rem } = await supabase
+        .from("remitos")
+        .select("id, asiento_id")
+        .eq("id", senia.remito_id)
+        .maybeSingle()
+      if (rem?.asiento_id) {
+        await generarAsientoReversa(supabase, rem.asiento_id, `Cancelación remito ${senia.remito_numero ?? ""} (cancelación factura ${factura.numero})`)
+      }
+      await supabase
+        .from("remitos")
+        .update({ estado: "cancelado", updated_at: new Date().toISOString() })
+        .eq("id", senia.remito_id)
+    }
+    // Liberar la seña: vuelve a "registrada" para que el operador pueda
+    // reabrir el cierre. Si tenía monto_senia > 0 lo respetamos (recibo
+    // sigue válido); si era sin_senia, queda "en_curso" sin_senia.
+    const nuevaEstadoSenia = (Number(senia.monto_senia ?? 0) > 0) ? "registrada" : "sin_senia"
+    const seguimiento = [
+      ...((senia as { seguimiento?: unknown[] }).seguimiento ?? []),
+      {
+        fecha: new Date().toISOString(),
+        usuario: "Sistema",
+        accion: "Factura cancelada — cierre liberado",
+        detalle: `Factura ${factura.numero} cancelada${motivo ? ` (${motivo})` : ""}. Remito ${senia.remito_numero ?? ""} cancelado. Operador puede confirmar de nuevo.`,
+      },
+    ]
+    await supabase
+      .from("senias_equipo")
+      .update({
+        estado: "en_curso",
+        estado_senia: nuevaEstadoSenia,
+        factura_id: null,
+        factura_numero: null,
+        remito_id: null,
+        remito_numero: null,
+        medios_pago_cierre: [],
+        seguimiento,
+      })
+      .eq("id", senia.id)
+  }
+
   return NextResponse.json({
     ok: true,
     asiento_reversa_negro_id: asientoReversaNegro,

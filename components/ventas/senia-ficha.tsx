@@ -264,7 +264,7 @@ export default function SeniaFicha({ seniaId }: { seniaId: number }) {
               className="text-sm bg-indigo-900 hover:bg-indigo-800 text-white rounded-lg px-3 py-1.5 flex items-center gap-1"
             >
               <CheckCircle className="w-4 h-4" />
-              Confirmar Cierre
+              Confirmar Operación
             </button>
           )}
           {senia.estado === "en_curso" && (
@@ -415,18 +415,37 @@ export default function SeniaFicha({ seniaId }: { seniaId: number }) {
                   {cajaValores.map(v => <option key={v.id} value={v.id}>{v.nombre} ({v.tipo}{v.subtipo ? `/${v.subtipo}` : ""})</option>)}
                 </select>
               </div>
-              {cajaValores.find(v => v.id === cajaValorId)?.moneda === "USD" && moneda === "ARS" && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Cotización USD→ARS</label>
-                  <input
-                    type="number"
-                    value={cotizacionPago}
-                    onChange={e => setCotizacionPago(parseFloat(e.target.value) || 1)}
-                    step={0.01}
-                    className="w-full border rounded px-2 py-1.5 text-sm"
-                  />
-                </div>
-              )}
+              {(() => {
+                const monedaPago = cajaValores.find(v => v.id === cajaValorId)?.moneda
+                if (!monedaPago || monedaPago === moneda) return null
+                // El pago viene en una moneda distinta a la del seña — pedimos cotización
+                const labelDireccion = monedaPago === "ARS" && moneda === "USD"
+                  ? "Cotización ARS → USD (cuántos $ vale 1 USD)"
+                  : monedaPago === "USD" && moneda === "ARS"
+                    ? "Cotización USD → ARS (cuántos $ vale 1 USD)"
+                    : "Cotización"
+                return (
+                  <div className="bg-amber-50 border border-amber-200 rounded p-2">
+                    <label className="block text-xs font-medium text-amber-800 mb-1">{labelDireccion}</label>
+                    <input
+                      type="number"
+                      value={cotizacionPago}
+                      onChange={e => setCotizacionPago(parseFloat(e.target.value) || 1)}
+                      step={0.01}
+                      className="w-full border border-amber-300 rounded px-2 py-1.5 text-sm bg-white"
+                    />
+                    {cotizacionPago > 0 && montoInput > 0 && (
+                      <p className="text-[11px] text-amber-700 mt-1">
+                        {monedaPago === "ARS" && moneda === "USD"
+                          ? `${monedaPago} ${montoInput.toLocaleString("es-AR")} = USD ${(montoInput / cotizacionPago).toFixed(2)}`
+                          : monedaPago === "USD" && moneda === "ARS"
+                            ? `USD ${montoInput.toLocaleString("es-AR")} = ARS ${(montoInput * cotizacionPago).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+                            : ""}
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
             <div className="flex gap-3 justify-end mt-5">
               <button onClick={() => setShowRegistrarModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
@@ -448,10 +467,10 @@ export default function SeniaFicha({ seniaId }: { seniaId: number }) {
       {showCierreModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Confirmar Cierre de Seña</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Confirmar Operación</h3>
             <p className="text-sm text-gray-500 mb-3">
               Saldo pendiente: <strong>{formatCurrency(Math.max(0, (senia.precio_final ?? 0) - (senia.monto_senia ?? 0)), moneda)}</strong>.
-              Distribuilo entre los medios de pago para cerrar la operación. Se generan Remito y Factura automáticamente.
+              Se genera el Remito (con asiento de inventario) y la Factura confirmada (con asiento de venta).
             </p>
             <div className="space-y-2 mb-3">
               {mediosCierre.map((mp, idx) => (
@@ -503,7 +522,7 @@ export default function SeniaFicha({ seniaId }: { seniaId: number }) {
                 disabled={accionando || mediosCierre.length === 0}
                 className="px-4 py-2 text-sm bg-indigo-900 hover:bg-indigo-800 text-white rounded-lg disabled:opacity-50"
               >
-                {accionando ? "Cerrando…" : "Confirmar Cierre"}
+                {accionando ? "Confirmando…" : "Confirmar Operación"}
               </button>
             </div>
           </div>
