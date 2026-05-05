@@ -12,6 +12,7 @@ function getSupabase() {
 export async function GET(req: Request) {
   const supabase = getSupabase()
   const { searchParams } = new URL(req.url)
+  const id = searchParams.get("id")
   const productoId = searchParams.get("producto_id")
   const depositoId = searchParams.get("deposito_id")
   const ubicacionId = searchParams.get("ubicacion_id")
@@ -27,7 +28,9 @@ export async function GET(req: Request) {
       depositos(id, codigo, nombre)
     `)
     .order("created_at", { ascending: false })
+    .range(0, 49999)
 
+  if (id) query = query.eq("id", Number(id))
   if (productoId) query = query.eq("producto_id", Number(productoId))
   if (depositoId) query = query.eq("deposito_id", Number(depositoId))
   if (ubicacionId) query = query.eq("ubicacion_id", Number(ubicacionId))

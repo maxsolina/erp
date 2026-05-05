@@ -1,6 +1,7 @@
 import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { registrarEvento } from "@/lib/seguimiento"
 
 export async function GET() {
   const supabase = await createClient()
@@ -25,5 +26,14 @@ export async function POST(request: Request) {
     .single()
 
   if (error) return dbError(error)
+
+  await registrarEvento(supabase, {
+    tipo_documento: "nota_credito_compra",
+    documento_id: data.id,
+    tipo_evento: "creacion",
+    usuario: body.usuario ?? null,
+    descripcion: `Nota de Crédito Compra ${data.numero ?? `#${data.id}`}${body.proveedor_nombre ? ` — ${body.proveedor_nombre}` : ""}`,
+  })
+
   return NextResponse.json(data, { status: 201 })
 }

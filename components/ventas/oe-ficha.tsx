@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { CheckCircle, FileText, Truck } from "lucide-react"
 import BotonVolver from "@/components/ui/boton-volver"
+import SeguimientoPanel from "@/components/seguimiento-panel"
 import {
   formatCurrency,
   formatDate,
@@ -370,6 +371,8 @@ export default function OeFicha({ oeId }: { oeId: number }) {
           )}
         </div>
       </div>
+
+      <SeguimientoPanel tipoDocumento="orden_entrega" documentoId={oe.id} />
     </div>
   )
 }

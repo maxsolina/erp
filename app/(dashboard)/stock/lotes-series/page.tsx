@@ -13,5 +13,5 @@ export default function LotesSeriesPage() {
     if (!canSee("stock", "lotes_series")) router.replace("/")
   }, [canSee, router])
 
-  return <LotesListado dataset="todos" title="Lotes y Series" moduleName="lotes_series" />
+  return <LotesListado dataset="todos" title="Tracking de Series" moduleName="lotes_series" />
 }

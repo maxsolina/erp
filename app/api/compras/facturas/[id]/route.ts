@@ -29,7 +29,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         descuento_pct: l.descuento_pct ?? 0,
         subtotal: l.subtotal ?? 0,
       }))
-      await supabase.from("compras_facturas_lineas").insert(lineasPayload)
+      const { error: linErr } = await supabase.from("compras_facturas_lineas").insert(lineasPayload)
+      if (linErr) {
+        return NextResponse.json(
+          { error: `Factura actualizada pero error al reinsertar líneas: ${linErr.message}` },
+          { status: 207 }
+        )
+      }
     }
   }
 

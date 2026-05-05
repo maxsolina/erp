@@ -37,12 +37,6 @@ export const contabilidadSidebarConfig: SidebarConfig = {
       icon: BookOpen,
       items: [
         { label: "Libro Mayor", href: "/contabilidad/libro-mayor", icon: BookOpen },
-        { label: "Libro IVA Digital", href: "/contabilidad/libro-iva-digital", icon: BookOpen },
-        { label: "Balance Sumas y Saldos", href: "/contabilidad/balance-sumas-saldos", icon: TrendingUp },
-        { label: "Balance General", href: "/contabilidad/balance-general", icon: PieChart },
-        { label: "Estado de Resultados", href: "/contabilidad/estado-resultados", icon: TrendingUp },
-        { label: "Informes Contables", href: "/contabilidad/informes-contables", icon: PieChart },
-        { label: "Control Presupuestario", href: "/contabilidad/control-presupuestario", icon: TrendingUp },
       ],
     },
     {
@@ -50,7 +44,7 @@ export const contabilidadSidebarConfig: SidebarConfig = {
       label: "Operaciones",
       icon: Layers,
       items: [
-        { label: "Amortizaciones", href: "/contabilidad/amortizaciones", icon: TrendingUp },
+        { label: "Facturaciones", href: "/contabilidad/facturaciones", icon: FileText },
         { label: "Devengamientos Diferidos", href: "/contabilidad/devengamientos-diferidos", icon: Calendar },
       ],
     },

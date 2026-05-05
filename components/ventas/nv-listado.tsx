@@ -8,6 +8,7 @@ import OdooFilterBar, {
   type GroupByOption,
   type SavedFilter,
 } from "@/components/odoo-filter-bar"
+import { usePaginacion } from "@/components/ui/paginacion"
 import {
   formatCurrency,
   formatDate,
@@ -60,17 +61,22 @@ export default function NvListado() {
     ].filter(f => f.values.length > 0)
   }, [nvs])
 
+  const { paginated, controles } = usePaginacion(filtered)
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-amber-900">Notas de Venta</h1>
-        <Link
-          href="/ventas/nv/nueva"
-          className="bg-indigo-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Nueva NV
-        </Link>
+        <div className="flex items-center gap-3">
+          {controles}
+          <Link
+            href="/ventas/nv/nueva"
+            className="bg-indigo-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Nueva NV
+          </Link>
+        </div>
       </div>
 
       <OdooFilterBar
@@ -113,7 +119,7 @@ export default function NvListado() {
             {cargando && (
               <tr><td colSpan={6} className="py-8 text-center text-gray-400">Cargando...</td></tr>
             )}
-            {!cargando && filtered.map(nv => {
+            {!cargando && paginated.map(nv => {
               const href = `/ventas/nv/${nv.id}`
               return (
                 <tr key={nv.id} className="border-b border-gray-100 hover:bg-gray-50">
@@ -138,6 +144,11 @@ export default function NvListado() {
             )}
           </tbody>
         </table>
+        {filtered.length > 0 && (
+          <div className="flex justify-end px-4 py-2 border-t border-gray-100 bg-gray-50">
+            {controles}
+          </div>
+        )}
       </div>
     </div>
   )

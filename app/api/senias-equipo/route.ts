@@ -1,6 +1,7 @@
 import { dbError } from "@/lib/api-utils"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+import { registrarEvento } from "@/lib/seguimiento"
 
 function getSupabase() {
   return createClient(
@@ -92,7 +93,7 @@ export async function POST(req: Request) {
   else if (nvData) {
     nvId = nvData.id
     // Insertar línea del producto en la NV
-    await supabase.from("notas_venta_lineas").insert({
+    const { error: nvLineErr } = await supabase.from("notas_venta_lineas").insert({
       nota_venta_id: nvData.id,
       producto_id: stock_item_id ?? null,
       producto_nombre: equipo_nombre,
@@ -103,6 +104,7 @@ export async function POST(req: Request) {
       subtotal: precio_final,
       iva: 0,
     })
+    if (nvLineErr) errors.nv_linea = nvLineErr.message
   }
 
   // 3. Orden de Entrega
@@ -204,6 +206,14 @@ export async function POST(req: Request) {
         .eq("id", stock_item_id)
     }
   }
+
+  await registrarEvento(supabase, {
+    tipo_documento: "senia_equipo",
+    documento_id: senia.id,
+    tipo_evento: "creacion",
+    usuario: body.usuario ?? null,
+    descripcion: `Seña ${numero}${cliente_nombre ? ` — ${cliente_nombre}` : ""}`,
+  })
 
   return NextResponse.json({
     ok: true,

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { registrarEvento } from "@/lib/seguimiento"
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
@@ -78,6 +79,15 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       }
     }
   }
+
+  await registrarEvento(supabase, {
+    tipo_documento: "orden_pago",
+    documento_id: op.id,
+    tipo_evento: "cambio_estado",
+    valor_anterior: "publicado",
+    valor_nuevo: "cancelado",
+    usuario: null,
+  })
 
   return NextResponse.json({ success: true, estado: "cancelado" })
 }

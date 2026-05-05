@@ -1,6 +1,7 @@
 import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { registrarEvento } from "@/lib/seguimiento"
 
 export async function GET(request: Request) {
   const supabase = await createClient()
@@ -12,6 +13,7 @@ export async function GET(request: Request) {
     .from("proveedores")
     .select("*")
     .order("id", { ascending: false })
+    .range(0, 49999)
 
   if (busqueda) {
     query = query.or(
@@ -38,5 +40,14 @@ export async function POST(request: Request) {
     .single()
 
   if (error) return dbError(error)
+
+  await registrarEvento(supabase, {
+    tipo_documento: "proveedor",
+    documento_id: data.id,
+    tipo_evento: "creacion",
+    usuario: body.usuario ?? null,
+    descripcion: `Proveedor ${data.codigo ?? ""} ${data.nombre ?? ""}`.trim(),
+  })
+
   return NextResponse.json(data, { status: 201 })
 }

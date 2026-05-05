@@ -22,6 +22,7 @@ import {
   XCircle,
 } from "lucide-react"
 import BotonVolver from "@/components/ui/boton-volver"
+import SeguimientoPanel from "@/components/seguimiento-panel"
 import { useERP } from "@/contexts/erp-context"
 import {
   diasRestantes,
@@ -751,6 +752,8 @@ export default function SeniaFicha({ seniaId }: { seniaId: number }) {
           </div>
         </div>
       )}
+
+      <SeguimientoPanel tipoDocumento="senia_equipo" documentoId={senia.id} />
     </div>
   )
 }

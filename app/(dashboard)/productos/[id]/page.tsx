@@ -34,16 +34,25 @@ export default function EditarProductoPage({ params }: { params: Promise<{ id: s
       setCargando(false)
       return
     }
-    supabase
-      .from("productos")
-      .select("*")
-      .eq("id", idNum)
-      .maybeSingle()
-      .then(({ data, error: err }) => {
+    // Vamos por el API (no Supabase directo) — el endpoint enriquece `stock_real`
+    // en vivo desde stock_unidades para productos con número de serie. Si vamos
+    // por Supabase directo leemos la columna stale.
+    fetch(`/api/productos/${idNum}`)
+      .then(async r => {
         if (cancelado) return
-        if (err) setError(err.message)
-        else if (!data) setError("Producto no encontrado")
-        else setProducto(data as Producto)
+        if (!r.ok) {
+          if (r.status === 404) setError("Producto no encontrado")
+          else setError(`HTTP ${r.status}`)
+          setCargando(false)
+          return
+        }
+        const data = await r.json()
+        setProducto(data as Producto)
+        setCargando(false)
+      })
+      .catch(err => {
+        if (cancelado) return
+        setError(err instanceof Error ? err.message : "Error cargando producto")
         setCargando(false)
       })
     return () => { cancelado = true }
@@ -55,12 +64,16 @@ export default function EditarProductoPage({ params }: { params: Promise<{ id: s
     if (payload.imagen_url?.startsWith("blob:")) payload.imagen_url = null
     if (!productoId) return
 
-    const { error: err } = await supabase
-      .from("productos")
-      .update(payload)
-      .eq("id", productoId)
-    if (err) {
-      alert(err.message)
+    // Vamos por el API (no Supabase directo) — filtra payload con whitelist
+    // y mantiene la lógica de stock_real recomputado en vivo.
+    const res = await fetch(`/api/productos/${productoId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      alert(data?.error ?? `HTTP ${res.status}`)
       return
     }
     router.push("/productos")

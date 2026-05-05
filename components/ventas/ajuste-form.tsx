@@ -204,9 +204,14 @@ export default function AjusteForm({ tipo }: { tipo: TipoAjuste }) {
               className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
               <option value="">Sin categoría</option>
-              {categorias.map(c => (
-                <option key={c.id} value={c.nombre}>{c.nombre}</option>
-              ))}
+              {categorias
+                // "Equipos en parte de pago" se setea automáticamente desde el
+                // circuito de Toma de Equipo (app/api/tomas-equipo) — no se ofrece
+                // al usuario en el form manual de NC/ND.
+                .filter(c => c.nombre !== "Equipos en parte de pago")
+                .map(c => (
+                  <option key={c.id} value={c.nombre}>{c.nombre}</option>
+                ))}
             </select>
           </div>
         </div>

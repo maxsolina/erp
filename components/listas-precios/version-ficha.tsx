@@ -12,7 +12,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronRight, Edit, AlertCircle, CheckCircle } from "lucide-react"
 import BotonVolver from "@/components/ui/boton-volver"
-import SeguimientoPanel from "./seguimiento-panel"
+import SeguimientoPanel from "@/components/seguimiento-panel"
 import {
   formatCurrency,
   formatPrecioForzadoARS,
@@ -28,6 +28,7 @@ export default function VersionFicha({ versionId }: { versionId: number }) {
   const [listaPrecios, setListaPrecios] = useState<ListaPrecios | null>(null)
   const [cotizacionesUsdPorTipo, setCotizacionesUsdPorTipo] = useState<Record<string, number>>({})
   const [cotizacionUsdBlue, setCotizacionUsdBlue] = useState<number>(0)
+  const [tab, setTab] = useState<"lineas" | "historial">("lineas")
 
   // Carga de la versión: traemos todas y filtramos por id
   useEffect(() => {
@@ -156,6 +157,36 @@ export default function VersionFicha({ versionId }: { versionId: number }) {
         </div>
       )}
 
+      {/* Tabs */}
+      <div className="border-b border-gray-200 mb-4 flex gap-6">
+        {[
+          { key: "lineas", label: `Líneas (${version.lineas.length})` },
+          { key: "historial", label: "Historial" },
+        ].map(t => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key as "lineas" | "historial")}
+            className={`-mb-px pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${
+              tab === t.key
+                ? "border-emerald-600 text-emerald-700"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "historial" ? (
+        <div className="bg-white border border-gray-200 rounded p-6">
+          <SeguimientoPanel
+            tipoDocumento="lista_precio_version"
+            documentoId={version.id}
+            collapsed={false}
+          />
+        </div>
+      ) : (
       <div className="bg-white border border-gray-200 rounded p-6">
         <div className="grid grid-cols-4 gap-4 mb-6 items-end">
           <div>
@@ -314,8 +345,8 @@ export default function VersionFicha({ versionId }: { versionId: number }) {
           </div>
         </div>
 
-        {version.seguimiento && <SeguimientoPanel seguimiento={version.seguimiento} />}
       </div>
+      )}
     </div>
   )
 }

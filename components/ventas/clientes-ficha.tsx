@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Edit } from "lucide-react"
 import BotonVolver from "@/components/ui/boton-volver"
+import SeguimientoPanel from "@/components/seguimiento-panel"
 import { formatCurrency, type Cliente } from "./_shared"
 
 export default function ClienteFicha({ clienteId }: { clienteId: number }) {
@@ -95,6 +96,8 @@ export default function ClienteFicha({ clienteId }: { clienteId: number }) {
           </div>
         </div>
       </div>
+
+      <SeguimientoPanel tipoDocumento="cliente" documentoId={cliente.id} />
     </div>
   )
 }

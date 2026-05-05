@@ -25,6 +25,7 @@ export async function GET(req: Request) {
     .select("id, fecha, cliente_id, vendedor_id, sucursal_id")
     .gte("fecha", fechaDesde)
     .lte("fecha", fechaHasta + "T23:59:59")
+    .range(0, 49999)
 
   if (sucursalIds.length > 0) {
     nvQuery = nvQuery.in("sucursal_id", sucursalIds)
@@ -41,6 +42,7 @@ export async function GET(req: Request) {
     .from("notas_venta_lineas")
     .select("id, nota_venta_id, producto_id, producto_nombre, cantidad, precio_unitario, descuento, subtotal")
     .in("nota_venta_id", nvIds)
+    .range(0, 49999)
 
   if (lineasErr) return NextResponse.json({ error: lineasErr.message }, { status: 500 })
   if (!lineas || lineas.length === 0) return NextResponse.json([])

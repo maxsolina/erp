@@ -8,6 +8,7 @@ import OdooFilterBar, {
   type GroupByOption,
   type SavedFilter,
 } from "@/components/odoo-filter-bar"
+import { usePaginacion } from "@/components/ui/paginacion"
 import {
   formatDate,
   getEstadoOEColor,
@@ -59,17 +60,22 @@ export default function OeListado() {
     ].filter(f => f.values.length > 0)
   }, [oes])
 
+  const { paginated, controles } = usePaginacion(filtered)
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-amber-900">Órdenes de Entrega</h1>
-        <Link
-          href="/ventas/oe/nueva"
-          className="bg-indigo-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Nueva OE
-        </Link>
+        <div className="flex items-center gap-3">
+          {controles}
+          <Link
+            href="/ventas/oe/nueva"
+            className="bg-indigo-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Nueva OE
+          </Link>
+        </div>
       </div>
 
       <OdooFilterBar
@@ -113,7 +119,7 @@ export default function OeListado() {
             {cargando && (
               <tr><td colSpan={7} className="py-8 text-center text-gray-400">Cargando...</td></tr>
             )}
-            {!cargando && filtered.map(oe => {
+            {!cargando && paginated.map(oe => {
               const href = `/ventas/oe/${oe.id}`
               return (
                 <tr key={oe.id} className="border-b border-gray-100 hover:bg-gray-50">
@@ -134,6 +140,11 @@ export default function OeListado() {
             )}
           </tbody>
         </table>
+        {filtered.length > 0 && (
+          <div className="flex justify-end px-4 py-2 border-t border-gray-100 bg-gray-50">
+            {controles}
+          </div>
+        )}
       </div>
     </div>
   )

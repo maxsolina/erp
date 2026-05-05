@@ -2,6 +2,7 @@ import { apiError, dbError } from "@/lib/api-utils"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { generarAsientoNCTomaEquipo } from "@/lib/contabilidad-asiento-factory"
+import { registrarEvento } from "@/lib/seguimiento"
 
 // GET — listar todas las tomas
 export async function GET() {
@@ -186,6 +187,14 @@ export async function POST(req: Request) {
     })
 
   if (recepErr) console.error("[tomas-equipo] recepcion error:", recepErr.message)
+
+  await registrarEvento(adminClient, {
+    tipo_documento: "toma_equipo",
+    documento_id: toma.id,
+    tipo_evento: "creacion",
+    usuario: body.usuario ?? null,
+    descripcion: `Toma de Equipo ${numero}${cliente_nombre ? ` — ${cliente_nombre}` : ""}`,
+  })
 
   return NextResponse.json({
     ok: true,

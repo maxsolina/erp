@@ -55,7 +55,7 @@ export const stockSidebarConfig: SidebarConfig = {
       label: "Trazabilidad",
       icon: Hash,
       items: [
-        { label: "Lotes y Series", href: "/stock/lotes-series", permKey: "lotes_series", icon: Hash },
+        { label: "Tracking de Series", href: "/stock/lotes-series", permKey: "lotes_series", icon: Hash },
         { label: "IMEI en Stock", href: "/stock/imei", permKey: "lotes_stock", icon: Smartphone },
       ],
     },

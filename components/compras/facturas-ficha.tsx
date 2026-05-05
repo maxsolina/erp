@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Download, Edit } from "lucide-react"
 import BotonVolver from "@/components/ui/boton-volver"
+import SeguimientoPanel from "@/components/seguimiento-panel"
 import {
   formatCurrency,
   formatDate,
@@ -246,6 +247,19 @@ export default function FacturasGenericoFicha({ apiUrl, backHref, monolitoEditVi
           </div>
         </div>
       </div>
+
+      {/* tipo_documento canónico según monolitoEditView (facturas_compra/nc_compra/nd_compra/ordenes_pago).
+          Si no matchea, usa el view literal — peor caso: el panel queda vacío. */}
+      <SeguimientoPanel
+        tipoDocumento={
+          monolitoEditView === "facturas_compra" ? "factura_compra"
+          : monolitoEditView === "nc_compra" ? "nota_credito_compra"
+          : monolitoEditView === "nd_compra" ? "nota_debito_compra"
+          : monolitoEditView === "ordenes_pago" ? "orden_pago"
+          : monolitoEditView
+        }
+        documentoId={data.id}
+      />
     </div>
   )
 }

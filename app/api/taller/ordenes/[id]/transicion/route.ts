@@ -1,6 +1,7 @@
 ﻿import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { registrarEvento } from "@/lib/seguimiento"
 
 // POST /api/taller/ordenes/[id]/transicion
 // Body: { nuevo_estado, usuario, nota?, motivo_cierre_id?, tecnico_id? }
@@ -24,6 +25,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (result?.error) {
     return NextResponse.json({ error: result.error }, { status: 400 })
   }
+
+  await registrarEvento(supabase, {
+    tipo_documento: "orden_taller",
+    documento_id: id,
+    tipo_evento: "cambio_estado",
+    valor_anterior: result?.estado_anterior ?? "",
+    valor_nuevo: body.nuevo_estado,
+    usuario: body.usuario ?? null,
+  })
 
   return NextResponse.json(result)
 }

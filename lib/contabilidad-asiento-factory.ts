@@ -12,6 +12,11 @@ export type ResultadoAsiento =
   | { ok: false; error: string }
 
 // ─── Factura de Venta ────────────────────────────────────────────────────────
+// Si la factura es en moneda extranjera (USD), `cotizacion` debe venir con el
+// TC aplicado para convertir subtotal/impuestos/total a ARS. Las columnas
+// `debe`/`haber` siempre se persisten en ARS (moneda base), y el importe
+// original (USD) queda en `importe_moneda_original` por línea + el TC en
+// `cotizacion_aplicada` del header.
 export async function generarAsientoFacturaVenta(
   supabase: SupabaseClient,
   factura: {
@@ -26,6 +31,7 @@ export async function generarAsientoFacturaVenta(
     impuestos: number
     total: number
     moneda?: string
+    cotizacion?: number | null
   }
 ): Promise<ResultadoAsiento> {
 
@@ -101,58 +107,69 @@ export async function generarAsientoFacturaVenta(
   const fechaDate = factura.fecha.split("T")[0]
   const tieneIVA  = factura.impuestos > 0.009 && cIVA != null
 
+  // Conversión a ARS si la factura está en moneda extranjera.
+  const monedaFac = factura.moneda ?? "ARS"
+  const esExtranjera = monedaFac !== "ARS" && (factura.cotizacion ?? 0) > 0
+  const tc = esExtranjera ? Number(factura.cotizacion) : 1
+  const toARS = (n: number) => Math.round(Number(n ?? 0) * tc * 100) / 100
+
   type Linea = {
     cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
     debe: number; haber: number; descripcion: string | null; orden: number
+    importe_moneda_original?: number | null
   }
 
   const lineas: Linea[] = [
-    // DEBE: Deudores por Ventas = total de la factura
+    // DEBE: Deudores por Ventas = total de la factura (en ARS)
     {
       cuenta_id: cDeudores.id,
       cuenta_codigo: cDeudores.codigo,
       cuenta_nombre: cDeudores.nombre,
-      debe: factura.total,
+      debe: toARS(factura.total),
       haber: 0,
       descripcion: factura.cliente_nombre ?? null,
       orden: 0,
+      importe_moneda_original: esExtranjera ? Number(factura.total) : null,
     },
   ]
 
   if (tieneIVA) {
     lineas.push(
-      // HABER: Ventas Mercadería = subtotal neto
+      // HABER: Ventas Mercadería = subtotal neto (en ARS)
       {
         cuenta_id: cVentas.id,
         cuenta_codigo: cVentas.codigo,
         cuenta_nombre: cVentas.nombre,
         debe: 0,
-        haber: factura.subtotal,
+        haber: toARS(factura.subtotal),
         descripcion: factura.numero,
         orden: 1,
+        importe_moneda_original: esExtranjera ? Number(factura.subtotal) : null,
       },
-      // HABER: IVA Débito Fiscal = impuestos
+      // HABER: IVA Débito Fiscal = impuestos (en ARS)
       {
         cuenta_id: cIVA!.id,
         cuenta_codigo: cIVA!.codigo,
         cuenta_nombre: cIVA!.nombre,
         debe: 0,
-        haber: factura.impuestos,
+        haber: toARS(factura.impuestos),
         descripcion: factura.numero,
         orden: 2,
+        importe_moneda_original: esExtranjera ? Number(factura.impuestos) : null,
       }
     )
   } else {
     lineas.push(
-      // HABER: Ventas Mercadería = total (sin IVA separado)
+      // HABER: Ventas Mercadería = total (sin IVA separado, en ARS)
       {
         cuenta_id: cVentas.id,
         cuenta_codigo: cVentas.codigo,
         cuenta_nombre: cVentas.nombre,
         debe: 0,
-        haber: factura.total,
+        haber: toARS(factura.total),
         descripcion: factura.numero,
         orden: 1,
+        importe_moneda_original: esExtranjera ? Number(factura.total) : null,
       }
     )
   }
@@ -175,17 +192,18 @@ export async function generarAsientoFacturaVenta(
   const { data: asiento, error: asientoErr } = await supabase
     .from("contabilidad_asientos")
     .insert({
-      numero:            numero ?? null,
+      numero:               numero ?? null,
       diario_id,
-      periodo_id:        periodo_id ?? null,
-      fecha:             fechaDate,
+      periodo_id:           periodo_id ?? null,
+      fecha:                fechaDate,
       sucursal_id,
-      concepto:          `Factura ${factura.numero}`,
-      referencia:        factura.numero,
-      comprobante_tipo:  "factura",
-      moneda_original:   factura.moneda ?? "ARS",
-      es_manual:         false,
-      estado:            "publicado",
+      concepto:             `Factura ${factura.numero}`,
+      referencia:           factura.numero,
+      comprobante_tipo:     "factura",
+      moneda_original:      monedaFac,
+      cotizacion_aplicada:  esExtranjera ? tc : null,
+      es_manual:            false,
+      estado:               "publicado",
     })
     .select("id")
     .single()
@@ -229,8 +247,9 @@ export async function generarAsientoIVADiferido(
     cliente_categoria_id?: number | null
     sucursal?: string | null
     moneda?: string
-    iva_total: number       // suma de IVA proporcional sobre parte facturable
-    recargo_total: number   // suma de recargos de tarjeta cobrados al cliente
+    cotizacion?: number | null  // requerida si moneda !== "ARS"
+    iva_total: number       // suma de IVA proporcional sobre parte facturable (en moneda factura)
+    recargo_total: number   // suma de recargos de tarjeta cobrados al cliente (en moneda factura)
   }
 ): Promise<{ ok: true; asiento_id: string | null } | { ok: false; error: string }> {
 
@@ -306,45 +325,58 @@ export async function generarAsientoIVADiferido(
   }
 
   // 3. Construir líneas
+  // Conversión a ARS si la factura está en moneda extranjera.
+  const monedaFac = factura.moneda ?? "ARS"
+  const esExtranjera = monedaFac !== "ARS" && (factura.cotizacion ?? 0) > 0
+  const tc = esExtranjera ? Number(factura.cotizacion) : 1
+  const toARS = (n: number) => Math.round(Number(n ?? 0) * tc * 100) / 100
+
   type Linea = {
     cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
     debe: number; haber: number; descripcion: string | null; orden: number
+    importe_moneda_original?: number | null
   }
 
-  const totalDebe = Math.round((factura.iva_total + factura.recargo_total) * 100) / 100
+  const totalDebeOriginal = Math.round((factura.iva_total + factura.recargo_total) * 100) / 100
+  const totalDebeARS = toARS(totalDebeOriginal)
   const lineas: Linea[] = [
     {
       cuenta_id: cDeudores.id,
       cuenta_codigo: cDeudores.codigo,
       cuenta_nombre: cDeudores.nombre,
-      debe: totalDebe,
+      debe: totalDebeARS,
       haber: 0,
       descripcion: factura.cliente_nombre ?? null,
       orden: 0,
+      importe_moneda_original: esExtranjera ? totalDebeOriginal : null,
     },
   ]
 
   if (factura.iva_total > 0.009 && cIVA) {
+    const ivaOriginal = Math.round(factura.iva_total * 100) / 100
     lineas.push({
       cuenta_id: cIVA.id,
       cuenta_codigo: cIVA.codigo,
       cuenta_nombre: cIVA.nombre,
       debe: 0,
-      haber: Math.round(factura.iva_total * 100) / 100,
+      haber: toARS(ivaOriginal),
       descripcion: factura.numero,
       orden: 1,
+      importe_moneda_original: esExtranjera ? ivaOriginal : null,
     })
   }
 
   if (factura.recargo_total > 0.009 && cRecargoTC) {
+    const recOriginal = Math.round(factura.recargo_total * 100) / 100
     lineas.push({
       cuenta_id: cRecargoTC.id,
       cuenta_codigo: cRecargoTC.codigo,
       cuenta_nombre: cRecargoTC.nombre,
       debe: 0,
-      haber: Math.round(factura.recargo_total * 100) / 100,
+      haber: toARS(recOriginal),
       descripcion: factura.numero,
       orden: 2,
+      importe_moneda_original: esExtranjera ? recOriginal : null,
     })
   }
 
@@ -363,17 +395,18 @@ export async function generarAsientoIVADiferido(
   const { data: asiento, error: asientoErr } = await supabase
     .from("contabilidad_asientos")
     .insert({
-      numero:           numero ?? null,
+      numero:               numero ?? null,
       diario_id,
-      periodo_id:       periodo_id ?? null,
-      fecha:            fechaDate,
+      periodo_id:           periodo_id ?? null,
+      fecha:                fechaDate,
       sucursal_id,
-      concepto:         `Factura ${factura.numero} — IVA + Recargo TC`,
-      referencia:       factura.numero,
-      comprobante_tipo: "factura_iva_diferido",
-      moneda_original:  factura.moneda ?? "ARS",
-      es_manual:        false,
-      estado:           "publicado",
+      concepto:             `Factura ${factura.numero} — IVA + Recargo TC`,
+      referencia:           factura.numero,
+      comprobante_tipo:     "factura_iva_diferido",
+      moneda_original:      monedaFac,
+      cotizacion_aplicada:  esExtranjera ? tc : null,
+      es_manual:            false,
+      estado:               "publicado",
     })
     .select("id")
     .single()
@@ -1797,6 +1830,120 @@ export async function generarAsientoRecepcionTomaEquipo(
   if (lineasErr) {
     await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
     return { ok: false, error: `Error en líneas del asiento REP TE: ${lineasErr.message}` }
+  }
+
+  return { ok: true, asiento_id: asiento.id }
+}
+
+// ─── Ajustes de Stock (positivos / negativos) ───────────────────────────────
+// Genera el asiento contable cuando se confirma un ajuste de stock.
+//   Positivo: DR Mercadería (existencias) / CR Ajuste Inventario Positivo
+//   Negativo: DR Ajuste Inventario Negativo / CR Mercadería (existencias)
+// Mapeo en `contabilidad_mapeo_cuentas` con tipo_origen "ajuste_positivo" o
+// "ajuste_negativo" y subtipos "existencias" + "contrapartida". Si falta el
+// mapeo retorna error y el confirmar debe abortar.
+export async function generarAsientoAjuste(
+  supabase: SupabaseClient,
+  ajuste: {
+    id: number
+    numero: string
+    tipo: "positivo" | "negativo"
+    fecha: string
+    sucursal_id?: number | null
+    deposito_nombre?: string | null
+    concepto?: string | null
+    importe_total: number  // suma de costo_unitario * cantidad por línea
+  }
+): Promise<ResultadoAsiento> {
+  if (!(ajuste.importe_total > 0)) {
+    return { ok: false, error: "Importe total del ajuste debe ser > 0 para generar el asiento. Asegurese de que cada línea tenga costo_unitario." }
+  }
+
+  const tipoOrigen = ajuste.tipo === "positivo" ? "ajuste_positivo" : "ajuste_negativo"
+  const { data: mapeo, error: mapeoErr } = await supabase
+    .from("contabilidad_mapeo_cuentas")
+    .select(`
+      subtipo, diario_id,
+      cuenta_debe:cuenta_debe_id(id, codigo, nombre),
+      cuenta_haber:cuenta_haber_id(id, codigo, nombre)
+    `)
+    .eq("tipo_origen", tipoOrigen)
+    .eq("activo", true)
+
+  if (mapeoErr) return { ok: false, error: `Error al leer mapeo contable: ${mapeoErr.message}` }
+  if (!mapeo || mapeo.length === 0) {
+    return {
+      ok: false,
+      error: `Sin mapeo contable para ${tipoOrigen}. Ejecute el script 097_ajustes_stock.sql.`,
+    }
+  }
+  const pm = Object.fromEntries(mapeo.map((r: any) => [r.subtipo, r]))
+
+  // Para ajuste_positivo: existencias=debe, contrapartida=haber
+  // Para ajuste_negativo: existencias=haber, contrapartida=debe
+  const cExistencias = (ajuste.tipo === "positivo"
+    ? pm["existencias"]?.cuenta_debe
+    : pm["existencias"]?.cuenta_haber) as { id: string; codigo: string; nombre: string } | null
+  const cContra = (ajuste.tipo === "positivo"
+    ? pm["contrapartida"]?.cuenta_haber
+    : pm["contrapartida"]?.cuenta_debe) as { id: string; codigo: string; nombre: string } | null
+
+  if (!cExistencias) return { ok: false, error: `Mapeo incompleto: falta cuenta 'existencias' para ${tipoOrigen}.` }
+  if (!cContra)      return { ok: false, error: `Mapeo incompleto: falta cuenta 'contrapartida' para ${tipoOrigen}.` }
+
+  const diario_id: string = pm["existencias"]?.diario_id ?? pm["contrapartida"]?.diario_id
+  if (!diario_id) return { ok: false, error: `Mapeo incompleto: falta diario_id para ${tipoOrigen}.` }
+
+  const fechaDate = ajuste.fecha.split("T")[0]
+  const { data: periodo_id } = await supabase
+    .rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate })
+
+  const importe = Math.round(Number(ajuste.importe_total) * 100) / 100
+
+  type Linea = {
+    cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
+    debe: number; haber: number; descripcion: string | null; orden: number
+  }
+  const desc = ajuste.deposito_nombre ?? ajuste.concepto ?? ajuste.numero
+  const lineas: Linea[] =
+    ajuste.tipo === "positivo"
+      ? [
+          { cuenta_id: cExistencias.id, cuenta_codigo: cExistencias.codigo, cuenta_nombre: cExistencias.nombre, debe: importe, haber: 0, descripcion: desc, orden: 0 },
+          { cuenta_id: cContra.id,      cuenta_codigo: cContra.codigo,      cuenta_nombre: cContra.nombre,      debe: 0,       haber: importe, descripcion: ajuste.numero, orden: 1 },
+        ]
+      : [
+          { cuenta_id: cContra.id,      cuenta_codigo: cContra.codigo,      cuenta_nombre: cContra.nombre,      debe: importe, haber: 0,       descripcion: desc, orden: 0 },
+          { cuenta_id: cExistencias.id, cuenta_codigo: cExistencias.codigo, cuenta_nombre: cExistencias.nombre, debe: 0,       haber: importe, descripcion: ajuste.numero, orden: 1 },
+        ]
+
+  const { data: numero } = await supabase
+    .rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario_id, p_fecha: fechaDate })
+
+  const { data: asiento, error: asientoErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null,
+      diario_id,
+      periodo_id: periodo_id ?? null,
+      fecha: fechaDate,
+      sucursal_id: ajuste.sucursal_id ?? null,
+      concepto: `Ajuste de Stock ${ajuste.numero}${ajuste.concepto ? ` — ${ajuste.concepto}` : ""}`,
+      referencia: ajuste.numero,
+      comprobante_tipo: tipoOrigen,
+      moneda_original: "ARS",
+      es_manual: false,
+      estado: "publicado",
+    })
+    .select("id")
+    .single()
+  if (asientoErr) return { ok: false, error: `Error al crear asiento de ajuste: ${asientoErr.message}` }
+
+  const { error: lineasInsErr } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineas.map(l => ({ ...l, asiento_id: asiento.id })))
+  if (lineasInsErr) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
+    return { ok: false, error: `Error en líneas del asiento de ajuste: ${lineasInsErr.message}` }
   }
 
   return { ok: true, asiento_id: asiento.id }

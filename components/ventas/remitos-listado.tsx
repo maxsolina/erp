@@ -8,6 +8,7 @@ import OdooFilterBar, {
   type GroupByOption,
   type SavedFilter,
 } from "@/components/odoo-filter-bar"
+import { usePaginacion } from "@/components/ui/paginacion"
 import {
   formatDate,
   getEstadoRemitoColor,
@@ -57,6 +58,8 @@ export default function RemitosListado() {
       { field: "control_factura", label: "Control Factura", values: controles.map(c => ({ value: c, label: c === "facturado" ? "Facturado" : "Pendiente" })) },
     ].filter(f => f.values.length > 0)
   }, [remitos])
+
+  const { paginated, controles } = usePaginacion(filtered)
 
   return (
     <div>
@@ -112,7 +115,7 @@ export default function RemitosListado() {
             {cargando && (
               <tr><td colSpan={7} className="py-8 text-center text-gray-400">Cargando...</td></tr>
             )}
-            {!cargando && filtered.map(r => {
+            {!cargando && paginated.map(r => {
               const href = `/ventas/remitos/${r.id}`
               return (
                 <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50">
@@ -137,6 +140,11 @@ export default function RemitosListado() {
             )}
           </tbody>
         </table>
+        {filtered.length > 0 && (
+          <div className="flex justify-end px-4 py-2 border-t border-gray-100 bg-gray-50">
+            {controles}
+          </div>
+        )}
       </div>
     </div>
   )

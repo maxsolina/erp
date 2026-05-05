@@ -119,6 +119,52 @@ These come from `.github/copilot-instructions.md` and must be followed consisten
 
 **No mock data.** All data must come from Supabase. Empty state = real empty result from DB. Seed data belongs in versioned SQL scripts only.
 
+## Document seguimiento (audit trail / "red social")
+
+Every document in the ERP must keep an audit log of its lifecycle. The infrastructure is already in place — every new endpoint and ficha must use it.
+
+**Tabla:** `documentos_seguimiento` (script `092_documentos_seguimiento.sql`). Campos: `tipo_documento`, `documento_id`, `tipo_evento` (`creacion` | `cambio_estado` | `cambio_campo` | `nota` | `mensaje`), `usuario`, `fecha`, `valor_anterior`, `valor_nuevo`, `descripcion`, `metadata`.
+
+**Backend (auto-eventos):** desde cualquier endpoint que cree o transicione un documento, llamar a `registrarEvento()` (helper en `lib/seguimiento.ts`):
+
+```typescript
+import { registrarEvento } from "@/lib/seguimiento"
+
+// Después de un POST exitoso:
+await registrarEvento(supabase, {
+  tipo_documento: "factura",        // string canónico — usar el mismo en frontend
+  documento_id: facData.id,
+  tipo_evento: "creacion",
+  usuario: body.usuario ?? null,
+  descripcion: `Factura ${facData.numero}`,
+})
+
+// Después de un cambio de estado:
+await registrarEvento(supabase, {
+  tipo_documento: "factura",
+  documento_id: factura.id,
+  tipo_evento: "cambio_estado",
+  valor_anterior: "abierta",
+  valor_nuevo: "confirmada",
+  usuario: body.usuario ?? null,
+})
+```
+
+Si el insert falla NO se rompe el flujo principal — el helper loguea y devuelve. Tipos de documento canónicos en uso: `nota_venta`, `orden_entrega`, `remito`, `factura`, `recibo`, `nota_credito`, `nota_debito`, `orden_compra`, `recepcion`, `factura_compra`, `senia_equipo`, `toma_equipo`, `recepcion_toma`, `ajuste_stock`, `transferencia_stock`, `cliente`, `proveedor`.
+
+**Frontend (panel en la ficha):** todas las fichas read-only deben montar `<SeguimientoPanel>` al final:
+
+```tsx
+import SeguimientoPanel from "@/components/seguimiento-panel"
+
+// Al pie de la ficha (después de los demás cards):
+<SeguimientoPanel tipoDocumento="factura" documentoId={factura.id} />
+```
+
+El panel arranca colapsado, lee de `/api/seguimiento?tipo=X&id=Y`, y muestra la timeline.
+
+**Por qué importa:** estos eventos alimentan informes de productividad ("comprobantes creados por usuario por día") y la auditoría de quién hizo qué. Si un endpoint nuevo no llama a `registrarEvento`, esos datos se pierden.
+
 ## Business circuits
 
 `app/circuitos/` documents the document-transition flows (e.g., confirming a sale order → reserves stock + generates GL entry). When adding a new document type, register its circuit there.

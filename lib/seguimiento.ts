@@ -4,6 +4,40 @@
 // — solo se logea por consola: el seguimiento es auxiliar, no crítico.
 
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { cookies } from "next/headers"
+import { createServerClient } from "@supabase/ssr"
+
+// Resuelve el username del usuario actualmente logueado leyendo las cookies
+// de sesión. Funciona tanto cuando el endpoint usa el cliente con sesión
+// (session-bound) como cuando usa el admin client (service_role) — el lookup
+// va siempre por cookies. Si no hay sesión devuelve null y el evento se
+// guarda como "sistema".
+async function getCurrentUsername(): Promise<string | null> {
+  try {
+    const cookieStore = await cookies()
+    const sessionClient = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll: () => cookieStore.getAll(),
+          setAll: () => {},
+        },
+      }
+    )
+    const { data: userData } = await sessionClient.auth.getUser()
+    const user = userData?.user
+    if (!user) return null
+    const { data: u } = await sessionClient
+      .from("usuarios")
+      .select("username, nombre")
+      .eq("auth_user_id", user.id)
+      .maybeSingle()
+    return u?.username ?? u?.nombre ?? user.email ?? null
+  } catch {
+    return null
+  }
+}
 
 export type TipoEvento =
   | "creacion"
@@ -52,6 +86,16 @@ export async function registrarEvento(
   evento: Evento
 ): Promise<void> {
   try {
+    // Resolución del usuario: SIEMPRE intentamos leerlo de la sesión primero
+    // (vía cookies) para mantener consistencia entre todos los endpoints — los
+    // que usan service_role admin client y los que pasan `usuario` desde el
+    // body. Si no hay sesión activa, caemos a lo que pasó el caller. Esto
+    // garantiza que la tabla siempre muestre el `username` canónico (ej.
+    // "solinamax") en lugar de variantes pasadas por el body (ej. "max solina"
+    // por el campo nombre del frontend).
+    const usuarioResuelto =
+      (await getCurrentUsername()) ?? evento.usuario ?? "sistema"
+
     const { error } = await supabase.from("documentos_seguimiento").insert({
       tipo_documento: evento.tipo_documento,
       documento_id: String(evento.documento_id),
@@ -60,7 +104,7 @@ export async function registrarEvento(
       valor_anterior: "valor_anterior" in evento ? evento.valor_anterior : null,
       valor_nuevo: "valor_nuevo" in evento ? evento.valor_nuevo : null,
       descripcion: "descripcion" in evento ? evento.descripcion : null,
-      usuario: evento.usuario ?? "sistema",
+      usuario: usuarioResuelto,
     })
     if (error) {
       // No lanzar — el flujo principal del documento ya pasó.

@@ -2,6 +2,7 @@ import { dbError } from "@/lib/api-utils"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 import { generarAsientoFacturaVenta } from "@/lib/contabilidad-asiento-factory"
+import { registrarEvento } from "@/lib/seguimiento"
 
 function getSupabase() {
   return createClient(
@@ -28,6 +29,7 @@ export async function GET(req: Request) {
       factura_medios_pago(*, tarjeta:tarjeta_id(id, nombre, tipo))
     `)
     .order("created_at", { ascending: false })
+    .range(0, 49999)
 
   if (id) query = query.eq("id", Number(id))
   else if (numero) query = query.eq("numero", numero)
@@ -170,6 +172,7 @@ export async function POST(req: Request) {
     impuestos: 0,
     total,
     moneda,
+    cotizacion: moneda && moneda !== "ARS" ? Number(cotizacion ?? 0) : null,
   })
 
   if (!asientoResult.ok) {
@@ -186,6 +189,14 @@ export async function POST(req: Request) {
     .from("facturas")
     .update({ asiento_id: asientoResult.asiento_id })
     .eq("id", facData.id)
+
+  await registrarEvento(supabase, {
+    tipo_documento: "factura",
+    documento_id: facData.id,
+    tipo_evento: "creacion",
+    usuario: body.usuario ?? null,
+    descripcion: `Factura ${facData.numero}${cliente_nombre ? ` — ${cliente_nombre}` : ""}`,
+  })
 
   return NextResponse.json({ ...facData, asiento_id: asientoResult.asiento_id })
 }

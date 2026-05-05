@@ -45,7 +45,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         const { id: _mid, ...rest } = m as Record<string, unknown>
         return { ...rest, op_id: id }
       })
-      await supabase.from("compras_op_medios_pago").insert(mediosConOp)
+      const { error: medErr } = await supabase.from("compras_op_medios_pago").insert(mediosConOp)
+      if (medErr) {
+        return NextResponse.json({ error: `OP actualizada pero error al reinsertar medios de pago: ${medErr.message}` }, { status: 207 })
+      }
     }
   }
 
@@ -57,7 +60,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         const { id: _cid, ...rest } = c as Record<string, unknown>
         return { ...rest, op_id: id }
       })
-      await supabase.from("compras_op_comprobantes").insert(compConOp)
+      const { error: compErr } = await supabase.from("compras_op_comprobantes").insert(compConOp)
+      if (compErr) {
+        return NextResponse.json({ error: `OP actualizada pero error al reinsertar comprobantes: ${compErr.message}` }, { status: 207 })
+      }
     }
   }
 

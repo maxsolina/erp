@@ -38,13 +38,19 @@ export default function ProductosListingPage() {
   const cargarProductos = useCallback(async () => {
     setCargando(true)
     setError(null)
-    const { data, error: err } = await supabase
-      .from("productos")
-      .select("*")
-      .order("id", { ascending: false })
-    if (err) setError(err.message)
-    else setProductos((data ?? []) as Producto[])
-    setCargando(false)
+    // Vamos por el API (no Supabase directo) porque el endpoint enriquece
+    // `stock_real` en vivo desde stock_unidades para productos con número de
+    // serie — la columna en DB queda obsoleta porque nadie la mantiene.
+    try {
+      const res = await fetch("/api/productos")
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      setProductos((Array.isArray(data) ? data : []) as Producto[])
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error cargando productos")
+    } finally {
+      setCargando(false)
+    }
   }, [])
 
   useEffect(() => { cargarProductos() }, [cargarProductos])
@@ -52,12 +58,17 @@ export default function ProductosListingPage() {
   async function handleToggleActivo(e: React.MouseEvent, p: Producto) {
     e.preventDefault()
     e.stopPropagation()
-    const { error: err } = await supabase
-      .from("productos")
-      .update({ activo: !p.activo })
-      .eq("id", p.id)
-    if (err) alert(err.message)
-    else await cargarProductos()
+    const res = await fetch(`/api/productos/${p.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ activo: !p.activo }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      alert(data?.error ?? `HTTP ${res.status}`)
+      return
+    }
+    await cargarProductos()
   }
 
   const productosFiltrados = useMemo(() => {
