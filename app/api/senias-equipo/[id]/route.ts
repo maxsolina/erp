@@ -6,6 +6,7 @@ import {
   generarAsientoRemito,
   generarAsientoFacturaVenta,
 } from "@/lib/contabilidad-asiento-factory"
+import { registrarEvento } from "@/lib/seguimiento"
 
 function getSupabase() {
   return createClient(
@@ -443,6 +444,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       .select()
       .single()
     if (error) return dbError(error)
+
+    await registrarEvento(supabase, {
+      tipo_documento: "senia_equipo",
+      documento_id: Number(id),
+      tipo_evento: "cambio_estado",
+      valor_anterior: senia.estado,
+      valor_nuevo: "cancelada",
+      usuario: body.usuario ?? null,
+    })
+
     return NextResponse.json({ ok: true, senia: updated })
   }
 
@@ -527,7 +538,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           .update({ estado: "entregado", updated_at: ahora })
           .eq("id", unidad.id)
 
-        await supabase.from("stock_movimientos").insert({
+        const { error: movEgresoErr } = await supabase.from("stock_movimientos").insert({
           tipo: "egreso",
           producto_id: unidad.producto_id,
           producto_nombre: senia.equipo_nombre ?? "",
@@ -543,6 +554,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           usuario: usuario ?? "Operador",
           observaciones: `Entrega confirmada (cierre seña ${senia.numero}). NV: ${senia.nota_venta_numero ?? "-"} | OE: ${senia.oe_numero ?? "-"}`,
         })
+        if (movEgresoErr) {
+          // No abortamos — el remito y la unidad ya están actualizados. Loggeamos
+          // y propagamos el error como advertencia para que el front sepa.
+          console.error("[senia cierre] error al registrar movimiento de egreso:", movEgresoErr.message)
+        }
       }
     }
 
@@ -587,7 +603,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!facErr && facData) {
       facturaId = facData.id
       // Insertar línea de producto en la factura
-      await supabase.from("facturas_lineas").insert({
+      const { error: facLinErr } = await supabase.from("facturas_lineas").insert({
         factura_id: facData.id,
         producto_id: senia.stock_item_id ?? null,
         producto_nombre: senia.equipo_nombre,
@@ -597,6 +613,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         descuento: senia.descuento ?? 0,
         subtotal: senia.precio_final,
       })
+      if (facLinErr) {
+        console.error("[senia cierre] error en línea de factura:", facLinErr.message)
+      }
 
       // Asiento contable de la factura (DR Deudores / CR Ventas).
       // Si falla, loggeamos pero no abortamos.
@@ -611,6 +630,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         impuestos: 0,
         total: Number(senia.precio_final),
         moneda: senia.moneda ?? "ARS",
+        cotizacion: (senia.moneda && senia.moneda !== "ARS") ? Number(senia.cotizacion ?? 0) : null,
       })
       if (asientoFac.ok && asientoFac.asiento_id) {
         facturaAsientoId = asientoFac.asiento_id
@@ -667,6 +687,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       .select()
       .single()
     if (error) return dbError(error)
+
+    await registrarEvento(supabase, {
+      tipo_documento: "senia_equipo",
+      documento_id: Number(id),
+      tipo_evento: "cambio_estado",
+      valor_anterior: senia.estado,
+      valor_nuevo: "confirmada",
+      usuario: body.usuario ?? null,
+    })
+
     return NextResponse.json({ ok: true, senia: updated, remito_numero: remitoNumero, factura_numero: facturaNumero })
   }
 

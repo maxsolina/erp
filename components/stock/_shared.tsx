@@ -6,6 +6,7 @@
 
 import { useMemo, useState } from "react"
 import { ArrowRight, MessageSquare, Star, User } from "lucide-react"
+import { usePaginacion } from "@/components/ui/paginacion"
 import OdooFilterBar, {
   type FilterOption,
   type GroupByOption,
@@ -449,6 +450,7 @@ export function mapLoteSerie(raw: any, prodById?: Map<number, any>): LoteSerie {
 
 // ─── StockListSection (wrapper reutilizable con OdooFilterBar) ──────────────
 // Extraído de components/modulo-stock.tsx (~574-634).
+// Paginación frontend integrada vía `usePaginacion` (ver components/ui/paginacion).
 
 export function StockListSection<T extends object>({
   title,
@@ -509,11 +511,19 @@ export function StockListSection<T extends object>({
     field: String(ff.field),
   }))
 
+  // Paginación: cuando no hay groupBy activo, paginamos. Si está agrupado se
+  // muestra todo (la agrupación sería rara con paginación).
+  const { paginated, controles } = usePaginacion(filtered)
+  const datosARenderizar = activeGroupBy.length > 0 ? filtered : paginated
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-amber-900">{title}</h1>
-        {actions}
+        <div className="flex items-center gap-3">
+          {activeGroupBy.length === 0 && controles}
+          {actions}
+        </div>
       </div>
       <OdooFilterBar
         moduleName={moduleName}
@@ -535,7 +545,12 @@ export function StockListSection<T extends object>({
         totalCount={data.length}
         filteredCount={filtered.length}
       />
-      <div className="mt-4">{children(filtered)}</div>
+      <div className="mt-4">{children(datosARenderizar)}</div>
+      {activeGroupBy.length === 0 && filtered.length > 0 && (
+        <div className="flex justify-end mt-3 px-4 py-2 bg-white border border-gray-200 rounded">
+          {controles}
+        </div>
+      )}
     </div>
   )
 }

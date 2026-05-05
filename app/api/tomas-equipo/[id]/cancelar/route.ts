@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { generarAsientoReversa } from "@/lib/contabilidad-asiento-factory"
+import { registrarEvento } from "@/lib/seguimiento"
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
@@ -97,6 +98,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (errCancel) {
     return NextResponse.json({ error: `Error al cancelar la toma: ${errCancel.message}` }, { status: 500 })
   }
+
+  await registrarEvento(supabase, {
+    tipo_documento: "toma_equipo",
+    documento_id: tomaId,
+    tipo_evento: "cambio_estado",
+    valor_anterior: toma.estado,
+    valor_nuevo: "cancelado",
+    usuario: null,
+  })
 
   return NextResponse.json({ ok: true })
 }

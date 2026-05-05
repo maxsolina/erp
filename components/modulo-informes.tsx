@@ -354,24 +354,9 @@ export default function ModuloInformes() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Sidebar */}
-      <div className="fixed left-0 top-11 w-48 h-[calc(100vh-44px)] bg-white border-r border-gray-200 overflow-y-auto">
-        <div className="p-4">
-          <div className="mb-6">
-            <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Informes</h3>
-            <button
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm bg-emerald-50 text-emerald-700 rounded-lg font-medium"
-            >
-              <BarChart3 className="w-4 h-4" />
-              Estadística de Ventas
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="ml-48 p-6">
+    <div>
+      {/* Main Content — el sidebar del módulo lo provee app/(dashboard)/informes/layout.tsx */}
+      <div>
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">

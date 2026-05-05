@@ -11,9 +11,6 @@ export default function InformesPage() {
   useEffect(() => {
     if (!canSee("reportes")) router.replace("/")
   }, [canSee, router])
-  return (
-    <div className="p-6">
-      <ModuloInformes />
-    </div>
-  )
+  // El padding lo provee app/(dashboard)/informes/layout.tsx vía ModuleSidebar
+  return <ModuloInformes />
 }

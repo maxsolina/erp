@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { generarAsientoIVADiferido } from "@/lib/contabilidad-asiento-factory"
+import { registrarEvento } from "@/lib/seguimiento"
 
 function getSupabase() {
   return createClient(
@@ -32,7 +33,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // 1. Leer factura
   const { data: factura, error: facErr } = await supabase
     .from("facturas")
-    .select("id, numero, estado, fecha, sucursal, moneda, subtotal, total, cliente_id, cliente_nombre")
+    .select("id, numero, estado, fecha, sucursal, moneda, cotizacion, subtotal, total, cliente_id, cliente_nombre")
     .eq("id", id)
     .single()
 
@@ -216,6 +217,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   // 6. Generar Asiento 2 (IVA diferido + recargo TC)
+  const monedaFac = factura.moneda ?? "ARS"
   const asientoResult = await generarAsientoIVADiferido(supabase, {
     id: factura.id,
     numero: factura.numero,
@@ -223,7 +225,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     cliente_id: factura.cliente_id != null ? String(factura.cliente_id) : null,
     cliente_nombre: factura.cliente_nombre,
     sucursal: factura.sucursal,
-    moneda: factura.moneda ?? "ARS",
+    moneda: monedaFac,
+    cotizacion: monedaFac !== "ARS" ? Number((factura as { cotizacion?: number | null }).cotizacion ?? 0) : null,
     iva_total: ivaTotal,
     recargo_total: recargoTotal,
   })
@@ -262,6 +265,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // de la factura ya quedó reducido por `totalCreditoToma`, y el operador
   // matchea la NC manualmente en el recibo (panel "Créditos del cliente"),
   // donde se hace la conciliación real.
+
+  await registrarEvento(supabase, {
+    tipo_documento: "factura",
+    documento_id: factura.id,
+    tipo_evento: "cambio_estado",
+    valor_anterior: factura.estado,
+    valor_nuevo: "confirmada",
+    usuario: body.usuario ?? null,
+  })
 
   return NextResponse.json({
     ok: true,

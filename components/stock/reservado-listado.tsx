@@ -21,6 +21,9 @@ interface UnidadReservada {
   ubicacion_nombre: string
   nota_venta_id: number | null
   nota_venta_numero: string
+  /** Comprobante que reservó la unidad (preferentemente seña; si no, NV) */
+  comprobante_tipo: "senia" | "nota_venta" | null
+  comprobante_numero: string
   color: string
   bateria_pct: number | null
   created_at: string
@@ -38,21 +41,45 @@ export default function ReservadoListado() {
   const cargar = async () => {
     setCargando(true)
     try {
-      const data = await fetch("/api/stock/unidades?estado=reservado").then(r => r.json())
-      const enriched: UnidadReservada[] = (Array.isArray(data) ? data : []).map((u: any) => ({
-        id: u.id,
-        nro_serie: u.nro_serie ?? "",
-        producto_nombre: u.productos?.nombre ?? "",
-        producto_codigo: u.productos?.codigo_interno ?? "",
-        deposito_nombre: u.depositos?.nombre ?? "",
-        ubicacion_nombre: u.ubicaciones?.nombre ?? "",
-        nota_venta_id: u.nota_venta_id ?? null,
-        nota_venta_numero: u.nota_venta_numero ?? "",
-        color: u.color ?? "",
-        bateria_pct: u.bateria_pct ?? null,
-        created_at: u.created_at ?? "",
-        updated_at: u.updated_at ?? "",
-      }))
+      // Traemos las unidades reservadas + las señas en curso para vincular cada
+      // unidad con el comprobante que la reservó (preferimos seña si existe;
+      // sino caemos a la NV).
+      const [unidadesData, seniasData] = await Promise.all([
+        fetch("/api/stock/unidades?estado=reservado").then(r => r.json()).catch(() => []),
+        fetch("/api/senias-equipo").then(r => r.json()).catch(() => []),
+      ])
+      const senias: Array<{ stock_item_id: number; numero: string; estado: string }> = Array.isArray(seniasData) ? seniasData : []
+      const seniaPorStockId = new Map<number, { numero: string }>()
+      for (const s of senias) {
+        if (s.stock_item_id && s.estado === "en_curso") {
+          seniaPorStockId.set(Number(s.stock_item_id), { numero: s.numero })
+        }
+      }
+      const enriched: UnidadReservada[] = (Array.isArray(unidadesData) ? unidadesData : []).map((u: any) => {
+        const senia = seniaPorStockId.get(Number(u.id))
+        const tipo: "senia" | "nota_venta" | null = senia
+          ? "senia"
+          : (u.nota_venta_numero ? "nota_venta" : null)
+        const numero = senia
+          ? senia.numero
+          : (u.nota_venta_numero ?? "")
+        return {
+          id: u.id,
+          nro_serie: u.nro_serie ?? "",
+          producto_nombre: u.productos?.nombre ?? "",
+          producto_codigo: u.productos?.codigo_interno ?? "",
+          deposito_nombre: u.depositos?.nombre ?? "",
+          ubicacion_nombre: u.ubicaciones?.nombre ?? "",
+          nota_venta_id: u.nota_venta_id ?? null,
+          nota_venta_numero: u.nota_venta_numero ?? "",
+          comprobante_tipo: tipo,
+          comprobante_numero: numero,
+          color: u.color ?? "",
+          bateria_pct: u.bateria_pct ?? null,
+          created_at: u.created_at ?? "",
+          updated_at: u.updated_at ?? "",
+        }
+      })
       setUnidades(enriched)
     } catch {
       setUnidades([])
@@ -73,7 +100,7 @@ export default function ReservadoListado() {
           !u.nro_serie.toLowerCase().includes(q) &&
           !u.producto_nombre.toLowerCase().includes(q) &&
           !u.producto_codigo.toLowerCase().includes(q) &&
-          !(u.nota_venta_numero ?? "").toLowerCase().includes(q) &&
+          !(u.comprobante_numero ?? "").toLowerCase().includes(q) &&
           !u.deposito_nombre.toLowerCase().includes(q)
         ) {
           return false
@@ -112,25 +139,16 @@ export default function ReservadoListado() {
     { id: "deposito_nombre", label: "Depósito", field: "deposito_nombre" },
     { id: "ubicacion_nombre", label: "Ubicación", field: "ubicacion_nombre" },
     { id: "producto_nombre", label: "Producto", field: "producto_nombre" },
-    { id: "nota_venta_numero", label: "Nota de Venta", field: "nota_venta_numero" },
+    { id: "comprobante_numero", label: "Comprobante", field: "comprobante_numero" },
   ]
 
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-amber-900">Stock Reservado</h1>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500">
-            {filtrados.length} {filtrados.length === 1 ? "unidad reservada" : "unidades reservadas"}
-          </span>
-          <button
-            onClick={cargar}
-            disabled={cargando}
-            className="px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-          >
-            {cargando ? "Actualizando…" : "Actualizar"}
-          </button>
-        </div>
+        <span className="text-sm text-gray-500">
+          {filtrados.length} {filtrados.length === 1 ? "unidad reservada" : "unidades reservadas"}
+        </span>
       </div>
 
       {cargando && unidades.length === 0 ? (
@@ -189,7 +207,7 @@ export default function ReservadoListado() {
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">IMEI / Serie</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Depósito</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Ubicación</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Nota de Venta</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Comprobante</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Color</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Batería</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Fecha Reserva</th>
@@ -208,12 +226,19 @@ export default function ReservadoListado() {
                       <td className="py-3 px-4 text-sm text-gray-600">{u.deposito_nombre}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{u.ubicacion_nombre}</td>
                       <td className="py-3 px-4">
-                        {u.nota_venta_numero ? (
-                          <span className="inline-block px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                            {u.nota_venta_numero}
+                        {u.comprobante_numero ? (
+                          <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+                            u.comprobante_tipo === "senia"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-blue-100 text-blue-700"
+                          }`}>
+                            <span className="opacity-70 mr-1 font-semibold">
+                              {u.comprobante_tipo === "senia" ? "Seña" : "NV"}
+                            </span>
+                            {u.comprobante_numero}
                           </span>
                         ) : (
-                          <span className="text-gray-400 text-xs italic">sin NV</span>
+                          <span className="text-gray-400 text-xs italic">sin comprobante</span>
                         )}
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-600">{u.color || "-"}</td>

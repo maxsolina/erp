@@ -1,6 +1,7 @@
 import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { registrarEvento } from "@/lib/seguimiento"
 
 // Columnas permitidas en ordenes_compra (incluye campos del script 047)
 const COLUMNAS_OC = new Set([
@@ -65,7 +66,16 @@ export async function POST(request: Request) {
       .insert([payloadActual])
       .select()
       .single()
-    if (!error) return NextResponse.json(data, { status: 201 })
+    if (!error) {
+      await registrarEvento(supabase, {
+        tipo_documento: "orden_compra",
+        documento_id: data.id,
+        tipo_evento: "creacion",
+        usuario: payloadActual.usuario ?? null,
+        descripcion: `OC ${data.numero}${payloadActual.proveedor_nombre ? ` — ${payloadActual.proveedor_nombre}` : ""}`,
+      })
+      return NextResponse.json(data, { status: 201 })
+    }
     const colFaltante = error.message.match(/Could not find the '([^']+)' column/)?.[1]
     if (!colFaltante || !(colFaltante in payloadActual)) return dbError(error)
     const { [colFaltante]: _omit, ...resto } = payloadActual

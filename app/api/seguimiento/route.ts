@@ -30,6 +30,7 @@ export async function GET(req: Request) {
     .eq("tipo_documento", tipo)
     .eq("documento_id", id)
     .order("fecha", { ascending: true })
+    .range(0, 49999)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

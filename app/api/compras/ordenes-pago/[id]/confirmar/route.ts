@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { generarAsientoOrdenPago } from "@/lib/contabilidad-asiento-factory"
+import { registrarEvento } from "@/lib/seguimiento"
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
@@ -274,6 +275,15 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (asientoError) {
     console.error(`[OP confirmar] OP ${op.numero} publicada SIN asiento: ${asientoError}`)
   }
+
+  await registrarEvento(supabase, {
+    tipo_documento: "orden_pago",
+    documento_id: op.id,
+    tipo_evento: "cambio_estado",
+    valor_anterior: "borrador",
+    valor_nuevo: "publicado",
+    usuario: null,
+  })
 
   return NextResponse.json({
     success: true,

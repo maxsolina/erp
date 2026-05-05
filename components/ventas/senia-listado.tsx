@@ -8,6 +8,7 @@ import OdooFilterBar, {
   type GroupByOption,
   type SavedFilter,
 } from "@/components/odoo-filter-bar"
+import { usePaginacion } from "@/components/ui/paginacion"
 import {
   diasRestantes,
   formatCurrency,
@@ -72,6 +73,8 @@ export default function SeniaListado() {
       { field: "estado_senia", label: "Estado Seña", values: estadoSenias.map(e => ({ value: e, label: e === "registrada" ? "Registrada" : "Sin seña" })) },
     ].filter(f => f.values.length > 0)
   }, [items])
+
+  const { paginated, controles } = usePaginacion(filtered)
 
   return (
     <div>
@@ -152,7 +155,7 @@ export default function SeniaListado() {
             {cargando && (
               <tr><td colSpan={9} className="py-8 text-center text-gray-400">Cargando...</td></tr>
             )}
-            {!cargando && filtered.map(s => {
+            {!cargando && paginated.map(s => {
               const href = `/ventas/senia-equipo/${s.id}`
               const moneda = s.moneda ?? "ARS"
               const dias = diasRestantes(s.fecha_limite)
@@ -192,6 +195,11 @@ export default function SeniaListado() {
             )}
           </tbody>
         </table>
+        {filtered.length > 0 && (
+          <div className="flex justify-end px-4 py-2 border-t border-gray-100 bg-gray-50">
+            {controles}
+          </div>
+        )}
       </div>
     </div>
   )

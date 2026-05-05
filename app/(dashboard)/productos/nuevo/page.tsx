@@ -3,15 +3,9 @@
 import { useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { createClient } from "@supabase/supabase-js"
 import { ChevronLeft } from "lucide-react"
 import { FormularioProducto, type FormProducto } from "@/components/modulo-productos"
 import { useERP } from "@/contexts/erp-context"
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-)
 
 export default function NuevoProductoPage() {
   const router = useRouter()
@@ -26,9 +20,16 @@ export default function NuevoProductoPage() {
     payload.historial_costos = payload.historial_costos ?? []
     if (payload.imagen_url?.startsWith("blob:")) payload.imagen_url = null
 
-    const { error } = await supabase.from("productos").insert([payload])
-    if (error) {
-      alert(error.message)
+    // Vamos por el API (no Supabase directo) para que filtre el payload con
+    // whitelist de columnas y registre el evento de creación en seguimiento.
+    const res = await fetch("/api/productos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      alert(data?.error ?? `HTTP ${res.status}`)
       return
     }
     router.push("/productos")

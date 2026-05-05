@@ -34,6 +34,7 @@ export async function GET(req: Request) {
     `)
     .order("fecha", { ascending: false })
     .order("created_at", { ascending: false })
+    .range(0, 49999)
 
   if (id) query = query.eq("id", id)
   if (diario_id) query = query.eq("diario_id", diario_id)
@@ -294,9 +295,18 @@ export async function PATCH(req: Request) {
     if (errRev) return NextResponse.json({ error: errRev.message }, { status: 500 })
 
     if (lineasReversion.length > 0) {
-      await supabase.from("contabilidad_asientos_lineas").insert(
-        lineasReversion.map((l: any) => ({ ...l, asiento_id: reversion.id }))
-      )
+      const { error: linErr } = await supabase
+        .from("contabilidad_asientos_lineas")
+        .insert(lineasReversion.map((l: any) => ({ ...l, asiento_id: reversion.id })))
+      if (linErr) {
+        // Crítico: rompe partida doble si falta. Borramos el asiento de reversión
+        // huérfano y devolvemos error.
+        await supabase.from("contabilidad_asientos").delete().eq("id", reversion.id)
+        return NextResponse.json(
+          { error: `Error al insertar líneas del asiento de reversión: ${linErr.message}` },
+          { status: 500 }
+        )
+      }
     }
 
     // Marcar original como cancelado

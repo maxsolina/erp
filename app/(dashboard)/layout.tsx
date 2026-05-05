@@ -34,7 +34,7 @@ function tabHref(mod: string): string {
   if (mod === "ventas") return "/ventas/clientes"
   if (mod === "compras") return "/compras/oc"
   if (mod === "finanzas") return "/finanzas/cajas"
-  if (mod === "contabilidad") return "/contabilidad/plan-cuentas"
+  if (mod === "contabilidad") return "/contabilidad/asientos-automaticos"
   return `/?module=${mod}`
 }
 

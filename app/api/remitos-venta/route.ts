@@ -1,6 +1,7 @@
 import { dbError } from "@/lib/api-utils"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+import { registrarEvento } from "@/lib/seguimiento"
 
 function getSupabase() {
   return createClient(
@@ -13,7 +14,7 @@ export async function GET(req: Request) {
   const supabase = getSupabase()
   const { searchParams } = new URL(req.url)
   const id = searchParams.get("id")
-  let query = supabase.from("remitos").select("*").order("created_at", { ascending: false })
+  let query = supabase.from("remitos").select("*").order("created_at", { ascending: false }).range(0, 49999)
   if (id) query = query.eq("id", Number(id))
   const { data, error } = await query
   if (error) return dbError(error)
@@ -72,5 +73,14 @@ export async function POST(req: Request) {
     .select()
     .single()
   if (error) return dbError(error)
+
+  await registrarEvento(supabase, {
+    tipo_documento: "remito",
+    documento_id: data.id,
+    tipo_evento: "creacion",
+    usuario: body.usuario ?? null,
+    descripcion: `Remito ${data.numero}${body.cliente_nombre ? ` — ${body.cliente_nombre}` : ""}`,
+  })
+
   return NextResponse.json({ ok: true, id: data.id, numero: data.numero })
 }

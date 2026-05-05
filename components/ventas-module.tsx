@@ -5718,11 +5718,20 @@ export default function ModuloVentas({
                         </span>
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          prod.estado === 'confirmado' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                        }`}>
-                          {prod.estado === 'confirmado' ? 'Confirmado' : 'Pendiente'}
-                        </span>
+                        {(() => {
+                          const est = String(prod.estado ?? '').toLowerCase()
+                          const cfg =
+                            est === 'confirmado'
+                              ? { label: 'Confirmado', cls: 'bg-green-100 text-green-700' }
+                              : est === 'reservado'
+                                ? { label: 'Reservado', cls: 'bg-amber-100 text-amber-700' }
+                                : { label: 'Pendiente', cls: 'bg-gray-100 text-gray-700' }
+                          return (
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${cfg.cls}`}>
+                              {cfg.label}
+                            </span>
+                          )
+                        })()}
                       </td>
                     </tr>
                   ))}

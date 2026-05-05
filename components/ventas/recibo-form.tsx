@@ -490,6 +490,9 @@ export default function ReciboForm({
       moneda: p.moneda,
       importe_comprobante: p.importe_comprobante,
       moneda_comprobante: p.moneda_comprobante,
+      // Cotización del pago — la del recibo si difiere de la moneda principal,
+      // sino null. El asiento contable la usa para convertir a ARS.
+      cotizacion: p.moneda !== monedaRecibo ? (cotizacionBlue || null) : null,
       es_tarjeta: p.es_tarjeta,
       tarjeta_nombre: p.tarjeta_nombre,
       cantidad_cuotas: p.cantidad_cuotas,

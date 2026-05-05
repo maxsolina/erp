@@ -40,6 +40,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 404 })
+
+  // Stock en vivo desde stock_unidades para productos con número de serie.
+  // (Ver comentario equivalente en /api/productos/route.ts.)
+  if (data?.tiene_numero_serie) {
+    const { data: unidades } = await supabase
+      .from("stock_unidades")
+      .select("estado")
+      .eq("producto_id", id)
+      .range(0, 49999)
+    const live = (unidades ?? []).filter(
+      u => u.estado !== "entregado" && u.estado !== "dado_de_baja"
+    ).length
+    data.stock_real = live
+  }
+
   return NextResponse.json(data)
 }
 

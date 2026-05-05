@@ -7,6 +7,7 @@ import OdooFilterBar, {
   type GroupByOption,
   type SavedFilter,
 } from "@/components/odoo-filter-bar"
+import { usePaginacion } from "@/components/ui/paginacion"
 import {
   formatDate,
   getEstadoRecepcionColor,
@@ -69,6 +70,8 @@ export default function RecepcionesListado() {
     ].filter(f => f.values.length > 0)
   }, [recs])
 
+  const { paginated, controles } = usePaginacion(filtered)
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
@@ -117,7 +120,7 @@ export default function RecepcionesListado() {
           </thead>
           <tbody>
             {cargando && <tr><td colSpan={5} className="py-8 text-center text-gray-400">Cargando...</td></tr>}
-            {!cargando && filtered.map(r => {
+            {!cargando && paginated.map(r => {
               // Las recepciones de toma de equipo no tienen ficha App Router todavía
               // (su gestión completa con IMEI/color/batería sigue en el monolito).
               // Las de OC sí tienen ficha en /compras/recepciones/[id].
@@ -144,6 +147,11 @@ export default function RecepcionesListado() {
             )}
           </tbody>
         </table>
+        {filtered.length > 0 && (
+          <div className="flex justify-end px-4 py-2 border-t border-gray-100 bg-gray-50">
+            {controles}
+          </div>
+        )}
       </div>
     </div>
   )

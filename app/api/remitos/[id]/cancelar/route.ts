@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { generarAsientoReversa } from "@/lib/contabilidad-asiento-factory"
+import { registrarEvento } from "@/lib/seguimiento"
 
 function getSupabase() {
   return createClient(
@@ -85,7 +86,16 @@ export async function POST(
       observaciones: `Reversa por cancelación de remito ${remito.numero ?? remitoId}`,
     }))
 
-    await supabase.from("stock_movimientos").insert(reversas)
+    const { error: reversasErr } = await supabase.from("stock_movimientos").insert(reversas)
+    if (reversasErr) {
+      // Crítico: si falla, las reversas no quedan registradas y el stock_real
+      // queda inconsistente. No abortamos para no dejar el remito a medias,
+      // pero devolvemos el error al final como advertencia.
+      console.error("[remito cancelar] Error registrando reversas:", reversasErr.message)
+      return NextResponse.json({
+        error: `Remito cancelado pero falló el registro de reversas de stock: ${reversasErr.message}. Verificá el stock manualmente.`,
+      }, { status: 207 })
+    }
   }
 
   // ── 4. Actualizar estado del remito a "cancelado" ───────────────────────────
@@ -93,6 +103,15 @@ export async function POST(
     .from("remitos")
     .update({ estado: "cancelado", updated_at: new Date().toISOString() })
     .eq("id", remitoId)
+
+  await registrarEvento(supabase, {
+    tipo_documento: "remito",
+    documento_id: remitoId,
+    tipo_evento: "cambio_estado",
+    valor_anterior: "entregado",
+    valor_nuevo: "cancelado",
+    usuario: null,
+  })
 
   return NextResponse.json({ ok: true, mensaje: "Remito cancelado y asiento CMV revertido." })
 }

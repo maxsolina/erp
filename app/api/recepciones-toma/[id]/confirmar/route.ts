@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { generarAsientoRecepcionTomaEquipo } from "@/lib/contabilidad-asiento-factory"
+import { registrarEvento } from "@/lib/seguimiento"
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
@@ -143,6 +144,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   } else {
     console.error("[confirmar-recepcion-te] asiento error:", asientoRep.error)
   }
+
+  await registrarEvento(adminClient, {
+    tipo_documento: "recepcion_toma",
+    documento_id: recepcion.id,
+    tipo_evento: "cambio_estado",
+    valor_anterior: "pendiente",
+    valor_nuevo: "recibido",
+    usuario: null,
+  })
 
   return NextResponse.json({ ok: true, recepcion_numero: recepcion.numero, imei, color, bateria_pct, outlet, ubicacion_id })
 }

@@ -8,6 +8,7 @@ import OdooFilterBar, {
   type GroupByOption,
   type SavedFilter,
 } from "@/components/odoo-filter-bar"
+import { usePaginacion } from "@/components/ui/paginacion"
 import { formatCurrency, type Cliente } from "./_shared"
 
 export default function ClientesListado() {
@@ -61,17 +62,22 @@ export default function ClientesListado() {
     ].filter(f => f.values.length > 0)
   }, [clientes])
 
+  const { paginated, controles } = usePaginacion(filtered)
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-amber-900">Clientes</h1>
-        <Link
-          href="/ventas/clientes/nuevo"
-          className="bg-indigo-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Nuevo Cliente
-        </Link>
+        <div className="flex items-center gap-3">
+          {controles}
+          <Link
+            href="/ventas/clientes/nuevo"
+            className="bg-indigo-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Nuevo Cliente
+          </Link>
+        </div>
       </div>
 
       <OdooFilterBar
@@ -109,7 +115,7 @@ export default function ClientesListado() {
           </thead>
           <tbody>
             {cargando && <tr><td colSpan={6} className="py-8 text-center text-gray-400">Cargando...</td></tr>}
-            {!cargando && filtered.map(c => {
+            {!cargando && paginated.map(c => {
               const href = `/ventas/clientes/${c.id}`
               return (
                 <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
@@ -127,6 +133,11 @@ export default function ClientesListado() {
             )}
           </tbody>
         </table>
+        {filtered.length > 0 && (
+          <div className="flex justify-end px-4 py-2 border-t border-gray-100 bg-gray-50">
+            {controles}
+          </div>
+        )}
       </div>
     </div>
   )

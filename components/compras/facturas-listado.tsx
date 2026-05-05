@@ -8,6 +8,7 @@ import OdooFilterBar, {
   type GroupByOption,
   type SavedFilter,
 } from "@/components/odoo-filter-bar"
+import { usePaginacion } from "@/components/ui/paginacion"
 import {
   formatCurrency,
   formatDate,
@@ -71,6 +72,8 @@ export default function FacturasGenericoListado({
     ].filter(f => f.values.length > 0)
   }, [items])
 
+  const { paginated, controles } = usePaginacion(filtered)
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
@@ -121,7 +124,7 @@ export default function FacturasGenericoListado({
           </thead>
           <tbody>
             {cargando && <tr><td colSpan={5} className="py-8 text-center text-gray-400">Cargando...</td></tr>}
-            {!cargando && filtered.map(i => {
+            {!cargando && paginated.map(i => {
               const href = `${fichaBaseHref}/${i.id}`
               return (
                 <tr key={i.id} className="border-b border-gray-100 hover:bg-gray-50">
@@ -140,6 +143,11 @@ export default function FacturasGenericoListado({
             )}
           </tbody>
         </table>
+        {filtered.length > 0 && (
+          <div className="flex justify-end px-4 py-2 border-t border-gray-100 bg-gray-50">
+            {controles}
+          </div>
+        )}
       </div>
     </div>
   )

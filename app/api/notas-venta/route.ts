@@ -21,6 +21,7 @@ export async function GET(req: Request) {
     .from("notas_venta")
     .select("*")
     .order("created_at", { ascending: false })
+    .range(0, 49999)
   if (id) nvQuery = nvQuery.eq("id", Number(id))
   else if (numero) nvQuery = nvQuery.eq("numero", numero)
 

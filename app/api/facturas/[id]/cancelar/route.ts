@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { generarAsientoReversa } from "@/lib/contabilidad-asiento-factory"
+import { registrarEvento } from "@/lib/seguimiento"
 
 function getSupabase() {
   return createClient(
@@ -122,6 +123,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         seguimiento,
       })
       .eq("id", senia.id)
+  }
+
+  await registrarEvento(supabase, {
+    tipo_documento: "factura",
+    documento_id: factura.id,
+    tipo_evento: "cambio_estado",
+    valor_anterior: factura.estado,
+    valor_nuevo: "cancelada",
+    usuario: null,
+  })
+  if (motivo) {
+    await registrarEvento(supabase, {
+      tipo_documento: "factura",
+      documento_id: factura.id,
+      tipo_evento: "nota",
+      descripcion: `Motivo de cancelación: ${motivo}`,
+      usuario: null,
+    })
   }
 
   return NextResponse.json({

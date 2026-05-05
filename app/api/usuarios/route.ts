@@ -1,6 +1,7 @@
 import { apiError, dbError } from "@/lib/api-utils"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { registrarEvento } from "@/lib/seguimiento"
 
 // GET /api/usuarios → listado completo de usuarios del ERP con su sucursal default
 export async function GET() {
@@ -113,6 +114,14 @@ export async function POST(req: Request) {
     usuario_id: nuevoId,
     sucursal_id: sucursal_default_id,
     es_principal: true,
+  })
+
+  await registrarEvento(admin, {
+    tipo_documento: "usuario",
+    documento_id: nuevoId,
+    tipo_evento: "creacion",
+    usuario: null,
+    descripcion: `Usuario ${body.username ?? body.email ?? `#${nuevoId}`}`,
   })
 
   return NextResponse.json({ ok: true, id: nuevoId, auth_user_id: authUserId }, { status: 201 })

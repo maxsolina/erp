@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { CheckCircle, FileText, Truck } from "lucide-react"
 import BotonVolver from "@/components/ui/boton-volver"
+import SeguimientoPanel from "@/components/seguimiento-panel"
 import {
   formatCurrency,
   formatDate,
@@ -258,20 +259,38 @@ export default function OeFicha({ oeId }: { oeId: number }) {
               </thead>
               <tbody>
                 {productos.map((p, idx) => {
-                  const series = seriesPorProducto[String(p.producto_id ?? p.producto_nombre ?? "")] ?? []
+                  // El nombre puede venir como producto_nombre (NV) o como `nombre`
+                  // (cuando la OE nace de una seña de equipo).
+                  const nombre = p.producto_nombre ?? (p as { nombre?: string }).nombre ?? ""
+                  const series = seriesPorProducto[String(p.producto_id ?? p.producto_nombre ?? nombre)] ?? []
+                  const imeiDirecto = (p as { imei?: string | null }).imei ?? null
+                  const imeiAMostrar = series.length > 0
+                    ? series.join(", ")
+                    : (imeiDirecto && String(imeiDirecto).trim() ? String(imeiDirecto) : null)
                   return (
                     <tr key={idx} className="border-b">
-                      <td className="py-3 px-4 font-medium">{p.producto_nombre}</td>
+                      <td className="py-3 px-4 font-medium">{nombre}</td>
                       <td className="py-3 px-4 text-center">{p.cantidad}</td>
                       <td className="py-3 px-4 font-mono text-xs text-gray-700">
-                        {series.length > 0 ? series.join(", ") : <span className="text-gray-400">—</span>}
+                        {imeiAMostrar ? imeiAMostrar : <span className="text-gray-400">—</span>}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          p.estado === "confirmado" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
-                        }`}>
-                          {p.estado === "confirmado" ? "Confirmado" : "Pendiente"}
-                        </span>
+                        {(() => {
+                          // Estado por línea de OE (no es el de la cabecera).
+                          // Hoy en DB: "confirmado" (NV→OE) o "reservado" (Seña→OE).
+                          const est = String(p.estado ?? "").toLowerCase()
+                          const cfg =
+                            est === "confirmado"
+                              ? { label: "Confirmado", cls: "bg-green-100 text-green-700" }
+                              : est === "reservado"
+                                ? { label: "Reservado", cls: "bg-amber-100 text-amber-700" }
+                                : { label: "Pendiente", cls: "bg-gray-100 text-gray-700" }
+                          return (
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${cfg.cls}`}>
+                              {cfg.label}
+                            </span>
+                          )
+                        })()}
                       </td>
                     </tr>
                   )
@@ -352,6 +371,8 @@ export default function OeFicha({ oeId }: { oeId: number }) {
           )}
         </div>
       </div>
+
+      <SeguimientoPanel tipoDocumento="orden_entrega" documentoId={oe.id} />
     </div>
   )
 }

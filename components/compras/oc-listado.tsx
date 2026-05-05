@@ -8,6 +8,7 @@ import OdooFilterBar, {
   type GroupByOption,
   type SavedFilter,
 } from "@/components/odoo-filter-bar"
+import { usePaginacion } from "@/components/ui/paginacion"
 import {
   formatCurrency,
   formatDate,
@@ -58,6 +59,8 @@ export default function OcListado() {
       { field: "proveedor_nombre", label: "Proveedor", values: provs.map(p => ({ value: p, label: p })) },
     ].filter(f => f.values.length > 0)
   }, [ocs])
+
+  const { paginated, controles } = usePaginacion(filtered)
 
   return (
     <div>
@@ -111,7 +114,7 @@ export default function OcListado() {
             {cargando && (
               <tr><td colSpan={5} className="py-8 text-center text-gray-400">Cargando...</td></tr>
             )}
-            {!cargando && filtered.map(oc => {
+            {!cargando && paginated.map(oc => {
               const href = `/compras/oc/${oc.id}`
               return (
                 <tr key={oc.id} className="border-b border-gray-100 hover:bg-gray-50">
@@ -130,6 +133,11 @@ export default function OcListado() {
             )}
           </tbody>
         </table>
+        {filtered.length > 0 && (
+          <div className="flex justify-end px-4 py-2 border-t border-gray-100 bg-gray-50">
+            {controles}
+          </div>
+        )}
       </div>
     </div>
   )

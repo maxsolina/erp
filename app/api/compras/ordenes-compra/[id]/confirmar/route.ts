@@ -1,5 +1,6 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { registrarEvento } from "@/lib/seguimiento"
 import {
   generarAsientoFacturaCircuito,
   generarAsientoReversa,
@@ -242,6 +243,15 @@ export async function POST(
     // No es crítico para rollback — la OC ya tiene factura y recepción, loguear
     console.error("[circuito] Error actualizando estado OC:", ocUpdErr.message)
   }
+
+  await registrarEvento(supabase, {
+    tipo_documento: "orden_compra",
+    documento_id: oc.id,
+    tipo_evento: "cambio_estado",
+    valor_anterior: "borrador",
+    valor_nuevo: "confirmada",
+    usuario: null,
+  })
 
   return NextResponse.json({
     oc:        ocActualizada ?? { ...oc, estado: "confirmada" },

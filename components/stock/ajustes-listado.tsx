@@ -1,43 +1,63 @@
 "use client"
 
-// Listado de Ajustes Positivos / Negativos.
-// Extraído de components/modulo-stock.tsx → renderAjustes (~2911-2970).
-// Sin persistencia Supabase: data vacía. "Nuevo Ajuste" → alert.
+// Listado de Ajustes Positivos / Negativos — wired al API real.
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Plus } from "lucide-react"
 import {
   formatDate,
-  getEstadoControlColor,
-  getEstadoLabel,
   StockListSection,
   type AjusteInventario,
 } from "./_shared"
 
+const ESTADO_COLOR: Record<string, string> = {
+  borrador: "bg-gray-100 text-gray-700",
+  pendiente: "bg-amber-100 text-amber-700",
+  confirmado: "bg-green-100 text-green-700",
+  cancelado: "bg-red-100 text-red-700",
+}
+const ESTADO_LABEL: Record<string, string> = {
+  borrador: "Borrador",
+  pendiente: "Pendiente",
+  confirmado: "Confirmado",
+  cancelado: "Cancelado",
+}
+
 export default function AjustesListado({ tipo }: { tipo: "positivo" | "negativo" }) {
-  const [ajustes] = useState<AjusteInventario[]>([])
-  const data = ajustes.filter(a => a.tipo === tipo)
+  const router = useRouter()
+  const [ajustes, setAjustes] = useState<AjusteInventario[]>([])
+  const [cargando, setCargando] = useState(true)
   const titulo = tipo === "positivo" ? "Ajustes Positivos" : "Ajustes Negativos"
+
+  useEffect(() => {
+    setCargando(true)
+    fetch(`/api/stock/ajustes?tipo=${tipo}`)
+      .then(r => (r.ok ? r.json() : []))
+      .then(data => setAjustes(Array.isArray(data) ? data : []))
+      .catch(() => setAjustes([]))
+      .finally(() => setCargando(false))
+  }, [tipo])
 
   return (
     <StockListSection<AjusteInventario>
       title={titulo}
       moduleName={`ajustes-${tipo}`}
-      data={data}
+      data={ajustes}
       searchFields={["numero", "deposito_nombre", "ubicacion_nombre", "concepto"]}
       filterFields={[
         { field: "estado", label: "Estado" },
         { field: "deposito_nombre", label: "Depósito" },
-        { field: "concepto", label: "Concepto" },
       ]}
       actions={
-        <button
-          onClick={() => alert(`Nuevo Ajuste ${tipo === "positivo" ? "Positivo" : "Negativo"} — pendiente de UI dedicada con persistencia Supabase`)}
+        <Link
+          href={`/stock/ajustes/${tipo}s/nuevo`}
           className="bg-indigo-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"
         >
           <Plus className="w-4 h-4" />
           Nuevo Ajuste
-        </button>
+        </Link>
       }
     >
       {filtered => (
@@ -55,15 +75,19 @@ export default function AjustesListado({ tipo }: { tipo: "positivo" | "negativo"
             </thead>
             <tbody>
               {filtered.map(a => (
-                <tr key={a.id} className="border-b border-gray-100 hover:bg-gray-50">
+                <tr
+                  key={a.id}
+                  className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                  onClick={() => router.push(`/stock/ajustes/${tipo}s/${a.id}`)}
+                >
                   <td className="py-3 px-4 font-mono text-sm text-amber-700 font-medium">{a.numero}</td>
                   <td className="py-3 px-4 text-sm">{a.deposito_nombre}</td>
                   <td className="py-3 px-4 text-sm">{a.ubicacion_nombre}</td>
                   <td className="py-3 px-4 text-sm">{formatDate(a.fecha)}</td>
                   <td className="py-3 px-4 text-sm">{a.concepto}</td>
                   <td className="py-3 px-4 text-center">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getEstadoControlColor(a.estado)}`}>
-                      {getEstadoLabel(a.estado)}
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${ESTADO_COLOR[a.estado] ?? "bg-gray-100 text-gray-700"}`}>
+                      {ESTADO_LABEL[a.estado] ?? a.estado}
                     </span>
                   </td>
                 </tr>
@@ -72,7 +96,9 @@ export default function AjustesListado({ tipo }: { tipo: "positivo" | "negativo"
           </table>
           {filtered.length === 0 && (
             <div className="text-center py-8 text-gray-500">
-              No hay ajustes {tipo === "positivo" ? "positivos" : "negativos"}
+              {cargando
+                ? "Cargando ajustes..."
+                : `No hay ajustes ${tipo === "positivo" ? "positivos" : "negativos"}`}
             </div>
           )}
         </div>

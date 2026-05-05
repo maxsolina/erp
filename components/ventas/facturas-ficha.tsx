@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { CheckCircle, DollarSign, Download, Edit, Trash2, X } from "lucide-react"
 import BotonVolver from "@/components/ui/boton-volver"
+import SeguimientoPanel from "@/components/seguimiento-panel"
 import BloquesMediosPago, { type LineaPago } from "@/components/bloques-medios-pago"
 import {
   formatCurrency,
@@ -763,6 +764,8 @@ export default function FacturasFicha({ facturaId }: { facturaId: number }) {
           </div>
         </div>
       )}
+
+      <SeguimientoPanel tipoDocumento="factura" documentoId={factura.id} />
     </div>
   )
 }

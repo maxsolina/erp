@@ -8,6 +8,7 @@ import OdooFilterBar, {
   type GroupByOption,
   type SavedFilter,
 } from "@/components/odoo-filter-bar"
+import { usePaginacion } from "@/components/ui/paginacion"
 import {
   formatCurrency,
   formatDate,
@@ -58,6 +59,8 @@ export default function RecibosListado() {
       { field: "moneda", label: "Moneda", values: monedas.map(m => ({ value: m, label: m })) },
     ].filter(f => f.values.length > 0)
   }, [recibos])
+
+  const { paginated, controles } = usePaginacion(filtered)
 
   return (
     <div>
@@ -114,7 +117,7 @@ export default function RecibosListado() {
             {cargando && (
               <tr><td colSpan={7} className="py-8 text-center text-gray-400">Cargando...</td></tr>
             )}
-            {!cargando && filtered.map(r => {
+            {!cargando && paginated.map(r => {
               const href = `/ventas/recibos/${r.id}`
               const moneda = r.moneda ?? "ARS"
               return (
@@ -136,6 +139,11 @@ export default function RecibosListado() {
             )}
           </tbody>
         </table>
+        {filtered.length > 0 && (
+          <div className="flex justify-end px-4 py-2 border-t border-gray-100 bg-gray-50">
+            {controles}
+          </div>
+        )}
       </div>
     </div>
   )

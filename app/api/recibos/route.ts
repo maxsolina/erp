@@ -1,6 +1,7 @@
 import { dbError } from "@/lib/api-utils"
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+import { registrarEvento } from "@/lib/seguimiento"
 
 function getSupabase() {
   return createClient(
@@ -126,6 +127,9 @@ export async function POST(req: Request) {
       moneda_comprobante: p.moneda_comprobante ?? p.moneda ?? "ARS",
       importe: Number(p.importe ?? 0),
       moneda: p.moneda ?? "ARS",
+      // Cotización por pago — usada por el asiento contable para convertir
+      // moneda extranjera a ARS. Si no viene en el pago, fallback a la del recibo.
+      cotizacion: p.cotizacion != null ? Number(p.cotizacion) : (cotizacion != null ? Number(cotizacion) : null),
       es_tarjeta: !!p.es_tarjeta,
       tarjeta_nombre: p.tarjeta_nombre ?? null,
       cantidad_cuotas: Number(p.cantidad_cuotas ?? 1),
@@ -172,6 +176,14 @@ export async function POST(req: Request) {
       )
     }
   }
+
+  await registrarEvento(supabase, {
+    tipo_documento: "recibo",
+    documento_id: rec.id,
+    tipo_evento: "creacion",
+    usuario: body.usuario ?? null,
+    descripcion: `Recibo ${rec.numero}${cliente_nombre ? ` — ${cliente_nombre}` : ""}`,
+  })
 
   return NextResponse.json({ ok: true, id: rec.id, numero: rec.numero })
 }

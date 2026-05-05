@@ -1,6 +1,7 @@
 import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { registrarEvento } from "@/lib/seguimiento"
 
 export async function GET(request: Request) {
   const supabase = await createClient()
@@ -12,6 +13,7 @@ export async function GET(request: Request) {
     .from("clientes")
     .select("*")
     .order("id", { ascending: false })
+    .range(0, 49999)
 
   if (busqueda) {
     query = query.or(
@@ -86,7 +88,16 @@ export async function POST(request: Request) {
       .select()
       .single()
 
-    if (!error) return NextResponse.json(data, { status: 201 })
+    if (!error) {
+      await registrarEvento(supabase, {
+        tipo_documento: "cliente",
+        documento_id: data.id,
+        tipo_evento: "creacion",
+        usuario: payload.usuario ?? null,
+        descripcion: `Cliente ${data.codigo ?? ""} ${data.nombre ?? ""}`.trim(),
+      })
+      return NextResponse.json(data, { status: 201 })
+    }
 
     // Reintentar solo si es duplicate key sobre el código
     const isDup = error.message?.includes("duplicate key") && error.message?.includes("clientes_codigo_key")

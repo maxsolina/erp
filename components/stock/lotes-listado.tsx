@@ -7,6 +7,8 @@
 // y renderLotesStock (~2561-2841) — comparten la misma lógica.
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { ChevronRight, Package } from "lucide-react"
 import OdooFilterBar, {
   type FilterOption,
@@ -28,6 +30,7 @@ type GroupedData = {
 }
 
 export default function LotesListado({ dataset, title, moduleName }: Props) {
+  const router = useRouter()
   const [todos, setTodos] = useState<LoteSerie[]>([])
   const [cargando, setCargando] = useState(true)
 
@@ -219,6 +222,7 @@ export default function LotesListado({ dataset, title, moduleName }: Props) {
                     key={lote.id}
                     className="flex items-center py-2 px-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer text-sm"
                     style={{ paddingLeft: `${16 + indent + 28}px` }}
+                    onClick={() => router.push(`/stock/lotes-series/${lote.id}`)}
                   >
                     <div className="flex-1 grid grid-cols-7 gap-4 items-center">
                       <div className="col-span-2">
@@ -226,7 +230,15 @@ export default function LotesListado({ dataset, title, moduleName }: Props) {
                         <span className="text-gray-400 ml-2 text-xs">{lote.producto_codigo}</span>
                       </div>
                       <div className="text-gray-600">{lote.ubicacion_nombre}</div>
-                      <div className="font-mono text-amber-700 text-xs">{lote.numero}</div>
+                      <div className="font-mono text-amber-700 text-xs">
+                        <Link
+                          href={`/stock/lotes-series/${lote.id}`}
+                          className="hover:underline hover:text-amber-900"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          {lote.numero}
+                        </Link>
+                      </div>
                       <div className="text-center font-medium">{lote.cantidad}</div>
                       <div className="text-center">
                         {lote.bateria !== null ? (
@@ -336,12 +348,26 @@ export default function LotesListado({ dataset, title, moduleName }: Props) {
               </thead>
               <tbody>
                 {filtrados.map(lote => (
-                  <tr key={lote.id} className="border-b border-gray-100 hover:bg-gray-50">
+                  <tr
+                    key={lote.id}
+                    className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                    onClick={() => router.push(`/stock/lotes-series/${lote.id}`)}
+                  >
                     <td className="py-2 px-4">
                       <div className="text-sm font-medium text-gray-900">{lote.producto_nombre}</div>
                       <div className="text-xs text-gray-500">{lote.producto_codigo}</div>
                     </td>
-                    <td className="py-2 px-4 font-mono text-sm text-amber-700">{lote.numero}</td>
+                    <td className="py-2 px-4 font-mono text-sm text-amber-700">
+                      {/* Link para ctrl+click (abre en nueva pestaña). El click normal
+                          lo maneja el onClick del <tr> de arriba. */}
+                      <Link
+                        href={`/stock/lotes-series/${lote.id}`}
+                        className="hover:underline hover:text-amber-900"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        {lote.numero || <span className="text-gray-400 italic">sin serie</span>}
+                      </Link>
+                    </td>
                     <td className="py-2 px-4 text-sm text-gray-600">{lote.ubicacion_nombre}</td>
                     <td className="py-2 px-4 text-sm text-gray-600">{lote.sucursal}</td>
                     <td className="py-2 px-4 text-sm text-center font-medium">{lote.cantidad}</td>

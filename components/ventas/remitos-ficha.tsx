@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { CheckCircle, Download, X } from "lucide-react"
 import BotonVolver from "@/components/ui/boton-volver"
+import SeguimientoPanel from "@/components/seguimiento-panel"
 import {
   formatCurrency,
   formatDate,
@@ -414,6 +415,8 @@ export default function RemitosFicha({ remitoId }: { remitoId: number }) {
           </div>
         </div>
       )}
+
+      <SeguimientoPanel tipoDocumento="remito" documentoId={remito.id} />
     </div>
   )
 }

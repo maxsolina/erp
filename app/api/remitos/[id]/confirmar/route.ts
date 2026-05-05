@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { generarAsientoRemito } from "@/lib/contabilidad-asiento-factory"
+import { registrarEvento } from "@/lib/seguimiento"
 
 function getSupabase() {
   return createClient(
@@ -269,6 +270,15 @@ export async function POST(
     .from("remitos")
     .update({ asiento_id: resultadoAsiento.asiento_id })
     .eq("id", remitoId)
+
+  await registrarEvento(supabase, {
+    tipo_documento: "remito",
+    documento_id: remitoId,
+    tipo_evento: "cambio_estado",
+    valor_anterior: "borrador",
+    valor_nuevo: "entregado",
+    usuario: null,
+  })
 
   return NextResponse.json({
     ok: true,
