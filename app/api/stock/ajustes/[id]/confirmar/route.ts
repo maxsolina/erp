@@ -53,21 +53,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "El ajuste no tiene líneas" }, { status: 422 })
   }
 
-  // 2. Cargar flags + costo contable (en ARS) de productos.
-  // El asiento se valúa con `productos.costo_ars` (último costo contable),
-  // no con un costo cargado en la línea. Si el producto no tiene `costo_ars`
-  // cae a 0 y el asiento no se genera (queda advertencia contable).
+  // 2. Cargar flags + costo contable de productos.
+  // El asiento se valúa con `productos.costo_contable` (con fallback a
+  // `costo_manual` si el contable está en 0). Si el producto no tiene
+  // ningún costo cargado, queda en 0 y no se genera asiento (queda
+  // advertencia contable). El form valida esto en frontend para ajustes
+  // positivos, pero lo recheckeamos acá por las dudas.
   const productoIds = [...new Set(lineas.map(l => l.producto_id).filter((x): x is number => x != null))]
-  const flagsPorProd = new Map<number, { tiene_numero_serie: boolean; costo_ars: number }>()
+  const flagsPorProd = new Map<number, { tiene_numero_serie: boolean; costo: number }>()
   if (productoIds.length > 0) {
     const { data: prods } = await supabase
       .from("productos")
-      .select("id, tiene_numero_serie, costo_ars")
+      .select("id, tiene_numero_serie, costo_contable, costo_manual")
       .in("id", productoIds)
     for (const p of prods ?? []) {
+      const costo = Number(p.costo_contable ?? 0) || Number(p.costo_manual ?? 0) || 0
       flagsPorProd.set(p.id, {
         tiene_numero_serie: !!p.tiene_numero_serie,
-        costo_ars: Number(p.costo_ars ?? 0),
+        costo,
       })
     }
   }
@@ -79,10 +82,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   for (const l of lineas) {
     const flags = l.producto_id != null ? flagsPorProd.get(l.producto_id) : null
     const tieneSerie = !!flags?.tiene_numero_serie
-    // El costo del asiento sale del último costo contable del producto (en ARS).
+    // El costo del asiento sale del costo contable del producto.
     // Lo persistimos en la línea (costo_unitario) para que la ficha muestre el
     // costo que se usó al confirmar (snapshot histórico).
-    const costoUnit = Number(flags?.costo_ars ?? 0)
+    const costoUnit = Number(flags?.costo ?? 0)
     const cant = Number(l.cantidad ?? 1)
     importeTotal += costoUnit * cant
     if (costoUnit > 0) {

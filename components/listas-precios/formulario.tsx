@@ -29,6 +29,7 @@ const LISTA_NUEVA: ListaPrecios = {
   incluye_iva: true,
   activa: true,
   no_visible: false,
+  visible_en_ot: false,
   dias_validez: 30,
   estado: "borrador",
   tipo_cotizacion: "blue",
@@ -92,6 +93,7 @@ export default function ListaPreciosFormulario({
             incluye_iva: nuevaLista.incluye_iva,
             activa: nuevaLista.activa,
             no_visible: nuevaLista.no_visible,
+            visible_en_ot: nuevaLista.visible_en_ot ?? false,
             dias_validez: nuevaLista.dias_validez,
             estado: nuevaLista.estado,
             usuarios_admin: nuevaLista.usuarios_admin,
@@ -122,6 +124,7 @@ export default function ListaPreciosFormulario({
             incluye_iva: form.incluye_iva,
             activa: form.activa,
             no_visible: form.no_visible,
+            visible_en_ot: form.visible_en_ot ?? false,
             dias_validez: form.dias_validez,
             estado: form.estado,
             usuarios_admin: form.usuarios_admin,
@@ -254,6 +257,15 @@ export default function ListaPreciosFormulario({
                 className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
               />
               <span className="text-sm text-gray-700">No visible</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer" title="Si está tildado, esta lista aparece en el dropdown de la OT (Servicio Técnico) para valuar repuestos.">
+              <input
+                type="checkbox"
+                checked={form.visible_en_ot ?? false}
+                onChange={e => setForm({ ...form, visible_en_ot: e.target.checked })}
+                className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
+              />
+              <span className="text-sm text-gray-700">Visible en OT</span>
             </label>
           </div>
         </div>

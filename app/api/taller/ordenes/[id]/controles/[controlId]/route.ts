@@ -41,3 +41,31 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   return NextResponse.json(data)
 }
+
+// DELETE /api/taller/ordenes/[id]/controles/[controlId]
+// Solo permite eliminar controles que NO estén completados ni marcados como
+// históricos (ej: un control vacío creado por error de configuración).
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; controlId: string }> }) {
+  const { controlId } = await params
+  const supabase = await createClient()
+
+  const { data: ctrl } = await supabase
+    .from("taller_ot_controles")
+    .select("completado, historico")
+    .eq("id", controlId)
+    .single()
+
+  if (!ctrl) return NextResponse.json({ error: "Control no encontrado" }, { status: 404 })
+  if (ctrl.completado || ctrl.historico) {
+    return NextResponse.json(
+      { error: "No se puede eliminar un control completado o histórico" },
+      { status: 422 },
+    )
+  }
+
+  // Borrar items primero (FK)
+  await supabase.from("taller_ot_control_items").delete().eq("control_id", controlId)
+  const { error } = await supabase.from("taller_ot_controles").delete().eq("id", controlId)
+  if (error) return dbError(error)
+  return NextResponse.json({ ok: true })
+}

@@ -3,42 +3,64 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useERP } from "@/contexts/erp-context"
-import { CRUDTableWithFilter } from "@/components/servicio-tecnico/_shared"
-import { deleteCategoria, fetchCategorias, type TallerCategoria } from "@/lib/taller-actions"
+import TallerListadoTabla from "@/components/servicio-tecnico/listado-tabla"
+import { fetchCategorias, type TallerCategoria } from "@/lib/taller-actions"
 
 export default function CategoriasPage() {
   const router = useRouter()
   const { canSee } = useERP()
   const [data, setData] = useState<TallerCategoria[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!canSee("servicio_tecnico", "categorias_reparacion")) router.replace("/")
   }, [canSee, router])
 
   useEffect(() => {
-    fetchCategorias().then(d => setData(Array.isArray(d) ? d : [])).catch(console.error)
+    fetchCategorias()
+      .then(d => setData(Array.isArray(d) ? d : []))
+      .catch(console.error)
+      .finally(() => setLoading(false))
   }, [])
 
   return (
-    <CRUDTableWithFilter
+    <TallerListadoTabla<TallerCategoria>
       title="Categorías de Reparación"
-      data={data as unknown as Record<string, unknown>[]}
+      rows={data}
+      loading={loading}
+      moduleName="taller_categorias"
+      newHref="/servicio-tecnico/categorias/nueva"
+      newLabel="Nueva Categoría"
+      rowHrefBase="/servicio-tecnico/categorias"
       columns={[
         { key: "nombre", label: "Nombre" },
         {
-          key: "taller_areas_reparacion",
+          key: "area",
           label: "Área",
-          render: v => (v as { nombre: string } | null)?.nombre ?? "—",
+          render: r => r.taller_areas_reparacion?.nombre ?? "—",
+          filterValue: r => r.taller_areas_reparacion?.nombre ?? "",
         },
-        { key: "orden_asignacion", label: "Orden Asignación" },
-        { key: "activo", label: "Activo", render: v => (v ? "✓" : "✗") },
+        { key: "orden_asignacion", label: "Orden", align: "center" },
+        {
+          key: "activo",
+          label: "Estado",
+          align: "center",
+          render: r => (
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                r.activo ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-500"
+              }`}
+            >
+              {r.activo ? "Activa" : "Inactiva"}
+            </span>
+          ),
+          filterValue: r => (r.activo ? "Sí" : "No"),
+        },
       ]}
-      onNew={() => alert("Crear categoría — pendiente de UI dedicada")}
-      onEdit={() => alert("Editar categoría — pendiente de UI dedicada")}
-      onDelete={async id => {
-        await deleteCategoria(id)
-        setData(await fetchCategorias())
-      }}
+      filterableFields={["area", "activo"]}
+      groupByFields={["area", "activo"]}
+      searchFields={["nombre"]}
+      emptyMessage="No hay categorías"
     />
   )
 }

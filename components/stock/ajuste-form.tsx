@@ -23,6 +23,16 @@ interface Producto {
   requiere_bateria: boolean
   requiere_outlet: boolean
   requiere_observaciones: boolean
+  // Costos: si ambos son 0/null, NO se puede hacer ajuste positivo
+  // (la línea del asiento contable quedaría sin valor).
+  costo_contable?: number | null
+  costo_manual?: number | null
+}
+
+// Determina el costo aplicable. Para ajuste positivo se requiere > 0.
+function costoDelProducto(p: Producto | null): number {
+  if (!p) return 0
+  return Number(p.costo_contable ?? 0) || Number(p.costo_manual ?? 0) || 0
 }
 interface Deposito { id: number; codigo: string; nombre: string; sucursal_id?: number | null }
 interface Ubicacion { id: number; deposito_id: number; codigo: string; nombre: string }
@@ -194,6 +204,15 @@ export default function AjusteForm({ tipo }: { tipo: "positivo" | "negativo" }) 
   if (lineas.length === 0) errores.push("Agregá al menos un producto")
   for (const l of lineas) {
     if (!l.producto) continue
+    // Validación de costo para ajustes POSITIVOS — sin costo, el asiento
+    // contable que se genera al confirmar no tendría valor (debe = haber = 0)
+    // y la valuación de inventario quedaría rota.
+    if (tipo === "positivo" && costoDelProducto(l.producto) <= 0) {
+      errores.push(
+        `${l.producto.nombre} no tiene costo contable cargado. ` +
+        `No se puede hacer ajuste positivo sin costo. Andá a Productos → editar → Abastecimientos y cargá el costo antes de continuar.`
+      )
+    }
     if (l.producto.tiene_numero_serie) {
       if (tipo === "positivo") {
         if (l.unidadesNuevas.length === 0) errores.push(`${l.producto.nombre}: agregá al menos una unidad`)
@@ -535,13 +554,25 @@ function LineaCard({
   const p = linea.producto
   if (!p) return null
   const conIMEI = p.tiene_numero_serie
+  const costo = costoDelProducto(p)
+  const sinCosto = tipo === "positivo" && costo <= 0
 
   return (
-    <div className="border border-gray-200 rounded-lg p-4">
+    <div className={`border rounded-lg p-4 ${sinCosto ? "border-red-300 bg-red-50/40" : "border-gray-200"}`}>
       <div className="flex items-start justify-between mb-3">
         <div>
           <div className="font-medium text-gray-900">{p.nombre}</div>
           <div className="text-xs text-gray-500 font-mono">{p.codigo_interno}</div>
+          {tipo === "positivo" && (
+            <div className="text-xs mt-0.5">
+              <span className="text-gray-500">Costo contable: </span>
+              {costo > 0 ? (
+                <span className="text-gray-700 font-medium">${costo.toLocaleString("es-AR")}</span>
+              ) : (
+                <span className="text-red-700 font-semibold">No definido</span>
+              )}
+            </div>
+          )}
         </div>
         <button
           type="button"
@@ -552,6 +583,20 @@ function LineaCard({
           <Trash2 className="w-4 h-4" />
         </button>
       </div>
+
+      {sinCosto && (
+        <div className="bg-red-50 border border-red-200 rounded-md px-3 py-2 mb-3 flex items-start gap-2">
+          <span className="text-red-700 text-base leading-none mt-0.5">⚠</span>
+          <div className="text-xs text-red-800">
+            <p className="font-semibold mb-0.5">Sin costo contable — no se puede hacer ajuste positivo</p>
+            <p>
+              El asiento contable de ingreso necesita un valor. Andá a{" "}
+              <strong>Productos → editar → pestaña Abastecimientos</strong> y cargá el costo
+              antes de continuar.
+            </p>
+          </div>
+        </div>
+      )}
 
       {!conIMEI && (
         <div>

@@ -27,21 +27,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const tipo = body.tipo ?? "inicial"
 
-  // Crear registro de control
-  const { data: ctrl, error: ctrlErr } = await supabase
-    .from("taller_ot_controles")
-    .insert([{
-      ot_id: id,
-      tipo,
-      historico: false,
-      completado: false,
-    }])
-    .select()
-    .single()
-
-  if (ctrlErr) return NextResponse.json({ error: ctrlErr.message }, { status: 500 })
-
-  // Buscar controles del maestro según tipo, área y categoría
+  // Buscar PRIMERO los controles del maestro para saber si hay items que
+  // creen este checklist. Si no hay ninguno, devolvemos error sin crear
+  // un wrapper vacío que ensucie la DB.
   const isRecepcion = tipo === "inicial"
   let masterQuery = supabase
     .from("taller_controles")
@@ -62,7 +50,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     m => !m.categoria_id || m.categoria_id === body.categoria_id
   )
 
-  if (filtered.length && ctrl) {
+  if (filtered.length === 0) {
+    const flagLabel = isRecepcion ? "Aparece en el control inicial" : "Aparece en el control final"
+    return NextResponse.json({
+      error: `No hay controles configurados para esta área con la flag "${flagLabel}" activada. Andá a Configuración → Controles, creá uno (o editá uno existente) y volvé a intentar.`,
+    }, { status: 422 })
+  }
+
+  // Crear registro de control (wrapper) recién ahora que sabemos que hay items
+  const { data: ctrl, error: ctrlErr } = await supabase
+    .from("taller_ot_controles")
+    .insert([{
+      ot_id: id,
+      tipo,
+      historico: false,
+      completado: false,
+    }])
+    .select()
+    .single()
+
+  if (ctrlErr) return NextResponse.json({ error: ctrlErr.message }, { status: 500 })
+
+  if (ctrl) {
     const items = filtered.map(m => ({
       control_id: ctrl.id,
       control_maestro_id: m.id,

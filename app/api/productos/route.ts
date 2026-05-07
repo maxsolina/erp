@@ -56,12 +56,18 @@ export async function GET(request: Request) {
   const { data, error } = await query
   if (error) return dbError(error)
 
-  // Para productos con `tiene_numero_serie=true`, el stock se trackea unidad a
-  // unidad en `stock_unidades` y la columna `productos.stock_real` queda obsoleta
-  // (nadie la mantiene desde recepciones / entregas / ajustes a unidad). Lo
-  // recomputamos en vivo: cuenta de unidades en estados "vivos" (NO entregado,
-  // NO dado_de_baja). Para productos sin serie respeta el valor de la columna.
+  // Stock live — recomputamos siempre desde las tablas operativas.
+  // La columna `productos.stock_real` es legacy y nadie la mantiene en
+  // tiempo real desde recepciones / entregas / ajustes. Por eso ignoramos
+  // su valor y lo recalculamos:
+  //
+  //   • Productos CON IMEI (`tiene_numero_serie=true`): cuenta de unidades
+  //     en `stock_unidades` que NO están entregadas ni dadas de baja.
+  //   • Productos SIN IMEI (bulk): suma de `stock_cantidades.cantidad` para
+  //     ese producto en todas las ubicaciones.
   const serializedIds = (data ?? []).filter(p => p.tiene_numero_serie).map(p => p.id)
+  const bulkIds = (data ?? []).filter(p => !p.tiene_numero_serie).map(p => p.id)
+
   if (serializedIds.length > 0) {
     const { data: unidades } = await supabase
       .from("stock_unidades")
@@ -77,6 +83,22 @@ export async function GET(request: Request) {
       if (p.tiene_numero_serie) p.stock_real = counts[p.id] ?? 0
     }
   }
+
+  if (bulkIds.length > 0) {
+    const { data: cantidades } = await supabase
+      .from("stock_cantidades")
+      .select("producto_id, cantidad")
+      .in("producto_id", bulkIds)
+      .range(0, 49999)
+    const sums: Record<number, number> = {}
+    for (const sc of cantidades ?? []) {
+      sums[sc.producto_id] = (sums[sc.producto_id] ?? 0) + Number(sc.cantidad ?? 0)
+    }
+    for (const p of data ?? []) {
+      if (!p.tiene_numero_serie) p.stock_real = sums[p.id] ?? 0
+    }
+  }
+
   return NextResponse.json(data ?? [])
 }
 

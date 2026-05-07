@@ -85,7 +85,10 @@ export async function POST(req: Request) {
       nombre: versionData.nombre,
       fecha_inicial: versionData.fecha_inicial ?? new Date().toISOString().split("T")[0],
       fecha_final: versionData.fecha_final ?? null,
-      activa: versionData.activa ?? false,
+      // Default true: una versión recién creada se considera activa para
+      // que aparezca en los selectores de NV/OT/etc. Si el operador la
+      // quiere archivar, destilda "Activa" desde la ficha.
+      activa: versionData.activa ?? true,
       estado: estadoNorm,
       seguimiento: versionData.seguimiento ?? [],
       ultima_actualizacion: new Date().toISOString(),

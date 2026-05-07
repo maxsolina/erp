@@ -1,6 +1,7 @@
 import { dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { registrarEvento } from "@/lib/seguimiento"
 
 export async function GET() {
   const supabase = await createClient()
@@ -68,5 +69,12 @@ export async function POST(request: Request) {
     await supabase.from("taller_tecnico_categorias_secundarias").insert(rows)
   }
 
+  await registrarEvento(supabase, {
+    tipo_documento: "taller_tecnico",
+    documento_id: data.id,
+    tipo_evento: "creacion",
+    descripcion: `Técnico ${data.nombre} (${data.tipo})`,
+    usuario: null,
+  })
   return NextResponse.json(data, { status: 201 })
 }

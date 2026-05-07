@@ -30,7 +30,6 @@ interface ClienteData {
   codigo_postal?: string | null
   zona?: string | null
   telefono?: string | null
-  celular?: string | null
   email?: string | null
   categoria_id?: number | null
   vendedor_id?: number | null
@@ -82,7 +81,6 @@ export default function ClienteForm({ initialId }: { initialId?: number }) {
   const [codigoPostal, setCodigoPostal] = useState("")
   const [zona, setZona] = useState("")
   const [telefono, setTelefono] = useState("")
-  const [celular, setCelular] = useState("")
   const [email, setEmail] = useState("")
   const [vendedorId, setVendedorId] = useState<number | null>(null)
   const [listaPreciosId, setListaPreciosId] = useState<number | null>(null)
@@ -128,7 +126,6 @@ export default function ClienteForm({ initialId }: { initialId?: number }) {
         setCodigoPostal(c.codigo_postal ?? "")
         setZona(c.zona ?? "")
         setTelefono(c.telefono ?? "")
-        setCelular(c.celular ?? "")
         setEmail(c.email ?? "")
         setVendedorId(c.vendedor_id ?? null)
         setListaPreciosId(c.lista_precios_id ?? null)
@@ -164,12 +161,12 @@ export default function ClienteForm({ initialId }: { initialId?: number }) {
 
     // Payload mínimo: solo columnas que existen seguro en la tabla `clientes`.
     // - razón_social: el monolito guarda ahí el "nombre fantasía" (convención existente).
-    // - telefono: combina teléfono fijo + celular si hay ambos (la tabla no
-    //   tiene columna celular separada).
+    // - telefono: campo único de celular del cliente (la tabla solo tiene una
+    //   columna `telefono`; antes había dos inputs "Teléfono" y "Celular" en
+    //   la UI que se concatenaban con " / " — se simplificó a uno solo).
     // Campos del form que NO se persisten (porque la columna no existe):
     //   posicion_fiscal, codigo_postal, zona, descuento_default. Se quedan en
     //   la UI por compatibilidad visual con el monolito.
-    const telefonoCombinado = [telefono.trim(), celular.trim()].filter(Boolean).join(" / ") || null
     const payload: Record<string, unknown> = {
       nombre: nombre.trim(),
       razon_social: nombreFantasia.trim() || null,
@@ -179,7 +176,7 @@ export default function ClienteForm({ initialId }: { initialId?: number }) {
       direccion: direccion.trim() || null,
       ciudad: ciudad.trim() || null,
       provincia: provincia.trim() || null,
-      telefono: telefonoCombinado,
+      telefono: telefono.trim() || null,
       email: email.trim() || null,
       categoria_id: categoriaId,
       vendedor_id: vendedorId,
@@ -411,22 +408,13 @@ export default function ClienteForm({ initialId }: { initialId?: number }) {
             <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
               <Phone className="w-3.5 h-3.5" /> Contacto
             </h3>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className={labelStyle}>Teléfono</label>
-                <input
-                  type="text"
-                  value={telefono}
-                  onChange={e => setTelefono(e.target.value)}
-                  className={inputOpt}
-                />
-              </div>
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelStyle}>Celular</label>
                 <input
                   type="text"
-                  value={celular}
-                  onChange={e => setCelular(e.target.value)}
+                  value={telefono}
+                  onChange={e => setTelefono(e.target.value)}
                   className={inputOpt}
                 />
               </div>

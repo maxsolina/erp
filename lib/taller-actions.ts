@@ -18,63 +18,77 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
 
 // ─── Áreas ──────────────────────────────────────────────────────────────────
 export const fetchAreas = () => apiFetch<TallerArea[]>("/areas")
+export const fetchArea = (id: string) => apiFetch<TallerArea>(`/areas/${id}`)
 export const createArea = (data: Partial<TallerArea>) => apiFetch<TallerArea>("/areas", { method: "POST", body: JSON.stringify(data) })
 export const updateArea = (id: string, data: Partial<TallerArea>) => apiFetch<TallerArea>(`/areas/${id}`, { method: "PATCH", body: JSON.stringify(data) })
 export const deleteArea = (id: string) => apiFetch<{ ok: boolean }>(`/areas/${id}`, { method: "DELETE" })
 
 // ─── Categorías ─────────────────────────────────────────────────────────────
 export const fetchCategorias = () => apiFetch<TallerCategoria[]>("/categorias")
+export const fetchCategoria = (id: string) => apiFetch<TallerCategoria>(`/categorias/${id}`)
 export const createCategoria = (data: Partial<TallerCategoria>) => apiFetch<TallerCategoria>("/categorias", { method: "POST", body: JSON.stringify(data) })
 export const updateCategoria = (id: string, data: Partial<TallerCategoria>) => apiFetch<TallerCategoria>(`/categorias/${id}`, { method: "PATCH", body: JSON.stringify(data) })
 export const deleteCategoria = (id: string) => apiFetch<{ ok: boolean }>(`/categorias/${id}`, { method: "DELETE" })
 
 // ─── Tipos de OT ────────────────────────────────────────────────────────────
 export const fetchTiposOT = () => apiFetch<TallerTipoOT[]>("/tipos-ot")
+export const fetchTipoOT = (id: string) => apiFetch<TallerTipoOT>(`/tipos-ot/${id}`)
 export const createTipoOT = (data: Partial<TallerTipoOT>) => apiFetch<TallerTipoOT>("/tipos-ot", { method: "POST", body: JSON.stringify(data) })
 export const updateTipoOT = (id: string, data: Partial<TallerTipoOT>) => apiFetch<TallerTipoOT>(`/tipos-ot/${id}`, { method: "PATCH", body: JSON.stringify(data) })
 export const deleteTipoOT = (id: string) => apiFetch<{ ok: boolean }>(`/tipos-ot/${id}`, { method: "DELETE" })
 
 // ─── Equipos ────────────────────────────────────────────────────────────────
 export const fetchEquipos = () => apiFetch<TallerEquipo[]>("/equipos")
+export const fetchEquipo = (id: string) => apiFetch<TallerEquipo>(`/equipos/${id}`)
 export const createEquipo = (data: Partial<TallerEquipo>) => apiFetch<TallerEquipo>("/equipos", { method: "POST", body: JSON.stringify(data) })
 export const updateEquipo = (id: string, data: Partial<TallerEquipo>) => apiFetch<TallerEquipo>(`/equipos/${id}`, { method: "PATCH", body: JSON.stringify(data) })
 export const deleteEquipo = (id: string) => apiFetch<{ ok: boolean }>(`/equipos/${id}`, { method: "DELETE" })
 
 // ─── Fallas ─────────────────────────────────────────────────────────────────
 export const fetchFallas = () => apiFetch<TallerFalla[]>("/fallas")
+export const fetchFalla = (id: string) => apiFetch<TallerFalla>(`/fallas/${id}`)
 export const createFalla = (data: Partial<TallerFalla>) => apiFetch<TallerFalla>("/fallas", { method: "POST", body: JSON.stringify(data) })
 export const updateFalla = (id: string, data: Partial<TallerFalla>) => apiFetch<TallerFalla>(`/fallas/${id}`, { method: "PATCH", body: JSON.stringify(data) })
 export const deleteFalla = (id: string) => apiFetch<{ ok: boolean }>(`/fallas/${id}`, { method: "DELETE" })
 
 // ─── Técnicos ───────────────────────────────────────────────────────────────
 export const fetchTecnicos = () => apiFetch<TallerTecnico[]>("/tecnicos")
+export const fetchTecnico = (id: string) => apiFetch<TallerTecnico>(`/tecnicos/${id}`)
 export const createTecnico = (data: Partial<TallerTecnico>) => apiFetch<TallerTecnico>("/tecnicos", { method: "POST", body: JSON.stringify(data) })
 export const updateTecnico = (id: string, data: Partial<TallerTecnico>) => apiFetch<TallerTecnico>(`/tecnicos/${id}`, { method: "PATCH", body: JSON.stringify(data) })
 export const deleteTecnico = (id: string) => apiFetch<{ ok: boolean }>(`/tecnicos/${id}`, { method: "DELETE" })
 
 // ─── Turnos ─────────────────────────────────────────────────────────────────
 export const fetchTurnos = () => apiFetch<TallerTurno[]>("/turnos")
+export const fetchTurno = (id: string) => apiFetch<TallerTurno>(`/turnos/${id}`)
 export const createTurno = (data: Partial<TallerTurno>) => apiFetch<TallerTurno>("/turnos", { method: "POST", body: JSON.stringify(data) })
 export const updateTurno = (id: string, data: Partial<TallerTurno>) => apiFetch<TallerTurno>(`/turnos/${id}`, { method: "PATCH", body: JSON.stringify(data) })
 export const deleteTurno = (id: string) => apiFetch<{ ok: boolean }>(`/turnos/${id}`, { method: "DELETE" })
 
 // ─── Feriados ───────────────────────────────────────────────────────────────
 export const fetchFeriados = () => apiFetch<TallerFeriado[]>("/feriados")
+export const fetchFeriado = (id: string) => apiFetch<TallerFeriado>(`/feriados/${id}`)
 export const createFeriado = (data: Partial<TallerFeriado>) => apiFetch<TallerFeriado>("/feriados", { method: "POST", body: JSON.stringify(data) })
+export const updateFeriado = (id: string, data: Partial<TallerFeriado>) => apiFetch<TallerFeriado>(`/feriados/${id}`, { method: "PATCH", body: JSON.stringify(data) })
 export const deleteFeriado = (id: string) => apiFetch<{ ok: boolean }>(`/feriados/${id}`, { method: "DELETE" })
 
 // ─── Controles / Checklist ──────────────────────────────────────────────────
 export const fetchControles = () => apiFetch<TallerControl[]>("/controles")
+export const fetchControl = (id: string) => apiFetch<TallerControl>(`/controles/${id}`)
 export const createControl = (data: Partial<TallerControl>) => apiFetch<TallerControl>("/controles", { method: "POST", body: JSON.stringify(data) })
 export const updateControl = (id: string, data: Partial<TallerControl>) => apiFetch<TallerControl>(`/controles/${id}`, { method: "PATCH", body: JSON.stringify(data) })
 export const deleteControl = (id: string) => apiFetch<{ ok: boolean }>(`/controles/${id}`, { method: "DELETE" })
 
 // ─── Motivos de Cierre ──────────────────────────────────────────────────────
 export const fetchMotivosCierre = () => apiFetch<TallerMotivoCierre[]>("/motivos-cierre")
+export const fetchMotivoCierre = (id: string) => apiFetch<TallerMotivoCierre>(`/motivos-cierre/${id}`)
 export const createMotivoCierre = (data: Partial<TallerMotivoCierre>) => apiFetch<TallerMotivoCierre>("/motivos-cierre", { method: "POST", body: JSON.stringify(data) })
+export const updateMotivoCierre = (id: string, data: Partial<TallerMotivoCierre>) => apiFetch<TallerMotivoCierre>(`/motivos-cierre/${id}`, { method: "PATCH", body: JSON.stringify(data) })
+export const deleteMotivoCierre = (id: string) => apiFetch<{ ok: boolean }>(`/motivos-cierre/${id}`, { method: "DELETE" })
 
 // ─── Fallas por Equipo ──────────────────────────────────────────────────────
 export const fetchFallasEquipo = () => apiFetch<TallerFallaEquipo[]>("/fallas-equipo")
+export const fetchFallaEquipo = (id: string) => apiFetch<TallerFallaEquipo>(`/fallas-equipo/${id}`)
 export const createFallaEquipo = (data: Partial<TallerFallaEquipo>) => apiFetch<TallerFallaEquipo>("/fallas-equipo", { method: "POST", body: JSON.stringify(data) })
 export const updateFallaEquipo = (id: string, data: Partial<TallerFallaEquipo>) => apiFetch<TallerFallaEquipo>(`/fallas-equipo/${id}`, { method: "PATCH", body: JSON.stringify(data) })
 export const deleteFallaEquipo = (id: string) => apiFetch<{ ok: boolean }>(`/fallas-equipo/${id}`, { method: "DELETE" })
@@ -102,11 +116,74 @@ export const transicionarOT = (id: string, data: {
 export const fetchRepuestosOT = (otId: string) => apiFetch<TallerOTRepuesto[]>(`/ordenes/${otId}/repuestos`)
 export const addRepuestoOT = (otId: string, data: Partial<TallerOTRepuesto>) => apiFetch<TallerOTRepuesto>(`/ordenes/${otId}/repuestos`, { method: "POST", body: JSON.stringify(data) })
 export const replaceRepuestosOT = (otId: string, items: Partial<TallerOTRepuesto>[]) => apiFetch<TallerOTRepuesto[]>(`/ordenes/${otId}/repuestos`, { method: "PUT", body: JSON.stringify({ items }) })
+export const cargarRepuestosSugeridos = (otId: string) =>
+  apiFetch<{ agregados: number; skip_duplicados: number; mensaje: string }>(
+    `/ordenes/${otId}/repuestos-sugeridos`,
+    { method: "POST" },
+  )
+export const generarNVDesdeOT = (otId: string, opts?: { force_regenerate?: boolean }) =>
+  apiFetch<{ ok: boolean; nv_id: number; nv_numero: string; total: number }>(
+    `/ordenes/${otId}/generar-nv`,
+    { method: "POST", body: JSON.stringify(opts ?? {}) },
+  )
+
+export interface RegistrarSeniaInput {
+  caja_id: string | number
+  caja_nombre?: string
+  valor_id: string | number
+  valor_nombre?: string
+  tipo_valor?: string
+  importe: number
+  moneda?: string
+  cotizacion?: number
+  observaciones?: string
+  es_tarjeta?: boolean
+  tarjeta_nombre?: string | null
+  cantidad_cuotas?: number
+}
+export const registrarSeniaOT = (otId: string, data: RegistrarSeniaInput) =>
+  apiFetch<{ ok: boolean; recibo_id: number; recibo_numero: string; importe: number; imputado_a_nv: string | null }>(
+    `/ordenes/${otId}/registrar-senia`,
+    { method: "POST", body: JSON.stringify(data) },
+  )
+
+export interface CobroPago {
+  valor_id: string | number
+  valor_nombre?: string
+  tipo_valor?: string
+  importe: number
+  moneda?: string
+  cotizacion?: number
+  es_tarjeta?: boolean
+  tarjeta_nombre?: string | null
+  cantidad_cuotas?: number
+}
+export interface CobrarOTInput {
+  caja_id: string | number
+  caja_nombre?: string
+  pagos: CobroPago[]
+  observaciones?: string
+}
+export const cobrarOT = (otId: string, data: CobrarOTInput) =>
+  apiFetch<{
+    ok: boolean
+    recibo_id: number
+    recibo_numero: string
+    importe: number
+    saldo_nv: number
+    nv_cubierta: boolean
+    nv_id: number
+    nv_numero: string
+  }>(
+    `/ordenes/${otId}/cobrar`,
+    { method: "POST", body: JSON.stringify(data) },
+  )
 
 // ─── Controles de OT ────────────────────────────────────────────────────────
 export const fetchControlesOT = (otId: string) => apiFetch<TallerOTControl[]>(`/ordenes/${otId}/controles`)
 export const crearControlOT = (otId: string, data: { tipo: string; area_id: string; categoria_id?: string }) => apiFetch<TallerOTControl>(`/ordenes/${otId}/controles`, { method: "POST", body: JSON.stringify(data) })
 export const updateControlOT = (otId: string, controlId: string, data: Record<string, unknown>) => apiFetch<TallerOTControl>(`/ordenes/${otId}/controles/${controlId}`, { method: "PATCH", body: JSON.stringify(data) })
+export const deleteControlOT = (otId: string, controlId: string) => apiFetch<{ ok: boolean }>(`/ordenes/${otId}/controles/${controlId}`, { method: "DELETE" })
 
 // ─── Asignador ──────────────────────────────────────────────────────────────
 export const ejecutarAsignador = (data: {
@@ -126,6 +203,7 @@ export interface TallerArea {
   descripcion?: string
   orden: number
   activo: boolean
+  control_inicial_obligatorio?: boolean
   created_at: string
   updated_at: string
 }
@@ -291,6 +369,8 @@ export interface TallerOrdenTrabajo {
 }
 
 export interface TallerOrdenDetalle extends TallerOrdenTrabajo {
+  cliente?: { id: number; codigo?: string; nombre: string; telefono?: string } | null
+  cliente_nombre?: string | null
   fallas_secundarias: { falla_id: string; nombre: string }[]
   repuestos: TallerOTRepuesto[]
   controles: TallerOTControl[]
@@ -307,7 +387,7 @@ export interface TallerOrdenDetalle extends TallerOrdenTrabajo {
 export interface TallerOTRepuesto {
   id: string
   ot_id: string
-  producto_id: string
+  producto_id: string | number
   producto_nombre?: string
   cantidad: number
   unidad: string
@@ -315,6 +395,50 @@ export interface TallerOTRepuesto {
   descuento_pct: number
   subtotal: number
   total: number
+  // Enriquecidos por el GET de la OT (no están en la tabla, se joinean con productos)
+  stock_real?: number
+  tipo_producto?: string
+  stock_suficiente?: boolean
+  faltante?: number
+}
+
+// Preview de repuestos sugeridos antes de crear la OT
+export interface RepuestoSugeridoPreview {
+  producto_id: number
+  producto_nombre: string
+  cantidad_sugerida: number
+  stock_real: number
+  tipo: string
+  stock_suficiente: boolean
+  faltante: number
+  precio_unitario: number
+  precio_origen: "lista" | "costo_contable" | "costo_manual" | "ninguno"
+  subtotal: number
+}
+export interface PreviewListaPrecios {
+  id: number
+  nombre: string
+  version_id: number
+  version_nombre: string
+}
+export const previewRepuestosSugeridos = (params: {
+  equipo_id: string
+  falla_principal_id: string
+  fallas_sec?: string[]
+  lista_precios_id?: number | null
+}) => {
+  const qs = new URLSearchParams({
+    equipo_id: params.equipo_id,
+    falla_principal_id: params.falla_principal_id,
+    fallas_sec: (params.fallas_sec ?? []).join(","),
+  })
+  if (params.lista_precios_id) qs.set("lista_precios_id", String(params.lista_precios_id))
+  return apiFetch<{
+    repuestos: RepuestoSugeridoPreview[]
+    hay_faltantes: boolean
+    total: number
+    lista_precios?: PreviewListaPrecios | null
+  }>(`/repuestos-sugeridos-preview?${qs.toString()}`)
 }
 
 export interface TallerOTControl {
