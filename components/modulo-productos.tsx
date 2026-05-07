@@ -164,6 +164,9 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
   const [categorias, setCategorias] = useState<{ id: number; nombre: string }[]>([])
   const [marcas, setMarcas] = useState<{ id: number; nombre: string }[]>([])
   const [colores, setColores] = useState<{ id: number; nombre: string }[]>([])
+  // Modal inline para crear nuevo item de un catálogo desde el form (sin
+  // tener que salir a Stock → Catálogos de Productos).
+  const [crearCatalogo, setCrearCatalogo] = useState<null | "categoria" | "marca" | "color">(null)
   const [monedas, setMonedas] = useState<{ codigo: string; nombre: string }[]>([])
   const [cuentasContables, setCuentasContables] = useState<{ id: number; codigo: string; nombre: string }[]>([])
 
@@ -276,7 +279,18 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
 
           <div className="grid grid-cols-4 gap-3">
             <div>
-              <Label required>Categoría</Label>
+              <div className="flex items-center justify-between">
+                <Label required>Categoría</Label>
+                {!soloLectura && (
+                  <button
+                    type="button"
+                    onClick={() => setCrearCatalogo("categoria")}
+                    className="text-xs text-indigo-700 hover:text-indigo-900 font-medium mb-1"
+                  >
+                    + Nueva
+                  </button>
+                )}
+              </div>
               <Sel value={form.categoria} onChange={e => set("categoria", e.target.value)} disabled={soloLectura}>
                 <option value="">Seleccionar...</option>
                 {categorias.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
@@ -284,7 +298,18 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
               {errores.categoria && <p className="text-xs text-red-500 mt-1">{errores.categoria}</p>}
             </div>
             <div>
-              <Label>Marca</Label>
+              <div className="flex items-center justify-between">
+                <Label>Marca</Label>
+                {!soloLectura && (
+                  <button
+                    type="button"
+                    onClick={() => setCrearCatalogo("marca")}
+                    className="text-xs text-indigo-700 hover:text-indigo-900 font-medium mb-1"
+                  >
+                    + Nueva
+                  </button>
+                )}
+              </div>
               <Sel value={form.marca} onChange={e => set("marca", e.target.value)} disabled={soloLectura}>
                 <option value="">Seleccionar...</option>
                 {marcas.map(m => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
@@ -295,13 +320,44 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
               <Input value={form.modelo} onChange={e => set("modelo", e.target.value)} placeholder="Ej: A2896" disabled={soloLectura} />
             </div>
             <div>
-              <Label>Color</Label>
+              <div className="flex items-center justify-between">
+                <Label>Color</Label>
+                {!soloLectura && (
+                  <button
+                    type="button"
+                    onClick={() => setCrearCatalogo("color")}
+                    className="text-xs text-indigo-700 hover:text-indigo-900 font-medium mb-1"
+                  >
+                    + Nuevo
+                  </button>
+                )}
+              </div>
               <Sel value={form.color} onChange={e => set("color", e.target.value)} disabled={soloLectura}>
                 <option value="">Sin color</option>
                 {colores.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
               </Sel>
             </div>
           </div>
+
+          {crearCatalogo && (
+            <ModalCrearCatalogoInline
+              tipo={crearCatalogo}
+              onCancelar={() => setCrearCatalogo(null)}
+              onCreado={(nombre, item) => {
+                if (crearCatalogo === "categoria") {
+                  setCategorias(prev => [...prev, item].sort((a, b) => a.nombre.localeCompare(b.nombre)))
+                  set("categoria", nombre)
+                } else if (crearCatalogo === "marca") {
+                  setMarcas(prev => [...prev, item].sort((a, b) => a.nombre.localeCompare(b.nombre)))
+                  set("marca", nombre)
+                } else {
+                  setColores(prev => [...prev, item].sort((a, b) => a.nombre.localeCompare(b.nombre)))
+                  set("color", nombre)
+                }
+                setCrearCatalogo(null)
+              }}
+            />
+          )}
 
           <div className="flex flex-wrap items-center gap-6">
             <div className="flex items-center gap-2">
@@ -861,6 +917,122 @@ export default function ModuloProductos() {
             </tbody>
           </table>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Modal: crear nuevo item de catálogo (categoría / marca / color) ────────
+// Se muestra desde el form de Producto cuando el operador hace click en
+// "+ Nueva" al lado de cada dropdown. Llama al endpoint REST correspondiente
+// y devuelve el item creado para agregarlo en caliente al dropdown.
+function ModalCrearCatalogoInline({
+  tipo,
+  onCancelar,
+  onCreado,
+}: {
+  tipo: "categoria" | "marca" | "color"
+  onCancelar: () => void
+  onCreado: (nombre: string, item: { id: number; nombre: string }) => void
+}) {
+  const [nombre, setNombre] = useState("")
+  const [hex, setHex] = useState("")
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const config = {
+    categoria: { titulo: "Nueva Categoría", endpoint: "/api/categorias-producto", showHex: false },
+    marca:     { titulo: "Nueva Marca",     endpoint: "/api/marcas-producto",     showHex: false },
+    color:     { titulo: "Nuevo Color",     endpoint: "/api/colores-producto",    showHex: true  },
+  }[tipo]
+
+  async function handleSubmit() {
+    setError(null)
+    if (!nombre.trim()) { setError("El nombre es obligatorio"); return }
+    setEnviando(true)
+    try {
+      const body: Record<string, unknown> = { nombre: nombre.trim() }
+      if (config.showHex && hex.trim()) body.hex = hex.trim()
+      const r = await fetch(config.endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}))
+        setError(e?.error ?? `Error al crear (HTTP ${r.status})`)
+        setEnviando(false)
+        return
+      }
+      const item = await r.json()
+      onCreado(item.nombre, { id: item.id, nombre: item.nombre })
+    } catch (err) {
+      setError((err as Error).message)
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900">{config.titulo}</h3>
+          <button onClick={onCancelar} className="text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded p-2 text-xs text-red-700">{error}</div>
+          )}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Nombre *</label>
+            <input
+              type="text"
+              autoFocus
+              value={nombre}
+              onChange={e => setNombre(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && !enviando) handleSubmit() }}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+            />
+          </div>
+          {config.showHex && (
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Hex (opcional)</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="#FF0000"
+                  value={hex}
+                  onChange={e => setHex(e.target.value)}
+                  className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm font-mono"
+                />
+                <input
+                  type="color"
+                  value={/^#[0-9a-f]{6}$/i.test(hex) ? hex : "#999999"}
+                  onChange={e => setHex(e.target.value)}
+                  className="w-10 h-10 border border-gray-300 rounded cursor-pointer"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+          <button
+            onClick={onCancelar}
+            disabled={enviando}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={enviando}
+            className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm hover:bg-indigo-800 disabled:opacity-50"
+          >
+            {enviando ? "Guardando…" : "Guardar"}
+          </button>
+        </div>
       </div>
     </div>
   )

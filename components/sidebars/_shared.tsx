@@ -79,14 +79,34 @@ export function ModuleSidebar({
   )
   const toggle = (id: string) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }))
 
+  // Pre-calculamos qué items son "padres" (otro item del sidebar tiene href
+  // que empieza con `item.href + "/"`). Esos solo deben activarse por match
+  // EXACTO de pathname — sino se duplica el highlight (ej: Dashboard
+  // "/servicio-tecnico" + Órdenes "/servicio-tecnico/ot" estando en /ot).
+  const allItems = config.sections.flatMap(s => s.items)
+  const itemsConHijos = new Set(
+    allItems
+      .filter(parent =>
+        parent.href &&
+        parent.href !== "/" &&
+        allItems.some(child => child !== parent && child.href && child.href.startsWith(parent.href + "/"))
+      )
+      .map(p => p.href)
+  )
+
   const isActive = (item: SidebarItem) => {
     if (item.matchView) {
       // Item del monolito: activo si estamos en / con ?module=permModule y ?view=matchView
       return pathname === "/" && currentModule === config.permModule && currentView === item.matchView
     }
-    // Item migrado: activo si la ruta coincide
+    // Match exacto siempre activa
     if (pathname === item.href) return true
-    if (item.href !== "/" && pathname.startsWith(item.href + "/")) return true
+    if (item.href === "/") return false
+    // Si este item tiene hijos en el sidebar, solo match exacto
+    // (evita el highlight duplicado de Dashboard cuando estás en una sub-ruta).
+    if (itemsConHijos.has(item.href)) return false
+    // Items hoja: activan por prefijo (ej: /ventas/nv y /ventas/nv/[id])
+    if (pathname.startsWith(item.href + "/")) return true
     return false
   }
 

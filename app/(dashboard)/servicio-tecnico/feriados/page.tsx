@@ -3,36 +3,41 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useERP } from "@/contexts/erp-context"
-import { CRUDTableWithFilter } from "@/components/servicio-tecnico/_shared"
-import { deleteFeriado, fetchFeriados, type TallerFeriado } from "@/lib/taller-actions"
+import TallerListadoTabla from "@/components/servicio-tecnico/listado-tabla"
+import { fetchFeriados, type TallerFeriado } from "@/lib/taller-actions"
 
 export default function FeriadosPage() {
   const router = useRouter()
   const { canSee } = useERP()
   const [data, setData] = useState<TallerFeriado[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!canSee("servicio_tecnico", "feriados")) router.replace("/")
   }, [canSee, router])
 
   useEffect(() => {
-    fetchFeriados().then(d => setData(Array.isArray(d) ? d : [])).catch(console.error)
+    fetchFeriados()
+      .then(d => setData(Array.isArray(d) ? d : []))
+      .catch(console.error)
+      .finally(() => setLoading(false))
   }, [])
 
   return (
-    <CRUDTableWithFilter
+    <TallerListadoTabla<TallerFeriado>
       title="Feriados"
-      data={data as unknown as Record<string, unknown>[]}
+      rows={data}
+      loading={loading}
+      moduleName="taller_feriados"
+      newHref="/servicio-tecnico/feriados/nuevo"
+      newLabel="Nuevo Feriado"
+      rowHrefBase="/servicio-tecnico/feriados"
       columns={[
         { key: "fecha", label: "Fecha" },
         { key: "descripcion", label: "Descripción" },
       ]}
-      onNew={() => alert("Crear feriado — pendiente de UI dedicada")}
-      onEdit={() => {}}
-      onDelete={async id => {
-        await deleteFeriado(id)
-        setData(await fetchFeriados())
-      }}
+      searchFields={["descripcion", "fecha"]}
+      emptyMessage="No hay feriados cargados"
     />
   )
 }

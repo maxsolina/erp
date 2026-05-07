@@ -35,5 +35,56 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     usuario: body.usuario ?? null,
   })
 
+  // ─── Post-procesamiento: cancelación de OT ────────────────────────────
+  // Si se cancela la OT, cancelar la NV vinculada (si está editable).
+  // Si ya hay factura emitida, no la tocamos — el operador tiene que
+  // emitir Nota de Crédito manualmente desde el módulo de Ventas.
+  // Los recibos de seña/cobros quedan sin imputación → saldo a favor del
+  // cliente (queda en cuenta corriente).
+  if (body.nuevo_estado === "cancelada") {
+    const { data: nv } = await supabase
+      .from("notas_venta")
+      .select("id, numero, estado")
+      .eq("ot_id", id)
+      .neq("estado", "cancelada")
+      .maybeSingle()
+
+    if (nv) {
+      const estadosCancelables = ["borrador", "abierta", "a_facturar"]
+      if (estadosCancelables.includes(nv.estado)) {
+        const { error: cancelErr } = await supabase
+          .from("notas_venta")
+          .update({ estado: "cancelada", updated_at: new Date().toISOString() })
+          .eq("id", nv.id)
+        if (!cancelErr) {
+          await registrarEvento(supabase, {
+            tipo_documento: "nota_venta",
+            documento_id: nv.id,
+            tipo_evento: "cambio_estado",
+            valor_anterior: nv.estado,
+            valor_nuevo: "cancelada",
+            usuario: body.usuario ?? null,
+          })
+          await registrarEvento(supabase, {
+            tipo_documento: "orden_taller",
+            documento_id: id,
+            tipo_evento: "nota",
+            usuario: body.usuario ?? null,
+            descripcion: `NV ${nv.numero} cancelada automáticamente al cancelar la OT`,
+          })
+        }
+      } else {
+        // NV ya facturada — alertar al operador via seguimiento
+        await registrarEvento(supabase, {
+          tipo_documento: "orden_taller",
+          documento_id: id,
+          tipo_evento: "nota",
+          usuario: body.usuario ?? null,
+          descripcion: `⚠️ NV ${nv.numero} ya estaba en estado "${nv.estado}". Hay que emitir Nota de Crédito manualmente desde Ventas.`,
+        })
+      }
+    }
+  }
+
   return NextResponse.json(result)
 }

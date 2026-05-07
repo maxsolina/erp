@@ -3,60 +3,96 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useERP } from "@/contexts/erp-context"
-import { CRUDTableWithFilter } from "@/components/servicio-tecnico/_shared"
-import { deleteTecnico, fetchTecnicos, type TallerTecnico } from "@/lib/taller-actions"
+import TallerListadoTabla from "@/components/servicio-tecnico/listado-tabla"
+import { fetchTecnicos, type TallerTecnico } from "@/lib/taller-actions"
 
 export default function TecnicosPage() {
   const router = useRouter()
   const { canSee } = useERP()
   const [data, setData] = useState<TallerTecnico[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!canSee("servicio_tecnico", "tecnicos")) router.replace("/")
   }, [canSee, router])
 
   useEffect(() => {
-    fetchTecnicos().then(d => setData(Array.isArray(d) ? d : [])).catch(console.error)
+    fetchTecnicos()
+      .then(d => setData(Array.isArray(d) ? d : []))
+      .catch(console.error)
+      .finally(() => setLoading(false))
   }, [])
 
   return (
-    <CRUDTableWithFilter
+    <TallerListadoTabla<TallerTecnico>
       title="Técnicos"
-      data={data as unknown as Record<string, unknown>[]}
+      rows={data}
+      loading={loading}
+      moduleName="taller_tecnicos"
+      newHref="/servicio-tecnico/tecnicos/nuevo"
+      newLabel="Nuevo Técnico"
+      rowHrefBase="/servicio-tecnico/tecnicos"
       columns={[
         { key: "nombre", label: "Nombre" },
         {
           key: "tipo",
           label: "Tipo",
-          render: v => (
+          align: "center",
+          render: r => (
             <span
-              className={`text-xs px-2 py-0.5 rounded-full ${
-                v === "propio" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"
+              className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                r.tipo === "propio" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"
               }`}
             >
-              {v as string}
+              {r.tipo === "propio" ? "Propio" : "Tercero"}
             </span>
           ),
+          filterValue: r => (r.tipo === "propio" ? "Propio" : "Tercero"),
         },
         {
-          key: "taller_areas_reparacion",
+          key: "area",
           label: "Área",
-          render: v => (v as { nombre: string } | null)?.nombre ?? "—",
+          render: r => r.taller_areas_reparacion?.nombre ?? "—",
+          filterValue: r => r.taller_areas_reparacion?.nombre ?? "",
         },
         {
-          key: "taller_categorias_reparacion",
+          key: "cat_principal",
           label: "Cat. Principal",
-          render: v => (v as { nombre: string } | null)?.nombre ?? "—",
+          render: r => r.taller_categorias_reparacion?.nombre ?? "—",
+          filterValue: r => r.taller_categorias_reparacion?.nombre ?? "",
         },
-        { key: "complejidad_tope", label: "Complejidad Tope" },
-        { key: "activo", label: "Activo", render: v => (v ? "✓" : "✗") },
+        {
+          key: "complejidad_tope",
+          label: "Compl. Tope",
+          align: "center",
+          render: r => (r.complejidad_tope ?? "—") as React.ReactNode,
+        },
+        {
+          key: "turno",
+          label: "Turno",
+          render: r => r.taller_turnos?.nombre ?? "—",
+          filterValue: r => r.taller_turnos?.nombre ?? "",
+        },
+        {
+          key: "activo",
+          label: "Estado",
+          align: "center",
+          render: r => (
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                r.activo ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-500"
+              }`}
+            >
+              {r.activo ? "Activo" : "Inactivo"}
+            </span>
+          ),
+          filterValue: r => (r.activo ? "Sí" : "No"),
+        },
       ]}
-      onNew={() => alert("Crear técnico — pendiente de UI dedicada")}
-      onEdit={() => alert("Editar técnico — pendiente de UI dedicada")}
-      onDelete={async id => {
-        await deleteTecnico(id)
-        setData(await fetchTecnicos())
-      }}
+      filterableFields={["tipo", "area", "cat_principal", "turno", "activo"]}
+      groupByFields={["tipo", "area", "turno", "activo"]}
+      searchFields={["nombre"]}
+      emptyMessage="No hay técnicos cargados"
     />
   )
 }

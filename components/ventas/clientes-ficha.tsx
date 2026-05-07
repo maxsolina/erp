@@ -72,7 +72,7 @@ export default function ClienteFicha({ clienteId }: { clienteId: number }) {
             <Row label="CUIT" value={cliente.cuit ?? ""} />
             <Row label="Condición IVA" value={cliente.condicion_iva ?? ""} />
             <Row label="Email" value={cliente.email ?? ""} />
-            <Row label="Teléfono" value={cliente.telefono ?? ""} />
+            <Row label="Celular" value={cliente.telefono ?? ""} />
           </div>
         </div>
         <div className="bg-white rounded-lg border p-5">

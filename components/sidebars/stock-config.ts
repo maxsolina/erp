@@ -83,6 +83,7 @@ export const stockSidebarConfig: SidebarConfig = {
       label: "Configuración",
       icon: Settings,
       items: [
+        { label: "Catálogos de Productos", href: "/stock/config/catalogos-producto", permKey: "productos", icon: Box },
         { label: "Depósitos", href: "/stock/config/depositos", permKey: "config_depositos", icon: Warehouse },
         { label: "Ubicaciones", href: "/stock/config/ubicaciones", permKey: "config_ubicaciones", icon: MapPin },
       ],

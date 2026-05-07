@@ -46,7 +46,10 @@ function buildVersionVacia(lista: ListaPrecios | null, conteoExistente: number):
     nombre: nombreDefault,
     fecha_inicial: new Date().toISOString().split("T")[0],
     fecha_final: null,
-    activa: false,
+    // Por default activa: la versión recién creada queda lista para usar
+    // (aparece en los selectores de NV, OT, etc.). Si el operador la
+    // quiere archivar puede destildarla en el form.
+    activa: true,
     estado: "borrador",
     ultima_actualizacion: new Date().toISOString(),
     lineas: [],

@@ -22,6 +22,7 @@ export interface ListaPrecios {
   incluye_iva: boolean
   activa: boolean
   no_visible: boolean
+  visible_en_ot?: boolean
   dias_validez: number
   estado: "borrador" | "creada" | "activa" | "inactiva"
   tipo_cotizacion: "oficial" | "blue" | "ccl" | "mep" | "divisa" | "billete"

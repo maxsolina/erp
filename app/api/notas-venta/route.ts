@@ -96,6 +96,8 @@ export async function POST(req: Request) {
     notas,
     lineas = [],
     usuario,
+    ot_id,
+    ot_numero,
   } = body
 
   // Generar número en el servidor de forma atómica
@@ -127,7 +129,9 @@ export async function POST(req: Request) {
   const ESTADOS_VALIDOS = ["borrador", "abierta", "a_facturar", "verificacion_factura", "verificacion_oe", "facturada", "finalizada", "parcial", "cancelada"]
   const estadoNormalizado = ESTADOS_VALIDOS.includes(estado) ? estado : "abierta"
 
-  // Insertar cabecera de NV
+  // Insertar cabecera de NV. Si la NV se origina en una OT del taller,
+  // pasamos `ot_id` y `ot_numero` para que queden vinculadas (la columna
+  // ot_id se agregó en scripts/alter-tablas-ot-id.sql).
   const buildPayload = (estadoUsado: string) => ({
     numero: numeroFinal,
     cliente_id: cliente_id ?? null,
@@ -139,6 +143,7 @@ export async function POST(req: Request) {
     impuestos: Number(impuestos ?? 0),
     total: Number(total ?? 0),
     notas: notas ?? null,
+    ...(ot_id ? { ot_id } : {}),
   })
 
   let { data: nv, error: nvErr } = await supabase

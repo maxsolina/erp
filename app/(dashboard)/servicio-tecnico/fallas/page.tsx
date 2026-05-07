@@ -3,46 +3,69 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useERP } from "@/contexts/erp-context"
-import { CRUDTableWithFilter } from "@/components/servicio-tecnico/_shared"
-import { deleteFalla, fetchFallas, type TallerFalla } from "@/lib/taller-actions"
+import TallerListadoTabla from "@/components/servicio-tecnico/listado-tabla"
+import { fetchFallas, type TallerFalla } from "@/lib/taller-actions"
 
 export default function FallasPage() {
   const router = useRouter()
   const { canSee } = useERP()
   const [data, setData] = useState<TallerFalla[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!canSee("servicio_tecnico", "fallas")) router.replace("/")
   }, [canSee, router])
 
   useEffect(() => {
-    fetchFallas().then(d => setData(Array.isArray(d) ? d : [])).catch(console.error)
+    fetchFallas()
+      .then(d => setData(Array.isArray(d) ? d : []))
+      .catch(console.error)
+      .finally(() => setLoading(false))
   }, [])
 
   return (
-    <CRUDTableWithFilter
+    <TallerListadoTabla<TallerFalla>
       title="Fallas"
-      data={data as unknown as Record<string, unknown>[]}
+      rows={data}
+      loading={loading}
+      moduleName="taller_fallas"
+      newHref="/servicio-tecnico/fallas/nueva"
+      newLabel="Nueva Falla"
+      rowHrefBase="/servicio-tecnico/fallas"
       columns={[
         { key: "nombre", label: "Nombre" },
         {
-          key: "taller_areas_reparacion",
+          key: "area",
           label: "Área",
-          render: v => (v as { nombre: string } | null)?.nombre ?? "—",
+          render: r => r.taller_areas_reparacion?.nombre ?? "—",
+          filterValue: r => r.taller_areas_reparacion?.nombre ?? "",
         },
         {
-          key: "taller_categorias_reparacion",
+          key: "categoria",
           label: "Categoría",
-          render: v => (v as { nombre: string } | null)?.nombre ?? "—",
+          render: r => r.taller_categorias_reparacion?.nombre ?? "—",
+          filterValue: r => r.taller_categorias_reparacion?.nombre ?? "",
         },
-        { key: "activo", label: "Activo", render: v => (v ? "✓" : "✗") },
+        {
+          key: "activo",
+          label: "Estado",
+          align: "center",
+          render: r => (
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                r.activo ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-500"
+              }`}
+            >
+              {r.activo ? "Activa" : "Inactiva"}
+            </span>
+          ),
+          filterValue: r => (r.activo ? "Sí" : "No"),
+        },
       ]}
-      onNew={() => alert("Crear falla — pendiente de UI dedicada")}
-      onEdit={() => alert("Editar falla — pendiente de UI dedicada")}
-      onDelete={async id => {
-        await deleteFalla(id)
-        setData(await fetchFallas())
-      }}
+      filterableFields={["area", "categoria", "activo"]}
+      groupByFields={["area", "categoria", "activo"]}
+      searchFields={["nombre"]}
+      emptyMessage="No hay fallas cargadas"
     />
   )
 }

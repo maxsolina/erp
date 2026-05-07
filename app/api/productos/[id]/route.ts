@@ -41,8 +41,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   if (error) return NextResponse.json({ error: error.message }, { status: 404 })
 
-  // Stock en vivo desde stock_unidades para productos con número de serie.
-  // (Ver comentario equivalente en /api/productos/route.ts.)
+  // Stock en vivo: misma lógica que /api/productos (ver comentario allí).
+  // Productos con IMEI: cuenta desde stock_unidades.
+  // Productos sin IMEI: suma desde stock_cantidades.
   if (data?.tiene_numero_serie) {
     const { data: unidades } = await supabase
       .from("stock_unidades")
@@ -53,6 +54,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       u => u.estado !== "entregado" && u.estado !== "dado_de_baja"
     ).length
     data.stock_real = live
+  } else if (data) {
+    const { data: cantidades } = await supabase
+      .from("stock_cantidades")
+      .select("cantidad")
+      .eq("producto_id", id)
+    const total = (cantidades ?? []).reduce((acc, sc) => acc + Number(sc.cantidad ?? 0), 0)
+    data.stock_real = total
   }
 
   return NextResponse.json(data)

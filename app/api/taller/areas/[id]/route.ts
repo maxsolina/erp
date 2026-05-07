@@ -20,9 +20,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const supabase = await createClient()
   const body = await req.json()
 
+  // Whitelist de columnas (evita updates a campos inexistentes que pueda
+  // venir el body si se usa el form genérico).
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (body.codigo !== undefined) update.codigo = body.codigo
+  if (body.nombre !== undefined) update.nombre = body.nombre
+  if (body.descripcion !== undefined) update.descripcion = body.descripcion ?? null
+  if (body.orden !== undefined) update.orden = Number(body.orden ?? 0)
+  if (body.control_inicial_obligatorio !== undefined) {
+    update.control_inicial_obligatorio = !!body.control_inicial_obligatorio
+  }
+  if (body.activo !== undefined) update.activo = !!body.activo
+
   const { data, error } = await supabase
     .from("taller_areas_reparacion")
-    .update({ ...body, updated_at: new Date().toISOString() })
+    .update(update)
     .eq("id", id)
     .select()
     .single()
