@@ -121,14 +121,16 @@ export function ModuleSidebar({
   return (
     <div className="flex flex-1 overflow-hidden bg-gray-50 relative">
       {/* FAB mobile para abrir el sidebar — solo se ve cuando el drawer está cerrado.
-          Posición fixed para que siga visible al hacer scroll del contenido. */}
+          Posición fixed para que siga visible al hacer scroll. Usa pill grande
+          con label así el usuario lo descubre fácil (un icono solo no se nota).*/}
       {!mobileOpen && (
         <button
           onClick={() => setMobileOpen(true)}
-          className={`md:hidden fixed left-3 bottom-3 z-30 ${accent.headerBg} text-white p-3 rounded-full shadow-lg active:scale-95 transition-transform`}
-          aria-label="Abrir menú"
+          className={`md:hidden fixed left-3 bottom-4 z-30 ${accent.headerBg} text-white pl-3 pr-4 py-3 rounded-full shadow-xl active:scale-95 transition-transform flex items-center gap-2 ring-4 ring-white/40`}
+          aria-label="Abrir menú del módulo"
         >
           <Menu className="w-5 h-5" />
+          <span className="text-sm font-semibold">Menú</span>
         </button>
       )}
 
