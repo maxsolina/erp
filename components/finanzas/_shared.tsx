@@ -25,10 +25,26 @@ export function Badge({ children, color = "gray" }: { children: ReactNode; color
   return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${colors[color]}`}>{children}</span>
 }
 
+export function formatPct(n: number) {
+  return `${n.toFixed(2)}%`
+}
+
+export function formatCurrency(n: number) {
+  return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 }).format(n)
+}
+
+export const CUOTAS_OPTIONS = [1, 2, 3, 4, 5, 6, 9, 12, 18, 24]
+
+export const DIAS_LABELS = [
+  { key: "lun", label: "L" }, { key: "mar", label: "M" }, { key: "mie", label: "X" },
+  { key: "jue", label: "J" }, { key: "vie", label: "V" }, { key: "sab", label: "S" },
+  { key: "dom", label: "D" },
+] as const
+
 // ─── Types compartidos ──────────────────────────────────────────────────────
 
 export interface Tarjeta {
-  id: string
+  id: number
   nombre: string
   tipo: "credito" | "debito"
   dias_presentacion: number
@@ -36,33 +52,36 @@ export interface Tarjeta {
   activa: boolean
 }
 
-export interface GrupoTarjeta {
-  id: string
+export interface CargosGrupo {
+  id: number
   nombre: string
-  tarjeta_id: string
-  activo: boolean
+  tipo: string
+  arancel: number
+  es_porcentaje: boolean
+  cuenta_contable: string
 }
 
-export interface CargosGrupo {
-  id: string
-  grupo_id: string
+export interface GrupoTarjeta {
+  id: number
   nombre: string
-  arancel: number
-  iibb: number
-  iva: number
-  costo_financiero: number
-  retencion: number
-  ganancias: number
+  banco: string
+  tipo_movimiento: string
+  activo: boolean
+  tarjetas_ids: number[]
+  cargos: CargosGrupo[]
 }
 
 export interface RecargoTarjeta {
-  id: string
-  grupo_id: string
-  tarjeta_id: string
-  cantidad_cuotas: number
-  porcentaje_recargo: number
-  cft_efectivo_anual: number
-  tea_efectivo_anual: number
+  id: number
+  sucursal: string
+  tarjeta_id: number
+  grupo_id: number
+  desde_cuota: number
+  hasta_cuota: number
+  fecha_desde: string
+  fecha_hasta: string
+  recargo_pct: number
+  dias: { lun: boolean; mar: boolean; mie: boolean; jue: boolean; vie: boolean; sab: boolean; dom: boolean }
   activo: boolean
 }
 

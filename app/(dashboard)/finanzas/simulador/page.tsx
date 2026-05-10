@@ -1,3 +1,13 @@
 "use client"
-import FinanzasRedirectStub from "@/components/finanzas/redirect-stub"
-export default function Page() { return <FinanzasRedirectStub view="simulador" permKey="simulador" /> }
+
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useERP } from "@/contexts/erp-context"
+import Simulador from "@/components/finanzas/simulador"
+
+export default function Page() {
+  const router = useRouter()
+  const { canSee } = useERP()
+  useEffect(() => { if (!canSee("finanzas", "simulador")) router.replace("/") }, [canSee, router])
+  return <Simulador />
+}
