@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Plus } from "lucide-react"
 import OdooFilterBar, {
   type FilterOption,
@@ -11,6 +12,7 @@ import OdooFilterBar, {
 import { type PlanCuenta } from "./_shared"
 
 export default function PlanCuentasListado() {
+  const router = useRouter()
   const [items, setItems] = useState<PlanCuenta[]>([])
   const [cargando, setCargando] = useState(true)
   const [search, setSearch] = useState("")
@@ -130,7 +132,11 @@ export default function PlanCuentasListado() {
               <tr><td colSpan={7} className="py-8 text-center text-gray-400">Cargando...</td></tr>
             )}
             {!cargando && filtered.map(c => (
-              <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
+              <tr
+                key={c.id}
+                onClick={() => router.push(`/?module=contabilidad&view=plan-cuentas&editar=${c.id}`)}
+                className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors"
+              >
                 <td className="py-3 px-4 font-mono text-sm text-emerald-700 font-medium">{c.codigo}</td>
                 <td className="py-3 px-4 text-sm">{c.nombre}</td>
                 <td className="py-3 px-4 text-sm text-gray-600">{c.tipo_cuenta?.nombre ?? "—"}</td>

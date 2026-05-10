@@ -59,6 +59,30 @@ export default function TomaEquipoFicha({ tomaId }: { tomaId: number }) {
   const [ncPopup, setNcPopup] = useState<any | null>(null)
   const [recPopup, setRecPopup] = useState<any | null>(null)
 
+  // Estado del asiento de la NC (para mostrar OK / falla en la ficha + abrir modal)
+  // Cuando es null mientras carga, no muestra nada; cuando trae { asiento_id }
+  // muestra el número (clickeable → modal); cuando trae { asiento_id: null }
+  // avisa explícitamente que el asiento no se generó (bug histórico: el asiento
+  // fallaba silenciosamente y el operador no lo veía hasta auditar contabilidad).
+  const [ncAsiento, setNcAsiento] = useState<{
+    asiento_id: string | null
+    numero?: string
+    fecha?: string
+    concepto?: string
+    moneda_original?: string
+    cotizacion_aplicada?: number | null
+    tipo_cotizacion?: string | null
+    lineas?: Array<{
+      cuenta_codigo?: string | null
+      cuenta_nombre?: string | null
+      descripcion?: string | null
+      debe: number
+      haber: number
+      importe_moneda_original?: number | null
+    }>
+  } | null>(null)
+  const [asientoPopupOpen, setAsientoPopupOpen] = useState(false)
+
   // Depósitos / ubicaciones (para selector dentro del modal de recepción)
   const [depositos, setDepositos] = useState<Deposito[]>([])
   const [ubicaciones, setUbicaciones] = useState<Ubicacion[]>([])
@@ -100,6 +124,47 @@ export default function TomaEquipoFicha({ tomaId }: { tomaId: number }) {
     fetchDepositos().then(d => setDepositos(Array.isArray(d) ? d : [])).catch(console.error)
     fetchUbicaciones().then(u => setUbicaciones(Array.isArray(u) ? u : [])).catch(console.error)
   }, [])
+
+  // Cargar estado del asiento de la NC: mira el ajuste_clientes correspondiente
+  // y de ahí saca asiento_id + número + líneas. Si asiento_id es null, la NC
+  // quedó sin contabilizar y el operador necesita verlo. Cargamos las líneas
+  // acá para que el modal "ver asiento" sea instantáneo (sin segundo round-trip).
+  useEffect(() => {
+    if (!toma?.nota_credito_numero) return
+    let cancelado = false
+    fetch("/api/ajustes-clientes")
+      .then(r => r.json())
+      .then(async (all: any[]) => {
+        if (cancelado || !Array.isArray(all)) return
+        const ajuste = all.find(a => a.numero === toma.nota_credito_numero)
+        if (!ajuste) return
+        if (!ajuste.asiento_id) {
+          setNcAsiento({ asiento_id: null })
+          return
+        }
+        // El endpoint usa ?id= como query param, no path /:id
+        const r = await fetch(`/api/contabilidad/asientos?id=${ajuste.asiento_id}`).catch(() => null)
+        if (!r || !r.ok) {
+          setNcAsiento({ asiento_id: ajuste.asiento_id })
+          return
+        }
+        const arr = await r.json().catch(() => null)
+        const a = Array.isArray(arr) ? arr[0] : arr
+        if (cancelado) return
+        setNcAsiento({
+          asiento_id: ajuste.asiento_id,
+          numero: a?.numero,
+          fecha: a?.fecha,
+          concepto: a?.concepto,
+          moneda_original: a?.moneda_original,
+          cotizacion_aplicada: a?.cotizacion_aplicada,
+          tipo_cotizacion: a?.tipo_cotizacion,
+          lineas: Array.isArray(a?.lineas) ? a.lineas : [],
+        })
+      })
+      .catch(() => {})
+    return () => { cancelado = true }
+  }, [toma?.nota_credito_numero])
 
   const fechaHora = useMemo(() => {
     if (!toma) return ""
@@ -338,6 +403,24 @@ export default function TomaEquipoFicha({ tomaId }: { tomaId: number }) {
               <div className="flex justify-between">
                 <span className="text-gray-500">Importe</span>
                 <span className="font-bold text-emerald-600">{formatCurrency(Number(toma.precio_final))}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">Asiento contable</span>
+                {ncAsiento === null ? (
+                  <span className="text-xs text-gray-400 italic">cargando…</span>
+                ) : ncAsiento.asiento_id ? (
+                  <button
+                    type="button"
+                    onClick={() => setAsientoPopupOpen(true)}
+                    className="font-medium text-emerald-700 hover:underline hover:text-emerald-900 cursor-pointer"
+                  >
+                    {ncAsiento.numero ?? `#${ncAsiento.asiento_id.slice(0, 8)}`}
+                  </button>
+                ) : (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-700 font-medium" title="La NC no fue contabilizada. Revisar el log del servidor.">
+                    ✗ no generado
+                  </span>
+                )}
               </div>
               {toma.estado === "cancelado" ? (
                 <p className="text-xs text-red-500 pt-2 border-t">
@@ -931,6 +1014,117 @@ export default function TomaEquipoFicha({ tomaId }: { tomaId: number }) {
             <div className="px-6 py-3 text-right">
               <p className="text-xs text-gray-400 uppercase font-medium">Origen</p>
               <p className="text-sm font-semibold text-gray-700">{recPopup.documento_origen_ref ?? "—"}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup detalle Asiento contable de la NC — compacto, solo lo esencial */}
+      {asientoPopupOpen && ncAsiento?.asiento_id && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => setAsientoPopupOpen(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-3 border-b bg-indigo-50">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-semibold bg-indigo-100 text-indigo-700 rounded px-2 py-0.5 uppercase">
+                    Asiento
+                  </span>
+                  <span className="font-mono font-bold text-indigo-800 text-base">
+                    {ncAsiento.numero ?? `#${ncAsiento.asiento_id.slice(0, 8)}`}
+                  </span>
+                </div>
+                {ncAsiento.fecha && (
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {new Date(ncAsiento.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "long", year: "numeric" })}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => setAsientoPopupOpen(false)}
+                className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {ncAsiento.concepto && (
+              <div className="px-5 py-2 border-b text-xs">
+                <span className="text-gray-400 uppercase font-medium">Concepto</span>
+                <p className="text-gray-700 mt-0.5">{ncAsiento.concepto}</p>
+              </div>
+            )}
+
+            {ncAsiento.moneda_original && ncAsiento.moneda_original !== "ARS" && (
+              <div className="px-5 py-2 border-b bg-amber-50/50 text-xs flex items-center justify-between">
+                <span className="text-gray-600">
+                  Moneda original: <span className="font-semibold">{ncAsiento.moneda_original}</span>
+                </span>
+                {ncAsiento.cotizacion_aplicada != null && (
+                  <span className="text-gray-600">
+                    Cotización {ncAsiento.tipo_cotizacion ?? ""}:{" "}
+                    <span className="font-semibold">{Number(ncAsiento.cotizacion_aplicada).toLocaleString("es-AR")}</span>
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Tabla de líneas: cuenta · debe · haber */}
+            <div className="px-5 py-3">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b text-gray-500 uppercase font-medium">
+                    <th className="text-left py-1.5">Cuenta</th>
+                    <th className="text-right py-1.5 w-24">Debe</th>
+                    <th className="text-right py-1.5 w-24">Haber</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(ncAsiento.lineas ?? []).map((l, i) => (
+                    <tr key={i} className="border-b border-gray-100">
+                      <td className="py-1.5">
+                        <div className="text-gray-900">
+                          {l.cuenta_codigo && <span className="text-gray-400 font-mono mr-1">{l.cuenta_codigo}</span>}
+                          {l.cuenta_nombre}
+                        </div>
+                        {l.descripcion && <div className="text-gray-400 text-[11px]">{l.descripcion}</div>}
+                      </td>
+                      <td className="text-right py-1.5 font-mono">
+                        {Number(l.debe) > 0 ? formatCurrency(Number(l.debe)) : "—"}
+                        {l.importe_moneda_original != null && Number(l.debe) > 0 && (
+                          <div className="text-[10px] text-gray-400">
+                            {ncAsiento.moneda_original} {Number(l.importe_moneda_original).toFixed(2)}
+                          </div>
+                        )}
+                      </td>
+                      <td className="text-right py-1.5 font-mono">
+                        {Number(l.haber) > 0 ? formatCurrency(Number(l.haber)) : "—"}
+                        {l.importe_moneda_original != null && Number(l.haber) > 0 && (
+                          <div className="text-[10px] text-gray-400">
+                            {ncAsiento.moneda_original} {Number(l.importe_moneda_original).toFixed(2)}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="font-semibold text-gray-700">
+                    <td className="pt-2 text-right uppercase text-[10px] tracking-wide text-gray-400">Totales</td>
+                    <td className="text-right pt-2 font-mono">
+                      {formatCurrency((ncAsiento.lineas ?? []).reduce((s, l) => s + Number(l.debe ?? 0), 0))}
+                    </td>
+                    <td className="text-right pt-2 font-mono">
+                      {formatCurrency((ncAsiento.lineas ?? []).reduce((s, l) => s + Number(l.haber ?? 0), 0))}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           </div>
         </div>

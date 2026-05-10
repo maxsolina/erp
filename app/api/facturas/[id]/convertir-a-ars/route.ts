@@ -99,6 +99,28 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: `Error al actualizar la factura: ${updErr.message}` }, { status: 500 })
   }
 
+  // Calcular subtotal de servicios desde las líneas (ya convertidas a ARS).
+  // Necesario para que el factory partía el HABER entre Ventas Mercadería
+  // e Ingresos por Servicios.
+  let subtotalServicios = 0
+  if (lineas && lineas.length > 0) {
+    const productoIdsLineas = lineas.map(l => l.producto_id).filter(id => id != null)
+    if (productoIdsLineas.length > 0) {
+      const { data: prods } = await supabase
+        .from("productos")
+        .select("id, tipo")
+        .in("id", productoIdsLineas)
+      const tipoPorId: Record<string, string> = {}
+      for (const p of prods ?? []) tipoPorId[String(p.id)] = String(p.tipo ?? "almacenable")
+      for (const l of lineas) {
+        if (l.producto_id != null && tipoPorId[String(l.producto_id)] === "servicio") {
+          // El subtotal en lineas[] todavía es en moneda original; lo convertimos.
+          subtotalServicios += round2(Number(l.subtotal ?? 0) * cot)
+        }
+      }
+    }
+  }
+
   // 7. Generar nuevo asiento "negro" en ARS
   const asientoResult = await generarAsientoFacturaVenta(supabase, {
     id:             factura.id,
@@ -111,6 +133,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     impuestos:      0,
     total:          totalArs,
     moneda:         "ARS",
+    subtotal_servicios: subtotalServicios,
   })
 
   if (!asientoResult.ok) {

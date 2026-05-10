@@ -16,6 +16,7 @@ import {
 import ProductoDropdown from "@/components/producto-dropdown"
 import { useERP } from "@/contexts/erp-context"
 import { formatCurrency } from "@/lib/format"
+import SearchableSelect from "@/components/ui/searchable-select"
 
 interface ClienteOpt {
   id: number
@@ -23,6 +24,8 @@ interface ClienteOpt {
   nombre: string
   lista_precios_id?: number | null
   categoria_id?: number | null
+  telefono?: string
+  numero_documento?: string
 }
 interface ProductoOpt {
   id: number
@@ -293,10 +296,10 @@ export default function SeniaForm() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Cliente <span className="text-red-500">*</span>
               </label>
-              <select
-                value={seniaClienteId ?? ""}
-                onChange={e => {
-                  const id = parseInt(e.target.value, 10) || null
+              <SearchableSelect
+                value={seniaClienteId}
+                onChange={v => {
+                  const id = v == null ? null : Number(v)
                   setSeniaClienteId(id)
                   if (id) {
                     const cli = clientes.find(c => c.id === id)
@@ -313,13 +316,15 @@ export default function SeniaForm() {
                     setSeniaMoneda("ARS")
                   }
                 }}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500"
-              >
-                <option value="">Seleccionar cliente…</option>
-                {clientes.map(c => (
-                  <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre}</option>
-                ))}
-              </select>
+                options={clientes.map(c => ({
+                  value: String(c.id),
+                  label: c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre,
+                  hint: c.telefono ? `Tel: ${c.telefono}` : undefined,
+                  searchExtra: `${c.codigo ?? ""} ${c.telefono ?? ""} ${c.numero_documento ?? ""}`,
+                }))}
+                placeholder="Buscar cliente por nombre, código o teléfono…"
+                required
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Lista de precios</label>

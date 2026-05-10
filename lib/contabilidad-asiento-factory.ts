@@ -32,6 +32,15 @@ export async function generarAsientoFacturaVenta(
     total: number
     moneda?: string
     cotizacion?: number | null
+    /**
+     * Subtotal correspondiente a líneas de productos tipo "servicio" (mano
+     * de obra, instalación, reparación). Si > 0, ese monto se asienta en
+     * "Ingresos por Servicios" en lugar de "Ventas Mercadería" — el HABER
+     * queda partido en dos cuentas. El resto (subtotal - subtotal_servicios)
+     * va a Ventas Mercadería como hasta ahora. Por defecto 0 para mantener
+     * compatibilidad con todos los callers existentes.
+     */
+    subtotal_servicios?: number
   }
 ): Promise<ResultadoAsiento> {
 
@@ -61,6 +70,10 @@ export async function generarAsientoFacturaVenta(
   let cDeudores = pm["deudores"]?.cuenta_debe as { id: string; codigo: string; nombre: string } | null
   const cVentas   = pm["ventas"]?.cuenta_haber   as { id: string; codigo: string; nombre: string } | null
   const cIVA      = pm["iva_debito"]?.cuenta_haber as { id: string; codigo: string; nombre: string } | null
+  // Cuenta de servicios (subtipo nuevo, agregado por script 107). Puede no
+  // existir en bases viejas; si la factura no tiene servicios no importa,
+  // y si los tiene devolvemos un error claro pidiendo correr la migración.
+  const cIngresosServicios = pm["ingresos_servicios"]?.cuenta_haber as { id: string; codigo: string; nombre: string } | null
 
   // 1b. Si la categoría del cliente tiene cuenta_cobrar_id configurada, usarla en lugar del mapeo global
   if (factura.cliente_categoria_id) {
@@ -113,6 +126,22 @@ export async function generarAsientoFacturaVenta(
   const tc = esExtranjera ? Number(factura.cotizacion) : 1
   const toARS = (n: number) => Math.round(Number(n ?? 0) * tc * 100) / 100
 
+  // Split productos vs servicios. Si la factura tiene parte de servicios,
+  // ese tramo del HABER va a "Ingresos por Servicios" en lugar de "Ventas
+  // Mercadería". El IVA y los Deudores se mantienen como una sola línea
+  // (no se desdobla por moneda contable; los servicios pagan el mismo IVA).
+  const subtotalServicios = Math.max(0, Number(factura.subtotal_servicios ?? 0))
+  const subtotalProductos = Math.max(0, Number(factura.subtotal) - subtotalServicios)
+  const tieneServicios    = subtotalServicios > 0.009
+  const tieneProductos    = subtotalProductos > 0.009
+
+  if (tieneServicios && !cIngresosServicios) {
+    return {
+      ok: false,
+      error: "Sin mapeo contable para servicios. Ejecute el script 107_productos_servicios.sql.",
+    }
+  }
+
   type Linea = {
     cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
     debe: number; haber: number; descripcion: string | null; orden: number
@@ -133,45 +162,74 @@ export async function generarAsientoFacturaVenta(
     },
   ]
 
+  let orden = 1
   if (tieneIVA) {
-    lineas.push(
-      // HABER: Ventas Mercadería = subtotal neto (en ARS)
-      {
+    if (tieneProductos) {
+      lineas.push({
         cuenta_id: cVentas.id,
         cuenta_codigo: cVentas.codigo,
         cuenta_nombre: cVentas.nombre,
         debe: 0,
-        haber: toARS(factura.subtotal),
+        haber: toARS(subtotalProductos),
         descripcion: factura.numero,
-        orden: 1,
-        importe_moneda_original: esExtranjera ? Number(factura.subtotal) : null,
-      },
-      // HABER: IVA Débito Fiscal = impuestos (en ARS)
-      {
-        cuenta_id: cIVA!.id,
-        cuenta_codigo: cIVA!.codigo,
-        cuenta_nombre: cIVA!.nombre,
+        orden: orden++,
+        importe_moneda_original: esExtranjera ? subtotalProductos : null,
+      })
+    }
+    if (tieneServicios) {
+      lineas.push({
+        cuenta_id: cIngresosServicios!.id,
+        cuenta_codigo: cIngresosServicios!.codigo,
+        cuenta_nombre: cIngresosServicios!.nombre,
         debe: 0,
-        haber: toARS(factura.impuestos),
+        haber: toARS(subtotalServicios),
         descripcion: factura.numero,
-        orden: 2,
-        importe_moneda_original: esExtranjera ? Number(factura.impuestos) : null,
-      }
-    )
+        orden: orden++,
+        importe_moneda_original: esExtranjera ? subtotalServicios : null,
+      })
+    }
+    // HABER: IVA Débito Fiscal = impuestos (en ARS), en una sola línea.
+    lineas.push({
+      cuenta_id: cIVA!.id,
+      cuenta_codigo: cIVA!.codigo,
+      cuenta_nombre: cIVA!.nombre,
+      debe: 0,
+      haber: toARS(factura.impuestos),
+      descripcion: factura.numero,
+      orden: orden++,
+      importe_moneda_original: esExtranjera ? Number(factura.impuestos) : null,
+    })
   } else {
-    lineas.push(
-      // HABER: Ventas Mercadería = total (sin IVA separado, en ARS)
-      {
+    // Sin IVA separado: el "total" es lo que se imputa a HABER, dividido
+    // proporcionalmente al split de subtotal entre productos y servicios.
+    if (tieneProductos) {
+      // Si solo hay productos, la línea es directamente el total.
+      // Si hay mix, usamos subtotalProductos (más fielmente representa el monto).
+      const haber = tieneServicios ? subtotalProductos : Number(factura.total)
+      lineas.push({
         cuenta_id: cVentas.id,
         cuenta_codigo: cVentas.codigo,
         cuenta_nombre: cVentas.nombre,
         debe: 0,
-        haber: toARS(factura.total),
+        haber: toARS(haber),
         descripcion: factura.numero,
-        orden: 1,
-        importe_moneda_original: esExtranjera ? Number(factura.total) : null,
-      }
-    )
+        orden: orden++,
+        importe_moneda_original: esExtranjera ? haber : null,
+      })
+    }
+    if (tieneServicios) {
+      const haber = tieneProductos ? subtotalServicios : Number(factura.total)
+      lineas.push({
+        cuenta_id: cIngresosServicios!.id,
+        cuenta_codigo: cIngresosServicios!.codigo,
+        cuenta_nombre: cIngresosServicios!.nombre,
+        debe: 0,
+        haber: toARS(haber),
+        descripcion: factura.numero,
+        orden: orden++,
+        importe_moneda_original: esExtranjera ? haber : null,
+      })
+    }
   }
 
   // 5. Validar partida doble
@@ -1654,8 +1712,12 @@ export async function generarAsientoRemito(
 
 // ─── NC Toma de Equipo ────────────────────────────────────────────────────────
 // Genera el asiento al confirmar la Toma de Equipo:
-//   DEBE  11030101  Deudores por Ventas    (importe)
-//   HABER 99999996  Cta Puente Toma Equipo (importe)
+//   DEBE  99999996  Cta Puente Toma Equipo (importe en ARS)
+//   HABER 11030101  Deudores por Ventas    (importe en ARS)
+//
+// La toma se acuerda en USD (precio del equipo usado), pero el asiento
+// SIEMPRE se valúa en ARS aplicando la cotización del día. Si no se pasa
+// `moneda`/`cotizacion` se asume ARS (compat con tomas viejas).
 export async function generarAsientoNCTomaEquipo(
   supabase: SupabaseClient,
   nc: {
@@ -1664,7 +1726,9 @@ export async function generarAsientoNCTomaEquipo(
     fecha: string
     cliente_nombre?: string | null
     sucursal?: string | null
-    total: number
+    total: number                   // En la moneda original
+    moneda?: string                 // "USD" | "ARS" | etc. Default "ARS"
+    cotizacion?: number | null      // ARS por unidad de moneda. Si moneda="USD" y total=300 → ARS = 300 * cotizacion
   }
 ): Promise<ResultadoAsiento> {
   // Idempotencia
@@ -1678,6 +1742,14 @@ export async function generarAsientoNCTomaEquipo(
   if (existente?.id) return { ok: true, asiento_id: existente.id }
 
   if (nc.total <= 0) return { ok: false, error: "El total de la NC debe ser mayor a 0." }
+
+  // Convertir a ARS si la toma se acordó en otra moneda.
+  const monedaOrig = (nc.moneda ?? "ARS").toUpperCase()
+  const cotiz = monedaOrig === "ARS" ? 1 : Number(nc.cotizacion ?? 0)
+  if (monedaOrig !== "ARS" && (!cotiz || cotiz <= 0)) {
+    return { ok: false, error: `La toma está en ${monedaOrig} pero falta la cotización para convertir a ARS.` }
+  }
+  const totalArs = nc.total * cotiz
 
   // Mapeo de cuentas
   const { data: mapeo } = await supabase
@@ -1722,16 +1794,19 @@ export async function generarAsientoNCTomaEquipo(
       sucursal_id,
       concepto: `NC por Toma de Equipo ${nc.numero}${nc.cliente_nombre ? ` de ${nc.cliente_nombre}` : ""}`,
       referencia: nc.numero, comprobante_tipo: "nc_toma_equipo",
-      moneda_original: "ARS", es_manual: false, estado: "publicado",
+      moneda_original: monedaOrig,
+      cotizacion_aplicada: monedaOrig !== "ARS" ? cotiz : null,
+      tipo_cotizacion: monedaOrig !== "ARS" ? "blue" : null,
+      es_manual: false, estado: "publicado",
     })
     .select("id").single()
   if (asientoErr) return { ok: false, error: `Error al crear asiento NC TE: ${asientoErr.message}` }
 
-  // NC TE: DEBE Cuenta Puente / HABER Deudores
-  // La cuenta puente se cancela cuando llega la REP (DEBE Productos / HABER Cuenta Puente)
+  // NC TE: DEBE Cuenta Puente / HABER Deudores — siempre en ARS para que
+  // los asientos sean consistentes con el resto del libro mayor.
   const lineas = [
-    { cuenta_id: cPuente.id,   cuenta_codigo: cPuente.codigo,   cuenta_nombre: cPuente.nombre,   debe: nc.total, haber: 0,        descripcion: nc.numero,                    orden: 0 },
-    { cuenta_id: cDeudores.id, cuenta_codigo: cDeudores.codigo, cuenta_nombre: cDeudores.nombre, debe: 0,        haber: nc.total, descripcion: nc.cliente_nombre ?? null, orden: 1 },
+    { cuenta_id: cPuente.id,   cuenta_codigo: cPuente.codigo,   cuenta_nombre: cPuente.nombre,   debe: totalArs, haber: 0,       importe_moneda_original: monedaOrig !== "ARS" ? nc.total : null, descripcion: nc.numero,                  orden: 0 },
+    { cuenta_id: cDeudores.id, cuenta_codigo: cDeudores.codigo, cuenta_nombre: cDeudores.nombre, debe: 0,        haber: totalArs, importe_moneda_original: monedaOrig !== "ARS" ? nc.total : null, descripcion: nc.cliente_nombre ?? null, orden: 1 },
   ]
 
   const { error: lineasErr } = await supabase
@@ -1758,6 +1833,8 @@ export async function generarAsientoRecepcionTomaEquipo(
     cliente_nombre?: string | null
     sucursal?: string | null
     total: number
+    moneda?: string
+    cotizacion?: number | null
   }
 ): Promise<ResultadoAsiento> {
   // Idempotencia
@@ -1771,6 +1848,16 @@ export async function generarAsientoRecepcionTomaEquipo(
   if (existente?.id) return { ok: true, asiento_id: existente.id }
 
   if (rec.total <= 0) return { ok: false, error: "El total de la recepción TE debe ser mayor a 0." }
+
+  // Si la toma estaba en USD, hay que convertir a ARS con la cotización del
+  // día en que se valuó la toma (persistida en tomas_equipo.cotizacion).
+  // Sin esto el asiento queda anotado como pesos crudos (bug: USD 300 → $300).
+  const monedaOrig = (rec.moneda ?? "ARS").toUpperCase()
+  const cotiz = monedaOrig === "ARS" ? 1 : Number(rec.cotizacion ?? 0)
+  if (monedaOrig !== "ARS" && (!cotiz || cotiz <= 0)) {
+    return { ok: false, error: `La toma está en ${monedaOrig} pero falta la cotización para convertir a ARS.` }
+  }
+  const totalArs = rec.total * cotiz
 
   const { data: mapeo } = await supabase
     .from("contabilidad_mapeo_cuentas")
@@ -1814,14 +1901,17 @@ export async function generarAsientoRecepcionTomaEquipo(
       sucursal_id,
       concepto: `Recepción Toma de Equipo ${rec.numero}${rec.cliente_nombre ? ` de ${rec.cliente_nombre}` : ""}`,
       referencia: rec.numero, comprobante_tipo: "recepcion_toma_equipo",
-      moneda_original: "ARS", es_manual: false, estado: "publicado",
+      moneda_original: monedaOrig,
+      cotizacion_aplicada: monedaOrig !== "ARS" ? cotiz : null,
+      tipo_cotizacion: monedaOrig !== "ARS" ? "blue" : null,
+      es_manual: false, estado: "publicado",
     })
     .select("id").single()
   if (asientoErr) return { ok: false, error: `Error al crear asiento REP TE: ${asientoErr.message}` }
 
   const lineas = [
-    { cuenta_id: cProductos.id, cuenta_codigo: cProductos.codigo, cuenta_nombre: cProductos.nombre, debe: rec.total, haber: 0, descripcion: rec.numero, orden: 0 },
-    { cuenta_id: cPuente.id,    cuenta_codigo: cPuente.codigo,    cuenta_nombre: cPuente.nombre,    debe: 0, haber: rec.total, descripcion: rec.cliente_nombre ?? null, orden: 1 },
+    { cuenta_id: cProductos.id, cuenta_codigo: cProductos.codigo, cuenta_nombre: cProductos.nombre, debe: totalArs, haber: 0,       importe_moneda_original: monedaOrig !== "ARS" ? rec.total : null, descripcion: rec.numero,                  orden: 0 },
+    { cuenta_id: cPuente.id,    cuenta_codigo: cPuente.codigo,    cuenta_nombre: cPuente.nombre,    debe: 0,        haber: totalArs, importe_moneda_original: monedaOrig !== "ARS" ? rec.total : null, descripcion: rec.cliente_nombre ?? null, orden: 1 },
   ]
 
   const { error: lineasErr } = await supabase

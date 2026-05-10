@@ -35,6 +35,8 @@ interface Props<T> {
   columns: Column<T>[]
   emptyText?: string
   rowKey: (row: T) => string | number
+  /** Si está, las filas se vuelven clickeables y disparan este handler. */
+  onRowClick?: (row: T) => void
 }
 
 export function ContabilidadConfigList<T>({
@@ -53,6 +55,7 @@ export function ContabilidadConfigList<T>({
   columns,
   emptyText,
   rowKey,
+  onRowClick,
 }: Props<T>) {
   const [activeFilters, setActiveFilters] = useState<FilterOption[]>([])
   const [activeGroupBy, setActiveGroupBy] = useState<GroupByOption[]>([])
@@ -118,7 +121,11 @@ export function ContabilidadConfigList<T>({
               <tr><td colSpan={columns.length} className="py-8 text-center text-gray-400">Cargando...</td></tr>
             )}
             {!cargando && filtered.map(row => (
-              <tr key={rowKey(row)} className="border-b border-gray-100 hover:bg-gray-50">
+              <tr
+                key={rowKey(row)}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                className={`border-b border-gray-100 hover:bg-gray-50 ${onRowClick ? "cursor-pointer" : ""}`}
+              >
                 {columns.map((col, i) => (
                   <td
                     key={i}

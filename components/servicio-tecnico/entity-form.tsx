@@ -18,6 +18,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Trash2 } from "lucide-react"
 import BotonVolver from "@/components/ui/boton-volver"
+import SearchableSelect from "@/components/ui/searchable-select"
 
 export type FieldDef =
   | { kind: "text"; key: string; label: string; required?: boolean; placeholder?: string; helper?: string }
@@ -312,17 +313,14 @@ function FieldRenderer({
       return (
         <div>
           {labelEl}
-          <select
-            value={(value as string) ?? ""}
-            onChange={e => onChange(e.target.value === "" ? null : e.target.value)}
-            className={baseInputClass}
-          >
-            {(field.allowEmpty || !field.required) && <option value="">— ninguno —</option>}
-            {!field.allowEmpty && field.required && <option value="">Seleccionar…</option>}
-            {field.optionsFrom.map(o => (
-              <option key={String(o.value)} value={String(o.value)}>{o.label}</option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={value as string | number | null | undefined}
+            onChange={v => onChange(v == null || v === "" ? null : v)}
+            options={field.optionsFrom.map(o => ({ value: String(o.value), label: o.label }))}
+            placeholder={field.required && !field.allowEmpty ? "Seleccionar…" : "— ninguno —"}
+            allowClear={!field.required || field.allowEmpty}
+            required={field.required}
+          />
         </div>
       )
 

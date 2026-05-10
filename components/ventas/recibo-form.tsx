@@ -13,9 +13,10 @@ import {
 } from "lucide-react"
 import { useERP } from "@/contexts/erp-context"
 import { formatCurrency, formatDate } from "@/lib/format"
+import SearchableSelect from "@/components/ui/searchable-select"
 
 // ─── Tipos ──────────────────────────────────────────────────────────────────
-interface ClienteOpt { id: number; codigo?: string; nombre: string }
+interface ClienteOpt { id: number; codigo?: string; nombre: string; telefono?: string; numero_documento?: string }
 interface Caja { id: string; nombre: string; sucursal: string; activo?: boolean }
 interface CajaValor { id: string; nombre: string; tipo: string; subtipo?: string | null; moneda: string }
 interface Tarjeta { id: number; nombre: string; tipo: "credito" | "debito"; activa: boolean }
@@ -556,27 +557,53 @@ export default function ReciboForm({
   }
 
   const publicarRecibo = async () => {
-    if (!isEdit || !initialId) return
     if (publicando) return
     setErrorAccion(null)
 
-    // Si hay cambios sin guardar, primero los guardamos
+    // Confirmar funciona en dos escenarios:
+    //   1. Recibo nuevo (sin id): lo creamos PRIMERO con POST y obtenemos el id.
+    //   2. Borrador existente: PUT para guardar cambios y después publicar.
+    // El usuario aprieta "Confirmar" sin pasar por "Guardar" — el handler
+    // se encarga de ambos pasos.
     setPublicando(true)
     try {
       const errVal = validar()
       if (errVal) { setErrorAccion(errVal); setPublicando(false); return }
 
-      // Guardar cambios actuales antes de publicar
-      const putRes = await fetch(`/api/recibos/${initialId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(construirPayload()),
-      })
-      if (!putRes.ok) {
-        const text = await putRes.text()
-        setErrorAccion(`No se pudo guardar antes de publicar: ${text}`)
-        setPublicando(false)
-        return
+      let reciboId = initialId
+      if (!isEdit || !reciboId) {
+        // 1. Crear el recibo (POST)
+        const postRes = await fetch("/api/recibos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(construirPayload()),
+        })
+        if (!postRes.ok) {
+          const text = await postRes.text()
+          setErrorAccion(`No se pudo crear el recibo: ${text}`)
+          setPublicando(false)
+          return
+        }
+        const created = await postRes.json()
+        reciboId = created?.id
+        if (!reciboId) {
+          setErrorAccion("No se pudo obtener el ID del recibo recién creado")
+          setPublicando(false)
+          return
+        }
+      } else {
+        // 2. Borrador existente — guardar cambios actuales antes de publicar
+        const putRes = await fetch(`/api/recibos/${reciboId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(construirPayload()),
+        })
+        if (!putRes.ok) {
+          const text = await putRes.text()
+          setErrorAccion(`No se pudo guardar antes de publicar: ${text}`)
+          setPublicando(false)
+          return
+        }
       }
 
       // Calcular caso de imputación bimonetaria
@@ -589,7 +616,7 @@ export default function ReciboForm({
         return "A"
       })()
 
-      const pubRes = await fetch(`/api/recibos/${initialId}/publicar`, {
+      const pubRes = await fetch(`/api/recibos/${reciboId}/publicar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ caso_imputacion: casoImputacion }),
@@ -600,7 +627,7 @@ export default function ReciboForm({
         setPublicando(false)
         return
       }
-      router.push(`/ventas/recibos/${initialId}`)
+      router.push(`/ventas/recibos/${reciboId}`)
     } catch (e: any) {
       setErrorAccion(`Error de red: ${e?.message ?? e}`)
       setPublicando(false)
@@ -873,7 +900,7 @@ export default function ReciboForm({
               {guardando ? "Guardando…" : "Guardar"}
             </button>
           )}
-          {isEdit && esBorrador && (
+          {esBorrador && (
             <button
               onClick={publicarRecibo}
               disabled={guardando || publicando}
@@ -915,17 +942,19 @@ export default function ReciboForm({
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500">Cliente *</label>
-              <select
-                value={reciboClienteId ?? ""}
-                onChange={e => setReciboClienteId(e.target.value ? parseInt(e.target.value, 10) : null)}
+              <SearchableSelect
+                value={reciboClienteId}
+                onChange={v => setReciboClienteId(v == null ? null : Number(v))}
+                options={clientes.map(c => ({
+                  value: String(c.id),
+                  label: c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre,
+                  hint: c.telefono ? `Tel: ${c.telefono}` : undefined,
+                  searchExtra: `${c.codigo ?? ""} ${c.telefono ?? ""} ${c.numero_documento ?? ""}`,
+                }))}
+                placeholder="Buscar cliente por nombre, código o teléfono…"
                 disabled={!esBorrador}
-                className="w-full border rounded px-2 py-1.5 text-sm"
-              >
-                <option value="">Seleccionar cliente…</option>
-                {clientes.map(c => (
-                  <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre}</option>
-                ))}
-              </select>
+                required
+              />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -1337,6 +1366,9 @@ export default function ReciboForm({
                   value={nuevoPagoValorId}
                   onChange={e => {
                     setNuevoPagoValorId(e.target.value)
+                    // La moneda se deriva del valor seleccionado — no hay
+                    // selector aparte para evitar divergencias ilógicas
+                    // (un caja_valor en USD con pago en ARS no tiene sentido).
                     const v = valoresCaja.find(x => x.id === e.target.value)
                     if (v?.moneda === "USD") setNuevoPagoMoneda("USD")
                     else setNuevoPagoMoneda("ARS")
@@ -1345,12 +1377,14 @@ export default function ReciboForm({
                 >
                   <option value="">Seleccionar…</option>
                   {valoresCaja.map(v => (
-                    <option key={v.id} value={v.id}>{v.nombre} ({v.tipo}{v.subtipo ? ` / ${v.subtipo}` : ""})</option>
+                    <option key={v.id} value={v.id}>{v.nombre} · {v.moneda}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Importe</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1">
+                  Importe{nuevoPagoValorId ? <span className="ml-2 text-xs text-gray-400">(en {nuevoPagoMoneda})</span> : null}
+                </label>
                 <input
                   type="number"
                   value={nuevoPagoImporte}
@@ -1359,17 +1393,6 @@ export default function ReciboForm({
                   min={0}
                   className="w-full border rounded px-2 py-1.5 text-sm"
                 />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Moneda</label>
-                <select
-                  value={nuevoPagoMoneda}
-                  onChange={e => setNuevoPagoMoneda(e.target.value as "ARS" | "USD")}
-                  className="w-full border rounded px-2 py-1.5 text-sm"
-                >
-                  <option value="ARS">ARS</option>
-                  <option value="USD">USD</option>
-                </select>
               </div>
               {(() => {
                 const v = valoresCaja.find(x => x.id === nuevoPagoValorId)

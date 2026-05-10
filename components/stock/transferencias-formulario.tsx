@@ -71,7 +71,9 @@ export default function TransferenciaFormulario({ onCancelar, onCreada }: Props)
         const depos = (Array.isArray(deps) ? deps : []).map(mapDeposito)
         setDepositos(depos)
         setUbicaciones((Array.isArray(ubics) ? ubics : []).map(mapUbicacion))
-        setProductos((Array.isArray(prods) ? prods : []).map(mapProducto))
+        // Excluir servicios — un servicio no puede transferirse entre depósitos.
+        const prodsFiltrados = (Array.isArray(prods) ? prods : []).filter((p: any) => p.tipo !== "servicio")
+        setProductos(prodsFiltrados.map(mapProducto))
         const primer = depos[0]
         if (primer) {
           setDepositoId(primer.id)

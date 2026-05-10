@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 import { generarAsientoReversa } from "@/lib/contabilidad-asiento-factory"
 import { registrarEvento } from "@/lib/seguimiento"
+import { cancelarMovimientosBancoPorDocumento } from "@/lib/movimientos-banco"
 
 function getSupabase() {
   return createClient(
@@ -72,6 +73,9 @@ export async function POST(
     .update({ estado_movimiento: "cancelado" })
     .eq("documento_origen_tipo", "recibo")
     .eq("documento_origen_numero", recibo.numero)
+
+  // 2b. Marcar movimientos bancarios como cancelados (recibos cobrados con banco)
+  await cancelarMovimientosBancoPorDocumento(supabase, "recibo", recibo.numero)
 
   // 3. Borrar movimientos CC
   const { error: ccRevErr } = await supabase

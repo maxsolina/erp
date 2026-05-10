@@ -45,7 +45,6 @@ export const contabilidadSidebarConfig: SidebarConfig = {
       icon: Layers,
       items: [
         { label: "Facturaciones", href: "/contabilidad/facturaciones", icon: FileText },
-        { label: "Devengamientos Diferidos", href: "/contabilidad/devengamientos-diferidos", icon: Calendar },
       ],
     },
     {
@@ -60,7 +59,6 @@ export const contabilidadSidebarConfig: SidebarConfig = {
         { label: "Años Fiscales", href: "/contabilidad/anos-fiscales", icon: Calendar },
         { label: "Monedas", href: "/contabilidad/monedas", icon: Coins },
         { label: "Tipos de Cotización", href: "/contabilidad/tipos-cotizacion", icon: DollarSign },
-        { label: "Diagrama de Impuestos", href: "/contabilidad/diagrama-impuestos", icon: Globe },
       ],
     },
   ],

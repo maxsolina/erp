@@ -156,8 +156,14 @@ export default function ProductoDropdown({
         {productosFiltrados.slice(0, 5).map((p: any) => (
           <div key={p.id}
             onMouseDown={e => { e.preventDefault(); handleSelect(p) }}
-            className="px-2 py-1.5 hover:bg-blue-600 hover:text-white cursor-pointer text-sm border-b border-gray-50 last:border-b-0">
-            <span className="font-medium">[{p.sku}]</span> {p.nombre}
+            className="px-2 py-1.5 hover:bg-blue-600 hover:text-white cursor-pointer text-sm border-b border-gray-50 last:border-b-0 flex items-center gap-1.5">
+            <span className="font-medium">[{p.sku}]</span>
+            <span className="flex-1 truncate">{p.nombre}</span>
+            {p.tipo === "servicio" && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium shrink-0 group-hover:bg-purple-200">
+                Servicio
+              </span>
+            )}
           </div>
         ))}
         {productosFiltrados.length === 0 && (
@@ -232,7 +238,16 @@ export default function ProductoDropdown({
                           onClick={() => handleSelect(p)}
                           className="border-b border-gray-50 hover:bg-indigo-50 cursor-pointer transition-colors">
                           <td className="px-5 py-2.5 font-mono text-xs text-gray-500">{p.sku}</td>
-                          <td className="px-3 py-2.5 text-gray-800">{p.nombre}</td>
+                          <td className="px-3 py-2.5 text-gray-800">
+                            <span className="inline-flex items-center gap-1.5">
+                              {p.nombre}
+                              {p.tipo === "servicio" && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">
+                                  Servicio
+                                </span>
+                              )}
+                            </span>
+                          </td>
                           {versionActiva && (
                             <td className="px-5 py-2.5 text-right">
                               <span className="font-medium text-gray-900">{formatPrice(precios.precioARS)}</span>

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { AlertCircle, Building2, CheckCircle, DollarSign, MapPin, Phone } from "lucide-react"
 import BotonVolver from "@/components/ui/boton-volver"
+import SearchableSelect from "@/components/ui/searchable-select"
 
 interface CategoriaCliente {
   id: number
@@ -333,17 +334,16 @@ export default function ClienteForm({ initialId }: { initialId?: number }) {
             </div>
             <div>
               <label className={labelStyle}>Categoría de Cliente *</label>
-              <select
-                value={categoriaId ?? ""}
-                onChange={e => setCategoriaId(e.target.value ? Number(e.target.value) : null)}
+              <SearchableSelect
+                value={categoriaId}
+                onChange={v => setCategoriaId(v == null ? null : Number(v))}
+                options={categorias.filter(c => c.activa).map(c => ({
+                  value: String(c.id),
+                  label: c.nombre,
+                }))}
+                placeholder="Seleccione una categoría"
                 required
-                className={inputReq}
-              >
-                <option value="">Seleccione una categoría</option>
-                {categorias.filter(c => c.activa).map(c => (
-                  <option key={c.id} value={c.id}>{c.nombre}</option>
-                ))}
-              </select>
+              />
             </div>
           </div>
 
@@ -438,30 +438,28 @@ export default function ClienteForm({ initialId }: { initialId?: number }) {
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
                 <label className={labelStyle}>Vendedor</label>
-                <select
-                  value={vendedorId ?? ""}
-                  onChange={e => setVendedorId(e.target.value ? Number(e.target.value) : null)}
-                  className={inputOpt}
-                >
-                  <option value="">Sin asignar</option>
-                  {vendedores.map(v => (
-                    <option key={v.id} value={v.id}>{v.nombre}</option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  value={vendedorId}
+                  onChange={v => setVendedorId(v == null ? null : Number(v))}
+                  options={vendedores.map(v => ({
+                    value: String(v.id),
+                    label: v.nombre,
+                  }))}
+                  placeholder="Buscar vendedor…"
+                />
               </div>
               <div>
                 <label className={labelStyle}>Lista de Precios por Defecto *</label>
-                <select
-                  value={listaPreciosId ?? ""}
-                  onChange={e => setListaPreciosId(e.target.value ? Number(e.target.value) : null)}
+                <SearchableSelect
+                  value={listaPreciosId}
+                  onChange={v => setListaPreciosId(v == null ? null : Number(v))}
+                  options={listasPrecios.filter(l => l.activa !== false).map(l => ({
+                    value: String(l.id),
+                    label: l.nombre,
+                  }))}
+                  placeholder="Seleccione una lista"
                   required
-                  className={inputReq}
-                >
-                  <option value="">Seleccione una lista</option>
-                  {listasPrecios.filter(l => l.activa !== false).map(l => (
-                    <option key={l.id} value={l.id}>{l.nombre}</option>
-                  ))}
-                </select>
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -479,16 +477,16 @@ export default function ClienteForm({ initialId }: { initialId?: number }) {
               </div>
               <div>
                 <label className={labelStyle}>Término de Pago</label>
-                <select
-                  value={terminoPagoId ?? ""}
-                  onChange={e => setTerminoPagoId(e.target.value ? Number(e.target.value) : null)}
-                  className={inputOpt}
-                >
-                  <option value="">Sin definir</option>
-                  {terminosPago.map(tp => (
-                    <option key={tp.id} value={tp.id}>{tp.nombre}</option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  value={terminoPagoId}
+                  onChange={v => setTerminoPagoId(v == null ? null : Number(v))}
+                  options={terminosPago.map(tp => ({
+                    value: String(tp.id),
+                    label: tp.nombre,
+                    hint: tp.dias != null ? `${tp.dias} días` : undefined,
+                  }))}
+                  placeholder="Sin definir"
+                />
               </div>
             </div>
           </div>

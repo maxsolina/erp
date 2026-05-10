@@ -88,6 +88,23 @@ export async function POST(req: Request) {
   return NextResponse.json(data, { status: 201 })
 }
 
+// Whitelist de columnas reales de la tabla. El front muchas veces manda
+// el objeto entero del GET — incluyendo joins como `padre` y `tipo_cuenta`
+// que NO son columnas. Si los pasamos al UPDATE, Postgres tira
+// "Could not find the 'padre' column".
+const COLUMNAS_PATCH = new Set([
+  "codigo", "nombre", "cuenta_padre_id", "tipo_interno", "tipo_cuenta_id",
+  "permite_movimientos_analiticos", "impuestos_predeterminados",
+  "permite_conciliacion", "es_cuenta_puente", "moneda_secundaria", "activo",
+  "disponible_registro_banco", "disponible_registro_caja",
+  "disponible_ajuste_cheque_rechazado", "disponible_rendicion_gastos",
+  "disponible_rendicion_fondos_fijos", "es_cuenta_ventas", "es_cuenta_compras",
+  "es_cuenta_resultado_tenencia_positivo", "es_cuenta_resultado_tenencia_negativo",
+  "es_cuenta_impuestos", "es_cuenta_existencias", "es_cuenta_mercaderia_transito",
+  "es_cuenta_mercaderia_produccion", "es_cuenta_cmv",
+  "moneda", "es_imputable", "naturaleza", "descripcion",
+])
+
 export async function PATCH(req: Request) {
   const supabase = getSupabase()
   const { searchParams } = new URL(req.url)
@@ -95,9 +112,15 @@ export async function PATCH(req: Request) {
   if (!id) return NextResponse.json({ error: "id requerido" }, { status: 400 })
 
   const body = await req.json()
+  const payload: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(body)) {
+    if (COLUMNAS_PATCH.has(k)) payload[k] = v
+  }
+  payload.updated_at = new Date().toISOString()
+
   const { data, error } = await supabase
     .from("contabilidad_plan_cuentas")
-    .update({ ...body, updated_at: new Date().toISOString() })
+    .update(payload)
     .eq("id", id)
     .select()
     .single()
@@ -112,17 +135,61 @@ export async function DELETE(req: Request) {
   const id = searchParams.get("id")
   if (!id) return NextResponse.json({ error: "id requerido" }, { status: 400 })
 
-  // Verificar que no tenga movimientos
-  const { count } = await supabase
+  // ── Bloqueos previos ──────────────────────────────────────────
+  // Una cuenta no se puede borrar si tiene movimientos contables, mapeos
+  // que la usen, o cuentas hijas. Devolvemos detalle claro al frontend
+  // con HTTP 409 (Conflict) — sin esto borrabas y rompías el balance.
+
+  // 1. Movimientos en asientos
+  const { count: movimientos } = await supabase
     .from("contabilidad_asientos_lineas")
     .select("id", { count: "exact", head: true })
     .eq("cuenta_id", id)
 
-  if (count && count > 0)
+  if (movimientos && movimientos > 0) {
     return NextResponse.json(
-      { error: "No se puede eliminar una cuenta con movimientos registrados." },
+      {
+        error: `No se puede eliminar: la cuenta tiene ${movimientos} movimiento${movimientos === 1 ? "" : "s"} registrado${movimientos === 1 ? "" : "s"} en asientos contables.`,
+        motivo: "movimientos",
+        cantidad: movimientos,
+      },
       { status: 409 }
     )
+  }
+
+  // 2. Cuentas hijas (la cuenta es padre de otras)
+  const { count: hijas } = await supabase
+    .from("contabilidad_plan_cuentas")
+    .select("id", { count: "exact", head: true })
+    .eq("cuenta_padre_id", id)
+
+  if (hijas && hijas > 0) {
+    return NextResponse.json(
+      {
+        error: `No se puede eliminar: la cuenta tiene ${hijas} subcuenta${hijas === 1 ? "" : "s"} dependiente${hijas === 1 ? "" : "s"}.`,
+        motivo: "hijas",
+        cantidad: hijas,
+      },
+      { status: 409 }
+    )
+  }
+
+  // 3. Mapeos contables que la usan (factura_venta, recibo, etc.)
+  const { count: mapeos } = await supabase
+    .from("contabilidad_mapeo_cuentas")
+    .select("id", { count: "exact", head: true })
+    .or(`cuenta_debe_id.eq.${id},cuenta_haber_id.eq.${id}`)
+
+  if (mapeos && mapeos > 0) {
+    return NextResponse.json(
+      {
+        error: `No se puede eliminar: la cuenta está usada en ${mapeos} mapeo${mapeos === 1 ? "" : "s"} contable${mapeos === 1 ? "" : "s"} (configuración de asientos automáticos).`,
+        motivo: "mapeos",
+        cantidad: mapeos,
+      },
+      { status: 409 }
+    )
+  }
 
   const { error } = await supabase
     .from("contabilidad_plan_cuentas")

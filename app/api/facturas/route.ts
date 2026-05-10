@@ -159,6 +159,27 @@ export async function POST(req: Request) {
     await supabase.from("facturas_lineas").insert(lineasInsert)
   }
 
+  // Calcular cuánto del subtotal corresponde a líneas de servicio. El
+  // factory de asiento usa esto para desdoblar el HABER en "Ventas
+  // Mercadería" (productos) e "Ingresos por Servicios" (servicios).
+  let subtotalServicios = 0
+  const productoIdsLineas = (Array.isArray(lineas) ? lineas : [])
+    .map((l: any) => l.producto_id)
+    .filter((id: any) => id != null)
+  if (productoIdsLineas.length > 0) {
+    const { data: prods } = await supabase
+      .from("productos")
+      .select("id, tipo")
+      .in("id", productoIdsLineas)
+    const tipoPorId: Record<string, string> = {}
+    for (const p of prods ?? []) tipoPorId[String(p.id)] = String(p.tipo ?? "almacenable")
+    for (const l of lineas as any[]) {
+      if (l.producto_id != null && tipoPorId[String(l.producto_id)] === "servicio") {
+        subtotalServicios += Number(l.subtotal ?? 0)
+      }
+    }
+  }
+
   // Asiento "en negro": DEBE Deudores / HABER Ventas Mercadería (por subtotal).
   // No se discrimina IVA — eso se hace al confirmar con medios de pago.
   const asientoResult = await generarAsientoFacturaVenta(supabase, {
@@ -173,6 +194,7 @@ export async function POST(req: Request) {
     total,
     moneda,
     cotizacion: moneda && moneda !== "ARS" ? Number(cotizacion ?? 0) : null,
+    subtotal_servicios: subtotalServicios,
   })
 
   if (!asientoResult.ok) {

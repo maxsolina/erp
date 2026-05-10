@@ -2,14 +2,16 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react"
 import ReactDOM from "react-dom"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useERP } from "@/contexts/erp-context"
 import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
+import SearchableSelect from "./ui/searchable-select"
 import {
   BookOpen, ChevronDown, ChevronRight, Plus, Pencil, Trash2, X, Check,
   Calendar, FileText, Layers, BarChart2, Settings, TrendingUp, Coins,
   DollarSign, ArrowLeft, AlertCircle, Eye, RefreshCw, Search,
   Building2, ListOrdered, Scale, PieChart, BookMarked, Archive, Save,
+  UserPlus,
 } from "lucide-react"
 
 // â”€â”€â”€ TIPOS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -622,11 +624,17 @@ function TiposCuentaView() {
 // â”€â”€â”€ VISTA: PLAN DE CUENTAS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function PlanCuentasView() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [cuentas, setCuentas] = useState<CuentaContable[]>([])
   const [tipos, setTipos] = useState<TipoCuenta[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<CuentaContable | null>(null)
   const [editando, setEditando] = useState(false)
+  // modoEdicion = inputs habilitados. Al abrir una cuenta existente arranca en
+  // false (vista solo-lectura con botón "Editar"). Para crear arranca en true.
+  // Después de guardar, vuelve a false (queda mostrando la ficha guardada).
+  const [modoEdicion, setModoEdicion] = useState(false)
   const [form, setForm] = useState<Partial<CuentaContable & { tipo_cuenta_id: string }>>({})
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -644,6 +652,35 @@ function PlanCuentasView() {
 
   useEffect(() => { cargar() }, [cargar])
 
+  // Tras un cargar() (por ej. después de guardar) sincronizar `selected` con
+  // la fila refrescada — así el título y el form reflejan los cambios.
+  useEffect(() => {
+    if (!selected) return
+    const actualizada = cuentas.find(c => c.id === selected.id)
+    if (actualizada && actualizada !== selected) {
+      setSelected(actualizada)
+      setForm({ ...actualizada, tipo_cuenta_id: actualizada.tipo_cuenta?.id })
+    }
+  }, [cuentas]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Si llegamos con ?editar=<id> (desde el listado extraído /contabilidad/plan-cuentas),
+  // abrir esa cuenta en VISTA solo-lectura (no en edición). Al guardar volvemos
+  // a la vista. Limpiamos el param de la URL para que un reload no reabra el
+  // form automáticamente.
+  const editarIdParam = searchParams?.get("editar") ?? null
+  useEffect(() => {
+    if (!editarIdParam || cuentas.length === 0 || editando) return
+    const c = cuentas.find(x => x.id === editarIdParam)
+    if (c) {
+      setSelected(c)
+      setForm({ ...c, tipo_cuenta_id: c.tipo_cuenta?.id })
+      setModoEdicion(false)
+      setEditando(true)
+      // Limpiar el query param sin causar navegación. Mantenemos module/view.
+      router.replace("/?module=contabilidad&view=plan-cuentas")
+    }
+  }, [editarIdParam, cuentas, editando, router])
+
   const guardar = async () => {
     if (!form.codigo || !form.nombre) { setError("Código y Nombre son obligatorios."); return }
     if (!form.tipo_cuenta_id) { setError("Tipo de Cuenta es obligatorio."); return }
@@ -653,103 +690,156 @@ function PlanCuentasView() {
     const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) })
     const d = await r.json()
     if (!r.ok) { setError(d.error ?? "Error al guardar"); setGuardando(false); return }
-    setEditando(false); setSelected(null); setGuardando(false)
+    setGuardando(false)
     await cargar()
+    if (selected) {
+      // Editar existente: volver a modo vista con datos actualizados (no salir).
+      // Buscamos la cuenta recién guardada para reflejar los cambios joineados.
+      setModoEdicion(false)
+      // El form ya tiene los valores guardados; selected lo actualizamos en
+      // el efecto de abajo cuando termine cargar() — basta con re-encontrarla.
+    } else {
+      // Nuevo: salimos al listado (no tenemos selected para mostrar la ficha).
+      setEditando(false)
+      setSelected(null)
+    }
   }
 
   const eliminar = async (id: string) => {
     if (!confirm("¿Eliminar esta cuenta?")) return
+    setError(null)
     const r = await fetch(`/api/contabilidad/plan-cuentas?id=${id}`, { method: "DELETE" })
-    const d = await r.json()
-    if (!r.ok) { alert(d.error ?? "No se puede eliminar."); return }
-    setEditando(false); setSelected(null)
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok) {
+      // Mostrar el error inline (banner rojo arriba del form). El backend
+      // ahora devuelve mensajes explícitos cuando la cuenta tiene movimientos,
+      // subcuentas o mapeos contables que la usan.
+      setError(d.error ?? "No se puede eliminar la cuenta.")
+      return
+    }
+    setEditando(false); setSelected(null); setModoEdicion(false)
     await cargar()
   }
 
-  if (editando) return (
-    <div>
-      <div className="flex items-center gap-2 mb-6">
-        <button onClick={() => { setEditando(false); setSelected(null) }}
-          className="text-indigo-700 hover:text-indigo-900 flex items-center gap-1 text-sm font-medium">
-          <ArrowLeft className="w-4 h-4" /> Plan de Cuentas
-        </button>
-        <span className="text-gray-300">/</span>
-        <span className="text-gray-600 font-semibold">{selected ? `${selected.codigo} · ${selected.nombre}` : "Nueva Cuenta"}</span>
-      </div>
-      <div className="bg-white border rounded-lg shadow-sm p-6">
-        {error && <div className="text-sm text-red-600 mb-3 flex items-center gap-1"><AlertCircle className="w-4 h-4" />{error}</div>}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Código *</label>
-            <input className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-              value={form.codigo ?? ""} onChange={e => setForm(p => ({ ...p, codigo: e.target.value }))} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
-            <input className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-              value={form.nombre ?? ""} onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de Cuenta *</label>
-            <select className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-              value={form.tipo_cuenta_id ?? ""} onChange={e => setForm(p => ({ ...p, tipo_cuenta_id: e.target.value || undefined }))}>
-              <option value="">— Seleccionar —</option>
-              {(() => {
-                const grupos: Record<string, TipoCuenta[]> = {}
-                for (const t of tipos.filter(t => t.activo !== false)) {
-                  const cat = t.categoria_balance_pyg ?? "Otros"
-                  if (!grupos[cat]) grupos[cat] = []
-                  grupos[cat].push(t)
-                }
-                const ordenCategoria = ["Activo", "Activo Corriente", "Pasivo", "Pasivo Corriente", "Patrimonio Neto", "Ingresos", "Egresos", "Otros"]
-                const claves = Object.keys(grupos).sort((a, b) => {
-                  const ia = ordenCategoria.indexOf(a)
-                  const ib = ordenCategoria.indexOf(b)
-                  return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
-                })
-                return claves.map(cat => (
-                  <optgroup key={cat} label={cat}>
-                    {grupos[cat].map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
-                  </optgroup>
-                ))
-              })()}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Tipo Interno</label>
-            <select className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-              value={form.tipo_interno ?? "regular"} onChange={e => setForm(p => ({ ...p, tipo_interno: e.target.value as any }))}>
-              <option value="regular">Regular</option>
-              <option value="liquidez">Liquidez</option>
-              <option value="a_cobrar">A Cobrar</option>
-              <option value="a_pagar">A Pagar</option>
-            </select>
-          </div>
-          <div className="col-span-2 flex flex-wrap gap-4">
-            <label className="flex items-center gap-1 text-xs">
-              <input type="checkbox" checked={form.activo ?? false}
-                onChange={e => setForm(p => ({ ...p, activo: e.target.checked }))} />
-              Activo
-            </label>
-          </div>
-        </div>
-        <div className="flex gap-2 mt-6">
-          <button onClick={guardar} disabled={guardando}
-            className="bg-indigo-900 hover:bg-indigo-800 text-white px-4 py-2 rounded text-sm flex items-center gap-1">
-            <Save className="w-4 h-4" /> {guardando ? "Guardando…" : "Guardar"}
-          </button>
-          <button onClick={() => { setEditando(false); setSelected(null) }}
-            className="border text-gray-600 hover:bg-gray-50 px-4 py-2 rounded text-sm">Cancelar</button>
-          {selected && (
-            <button onClick={() => eliminar(selected.id)}
-              className="ml-auto border border-red-300 text-red-600 hover:bg-red-50 px-4 py-2 rounded text-sm flex items-center gap-1">
-              <Trash2 className="w-3 h-3" /> Eliminar
+  if (editando) {
+    // Inputs deshabilitados cuando estamos viendo (no editando)
+    const ro = !modoEdicion
+    const inputCls = `w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 ${ro ? "bg-gray-50 text-gray-700 cursor-not-allowed" : ""}`
+
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <button onClick={() => { setEditando(false); setSelected(null); setModoEdicion(false) }}
+              className="text-indigo-700 hover:text-indigo-900 flex items-center gap-1 text-sm font-medium">
+              <ArrowLeft className="w-4 h-4" /> Plan de Cuentas
             </button>
-          )}
+            <span className="text-gray-300">/</span>
+            <span className="text-gray-600 font-semibold">{selected ? `${selected.codigo} · ${selected.nombre}` : "Nueva Cuenta"}</span>
+          </div>
+          {/* Botones a la derecha (convención del ERP) */}
+          <div className="flex items-center gap-2">
+            {/* Vista solo-lectura: solo "Editar" + (si existe) "Eliminar" */}
+            {ro && selected && (
+              <>
+                <button onClick={() => eliminar(selected.id)}
+                  className="border border-red-300 text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg text-sm flex items-center gap-1">
+                  <Trash2 className="w-3 h-3" /> Eliminar
+                </button>
+                <button onClick={() => setModoEdicion(true)}
+                  className="bg-indigo-900 hover:bg-indigo-800 text-white px-4 py-2 rounded-lg text-sm font-medium">
+                  Editar
+                </button>
+              </>
+            )}
+            {/* Modo edición: Cancelar + Guardar */}
+            {!ro && (
+              <>
+                <button
+                  onClick={() => {
+                    if (selected) {
+                      // Editando existente → revertir y volver a vista
+                      setForm({ ...selected, tipo_cuenta_id: selected.tipo_cuenta?.id })
+                      setModoEdicion(false)
+                      setError(null)
+                    } else {
+                      // Creando → salir al listado
+                      setEditando(false); setSelected(null); setModoEdicion(false)
+                    }
+                  }}
+                  className="border border-gray-300 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm"
+                >
+                  Cancelar
+                </button>
+                <button onClick={guardar} disabled={guardando}
+                  className="bg-indigo-900 hover:bg-indigo-800 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1 disabled:opacity-60">
+                  <Save className="w-4 h-4" /> {guardando ? "Guardando…" : "Guardar"}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="bg-white border rounded-lg shadow-sm p-6">
+          {error && <div className="text-sm text-red-600 mb-3 flex items-center gap-1"><AlertCircle className="w-4 h-4" />{error}</div>}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Código *</label>
+              <input className={inputCls} disabled={ro}
+                value={form.codigo ?? ""} onChange={e => setForm(p => ({ ...p, codigo: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
+              <input className={inputCls} disabled={ro}
+                value={form.nombre ?? ""} onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de Cuenta *</label>
+              <select className={inputCls} disabled={ro}
+                value={form.tipo_cuenta_id ?? ""} onChange={e => setForm(p => ({ ...p, tipo_cuenta_id: e.target.value || undefined }))}>
+                <option value="">— Seleccionar —</option>
+                {(() => {
+                  const grupos: Record<string, TipoCuenta[]> = {}
+                  for (const t of tipos.filter(t => t.activo !== false)) {
+                    const cat = t.categoria_balance_pyg ?? "Otros"
+                    if (!grupos[cat]) grupos[cat] = []
+                    grupos[cat].push(t)
+                  }
+                  const ordenCategoria = ["Activo", "Activo Corriente", "Pasivo", "Pasivo Corriente", "Patrimonio Neto", "Ingresos", "Egresos", "Otros"]
+                  const claves = Object.keys(grupos).sort((a, b) => {
+                    const ia = ordenCategoria.indexOf(a)
+                    const ib = ordenCategoria.indexOf(b)
+                    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+                  })
+                  return claves.map(cat => (
+                    <optgroup key={cat} label={cat}>
+                      {grupos[cat].map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                    </optgroup>
+                  ))
+                })()}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Tipo Interno</label>
+              <select className={inputCls} disabled={ro}
+                value={form.tipo_interno ?? "regular"} onChange={e => setForm(p => ({ ...p, tipo_interno: e.target.value as any }))}>
+                <option value="regular">Regular</option>
+                <option value="liquidez">Liquidez</option>
+                <option value="a_cobrar">A Cobrar</option>
+                <option value="a_pagar">A Pagar</option>
+              </select>
+            </div>
+            <div className="col-span-2 flex flex-wrap gap-4">
+              <label className="flex items-center gap-1 text-xs">
+                <input type="checkbox" disabled={ro} checked={form.activo ?? false}
+                  onChange={e => setForm(p => ({ ...p, activo: e.target.checked }))} />
+                Activo
+              </label>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <ContabilidadListSection<CuentaContable>
@@ -762,7 +852,7 @@ function PlanCuentasView() {
         { field: "activo", label: "Activo" },
       ]}
       actions={
-        <button onClick={() => { setForm({ activo: true, tipo_interno: "regular" }); setSelected(null); setEditando(true); setError(null) }}
+        <button onClick={() => { setForm({ activo: true, tipo_interno: "regular" }); setSelected(null); setEditando(true); setModoEdicion(true); setError(null) }}
           className="bg-indigo-900 hover:bg-indigo-800 text-white px-4 py-2 rounded text-sm flex items-center gap-1">
           <Plus className="w-4 h-4" /> Nueva Cuenta
         </button>
@@ -784,7 +874,7 @@ function PlanCuentasView() {
               return (
                 <tr key={c.id}
                   className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${esVista ? "bg-blue-50/30" : ""}`}
-                  onClick={() => { setSelected(c); setForm({ ...c, tipo_cuenta_id: c.tipo_cuenta?.id }); setEditando(true) }}>
+                  onClick={() => { setSelected(c); setForm({ ...c, tipo_cuenta_id: c.tipo_cuenta?.id }); setModoEdicion(false); setEditando(true) }}>
                   <td className={`px-3 py-2 font-mono text-xs ${esVista ? "text-blue-700 font-bold" : ""}`}>{c.codigo}</td>
                   <td className={`px-3 py-2 ${esVista ? "font-bold text-blue-800" : "font-medium"}`}>{c.nombre}</td>
                   <td className="px-3 py-2 text-gray-500 text-xs">
@@ -814,8 +904,19 @@ function PlanCuentasView() {
 
 function DiariosView() {
   type DiarioRow = Diario & { _sucursal_nombre: string; _activo_label: string }
-  type DiarioUsuario = { id: string; usuario_nombre?: string; rol: string }
+  // Asignación de usuarios al diario (script 111). El front recibe filas con
+  // el usuario embebido (id, nombre, email) resueltas server-side.
+  type DiarioUsuario = {
+    id: string
+    diario_id: string
+    usuario_id: number
+    nombre: string
+    usuario?: { id: number; nombre: string; email: string } | null
+  }
+  type UsuarioPick = { id: number; nombre: string; email: string; is_superuser: boolean; is_active: boolean }
 
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [diarios, setDiarios] = useState<DiarioRow[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Diario | null>(null)
@@ -824,16 +925,24 @@ function DiariosView() {
   const [tab, setTab] = useState<"ajustes" | "usuarios">("ajustes")
   const [usuarios, setUsuarios] = useState<DiarioUsuario[]>([])
   const [loadingUsuarios, setLoadingUsuarios] = useState(false)
+  // Picker: lista completa de usuarios activos del ERP (para agregar al diario)
+  const [todosUsuarios, setTodosUsuarios] = useState<UsuarioPick[]>([])
+  const [usuarioAAgregar, setUsuarioAAgregar] = useState<string | number | null>(null)
+  const [agregando, setAgregando] = useState(false)
+  const [errorUsuarios, setErrorUsuarios] = useState<string | null>(null)
   const [form, setForm] = useState<Partial<Diario>>({})
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sucursales, setSucursales] = useState<{ id: string; nombre: string }[]>([])
+  // Plan de cuentas para los selectores de cuenta_debito / cuenta_haber del diario.
+  const [cuentasContables, setCuentasContables] = useState<Array<{ id: string; codigo: string; nombre: string }>>([])
 
   const cargar = useCallback(async () => {
     setLoading(true)
-    const [d, s] = await Promise.all([
+    const [d, s, c] = await Promise.all([
       fetch("/api/contabilidad/diarios").then(r => r.json()),
       fetch("/api/sucursales").then(r => r.json()),
+      fetch("/api/contabilidad/plan-cuentas?activo=true").then(r => r.json()).catch(() => []),
     ])
     const raw: Diario[] = Array.isArray(d) ? d.filter((x: Diario) => x.tipo !== "libro_diario") : []
     setDiarios(raw.map(diario => ({
@@ -842,17 +951,79 @@ function DiariosView() {
       _activo_label: diario.activo ? "Activo" : "Inactivo",
     })))
     setSucursales(Array.isArray(s) ? s : [])
+    setCuentasContables(Array.isArray(c) ? c.map((cc: any) => ({ id: cc.id, codigo: cc.codigo, nombre: cc.nombre })) : [])
     setLoading(false)
   }, [])
 
   useEffect(() => { cargar() }, [cargar])
 
+  // Si llegamos con ?editar=<id> (desde el listado extraído /contabilidad/diarios),
+  // abrir directamente la ficha de ese diario. Limpiamos el query param para
+  // que un reload no reabra el detalle automáticamente.
+  const editarIdParam = searchParams?.get("editar") ?? null
+  useEffect(() => {
+    if (!editarIdParam || diarios.length === 0 || detalle) return
+    const d = diarios.find(x => x.id === editarIdParam)
+    if (d) {
+      abrirDetalle(d)
+      router.replace("/?module=contabilidad&view=diarios")
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editarIdParam, diarios, detalle])
+
   const abrirDetalle = async (d: Diario) => {
-    setSelected(d); setDetalle(true); setEditando(false); setTab("ajustes"); setError(null)
+    setSelected(d); setDetalle(true); setEditando(false); setTab("ajustes"); setError(null); setErrorUsuarios(null)
     setLoadingUsuarios(true)
-    const r = await fetch(`/api/contabilidad/diarios/usuarios?diario_id=${d.id}`).then(r => r.json()).catch(() => [])
-    setUsuarios(Array.isArray(r) ? r : [])
+    // Cargar en paralelo: usuarios asignados + lista completa de usuarios para el picker
+    const [asignados, todos] = await Promise.all([
+      fetch(`/api/contabilidad/diarios/usuarios?diario_id=${d.id}`).then(r => r.ok ? r.json() : []).catch(() => []),
+      fetch(`/api/usuarios`).then(r => r.ok ? r.json() : []).catch(() => []),
+    ])
+    setUsuarios(Array.isArray(asignados) ? asignados : [])
+    setTodosUsuarios(Array.isArray(todos) ? todos.filter((u: any) => u.is_active !== false) : [])
     setLoadingUsuarios(false)
+  }
+
+  const recargarUsuariosAsignados = async () => {
+    if (!selected) return
+    const r = await fetch(`/api/contabilidad/diarios/usuarios?diario_id=${selected.id}`).then(r => r.ok ? r.json() : []).catch(() => [])
+    setUsuarios(Array.isArray(r) ? r : [])
+  }
+
+  const agregarUsuarioAlDiario = async () => {
+    if (!selected?.id || !usuarioAAgregar) return
+    setErrorUsuarios(null)
+    setAgregando(true)
+    try {
+      const r = await fetch("/api/contabilidad/diarios/usuarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ diario_id: selected.id, usuario_id: Number(usuarioAAgregar) }),
+      })
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}))
+        if (r.status === 409) setErrorUsuarios("El usuario ya está asignado a este diario.")
+        else if (r.status === 403) setErrorUsuarios("Solo administradores pueden modificar asignaciones.")
+        else setErrorUsuarios(e?.error ?? `Error ${r.status}`)
+        return
+      }
+      setUsuarioAAgregar(null)
+      await recargarUsuariosAsignados()
+    } finally {
+      setAgregando(false)
+    }
+  }
+
+  const quitarUsuarioDelDiario = async (asignacionId: string) => {
+    if (!confirm("¿Quitar este usuario del diario? Dejará de verlo en todos lados.")) return
+    setErrorUsuarios(null)
+    const r = await fetch(`/api/contabilidad/diarios/usuarios?id=${asignacionId}`, { method: "DELETE" })
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}))
+      setErrorUsuarios(e?.error ?? `Error ${r.status}`)
+      return
+    }
+    await recargarUsuariosAsignados()
   }
 
   const iniciarEdicion = () => {
@@ -1049,6 +1220,34 @@ function DiariosView() {
               {editando ? (
                 <>
                   <div>
+                    <label className="block text-xs text-gray-500 mb-1">Cuenta de débito predeterminada</label>
+                    <SearchableSelect
+                      value={form.cuenta_debito_predeterminada_id ?? null}
+                      onChange={v => setForm(p => ({ ...p, cuenta_debito_predeterminada_id: v == null ? undefined : String(v) }))}
+                      options={cuentasContables.map(c => ({
+                        value: c.id,
+                        label: `${c.codigo} - ${c.nombre}`,
+                        searchExtra: c.codigo,
+                      }))}
+                      placeholder="Elegir cuenta…"
+                      allowClear
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Cuenta de haber predeterminada</label>
+                    <SearchableSelect
+                      value={form.cuenta_haber_predeterminada_id ?? null}
+                      onChange={v => setForm(p => ({ ...p, cuenta_haber_predeterminada_id: v == null ? undefined : String(v) }))}
+                      options={cuentasContables.map(c => ({
+                        value: c.id,
+                        label: `${c.codigo} - ${c.nombre}`,
+                        searchExtra: c.codigo,
+                      }))}
+                      placeholder="Elegir cuenta…"
+                      allowClear
+                    />
+                  </div>
+                  <div>
                     <label className="block text-xs text-gray-500 mb-1">Moneda</label>
                     <select className={inp} value={form.moneda ?? "ARS"} onChange={e => setForm(p => ({ ...p, moneda: e.target.value }))}>
                       <option>ARS</option><option>USD</option><option>EUR</option>
@@ -1088,24 +1287,18 @@ function DiariosView() {
               ))}
             </div>
 
-            {/* Tab: Ajustes avanzados */}
+            {/* Tab: Ajustes avanzados
+                Quitamos: Sucursal, "Filtrar por Sucursal", "Filtrar por
+                Subcompañía", "Número de Cuenta Requerido" — eran dead config
+                (se guardaban pero nadie consumía sus valores). Las columnas
+                en DB se mantienen por compat; si quedan algún día queriendo
+                usarse, se vuelven a exponer en el UI. */}
             {tab === "ajustes" && (
               <div className="px-6 py-5 grid grid-cols-2 gap-x-12 gap-y-4">
                 {editando ? (
                   <>
                     <div className="flex flex-col gap-3">
                       <Campo label="Caja" valor={selected.caja_id ? <span className="text-indigo-700 text-sm">Caja vinculada</span> : undefined} />
-                      {[
-                        { key: "filtrar_por_sucursal", label: "Filtrar por Sucursal" },
-                        { key: "filtrar_por_subcompania", label: "Filtrar por Subcompañía" },
-                        { key: "numero_cuenta_requerido", label: "Número de Cuenta Requerido" },
-                      ].map(({ key, label }) => (
-                        <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input type="checkbox" checked={(form as any)[key] ?? false}
-                            onChange={e => setForm(p => ({ ...p, [key]: e.target.checked }))} />
-                          {label}
-                        </label>
-                      ))}
                     </div>
                     <div className="flex flex-col gap-3">
                       {[
@@ -1125,41 +1318,94 @@ function DiariosView() {
                   <>
                     <div className="flex flex-col gap-4">
                       <Campo label="Caja" valor={selected.caja_id ? <span className="text-indigo-700 text-sm">Caja vinculada</span> : undefined} />
-                      <Campo label="Sucursal" valor={selected.sucursal?.nombre} />
-                      <Check label="Filtrar por Sucursal" valor={selected.filtrar_por_sucursal} />
-                      <Check label="Filtrar por Subcompañía" valor={selected.filtrar_por_subcompania} />
                     </div>
                     <div className="flex flex-col gap-4">
                       <Check label="Permitir cancelación de Asientos" valor={selected.permitir_cancelacion_asientos ?? true} />
                       <Check label="Agrupar líneas de factura" valor={selected.agrupar_lineas_factura} />
-                      <Check label="Número de Cuenta Requerido" valor={selected.numero_cuenta_requerido} />
                     </div>
                   </>
                 )}
               </div>
             )}
 
-            {/* Tab: Usuarios */}
+            {/* Tab: Usuarios — asigna/desasigna usuarios al diario.
+                Solo los asignados ven el diario en el resto del ERP (lo
+                garantiza la RLS, no la app). */}
             {tab === "usuarios" && (
-              <div className="px-6 py-5">
+              <div className="px-6 py-5 space-y-4">
+                {errorUsuarios && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">{errorUsuarios}</div>
+                )}
+
+                {/* Picker para agregar usuario */}
+                <div className="bg-gray-50 rounded p-4 border border-gray-200">
+                  <p className="text-xs font-semibold text-gray-600 uppercase mb-2">Agregar usuario</p>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <SearchableSelect
+                        value={usuarioAAgregar}
+                        onChange={v => setUsuarioAAgregar(v == null ? null : Number(v))}
+                        options={todosUsuarios
+                          .filter(u => !usuarios.some(a => a.usuario_id === u.id))
+                          .map(u => ({
+                            value: u.id,
+                            label: u.nombre + (u.is_superuser ? " (admin)" : ""),
+                            hint: u.email,
+                            searchExtra: u.email,
+                          }))}
+                        placeholder={
+                          todosUsuarios.length === 0
+                            ? "Cargando usuarios…"
+                            : todosUsuarios.length === usuarios.length
+                              ? "Todos los usuarios ya están asignados"
+                              : "Elegir usuario…"
+                        }
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={agregarUsuarioAlDiario}
+                      disabled={!usuarioAAgregar || agregando}
+                      className="bg-indigo-900 hover:bg-indigo-800 text-white px-3 py-2 rounded text-sm flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      {agregando ? "Agregando…" : "Agregar"}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Solo los usuarios asignados acá podrán ver este diario en cualquier pantalla del ERP.
+                  </p>
+                </div>
+
+                {/* Lista de asignados */}
                 {loadingUsuarios ? (
                   <p className="text-sm text-gray-400">Cargando usuarios…</p>
                 ) : usuarios.length === 0 ? (
-                  <p className="text-sm text-gray-400">Sin usuarios asignados.</p>
+                  <p className="text-sm text-gray-400 italic">Sin usuarios asignados todavía.</p>
                 ) : (
                   <table className="w-full text-sm border rounded overflow-hidden">
                     <thead>
                       <tr className="border-b bg-gray-50">
-                        {["Nombre", "Rol"].map(h => (
-                          <th key={h} className="text-xs font-semibold text-gray-600 uppercase px-3 py-2 text-left">{h}</th>
-                        ))}
+                        <th className="text-xs font-semibold text-gray-600 uppercase px-3 py-2 text-left">Nombre</th>
+                        <th className="text-xs font-semibold text-gray-600 uppercase px-3 py-2 text-left">Email</th>
+                        <th className="text-xs font-semibold text-gray-600 uppercase px-3 py-2 w-16"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {usuarios.map(u => (
                         <tr key={u.id} className="border-b border-gray-100">
-                          <td className="px-3 py-2">{u.usuario_nombre ?? "—"}</td>
-                          <td className="px-3 py-2 text-gray-500 capitalize">{u.rol}</td>
+                          <td className="px-3 py-2 font-medium">{u.usuario?.nombre ?? u.nombre}</td>
+                          <td className="px-3 py-2 text-gray-500 text-xs">{u.usuario?.email ?? "—"}</td>
+                          <td className="px-3 py-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => quitarUsuarioDelDiario(u.id)}
+                              className="text-red-500 hover:text-red-700"
+                              title="Quitar del diario"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -2324,7 +2570,6 @@ const menuConfig = [
     icon: Archive,
     items: [
       { id: "amortizaciones",             label: "Amortizaciones" },
-      { id: "devengamientos-diferidos",   label: "Devengamientos Diferidos" },
     ],
   },
   {
@@ -2410,8 +2655,6 @@ export default function ModuloContabilidad({
       case "informes-contables":          return <PlaceholderView title="Informes Contables" icon={FileText} />
       case "control-presupuestario":      return <PlaceholderView title="Control Presupuestario" icon={BarChart2} />
       case "amortizaciones":              return <PlaceholderView title="Amortizaciones" icon={TrendingUp} />
-      case "devengamientos-diferidos":    return <PlaceholderView title="Devengamientos Diferidos" icon={Archive} />
-      case "diagrama-impuestos":          return <PlaceholderView title="Diagrama de Impuestos" icon={Layers} />
       default:                            return <PlaceholderView title="Vista no encontrada" icon={BookOpen} />
     }
   }

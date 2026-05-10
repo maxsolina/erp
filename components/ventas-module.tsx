@@ -18,6 +18,8 @@ import { ModalMedioPago } from "./modal-medio-pago"
 import type { MedioPagoResult } from "./modal-medio-pago"
 import type { Tarjeta as TarjetaFinanzas, GrupoTarjeta as GrupoTarjetaFinanzas, RecargoTarjeta as RecargoTarjetaFinanzas, RecargoTarjeta } from "./modulo-finanzas"
 import CriteriosCotizador from "./criterios-cotizador"
+import SearchableSelect from "./ui/searchable-select"
+import ComprobantePopup, { type ComprobantePopupProps } from "./comprobante-popup"
 
 // Types para Ventas
 interface ClienteVenta {
@@ -1512,6 +1514,86 @@ export default function ModuloVentas({
   const [conciliacionMonedaHistorial, setConciliacionMonedaHistorial] = useState<"todos" | "ARS" | "USD">("todos")
   const [conciliacionEjecutando, setConciliacionEjecutando] = useState(false)
   const [conciliacionCotizacion, setConciliacionCotizacion] = useState<number>(0)
+  // Popup compacto para previsualizar un comprobante (lupita en cada línea
+  // de la conciliación). Se setea con los props ya armados; el modal mismo
+  // es 100% presentacional.
+  const [comprobantePopup, setComprobantePopup] = useState<ComprobantePopupProps | null>(null)
+  const cerrarComprobantePopup = () => setComprobantePopup(null)
+  // Helpers que arman los props del popup desde un objeto del array cargado.
+  // Usamos los datos en memoria (facturas/recibos/ajustes) — sin fetch extra.
+  const abrirPopupFactura = (f: any) => {
+    if (!f) return
+    setComprobantePopup({
+      open: true,
+      onClose: cerrarComprobantePopup,
+      tipoLabel: "Factura", tipoColor: "indigo",
+      numero: f.numero,
+      fecha: f.fecha,
+      estado: f.estado,
+      moneda: f.moneda ?? "ARS",
+      contraparteLabel: "Cliente",
+      contraparteNombre: f.cliente_nombre,
+      lineas: Array.isArray(f.lineas) ? f.lineas.map((l: any) => ({
+        descripcion: l.descripcion ?? l.producto_nombre ?? "—",
+        cantidad: l.cantidad,
+        precio_unitario: l.precio_unitario,
+        subtotal: l.subtotal,
+      })) : undefined,
+      totales: [
+        ...(f.subtotal != null ? [{ label: "Subtotal", value: Number(f.subtotal) }] : []),
+        ...(f.impuestos != null && Number(f.impuestos) > 0 ? [{ label: "Impuestos", value: Number(f.impuestos) }] : []),
+        { label: "Total", value: Number(f.total ?? 0), bold: true },
+        ...(f.saldo != null ? [{ label: "Saldo", value: Number(f.saldo), color: Number(f.saldo) > 0 ? "red" as const : "emerald" as const }] : []),
+      ],
+    })
+  }
+  const abrirPopupRecibo = (r: any) => {
+    if (!r) return
+    setComprobantePopup({
+      open: true,
+      onClose: cerrarComprobantePopup,
+      tipoLabel: "Recibo", tipoColor: "emerald",
+      numero: r.numero,
+      fecha: r.fecha,
+      estado: r.estado,
+      moneda: r.moneda ?? "ARS",
+      contraparteLabel: "Cliente",
+      contraparteNombre: r.cliente_nombre,
+      totales: [
+        { label: "Importe", value: Number(r.importe ?? 0), bold: true },
+        ...(r.importe_no_conciliado != null
+          ? [{ label: "No conciliado", value: Number(r.importe_no_conciliado), color: Number(r.importe_no_conciliado) > 0 ? "emerald" as const : "default" as const }]
+          : []),
+      ],
+      observaciones: r.observaciones,
+    })
+  }
+  const abrirPopupAjuste = (n: any, esND: boolean = false) => {
+    if (!n) return
+    setComprobantePopup({
+      open: true,
+      onClose: cerrarComprobantePopup,
+      tipoLabel: esND ? "Nota de Débito" : "Nota de Crédito",
+      tipoColor: esND ? "red" : "emerald",
+      numero: n.numero,
+      fecha: n.fecha,
+      estado: n.estado,
+      moneda: n.moneda ?? "ARS",
+      contraparteLabel: "Cliente",
+      contraparteNombre: n.cliente_nombre,
+      concepto: n.concepto || n.motivo,
+      lineas: Array.isArray(n.lineas) ? n.lineas.map((l: any) => ({
+        descripcion: l.descripcion ?? "—",
+        subtotal: l.importe,
+      })) : undefined,
+      totales: [
+        { label: "Total", value: Number(n.total ?? 0), bold: true },
+        ...(n.saldo_disponible != null
+          ? [{ label: "Saldo disponible", value: Number(n.saldo_disponible), color: "emerald" as const }]
+          : []),
+      ],
+    })
+  }
   
   // Estados para formularios de creacion
   const [oeNvId, setOeNvId] = useState<number | null>(null)
@@ -11615,10 +11697,21 @@ export default function ModuloVentas({
 
       if (hayMixto && cot > 0) {
         // USD créditos → ARS débitos
+        // BUG fix: el bloque original solo manejaba recibos USD. Si el crédito
+        // era una NC en USD, la factura ARS se decrementaba pero el saldo de
+        // la NC quedaba intacto (caso reportado: factura ARS 500 vs NC USD 300
+        // con cot 1400 → factura quedaba en 0, NC seguía con USD 300 disponible).
+        // Ahora se discrimina por tipo y se actualiza la tabla correcta.
         const usdCreds = selCreditosUSD.map(c => {
-          const ru = reciboUpdates.find(u => u.id === c.id)
-          const rInfo = recibos.find(r => r.id === c.id)
-          return { ...c, montoAplicar: ru ? ru.importeNoConciliadoNuevo : (rInfo?.importe_no_conciliado ?? c.montoAplicar) }
+          if (c.tipo === 'recibo') {
+            const ru = reciboUpdates.find(u => u.id === c.id)
+            const rInfo = recibos.find(r => r.id === c.id)
+            return { ...c, montoAplicar: ru ? ru.importeNoConciliadoNuevo : (rInfo?.importe_no_conciliado ?? c.montoAplicar) }
+          } else {
+            const nu = ncUpdates.find(u => u.id === c.id)
+            const nInfo = ajustes.find(a => a.id === c.id)
+            return { ...c, montoAplicar: nu ? nu.saldoDisponibleNuevo : (nInfo?.saldo_disponible ?? nInfo?.total ?? c.montoAplicar) }
+          }
         })
         const arsDebs = selDebitosARS.map(d => {
           const fu = facturaUpdates.find(u => u.id === d.id)
@@ -11626,21 +11719,39 @@ export default function ModuloVentas({
           return { ...d, montoAplicar: fu ? fu.saldoNuevo : (fInfo?.saldo ?? d.montoAplicar) }
         })
         for (const cred of usdCreds) {
-          const rInfo = recibos.find(r => r.id === cred.id)
-          const creditoNum = rInfo?.numero ?? ''
+          const rInfo = cred.tipo === 'recibo' ? recibos.find(r => r.id === cred.id) : null
+          const nInfo = cred.tipo === 'nc'     ? ajustes.find(a => a.id === cred.id) : null
+          const creditoNum = rInfo?.numero ?? nInfo?.numero ?? ''
           for (const deb of arsDebs) {
             if (deb.montoAplicar <= 0.001 || cred.montoAplicar <= 0.001) continue
             const factInfo = facturas.find(f => f.id === deb.id)
             if (!factInfo) continue
             const montoAplicadoARS = Math.min(deb.montoAplicar, cred.montoAplicar * cot)
             const montoAplicadoUSD = montoAplicadoARS / cot
-            aplicaciones.push({ debito_tipo: 'Factura', debito_numero: factInfo.numero, credito_tipo: 'Recibo', credito_numero: creditoNum, monto: montoAplicadoARS, debito_moneda: 'ARS', credito_moneda: 'USD', cotizacion: cot })
+            aplicaciones.push({
+              debito_tipo: 'Factura',
+              debito_numero: factInfo.numero,
+              credito_tipo: cred.tipo === 'nc' ? 'NC' : 'Recibo',
+              credito_numero: creditoNum,
+              monto: montoAplicadoARS,
+              debito_moneda: 'ARS',
+              credito_moneda: 'USD',
+              cotizacion: cot,
+            })
             const fu = facturaUpdates.find(u => u.id === deb.id)
             if (fu) fu.saldoNuevo = Math.max(0, fu.saldoNuevo - montoAplicadoARS)
             else facturaUpdates.push({ id: deb.id, saldoNuevo: Math.max(0, factInfo.saldo - montoAplicadoARS) })
-            const ru = reciboUpdates.find(u => u.id === cred.id)
-            if (ru) ru.importeNoConciliadoNuevo = Math.max(0, ru.importeNoConciliadoNuevo - montoAplicadoUSD)
-            else reciboUpdates.push({ id: cred.id, importeNoConciliadoNuevo: Math.max(0, (rInfo?.importe_no_conciliado ?? 0) - montoAplicadoUSD) })
+            if (cred.tipo === 'recibo') {
+              const ru = reciboUpdates.find(u => u.id === cred.id)
+              if (ru) ru.importeNoConciliadoNuevo = Math.max(0, ru.importeNoConciliadoNuevo - montoAplicadoUSD)
+              else reciboUpdates.push({ id: cred.id, importeNoConciliadoNuevo: Math.max(0, (rInfo?.importe_no_conciliado ?? 0) - montoAplicadoUSD) })
+            } else {
+              // NC USD: descontamos saldo_disponible en USD (la moneda de la NC)
+              const nu = ncUpdates.find(u => u.id === cred.id)
+              const saldoBase = nInfo?.saldo_disponible ?? nInfo?.total ?? 0
+              if (nu) nu.saldoDisponibleNuevo = Math.max(0, nu.saldoDisponibleNuevo - montoAplicadoUSD)
+              else ncUpdates.push({ id: cred.id, saldoDisponibleNuevo: Math.max(0, saldoBase - montoAplicadoUSD) })
+            }
             deb.montoAplicar -= montoAplicadoARS; cred.montoAplicar -= montoAplicadoUSD
           }
         }
@@ -12230,7 +12341,19 @@ export default function ModuloVentas({
                     <tr key={f.id} onClick={() => !conciliada && toggleDebito(f.id, moneda, f.saldo)}
                       className={`border-b cursor-pointer ${sel ? 'bg-red-50' : 'hover:bg-gray-50'} ${conciliada ? 'opacity-40' : ''}`}>
                       <td className="py-1 px-2 text-orange-600 hover:underline">{f.nota_venta_numero}</td>
-                      <td className="py-1 px-2 text-blue-600 hover:underline">{f.numero}</td>
+                      <td className="py-1 px-2 text-blue-600">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="hover:underline">{f.numero}</span>
+                          <button
+                            type="button"
+                            title="Ver factura"
+                            className="text-gray-400 hover:text-indigo-700"
+                            onClick={e => { e.stopPropagation(); abrirPopupFactura(f) }}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        </span>
+                      </td>
                       <td className="py-1 px-2 text-gray-500">{f.condicion_pago || 'Contado'}</td>
                       <td className="py-1 px-2 text-gray-500">{f.fecha_vencimiento ? f.fecha_vencimiento.split('T')[0] : '-'}</td>
                       <td className="py-1 px-2 text-right">{moneda === 'USD' ? `USD ${f.total?.toLocaleString()}` : `$${f.total?.toLocaleString()}`}</td>
@@ -12308,7 +12431,19 @@ export default function ModuloVentas({
                       <td className="py-1 px-2 text-right font-semibold text-green-600">{moneda === 'USD' ? `USD ${saldo?.toLocaleString()}` : `$${saldo?.toLocaleString()}`}</td>
                       <td className="py-1 px-2 text-right">{moneda === 'USD' ? `USD ${r.importe?.toLocaleString()}` : `$${r.importe?.toLocaleString()}`}</td>
                       <td className="py-1 px-2 text-gray-500">{r.fecha?.split('T')[0]}</td>
-                      <td className="py-1 px-2 text-blue-600">{r.numero}</td>
+                      <td className="py-1 px-2 text-blue-600">
+                        <span className="inline-flex items-center gap-1.5">
+                          {r.numero}
+                          <button
+                            type="button"
+                            title="Ver recibo"
+                            className="text-gray-400 hover:text-indigo-700"
+                            onClick={e => { e.stopPropagation(); abrirPopupRecibo(r) }}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        </span>
+                      </td>
                       <td className="py-1 px-2 text-gray-500">Recibo</td>
                     </tr>
                   )
@@ -12317,6 +12452,10 @@ export default function ModuloVentas({
                   const saldo = n.saldo_disponible ?? n.total
                   const sel = conciliacionSeleccionCreditos.find(c => c.id === n.id && c.tipo === 'nc' && c.moneda === moneda)
                   const conciliado = saldo <= 0
+                  // El mismo array `ajustes` guarda NCs y NDs distinguidos por
+                  // prefijo del número. Acá solo aparecen NCs (filtrado upstream)
+                  // pero por seguridad chequeamos el prefijo para la lupita.
+                  const esND = (n.numero ?? '').startsWith('ND')
                   return (
                     <tr key={`nc-${n.id}`} onClick={() => !conciliado && toggleCredito(n.id, 'nc', moneda, saldo)}
                       className={`border-b cursor-pointer bg-emerald-50/30 ${sel ? 'bg-emerald-100' : 'hover:bg-emerald-50'} ${conciliado ? 'opacity-40' : ''}`}>
@@ -12326,8 +12465,20 @@ export default function ModuloVentas({
                       <td className="py-1 px-2 text-right font-semibold text-green-600">{moneda === 'USD' ? `USD ${saldo?.toLocaleString()}` : `$${saldo?.toLocaleString()}`}</td>
                       <td className="py-1 px-2 text-right">{moneda === 'USD' ? `USD ${n.total?.toLocaleString()}` : `$${n.total?.toLocaleString()}`}</td>
                       <td className="py-1 px-2 text-gray-500">{n.fecha?.split('T')[0]}</td>
-                      <td className="py-1 px-2 text-emerald-700 font-medium">{n.numero}</td>
-                      <td className="py-1 px-2"><span className="bg-emerald-100 text-emerald-600 rounded px-1 text-xs">NC</span></td>
+                      <td className="py-1 px-2 text-emerald-700 font-medium">
+                        <span className="inline-flex items-center gap-1.5">
+                          {n.numero}
+                          <button
+                            type="button"
+                            title={esND ? "Ver nota de débito" : "Ver nota de crédito"}
+                            className="text-gray-400 hover:text-indigo-700"
+                            onClick={e => { e.stopPropagation(); abrirPopupAjuste(n, esND) }}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        </span>
+                      </td>
+                      <td className="py-1 px-2"><span className="bg-emerald-100 text-emerald-600 rounded px-1 text-xs">{esND ? 'ND' : 'NC'}</span></td>
                     </tr>
                   )
                 })}
@@ -12372,12 +12523,19 @@ export default function ModuloVentas({
                 <div className="flex items-center gap-2">
                   <label className="text-xs text-gray-500 font-medium">Cliente</label>
                   <div className="flex items-center gap-1">
-                    <select value={conciliacionClienteId || ""}
-                      onChange={e => { setConciliacionClienteId(e.target.value ? parseInt(e.target.value) : null); limpiarSeleccion() }}
-                      className="w-56 border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
-                      <option value="">Seleccionar cliente...</option>
-                      {clientes.map(c => <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>)}
-                    </select>
+                    <div className="w-56">
+                      <SearchableSelect
+                        value={conciliacionClienteId}
+                        onChange={v => { setConciliacionClienteId(v == null ? null : Number(v)); limpiarSeleccion() }}
+                        options={clientes.map(c => ({
+                          value: String(c.id),
+                          label: c.codigo ? `${c.codigo} - ${c.nombre}` : c.nombre,
+                          hint: c.telefono ? `Tel: ${c.telefono}` : undefined,
+                          searchExtra: `${c.codigo ?? ""} ${c.telefono ?? ""} ${c.numero_documento ?? ""}`,
+                        }))}
+                        placeholder="Buscar cliente…"
+                      />
+                    </div>
                     {clienteSeleccionado && (
                       <button onClick={() => { setClienteSeleccionadoId(clienteSeleccionado.id); setActiveSubmenu("ficha_cliente") }}
                         className="p-1 text-gray-400 hover:text-blue-600"><ArrowRight className="w-3.5 h-3.5" /></button>
@@ -12559,13 +12717,24 @@ export default function ModuloVentas({
                 </select>
               </div>
             </div>
-            <div className="mb-4">
-              <select value={conciliacionClienteId || ""}
-                onChange={e => { const id = e.target.value ? parseInt(e.target.value) : null; setConciliacionClienteId(id); setConciliacionSeleccionDebitos([]); setConciliacionSeleccionCreditos([]); if (id) cargarHistorialConciliacionesCliente(id) }}
-                className="w-full max-w-md border border-gray-300 rounded px-3 py-1.5 text-sm">
-                <option value="">Seleccionar cliente...</option>
-                {clientes.map(c => <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>)}
-              </select>
+            <div className="mb-4 max-w-md">
+              <SearchableSelect
+                value={conciliacionClienteId}
+                onChange={v => {
+                  const id = v == null ? null : Number(v)
+                  setConciliacionClienteId(id)
+                  setConciliacionSeleccionDebitos([])
+                  setConciliacionSeleccionCreditos([])
+                  if (id) cargarHistorialConciliacionesCliente(id)
+                }}
+                options={clientes.map(c => ({
+                  value: String(c.id),
+                  label: c.codigo ? `${c.codigo} - ${c.nombre}` : c.nombre,
+                  hint: c.telefono ? `Tel: ${c.telefono}` : undefined,
+                  searchExtra: `${c.codigo ?? ""} ${c.telefono ?? ""} ${c.numero_documento ?? ""}`,
+                }))}
+                placeholder="Buscar cliente…"
+              />
             </div>
             {historialCliente.length > 0 ? (
               <div className="space-y-4">
@@ -12626,13 +12795,69 @@ export default function ModuloVentas({
                           const cot = (a as any).cotizacion
                           const esMixto = dm !== cm
                           const parLabel = `${dm}→${cm}`
-                          const montoFmt = cm === 'USD'
+                          // El monto se guarda en moneda del DÉBITO (ver
+                          // ejecutarConciliacion). Etiquetarlo con `cm` daba
+                          // "USD 500" cuando en realidad eran $500 ARS.
+                          const montoFmt = dm === 'USD'
                             ? `USD ${a.monto.toLocaleString('es-AR', {minimumFractionDigits:2})}`
                             : `$${a.monto.toLocaleString('es-AR', {minimumFractionDigits:2})}`
+
+                          // Resolver el comprobante en memoria por (tipo, numero).
+                          // El historial guarda solo el numero; el id sale de los
+                          // arrays cargados. NCs/NDs viven en `ajustes` distinguidos
+                          // por prefijo del numero.
+                          const abrirDesdeHistorial = (tipo: string, numero: string) => {
+                            if (!numero) return
+                            const t = tipo.toLowerCase()
+                            if (t.startsWith('factura')) {
+                              const f = facturas.find(x => x.numero === numero)
+                              if (f) abrirPopupFactura(f)
+                            } else if (t === 'recibo') {
+                              const r = recibos.find(x => x.numero === numero)
+                              if (r) abrirPopupRecibo(r)
+                            } else if (t === 'nc') {
+                              const n = ajustes.find(x => x.numero === numero)
+                              if (n) abrirPopupAjuste(n, false)
+                            } else if (t === 'nd') {
+                              const n = ajustes.find(x => x.numero === numero)
+                              if (n) abrirPopupAjuste(n, true)
+                            }
+                          }
+                          const tieneDeb = !!(a.debito_numero && (a.debito_tipo.toLowerCase().startsWith('factura') ? facturas.some(f => f.numero === a.debito_numero) : a.debito_tipo.toLowerCase() === 'nd' ? ajustes.some(n => n.numero === a.debito_numero) : false))
+                          const tieneCre = !!(a.credito_numero && (a.credito_tipo.toLowerCase() === 'recibo' ? recibos.some(r => r.numero === a.credito_numero) : a.credito_tipo.toLowerCase() === 'nc' ? ajustes.some(n => n.numero === a.credito_numero) : false))
+
                           return (
                             <tr key={idx} className="border-b">
-                              <td className="py-2 px-3 text-red-700">{a.debito_tipo} {a.debito_numero}</td>
-                              <td className="py-2 px-3 text-green-700">{a.credito_tipo} {a.credito_numero}</td>
+                              <td className="py-2 px-3 text-red-700">
+                                <span className="inline-flex items-center gap-1.5">
+                                  {a.debito_tipo} {a.debito_numero}
+                                  {tieneDeb && (
+                                    <button
+                                      type="button"
+                                      title="Ver comprobante"
+                                      className="text-gray-400 hover:text-indigo-700 transition-colors"
+                                      onClick={() => abrirDesdeHistorial(a.debito_tipo, a.debito_numero)}
+                                    >
+                                      <Eye className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3 text-green-700">
+                                <span className="inline-flex items-center gap-1.5">
+                                  {a.credito_tipo} {a.credito_numero}
+                                  {tieneCre && (
+                                    <button
+                                      type="button"
+                                      title="Ver comprobante"
+                                      className="text-gray-400 hover:text-indigo-700 transition-colors"
+                                      onClick={() => abrirDesdeHistorial(a.credito_tipo, a.credito_numero)}
+                                    >
+                                      <Eye className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </span>
+                              </td>
                               <td className="py-2 px-3">
                                 <div className="flex items-center gap-2">
                                   <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${esMixto ? 'bg-orange-100 text-orange-700' : cm === 'USD' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
@@ -16073,6 +16298,8 @@ export default function ModuloVentas({
         {showModal && modalType === "recibo" && renderReciboModal()}
         {renderNcDetallePopup()}
         {renderRecDetallePopup()}
+        {/* Popup de previsualización de comprobantes (lupita en conciliación) */}
+        {comprobantePopup && <ComprobantePopup {...comprobantePopup} />}
       </main>
     )
   }
@@ -16506,6 +16733,12 @@ export default function ModuloVentas({
           </div>
         </div>
       )}
+
+      {/* Popup compacto de previsualización de comprobantes (lupita en
+          conciliación de deuda). Renderizado a nivel raíz para que aparezca
+          siempre por encima del resto, sin importar desde qué tab se haya
+          disparado. */}
+      {comprobantePopup && <ComprobantePopup {...comprobantePopup} />}
     </div>
   )
 }
