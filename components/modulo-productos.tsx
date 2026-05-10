@@ -152,13 +152,34 @@ interface FormularioProductoProps {
   soloLectura?: boolean
 }
 
-export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura = false }: FormularioProductoProps) {
+export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura: soloLecturaProp = false }: FormularioProductoProps) {
   const [form, setForm] = useState<FormProducto>(inicial ?? { ...DEFAULT_FORM })
   const [tab, setTab] = useState<"info" | "inventario" | "abastecimientos" | "ventas" | "contabilidad" | "observaciones">("info")
   const [errores, setErrores] = useState<Record<string, string>>({})
   const [guardando, setGuardando] = useState(false)
   const [modalHistorialCampo, setModalHistorialCampo] = useState<"manual" | "contable" | null>(null)
   const costoManualOriginalRef = useRef(inicial?.costo_manual ?? 0)
+
+  // Patrón "ver → editar": al entrar a un producto existente la ficha arranca
+  // en solo-lectura. Hay que apretar "Editar" para habilitar inputs. Para
+  // crear (sin `inicial`) arranca directamente en edición.
+  // Cancelar mientras se edita revierte los cambios y vuelve a la vista
+  // de solo-lectura — no sale al listado.
+  const [enEdicion, setEnEdicion] = useState<boolean>(!inicial)
+  const inicialRef = useRef<FormProducto | null>(inicial ?? null)
+  // Si cambia `inicial` (cambio de selección), resetear ref + form + modo
+  useEffect(() => {
+    inicialRef.current = inicial ?? null
+    if (inicial) {
+      setForm(inicial)
+      setEnEdicion(false)
+      setErrores({})
+    } else {
+      setForm({ ...DEFAULT_FORM })
+      setEnEdicion(true)
+    }
+  }, [inicial])
+  const soloLectura = soloLecturaProp || !enEdicion
 
   // Catálogos dinámicos
   const [categorias, setCategorias] = useState<{ id: number; nombre: string }[]>([])
@@ -227,14 +248,35 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
     } finally { setGuardando(false) }
   }
 
-  const TABS = [
-    { id: "info", label: "Información" },
-    { id: "inventario", label: "Inventario" },
-    { id: "abastecimientos", label: "Abastecimientos" },
-    { id: "ventas", label: "Ventas" },
-    { id: "contabilidad", label: "Contabilidad" },
-    { id: "observaciones", label: "Observaciones" },
-  ] as const
+  // Las tabs "Inventario" y "Abastecimientos" no aplican a servicios:
+  //   - Servicios no llevan stock → no hay nada en Inventario.
+  //   - Servicios no tienen costo contable → Abastecimientos vacío.
+  // Si el usuario estaba parado en alguna de esas y cambia a servicio,
+  // lo movemos a "info" automáticamente (efecto abajo).
+  const TABS = (
+    form.tipo === "servicio"
+      ? [
+          { id: "info" as const,           label: "Información" },
+          { id: "ventas" as const,         label: "Ventas" },
+          { id: "contabilidad" as const,   label: "Contabilidad" },
+          { id: "observaciones" as const,  label: "Observaciones" },
+        ]
+      : [
+          { id: "info" as const,            label: "Información" },
+          { id: "inventario" as const,      label: "Inventario" },
+          { id: "abastecimientos" as const, label: "Abastecimientos" },
+          { id: "ventas" as const,          label: "Ventas" },
+          { id: "contabilidad" as const,    label: "Contabilidad" },
+          { id: "observaciones" as const,   label: "Observaciones" },
+        ]
+  )
+
+  // Si el tipo cambia y la tab activa ya no existe, volver a "info"
+  useEffect(() => {
+    if (form.tipo === "servicio" && (tab === "inventario" || tab === "abastecimientos")) {
+      setTab("info")
+    }
+  }, [form.tipo, tab])
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full bg-gray-50">
@@ -242,40 +284,125 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
       <div className="p-6 bg-white border-b border-gray-200">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold text-amber-900">
-            {inicial ? "Editar Producto" : "Nuevo Producto"}
+            {!inicial
+              ? "Nuevo Producto"
+              : enEdicion
+                ? "Editar Producto"
+                : "Producto"}
           </h2>
-          {!soloLectura && (
-            <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
+            {/* Vista solo-lectura de un producto existente: solo "Editar" */}
+            {!soloLecturaProp && inicial && !enEdicion && (
               <button
                 type="button"
-                onClick={onCancelar}
-                className="px-4 py-2 text-sm font-medium rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                onClick={() => setEnEdicion(true)}
+                className="px-4 py-2 text-sm font-medium rounded-md bg-indigo-900 text-white hover:bg-indigo-800 transition-colors"
               >
-                Cancelar
+                Editar
               </button>
-              <button
-                type="submit"
-                disabled={guardando}
-                className="px-5 py-2 text-sm font-medium rounded-md bg-indigo-900 text-white hover:bg-indigo-800 transition-colors disabled:opacity-60"
-              >
-                {guardando ? "Guardando..." : "Confirmar"}
-              </button>
-            </div>
-          )}
+            )}
+            {/* Modo edición (creando o editando existente): Cancelar + Confirmar */}
+            {!soloLecturaProp && enEdicion && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (inicial) {
+                      // Editando existente → revertir y volver a solo-lectura
+                      setForm(inicialRef.current ?? inicial)
+                      setEnEdicion(false)
+                      setErrores({})
+                    } else {
+                      // Creando nuevo → salir al listado
+                      onCancelar()
+                    }
+                  }}
+                  className="px-4 py-2 text-sm font-medium rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardando}
+                  className="px-5 py-2 text-sm font-medium rounded-md bg-indigo-900 text-white hover:bg-indigo-800 transition-colors disabled:opacity-60"
+                >
+                  {guardando ? "Guardando..." : "Confirmar"}
+                </button>
+              </>
+            )}
+          </div>
         </div>
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label required>Nombre del producto</Label>
-              <Input value={form.nombre} onChange={e => set("nombre", e.target.value)} placeholder="Ej: iPhone 15 Pro Max 256GB Negro" disabled={soloLectura} />
+              <Input value={form.nombre} onChange={e => set("nombre", e.target.value)} placeholder={form.tipo === "servicio" ? "Ej: Cambio de pantalla iPhone" : "Ej: iPhone 15 Pro Max 256GB Negro"} disabled={soloLectura} />
               {errores.nombre && <p className="text-xs text-red-500 mt-1">{errores.nombre}</p>}
             </div>
             <div>
               <Label required>Código interno</Label>
-              <Input value={form.codigo_interno} onChange={e => set("codigo_interno", e.target.value)} placeholder="Ej: IP15PM-256-BLK" disabled={soloLectura} />
+              <Input value={form.codigo_interno} onChange={e => set("codigo_interno", e.target.value)} placeholder={form.tipo === "servicio" ? "Ej: SRV-PANT-IP15" : "Ej: IP15PM-256-BLK"} disabled={soloLectura} />
               {errores.codigo_interno && <p className="text-xs text-red-500 mt-1">{errores.codigo_interno}</p>}
             </div>
           </div>
+
+          {/* ─── Tipo (decisión central que cambia qué tabs/campos aplican) ── */}
+          {/* Pills grandes para que sea evidente qué tipo de item se está */}
+          {/* creando. Cambiar a "servicio" oculta inventario, costos y stock. */}
+          <div>
+            <Label>Tipo</Label>
+            <div className="inline-flex rounded-md border border-gray-200 overflow-hidden text-sm">
+              {([
+                { val: "almacenable", label: "Almacenable", hint: "Producto físico con stock" },
+                { val: "servicio",    label: "Servicio",    hint: "Mano de obra, instalación, reparación" },
+              ] as const).map(opt => {
+                const active = form.tipo === opt.val
+                return (
+                  <button
+                    key={opt.val}
+                    type="button"
+                    disabled={soloLectura}
+                    onClick={() => {
+                      set("tipo", opt.val as TipoProducto)
+                      // Al pasar a servicio: limpiar campos de stock + costo,
+                      // forzar puede_comprarse=false (no va en OC/recepciones).
+                      if (opt.val === "servicio") {
+                        set("tiene_numero_serie", false)
+                        set("requiere_color", false)
+                        set("requiere_bateria", false)
+                        set("requiere_outlet", false)
+                        set("requiere_observaciones", false)
+                        set("stock_real", 0)
+                        set("stock_minimo", 0)
+                        set("stock_maximo", 0)
+                        set("stock_critico", 0)
+                        set("costo_manual", 0)
+                        set("costo_contable", 0)
+                        set("costo_ars", 0)
+                        set("costo_usd", 0)
+                        set("puede_comprarse", false)
+                        set("cuenta_existencias", "")
+                      }
+                    }}
+                    title={opt.hint}
+                    className={`px-5 py-2 font-medium transition-colors ${
+                      active
+                        ? "bg-indigo-900 text-white"
+                        : "bg-white text-gray-700 hover:bg-gray-50"
+                    } ${opt.val === "servicio" ? "border-l border-gray-200" : ""}`}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-xs text-gray-400 mt-1">
+              {form.tipo === "servicio"
+                ? "Los servicios se pueden incluir en notas de venta y facturas, pero no llevan stock ni se pueden comprar / recepcionar."
+                : "Producto físico con stock real, recepciones y descarga de existencias al vender."}
+            </p>
+          </div>
+
 
           <div className="grid grid-cols-4 gap-3">
             <div>
@@ -360,16 +487,12 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
           )}
 
           <div className="flex flex-wrap items-center gap-6">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-gray-500">Tipo:</span>
-              <Sel value={form.tipo} onChange={e => set("tipo", e.target.value as TipoProducto)} disabled={soloLectura} className="w-40">
-                <option value="almacenable">Almacenable</option>
-                <option value="servicio">Servicio</option>
-                <option value="consumible">Consumible</option>
-              </Sel>
-            </div>
             <Checkbox label="Puede venderse" checked={form.puede_venderse} onChange={v => set("puede_venderse", v)} disabled={soloLectura} />
-            <Checkbox label="Puede comprarse" checked={form.puede_comprarse} onChange={v => set("puede_comprarse", v)} disabled={soloLectura} />
+            {/* "Puede comprarse" no tiene sentido para servicios — se fuerza */}
+            {/* a false al cambiar el tipo. Lo escondemos en ese caso. */}
+            {form.tipo !== "servicio" && (
+              <Checkbox label="Puede comprarse" checked={form.puede_comprarse} onChange={v => set("puede_comprarse", v)} disabled={soloLectura} />
+            )}
             <Checkbox label="Activo" checked={form.activo} onChange={v => set("activo", v)} disabled={soloLectura} />
           </div>
         </div>
@@ -529,26 +652,39 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
                   {OPCIONES_IVA.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </Sel>
               </div>
+              {/* IVA de compra solo para almacenables — los servicios no se compran */}
+              {/* en este ERP (no hay líneas de producto en facturas de compra). */}
+              {form.tipo !== "servicio" && (
+                <div>
+                  <Label>IVA de compra</Label>
+                  <Sel value={form.iva_compra} onChange={e => set("iva_compra", Number(e.target.value))} disabled={soloLectura}>
+                    {OPCIONES_IVA.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </Sel>
+                </div>
+              )}
               <div>
-                <Label>IVA de compra</Label>
-                <Sel value={form.iva_compra} onChange={e => set("iva_compra", Number(e.target.value))} disabled={soloLectura}>
-                  {OPCIONES_IVA.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </Sel>
-              </div>
-              <div>
-                <Label>Cuenta de ventas</Label>
+                <Label>{form.tipo === "servicio" ? "Cuenta de ingreso" : "Cuenta de ventas"}</Label>
                 <Sel value={form.cuenta_ventas} onChange={e => set("cuenta_ventas", e.target.value)} disabled={soloLectura}>
-                  <option value="">Seleccionar...</option>
+                  <option value="">{form.tipo === "servicio" ? "Por defecto: Ingresos por Servicios" : "Seleccionar..."}</option>
                   {cuentasContables.map(c => <option key={c.id} value={`${c.codigo} - ${c.nombre}`}>{c.codigo} - {c.nombre}</option>)}
                 </Sel>
+                {form.tipo === "servicio" && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Si lo dejás vacío, el asiento usa la cuenta del mapeo "Ingresos por Servicios".
+                  </p>
+                )}
               </div>
-              <div>
-                <Label>Cuenta de existencias</Label>
-                <Sel value={form.cuenta_existencias} onChange={e => set("cuenta_existencias", e.target.value)} disabled={soloLectura}>
-                  <option value="">Seleccionar...</option>
-                  {cuentasContables.map(c => <option key={`ex-${c.id}`} value={`${c.codigo} - ${c.nombre}`}>{c.codigo} - {c.nombre}</option>)}
-                </Sel>
-              </div>
+              {/* "Cuenta de existencias" solo para almacenables — un servicio */}
+              {/* no descarga existencias al venderse. */}
+              {form.tipo !== "servicio" && (
+                <div>
+                  <Label>Cuenta de existencias</Label>
+                  <Sel value={form.cuenta_existencias} onChange={e => set("cuenta_existencias", e.target.value)} disabled={soloLectura}>
+                    <option value="">Seleccionar...</option>
+                    {cuentasContables.map(c => <option key={`ex-${c.id}`} value={`${c.codigo} - ${c.nombre}`}>{c.codigo} - {c.nombre}</option>)}
+                  </Sel>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -682,6 +818,9 @@ export default function ModuloProductos() {
   const [activeFilters, setActiveFilters] = useState<FilterOption[]>([])
   const [activeGroupBy, setActiveGroupBy] = useState<GroupByOption[]>([])
   const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([])
+  // Tab activo: filtra el listado por tipo. "todos" muestra ambos.
+  // Se aplica encima de los filtros del OdooFilterBar y del searchTerm.
+  const [tipoTab, setTipoTab] = useState<"todos" | "almacenable" | "servicio">("todos")
 
   const cargarProductos = useCallback(async () => {
     setCargando(true)
@@ -730,6 +869,14 @@ export default function ModuloProductos() {
   const productosFiltrados = useMemo(() => {
     let result = [...productos]
 
+    // Tab por tipo (almacenable / servicio / todos). Tratamos "consumible" como
+    // almacenable a efectos del listado para no perder productos legacy.
+    if (tipoTab === "almacenable") {
+      result = result.filter(p => p.tipo !== "servicio")
+    } else if (tipoTab === "servicio") {
+      result = result.filter(p => p.tipo === "servicio")
+    }
+
     if (searchTerm) {
       const q = searchTerm.toLowerCase()
       result = result.filter(p =>
@@ -745,7 +892,17 @@ export default function ModuloProductos() {
     }
 
     return result
-  }, [productos, searchTerm, activeFilters])
+  }, [productos, searchTerm, activeFilters, tipoTab])
+
+  // Conteos por tab — útiles para mostrar badge en cada pill.
+  const conteoPorTipo = useMemo(() => {
+    let almacenables = 0, servicios = 0
+    for (const p of productos) {
+      if (p.tipo === "servicio") servicios++
+      else almacenables++
+    }
+    return { almacenables, servicios, todos: productos.length }
+  }, [productos])
 
   const filterOptions = useMemo(() => {
     const categorias = [...new Set(productos.map(p => p.categoria).filter(Boolean))]
@@ -830,6 +987,36 @@ export default function ModuloProductos() {
         </button>
       </div>
 
+      {/* Tabs por tipo: filtran rápidamente Almacenables / Servicios / Todos */}
+      <div className="px-6 pt-3 bg-white border-b border-gray-100">
+        <div className="inline-flex gap-1 rounded-lg bg-gray-100 p-1 text-sm">
+          {([
+            { id: "todos" as const,       label: "Todos",         count: conteoPorTipo.todos },
+            { id: "almacenable" as const, label: "Almacenables",  count: conteoPorTipo.almacenables },
+            { id: "servicio" as const,    label: "Servicios",     count: conteoPorTipo.servicios },
+          ]).map(t => {
+            const active = tipoTab === t.id
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTipoTab(t.id)}
+                className={`px-4 py-1.5 rounded-md font-medium transition-colors ${
+                  active
+                    ? "bg-white text-indigo-900 shadow-sm"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                {t.label}
+                <span className={`ml-2 text-xs ${active ? "text-gray-400" : "text-gray-400"}`}>
+                  {t.count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
       {/* OdooFilterBar */}
       <div className="px-6 py-3 border-b border-gray-200 bg-white">
         <OdooFilterBar
@@ -876,8 +1063,14 @@ export default function ModuloProductos() {
                 <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Nombre</th>
                 <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Categoría</th>
                 <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Marca</th>
-                <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Tipo</th>
-                <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Stock</th>
+                {/* La columna Tipo solo tiene sentido cuando el tab es Todos */}
+                {tipoTab === "todos" && (
+                  <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Tipo</th>
+                )}
+                {/* Stock no aplica para Servicios — ocultar la columna entera */}
+                {tipoTab !== "servicio" && (
+                  <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Stock</th>
+                )}
                 <th className="text-left py-2 px-4 text-xs font-semibold text-gray-600 uppercase">Estado</th>
               </tr>
             </thead>
@@ -895,12 +1088,16 @@ export default function ModuloProductos() {
                   </td>
                   <td className="px-4 py-3 text-gray-600">{p.categoria}</td>
                   <td className="px-4 py-3 text-gray-600">{p.marca}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${p.tipo === "almacenable" ? "bg-blue-100 text-blue-700" : p.tipo === "servicio" ? "bg-purple-100 text-purple-700" : "bg-orange-100 text-orange-700"}`}>
-                      {p.tipo}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-700">{p.tipo === "servicio" ? "—" : p.stock_real}</td>
+                  {tipoTab === "todos" && (
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${p.tipo === "almacenable" ? "bg-blue-100 text-blue-700" : p.tipo === "servicio" ? "bg-purple-100 text-purple-700" : "bg-orange-100 text-orange-700"}`}>
+                        {p.tipo}
+                      </span>
+                    </td>
+                  )}
+                  {tipoTab !== "servicio" && (
+                    <td className="px-4 py-3 text-gray-700">{p.tipo === "servicio" ? "—" : p.stock_real}</td>
+                  )}
                   <td className="px-4 py-3">
                     <button
                       onClick={(e) => handleToggleActivo(e, p)}

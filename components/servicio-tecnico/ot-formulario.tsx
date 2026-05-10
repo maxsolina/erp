@@ -20,6 +20,7 @@ import {
   type TallerFalla,
   type TallerTipoOT,
 } from "@/lib/taller-actions"
+import SearchableSelect from "@/components/ui/searchable-select"
 
 interface Props {
   onCancelar: () => void
@@ -355,10 +356,10 @@ export default function OtFormulario({ onCancelar, onCreada }: Props) {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
-              <select
-                value={(formOT.cliente_id as string | number) ?? ""}
-                onChange={e => {
-                  const id = e.target.value
+              <SearchableSelect
+                value={(formOT.cliente_id as string | number | undefined) ?? ""}
+                onChange={v => {
+                  const id = v == null ? "" : String(v)
                   const cli = clientes.find(c => String(c.id) === id)
                   setFormOT(prev => ({
                     ...prev,
@@ -376,15 +377,15 @@ export default function OtFormulario({ onCancelar, onCreada }: Props) {
                     categoria_cliente: cli?.categoria ?? null,
                   }))
                 }}
-                className="w-full border rounded-lg px-3 py-2 text-sm"
-              >
-                <option value="">Seleccionar cliente…</option>
-                {clientes.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre}
-                  </option>
-                ))}
-              </select>
+                options={clientes.map(c => ({
+                  value: String(c.id),
+                  label: c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre,
+                  hint: c.telefono ? `Tel: ${c.telefono}` : undefined,
+                  searchExtra: `${c.codigo ?? ""} ${c.telefono ?? ""}`,
+                }))}
+                placeholder="Buscar cliente por nombre, código o teléfono…"
+                required
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Celular de Contacto *</label>

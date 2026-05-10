@@ -19,6 +19,8 @@ const TOPBAR_TO_VISTA: Record<string, string | null> = {
   contabilidad: "contabilidad",
   deposito: "stock",
   informes: "reportes",
+  // Mensajes: visible para todos los usuarios autenticados (no necesita permiso especial).
+  mensajes: null,
   config: "configuracion",
 }
 
@@ -35,6 +37,7 @@ function tabHref(mod: string): string {
   if (mod === "compras") return "/compras/oc"
   if (mod === "finanzas") return "/finanzas/cajas"
   if (mod === "contabilidad") return "/contabilidad/asientos-automaticos"
+  if (mod === "mensajes") return "/mensajes"
   return `/?module=${mod}`
 }
 
@@ -47,6 +50,7 @@ function activeTabFromUrl(pathname: string, search: URLSearchParams): string {
   if (pathname.startsWith("/finanzas")) return "finanzas"
   if (pathname.startsWith("/contabilidad")) return "contabilidad"
   if (pathname.startsWith("/informes")) return "informes"
+  if (pathname.startsWith("/mensajes")) return "mensajes"
   if (pathname.startsWith("/sucursales") || pathname.startsWith("/usuarios")) return "config"
   if (pathname === "/") return search.get("module") || "home"
   return ""
@@ -154,7 +158,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
   const search = searchParamsObj ?? new URLSearchParams()
   const activeTab = activeTabFromUrl(pathname, search)
 
-  const tabs = ["home", "taller", "ventas", "compras", "finanzas", "contabilidad", "deposito", "informes", "config"]
+  const tabs = ["home", "taller", "ventas", "compras", "finanzas", "contabilidad", "deposito", "informes", "mensajes", "config"]
     .filter(mod => {
       const v = TOPBAR_TO_VISTA[mod]
       return v === null || canSee(v)

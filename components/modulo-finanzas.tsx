@@ -9,10 +9,11 @@ import {
   CreditCard, Building2, Percent, Calendar, ToggleLeft, ToggleRight,
   Calculator, Info, Receipt, Lock, ChevronRight, Wallet, ArrowRightLeft,
   FileCheck, Settings, DollarSign, Landmark, BookOpen, Banknote,
-  ArrowDownUp, RefreshCw, Download, Eye, Filter, ArrowLeft
+  ArrowDownUp, RefreshCw, Download, Eye, Filter, ArrowLeft, UserPlus,
 } from "lucide-react"
 import OdooFilterBar, { type FilterOption, type GroupByOption, type SavedFilter } from "./odoo-filter-bar"
 import { ModalMedioPago } from "./modal-medio-pago"
+import SearchableSelect from "./ui/searchable-select"
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -71,6 +72,9 @@ interface CajaValor {
   activo: boolean
   cuenta_contable_id?: string | null  // DEBE (débito en cobros)
   cuenta_haber_id?: string | null     // HABER predeterminado
+  // Si != null → fila auto-generada por un banco permitido (script 113).
+  // No editable/borrable inline; se gestiona desde el tab "Bancos Permitidos".
+  banco_permitido_id?: string | null
 }
 
 interface CajaUsuario {
@@ -2759,6 +2763,69 @@ function ModalDetalleValor({ valor, cajaId, onClose, onActualizar }: {
   const [guardando, setGuardando] = useState(false)
   const [errorGuardar, setErrorGuardar] = useState("")
 
+  // ─── Usuarios asignados a este caja_valor ─────────────────────────────────
+  // Se cargan solo cuando el valor ya existe en DB (no en alta nueva).
+  type ValorUsuario = { id: string; usuario_id: number; nombre: string; usuario?: { id: number; nombre: string; email: string } | null }
+  type UsuarioPick = { id: number; nombre: string; email: string; is_superuser: boolean; is_active: boolean }
+  const [valorUsuarios, setValorUsuarios] = useState<ValorUsuario[]>([])
+  const [todosUsuariosVal, setTodosUsuariosVal] = useState<UsuarioPick[]>([])
+  const [usuarioAAgregarVal, setUsuarioAAgregarVal] = useState<string | number | null>(null)
+  const [agregandoVal, setAgregandoVal] = useState(false)
+  const [errorUsuariosVal, setErrorUsuariosVal] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (esNuevo || !valor.id) return
+    Promise.all([
+      fetch(`/api/caja-valores/usuarios?caja_valor_id=${valor.id}`).then(r => r.ok ? r.json() : []).catch(() => []),
+      fetch(`/api/usuarios`).then(r => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([asignados, todos]) => {
+      setValorUsuarios(Array.isArray(asignados) ? asignados : [])
+      setTodosUsuariosVal(Array.isArray(todos) ? todos.filter((u: any) => u.is_active !== false) : [])
+    })
+  }, [esNuevo, valor.id])
+
+  const recargarValorUsuarios = async () => {
+    if (!valor.id) return
+    const r = await fetch(`/api/caja-valores/usuarios?caja_valor_id=${valor.id}`).then(r => r.ok ? r.json() : []).catch(() => [])
+    setValorUsuarios(Array.isArray(r) ? r : [])
+  }
+
+  const agregarUsuarioAlValor = async () => {
+    if (!valor.id || !usuarioAAgregarVal) return
+    setErrorUsuariosVal(null)
+    setAgregandoVal(true)
+    try {
+      const r = await fetch("/api/caja-valores/usuarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caja_valor_id: valor.id, usuario_id: Number(usuarioAAgregarVal) }),
+      })
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}))
+        if (r.status === 409) setErrorUsuariosVal("El usuario ya está asignado a este valor.")
+        else if (r.status === 403) setErrorUsuariosVal("Solo administradores pueden modificar asignaciones.")
+        else setErrorUsuariosVal(e?.error ?? `Error ${r.status}`)
+        return
+      }
+      setUsuarioAAgregarVal(null)
+      await recargarValorUsuarios()
+    } finally {
+      setAgregandoVal(false)
+    }
+  }
+
+  const quitarUsuarioDelValor = async (asignacionId: string) => {
+    if (!confirm("¿Quitar este usuario del valor? Dejará de poder operarlo.")) return
+    setErrorUsuariosVal(null)
+    const r = await fetch(`/api/caja-valores/usuarios?id=${asignacionId}`, { method: "DELETE" })
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}))
+      setErrorUsuariosVal(e?.error ?? `Error ${r.status}`)
+      return
+    }
+    await recargarValorUsuarios()
+  }
+
   const guardar = async () => {
     if (!form.codigo?.trim() || !form.nombre?.trim()) { setErrorGuardar("Código y nombre son obligatorios"); return }
     if (form.tipo === 'banco_cheques' && !form.subtipo) { setErrorGuardar("El subtipo es obligatorio para Banco y cheques"); return }
@@ -2960,6 +3027,99 @@ function ModalDetalleValor({ valor, cajaId, onClose, onActualizar }: {
               </div>
             </div>
           </div>
+
+          {/* ── Usuarios autorizados ─────────────────────────────────────── */}
+          {/* Solo aparece para valores ya guardados — un valor nuevo todavía
+              no tiene id en DB. Los usuarios listados acá son los ÚNICOS que
+              pueden ver y operar este caja_valor (RLS garantiza el filtro).
+              Para que un usuario vea la CAJA en general, tiene que estar en
+              al menos un valor de esa caja. */}
+          {!esNuevo && valor.id && (
+            <div className="mt-8 pt-6 border-t border-gray-200">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <UserPlus className="w-4 h-4 text-indigo-700" />
+                Usuarios autorizados
+              </h3>
+              <p className="text-xs text-gray-500 mb-3">
+                Solo los usuarios listados acá pueden ver este valor. Para que la caja entera sea visible
+                a un usuario, debe estar autorizado en al menos un valor.
+              </p>
+
+              {errorUsuariosVal && (
+                <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+                  {errorUsuariosVal}
+                </div>
+              )}
+
+              {/* Picker para agregar */}
+              <div className="bg-gray-50 rounded p-3 border border-gray-200 mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <SearchableSelect
+                      value={usuarioAAgregarVal}
+                      onChange={v => setUsuarioAAgregarVal(v == null ? null : Number(v))}
+                      options={todosUsuariosVal
+                        .filter(u => !valorUsuarios.some(a => a.usuario_id === u.id))
+                        .map(u => ({
+                          value: u.id,
+                          label: u.nombre + (u.is_superuser ? " (admin)" : ""),
+                          hint: u.email,
+                          searchExtra: u.email,
+                        }))}
+                      placeholder={
+                        todosUsuariosVal.length === 0
+                          ? "Cargando usuarios…"
+                          : todosUsuariosVal.length === valorUsuarios.length
+                            ? "Todos los usuarios ya están asignados"
+                            : "Elegir usuario…"
+                      }
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={agregarUsuarioAlValor}
+                    disabled={!usuarioAAgregarVal || agregandoVal}
+                    className="bg-indigo-900 hover:bg-indigo-800 text-white px-3 py-2 rounded text-sm flex items-center gap-1 disabled:opacity-50"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    {agregandoVal ? "Agregando…" : "Agregar"}
+                  </button>
+                </div>
+              </div>
+
+              {valorUsuarios.length === 0 ? (
+                <p className="text-sm text-gray-400 italic">Sin usuarios autorizados todavía. Solo administradores pueden ver este valor.</p>
+              ) : (
+                <table className="w-full text-sm border rounded overflow-hidden">
+                  <thead>
+                    <tr className="border-b bg-gray-50">
+                      <th className="text-xs font-semibold text-gray-600 uppercase px-3 py-2 text-left">Nombre</th>
+                      <th className="text-xs font-semibold text-gray-600 uppercase px-3 py-2 text-left">Email</th>
+                      <th className="text-xs font-semibold text-gray-600 uppercase px-3 py-2 w-16"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {valorUsuarios.map(u => (
+                      <tr key={u.id} className="border-b border-gray-100">
+                        <td className="px-3 py-2 font-medium">{u.usuario?.nombre ?? u.nombre}</td>
+                        <td className="px-3 py-2 text-gray-500 text-xs">{u.usuario?.email ?? "—"}</td>
+                        <td className="px-3 py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => quitarUsuarioDelValor(u.id)}
+                            className="text-red-500 hover:text-red-700"
+                            title="Quitar autorización"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -2991,38 +3151,56 @@ function TabValores({ cajaId, valores, onActualizar, modoEdicion }: {
           </tr>
         </thead>
         <tbody>
-          {valores.map(v => (
-            <tr key={v.id} className="border-b border-gray-100 hover:bg-indigo-50 cursor-pointer"
-              onClick={() => setValorModal(v)}>
-              <td className="py-2 px-3 font-mono">{v.codigo}</td>
-              <td className="py-2 px-3 font-medium">{v.nombre}</td>
-              <td className="py-2 px-3">
-                <div className="flex flex-col gap-0.5">
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${v.tipo === 'efectivo' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                    {v.tipo === 'efectivo' ? 'Efectivo' : 'Banco/Cheques'}
+          {valores.map(v => {
+            // Auto-generado desde "Bancos Permitidos" — no editable inline.
+            const esAutoBanco = !!v.banco_permitido_id
+            return (
+              <tr
+                key={v.id}
+                className={`border-b border-gray-100 ${esAutoBanco ? "bg-blue-50/30" : "hover:bg-indigo-50 cursor-pointer"}`}
+                onClick={esAutoBanco ? undefined : () => setValorModal(v)}
+                title={esAutoBanco ? "Valor auto-generado desde Bancos Permitidos. Editá desde ese tab." : undefined}
+              >
+                <td className="py-2 px-3 font-mono">{v.codigo}</td>
+                <td className="py-2 px-3 font-medium">
+                  <span className="inline-flex items-center gap-2">
+                    {v.nombre}
+                    {esAutoBanco && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-100 text-blue-700 font-medium uppercase">
+                        Auto
+                      </span>
+                    )}
                   </span>
-                  {v.subtipo && (
-                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-50 text-purple-700 w-fit">
-                      {({'banco': 'Banco', 'cheque_tercero': 'Cheque', 'tarjeta': 'Tarjeta', 'rendicion_gastos': 'Rendición', 'fondo_fijo': 'Fondo Fijo'} as Record<string,string>)[v.subtipo] || v.subtipo}
+                </td>
+                <td className="py-2 px-3">
+                  <div className="flex flex-col gap-0.5">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${v.tipo === 'efectivo' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                      {v.tipo === 'efectivo' ? 'Efectivo' : 'Banco/Cheques'}
                     </span>
+                    {v.subtipo && (
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-50 text-purple-700 w-fit">
+                        {({'banco': 'Banco', 'cheque_tercero': 'Cheque', 'tarjeta': 'Tarjeta', 'rendicion_gastos': 'Rendición', 'fondo_fijo': 'Fondo Fijo'} as Record<string,string>)[v.subtipo] || v.subtipo}
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <td className="py-2 px-3 font-mono">{v.moneda}</td>
+                <td className="py-2 px-3 text-center">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${v.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    {v.activo ? 'Sí' : 'No'}
+                  </span>
+                </td>
+                <td className="py-2 px-3" onClick={e => e.stopPropagation()}>
+                  {/* Auto-generados no se desactivan acá — gestionar desde Bancos Permitidos. */}
+                  {v.activo && modoEdicion && !esAutoBanco && (
+                    <button onClick={() => desactivar(v.id)} className="p-1 text-gray-400 hover:text-red-600" title="Desactivar">
+                      <X className="w-4 h-4" />
+                    </button>
                   )}
-                </div>
-              </td>
-              <td className="py-2 px-3 font-mono">{v.moneda}</td>
-              <td className="py-2 px-3 text-center">
-                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${v.activo ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                  {v.activo ? 'Sí' : 'No'}
-                </span>
-              </td>
-              <td className="py-2 px-3" onClick={e => e.stopPropagation()}>
-                {v.activo && modoEdicion && (
-                  <button onClick={() => desactivar(v.id)} className="p-1 text-gray-400 hover:text-red-600" title="Desactivar">
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </td>
-            </tr>
-          ))}
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
       {valores.length === 0 && <p className="text-sm text-gray-500 text-center py-6">Sin valores configurados</p>}
@@ -3048,39 +3226,50 @@ function TabValores({ cajaId, valores, onActualizar, modoEdicion }: {
 function TabBancosPermitidos({ cajaId, bancos, onActualizar, modoEdicion }: {
   cajaId: string; bancos: CajaBancoPermitido[]; onActualizar: () => void; modoEdicion: boolean
 }) {
+  // Tipo mínimo del diario bancario (subset que necesitamos del row de
+  // contabilidad_diarios para listarlo en el picker).
+  type DiarioBanco = { id: string; codigo: string; nombre: string; moneda: string }
+
   const [agregando, setAgregando] = useState(false)
-  const [valoresDisponibles, setValoresDisponibles] = useState<CajaValor[]>([])
+  const [diariosDisponibles, setDiariosDisponibles] = useState<DiarioBanco[]>([])
   const [cargandoValores, setCargandoValores] = useState(false)
   const [guardando, setGuardando] = useState<string | null>(null)
+  const [errorEliminar, setErrorEliminar] = useState<string | null>(null)
 
   useEffect(() => {
     if (!agregando) return
     setCargandoValores(true)
     const supabase = createClient()
+    // Listamos TODOS los diarios bancarios del sistema (los auto-creados por
+    // cuenta bancaria + cualquier manual de tipo banco_cheques). El admin
+    // selecciona cuáles habilitar para esta caja. Antes esto buscaba por
+    // `caja_id` y siempre traía 0 — pero el feature es "elegir entre los
+    // diarios bancarios globales".
     supabase
-      .from('caja_valores')
-      .select('*')
-      .eq('caja_id', cajaId)
+      .from('contabilidad_diarios')
+      .select('id, codigo, nombre, moneda, tipo, activo')
       .eq('tipo', 'banco_cheques')
-      .neq('subtipo', 'tarjeta')
       .eq('activo', true)
-      .order('codigo')
+      .order('nombre')
       .then(({ data }) => {
         const codigosYa = new Set(bancos.map(b => b.codigo))
-        setValoresDisponibles((data as CajaValor[] ?? []).filter(v => !codigosYa.has(v.codigo)))
+        const filtrados = (data ?? [])
+          .filter((d: any) => !codigosYa.has(d.codigo))
+          .map((d: any) => ({ id: d.id, codigo: d.codigo, nombre: d.nombre, moneda: d.moneda }))
+        setDiariosDisponibles(filtrados)
         setCargandoValores(false)
       })
   }, [agregando])
 
-  const agregar = async (v: CajaValor) => {
-    setGuardando(v.id)
+  const agregar = async (d: DiarioBanco) => {
+    setGuardando(d.id)
     const supabase = createClient()
     await supabase.from('caja_bancos_permitidos').insert({
       caja_id: cajaId,
-      banco_nombre: v.nombre,
-      codigo: v.codigo,
-      tipo: v.tipo,
-      moneda: v.moneda,
+      banco_nombre: d.nombre,
+      codigo: d.codigo,
+      tipo: 'banco_cheques',
+      moneda: d.moneda,
     })
     setGuardando(null)
     setAgregando(false)
@@ -3088,13 +3277,34 @@ function TabBancosPermitidos({ cajaId, bancos, onActualizar, modoEdicion }: {
   }
 
   const eliminar = async (id: string) => {
+    setErrorEliminar(null)
     const supabase = createClient()
-    await supabase.from('caja_bancos_permitidos').delete().eq('id', id)
+    const { error } = await supabase.from('caja_bancos_permitidos').delete().eq('id', id)
+    if (error) {
+      // 23503 = foreign_key_violation: el caja_valor auto-generado tiene
+      // movimientos (recibos, OPs, ajustes, etc.) que apuntan a él. No se
+      // puede borrar sin perder histórico — sugerimos desactivar.
+      if (error.code === "23503") {
+        setErrorEliminar("No se puede eliminar este banco: tiene movimientos registrados (recibos, órdenes de pago u otros). Si querés que deje de aparecer en pagos, desactivá el valor desde el tab 'Valores Permitidos'.")
+      } else {
+        setErrorEliminar(error.message)
+      }
+      return
+    }
     onActualizar()
   }
 
   return (
     <div>
+      {errorEliminar && (
+        <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span className="flex-1">{errorEliminar}</span>
+          <button onClick={() => setErrorEliminar(null)} className="text-red-400 hover:text-red-600">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       {agregando && (
         <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 mb-4">
           <div className="flex items-center justify-between mb-2">
@@ -3105,11 +3315,13 @@ function TabBancosPermitidos({ cajaId, bancos, onActualizar, modoEdicion }: {
           </div>
           {cargandoValores ? (
             <p className="text-sm text-gray-500 py-2">Cargando...</p>
-          ) : valoresDisponibles.length === 0 ? (
-            <p className="text-sm text-gray-500 py-2">No hay diarios bancarios disponibles para agregar.</p>
+          ) : diariosDisponibles.length === 0 ? (
+            <p className="text-sm text-gray-500 py-2">
+              No hay diarios bancarios disponibles para agregar — todos los del sistema ya están agregados, o no hay creados aún. Creá una cuenta bancaria desde Finanzas → Bancos para que se genere su diario.
+            </p>
           ) : (
             <div className="space-y-1">
-              {valoresDisponibles.map(v => (
+              {diariosDisponibles.map(v => (
                 <button
                   key={v.id}
                   disabled={guardando === v.id}
@@ -3119,11 +3331,6 @@ function TabBancosPermitidos({ cajaId, bancos, onActualizar, modoEdicion }: {
                   <span className="flex items-center gap-3">
                     <span className="font-mono text-xs text-gray-500">{v.codigo}</span>
                     <span className="text-sm font-medium text-gray-900">{v.nombre}</span>
-                    {v.subtipo && (
-                      <span className="px-1.5 py-0.5 rounded text-xs bg-purple-50 text-purple-700">
-                        {SUBTIPO_LABELS_VALOR[v.subtipo] || v.subtipo}
-                      </span>
-                    )}
                   </span>
                   <span className="font-mono text-xs text-gray-400">{v.moneda}</span>
                 </button>
@@ -3535,11 +3742,14 @@ function RegistrosCaja() {
   const [registros, setRegistros] = useState<RegistroCaja[]>([])
   const [cajasDisp, setCajasDisp] = useState<Caja[]>([])
   const [conceptos, setConceptos] = useState<ConceptoRegistroCaja[]>([])
+  // Plan de cuentas para el dropdown de "Cta. Contable" en cada línea de comprobante.
+  const [cuentasContables, setCuentasContables] = useState<Array<{ id: string; codigo: string; nombre: string }>>([])
   const [loading, setLoading] = useState(true)
   const [vista, setVista] = useState<"lista" | "detalle">("lista")
   const [regSel, setRegSel] = useState<RegistroCaja | null>(null)
   const [tabActiva, setTabActiva] = useState<"comprobantes" | "valores" | "observaciones">("comprobantes")
   const [guardando, setGuardando] = useState(false)
+  const [errorGuardar, setErrorGuardar] = useState<string | null>(null)
   const [valoresCaja, setValoresCaja] = useState<CajaValor[]>([])
 
   // Form state
@@ -3547,7 +3757,8 @@ function RegistrosCaja() {
   const [formConcepto, setFormConcepto] = useState("")
   const [formMoneda, setFormMoneda] = useState("ARS")
   const [formFecha, setFormFecha] = useState(new Date().toISOString().split("T")[0])
-  const [formFechaPago, setFormFechaPago] = useState("")
+  // Quitamos "Fecha probable de pago" del form — se mantenía sin uso real.
+  // Si se necesita después, se vuelve a agregar acá.
   const [formObs, setFormObs] = useState("")
 
   // Comprobantes inline
@@ -3563,14 +3774,22 @@ function RegistrosCaja() {
   const cargarDatos = async () => {
     setLoading(true)
     const supabase = createClient()
-    const [regRes, cajRes, conRes] = await Promise.all([
+    const [regRes, cajRes, conRes, cuentasRes] = await Promise.all([
       supabase.from("registros_caja").select("*").order("created_at", { ascending: false }).limit(100),
       supabase.from("cajas").select("*").eq("activo", true).order("nombre"),
       supabase.from("conceptos_registro_caja").select("*").eq("activo", true).eq("visible_en_caja", true).order("nombre"),
+      // Cuentas contables imputables (las "hoja" del plan) — usamos el endpoint
+      // estándar que ya filtra por activas. Si la query falla la lista queda
+      // vacía y el dropdown muestra "Sin opciones".
+      fetch("/api/contabilidad/plan-cuentas?activo=true").then(r => r.ok ? r.json() : []).catch(() => []),
     ])
     setRegistros(regRes.data || [])
     setCajasDisp(cajRes.data || [])
     setConceptos(conRes.data || [])
+    const cuentasFlat = (Array.isArray(cuentasRes) ? cuentasRes : [])
+      .filter((c: any) => c.es_imputable !== false)  // solo imputables (donde se puede asentar)
+      .map((c: any) => ({ id: c.id, codigo: c.codigo, nombre: c.nombre }))
+    setCuentasContables(cuentasFlat)
     setLoading(false)
   }
 
@@ -3593,12 +3812,12 @@ function RegistrosCaja() {
     setFormConcepto(reg.concepto_id)
     setFormMoneda(reg.moneda)
     setFormFecha(reg.fecha)
-    setFormFechaPago(reg.fecha_probable_pago || "")
     setFormObs(reg.observaciones || "")
     setComprobantes(cR.data || [])
     setValores(vR.data || [])
     if (reg.caja_id) await cargarValoresCaja(reg.caja_id)
     setTabActiva("comprobantes")
+    setErrorGuardar(null)
     setVista("detalle")
   }
 
@@ -3608,101 +3827,264 @@ function RegistrosCaja() {
     setFormConcepto("")
     setFormMoneda("ARS")
     setFormFecha(hoy)
-    setFormFechaPago("")
     setFormObs("")
     setComprobantes([])
     setValores([])
     setValoresCaja([])
     setTabActiva("comprobantes")
+    setErrorGuardar(null)
     setVista("detalle")
   }
 
-  const guardarRegistro = async () => {
-    if (!formCaja || !formConcepto || !formFecha) return
-    setGuardando(true)
-    const supabase = createClient()
-    const caja = cajasDisp.find(c => c.id === formCaja)
-    const concepto = conceptos.find(c => c.id === formConcepto)
-    const totalC = comprobantes.reduce((a, c) => a + Number(c.total || 0), 0)
-    const totalV = valores.reduce((a, v) => a + Number(v.importe || 0), 0)
+  // Sólo las columnas reales de la tabla `registro_caja_comprobantes`. El form
+  // antes spreadeaba el objeto entero (`{...c, id: undefined}`) que arrastraba
+  // campos derivados o stale → guardado silenciosamente fallido.
+  const limpiarComprobante = (c: Partial<RegistroCajaComprobante>, registroId: string) => ({
+    registro_id: registroId,
+    descripcion: c.descripcion ?? null,
+    cuenta_contable: c.cuenta_contable ?? null,
+    cuenta_analitica: c.cuenta_analitica ?? null,
+    importe: Number(c.importe ?? 0),
+    impuestos: Number(c.impuestos ?? 0),
+    total: Number(c.importe ?? 0) + Number(c.impuestos ?? 0),
+  })
+  const limpiarValor = (v: Partial<RegistroCajaValor>, registroId: string) => ({
+    registro_id: registroId,
+    valor_id: v.valor_id ?? null,
+    valor_nombre: v.valor_nombre ?? null,
+    importe_comprobante: Number(v.importe_comprobante ?? 0),
+    moneda_comprobante: v.moneda_comprobante ?? null,
+    importe: Number(v.importe ?? 0),
+    moneda: v.moneda ?? null,
+  })
 
-    if (regSel?.id) {
-      await supabase.from("registros_caja").update({
-        caja_id: formCaja, caja_nombre: caja?.nombre, sucursal: caja?.sucursal,
-        concepto_id: formConcepto, concepto_nombre: concepto?.nombre,
-        moneda: formMoneda, fecha: formFecha, fecha_probable_pago: formFechaPago || null,
-        observaciones: formObs, total_comprobantes: totalC, total_valores: totalV,
-        updated_at: new Date().toISOString(),
-      }).eq("id", regSel.id)
-      // Update comprobantes
-      await supabase.from("registro_caja_comprobantes").delete().eq("registro_id", regSel.id)
-      if (comprobantes.length > 0) {
-        await supabase.from("registro_caja_comprobantes").insert(
-          comprobantes.map(c => ({ ...c, id: undefined, registro_id: regSel.id }))
-        )
-      }
-      // Update valores
-      await supabase.from("registro_caja_valores").delete().eq("registro_id", regSel.id)
-      if (valores.length > 0) {
-        await supabase.from("registro_caja_valores").insert(
-          valores.map(v => ({ ...v, id: undefined, registro_id: regSel.id }))
-        )
-      }
-    } else {
-      const { data: numData } = await supabase.rpc("generar_numero_registro_caja", { p_sucursal: caja?.sucursal || "" })
-      const { data: newReg } = await supabase.from("registros_caja").insert({
-        numero: numData, caja_id: formCaja, caja_nombre: caja?.nombre, sucursal: caja?.sucursal,
-        concepto_id: formConcepto, concepto_nombre: concepto?.nombre,
-        moneda: formMoneda, fecha: formFecha, fecha_probable_pago: formFechaPago || null,
-        observaciones: formObs, total_comprobantes: totalC, total_valores: totalV,
-      }).select().single()
-      if (newReg) {
+  /**
+   * Persiste el registro (insert o update) y devuelve el ID del registro
+   * resultante. Si falla setea `errorGuardar` y devuelve null.
+   *
+   * `volverALista=true` (default) se usa cuando el operador apreta "Guardar"
+   * SIN intención de confirmar — vuelve al listado.
+   * `volverALista=false` lo usa el flujo de Confirmar: guardamos y nos
+   * quedamos en la ficha con `regSel` actualizado para que el siguiente paso
+   * (confirmar) tenga el ID a mano.
+   */
+  const guardarRegistro = async (volverALista = true): Promise<string | null> => {
+    setErrorGuardar(null)
+    if (!formCaja)     { setErrorGuardar("Elegí una caja.");    return null }
+    if (!formConcepto) { setErrorGuardar("Elegí un concepto."); return null }
+    if (!formFecha)    { setErrorGuardar("Falta la fecha.");    return null }
+    if (comprobantes.length === 0) {
+      setErrorGuardar("Agregá al menos un comprobante.")
+      return null
+    }
+    setGuardando(true)
+    try {
+      const supabase = createClient()
+      const caja = cajasDisp.find(c => c.id === formCaja)
+      const concepto = conceptos.find(c => c.id === formConcepto)
+      const totalC = comprobantes.reduce((a, c) => a + (Number(c.importe ?? 0) + Number(c.impuestos ?? 0)), 0)
+      const totalV = valores.reduce((a, v) => a + Number(v.importe || 0), 0)
+
+      let registroId = regSel?.id
+
+      if (registroId) {
+        const { error: e1 } = await supabase.from("registros_caja").update({
+          caja_id: formCaja, caja_nombre: caja?.nombre, sucursal: caja?.sucursal,
+          concepto_id: formConcepto, concepto_nombre: concepto?.nombre,
+          moneda: formMoneda, fecha: formFecha,
+          observaciones: formObs, total_comprobantes: totalC, total_valores: totalV,
+          updated_at: new Date().toISOString(),
+        }).eq("id", registroId)
+        if (e1) throw new Error(e1.message)
+
+        const { error: e2 } = await supabase.from("registro_caja_comprobantes").delete().eq("registro_id", registroId)
+        if (e2) throw new Error(e2.message)
         if (comprobantes.length > 0) {
-          await supabase.from("registro_caja_comprobantes").insert(
-            comprobantes.map(c => ({ ...c, id: undefined, registro_id: newReg.id }))
-          )
+          const { error: e3 } = await supabase.from("registro_caja_comprobantes")
+            .insert(comprobantes.map(c => limpiarComprobante(c, registroId!)))
+          if (e3) throw new Error(e3.message)
+        }
+
+        const { error: e4 } = await supabase.from("registro_caja_valores").delete().eq("registro_id", registroId)
+        if (e4) throw new Error(e4.message)
+        if (valores.length > 0) {
+          const { error: e5 } = await supabase.from("registro_caja_valores")
+            .insert(valores.map(v => limpiarValor(v, registroId!)))
+          if (e5) throw new Error(e5.message)
+        }
+      } else {
+        const { data: numData, error: eNum } = await supabase.rpc("generar_numero_registro_caja", { p_sucursal: caja?.sucursal || "" })
+        if (eNum) throw new Error(eNum.message)
+        const { data: newReg, error: eIns } = await supabase.from("registros_caja").insert({
+          numero: numData, caja_id: formCaja, caja_nombre: caja?.nombre, sucursal: caja?.sucursal,
+          concepto_id: formConcepto, concepto_nombre: concepto?.nombre,
+          moneda: formMoneda, fecha: formFecha,
+          observaciones: formObs, total_comprobantes: totalC, total_valores: totalV,
+        }).select().single()
+        if (eIns || !newReg) throw new Error(eIns?.message ?? "No se pudo crear el registro")
+        registroId = newReg.id
+
+        if (comprobantes.length > 0) {
+          const { error: e6 } = await supabase.from("registro_caja_comprobantes")
+            .insert(comprobantes.map(c => limpiarComprobante(c, newReg.id)))
+          if (e6) throw new Error(e6.message)
         }
         if (valores.length > 0) {
-          await supabase.from("registro_caja_valores").insert(
-            valores.map(v => ({ ...v, id: undefined, registro_id: newReg.id }))
-          )
+          const { error: e7 } = await supabase.from("registro_caja_valores")
+            .insert(valores.map(v => limpiarValor(v, newReg.id)))
+          if (e7) throw new Error(e7.message)
         }
+        // Promovemos el registro recién creado a `regSel` para que el botón
+        // Confirmar (que se renderiza solo cuando hay regSel.id) aparezca al toque.
+        setRegSel(newReg as RegistroCaja)
       }
+
+      await cargarDatos()
+      if (volverALista) setVista("lista")
+      return registroId!
+    } catch (err) {
+      setErrorGuardar(err instanceof Error ? err.message : "Error al guardar")
+      return null
+    } finally {
+      setGuardando(false)
     }
-    setGuardando(false)
-    await cargarDatos()
-    setVista("lista")
   }
 
-  const confirmarRegistro = async () => {
-    if (!regSel) return
+  /**
+   * Cancelar un registro YA CONFIRMADO:
+   *   1) Marca los movimientos_caja generados por este registro con
+   *      estado_movimiento='cancelado'. NO los borra — quedan visibles en el
+   *      extracto de caja con tachado, igual que cualquier otro comprobante
+   *      cancelado (auditoría). El extracto ignora los cancelados al sumar
+   *      saldos.
+   *   2) Marca el registro mismo como "cancelado" (estado terminal — no
+   *      editable, no re-confirmable).
+   *
+   * Solo funciona si el extracto de caja donde se metieron los movimientos
+   * sigue abierto — si ya se cerró, los movimientos son parte de un período
+   * cerrado y no se pueden tocar. Error claro en ese caso.
+   */
+  const cancelarRegistro = async () => {
+    if (!regSel?.id) return
+    if (!confirm("¿Cancelar este registro confirmado?\n\nLos movimientos quedarán marcados como cancelados en el extracto de caja (visibles pero tachados, sin afectar el saldo). El registro pasa al estado 'Cancelado' y no se puede revertir.")) return
+    setErrorGuardar(null)
     setGuardando(true)
-    const supabase = createClient()
-    const { data: extracto } = await supabase
-      .from("extractos_caja").select("id")
-      .eq("caja_id", regSel.caja_id).eq("estado", "abierto").single()
-    if (!extracto) {
-      alert("No hay extracto abierto para esta caja. Abrí un extracto en Finanzas → Extractos de Caja.")
+    try {
+      const supabase = createClient()
+      // 1) Buscar los movimientos generados por este registro y verificar
+      //    que el extracto donde están sigue abierto.
+      const { data: movs, error: emov } = await supabase
+        .from("movimientos_caja")
+        .select("id, extracto_id")
+        .eq("documento_origen_tipo", "registro_caja")
+        .eq("documento_origen_id", regSel.id)
+      if (emov) throw new Error(emov.message)
+
+      const extractoIds = [...new Set((movs ?? []).map(m => m.extracto_id).filter(Boolean))]
+      if (extractoIds.length > 0) {
+        const { data: extractos } = await supabase
+          .from("extractos_caja").select("id, estado").in("id", extractoIds)
+        const algunoCerrado = (extractos ?? []).some(e => e.estado !== "abierto")
+        if (algunoCerrado) {
+          setErrorGuardar("No se puede cancelar: el extracto de caja donde se asentaron los movimientos ya está cerrado.")
+          return
+        }
+      }
+
+      // 2) Marcar los movimientos como cancelados (NO borrar — quedan
+      //    visibles tachados en el extracto).
+      if ((movs ?? []).length > 0) {
+        const { error: eUpdMov } = await supabase
+          .from("movimientos_caja")
+          .update({ estado_movimiento: "cancelado" })
+          .eq("documento_origen_tipo", "registro_caja")
+          .eq("documento_origen_id", regSel.id)
+        if (eUpdMov) throw new Error(eUpdMov.message)
+      }
+
+      // 3) Marcar el registro como "cancelado" (estado terminal).
+      const { error: eUpd } = await supabase
+        .from("registros_caja")
+        .update({ estado: "cancelado", updated_at: new Date().toISOString() })
+        .eq("id", regSel.id)
+      if (eUpd) throw new Error(eUpd.message)
+
+      // Refrescar el regSel local + listado
+      await cargarDatos()
+      const { data: actualizado } = await supabase.from("registros_caja").select("*").eq("id", regSel.id).single()
+      if (actualizado) setRegSel(actualizado as RegistroCaja)
+    } catch (err) {
+      setErrorGuardar(err instanceof Error ? err.message : "Error al cancelar")
+    } finally {
       setGuardando(false)
-      return
     }
-    const { data: vals } = await supabase.from("registro_caja_valores").select("*").eq("registro_id", regSel.id)
-    for (const valor of (vals || [])) {
-      await supabase.from("movimientos_caja").insert({
-        extracto_id: extracto.id, valor_id: valor.valor_id, valor_nombre: valor.valor_nombre,
-        tipo_movimiento: "egreso", importe: valor.importe, moneda: valor.moneda,
-        concepto: "Registro de Caja", documento_origen_tipo: "registro_caja", documento_origen_id: regSel.id,
-        documento_origen_numero: regSel.numero,
-      })
+  }
+
+  /**
+   * "Confirmar" sirve dos casos:
+   *   - Registro nuevo: lo guarda primero (queda con id) y después confirma.
+   *   - Borrador existente: salta directo a la transición a "confirmado".
+   * En ambos: requiere extracto de caja abierto, genera movimientos_caja,
+   * marca el registro como confirmado y vuelve al listado.
+   */
+  const confirmarRegistro = async () => {
+    setErrorGuardar(null)
+    // 1) Asegurarse de tener un registro persistido. Si es nuevo, llamamos
+    //    a guardarRegistro(false) que NO vuelve al listado y deja `regSel`
+    //    cargado con el nuevo registro.
+    let registroActivo = regSel
+    if (!registroActivo?.id) {
+      const nuevoId = await guardarRegistro(false)
+      if (!nuevoId) return  // el guardar falló; el banner ya muestra el error
+      // tras el save, regSel está actualizado vía setRegSel; lo leemos del
+      // state local actualizado (mejor: leer la fila recién insertada de DB)
+      const supabase = createClient()
+      const { data } = await supabase.from("registros_caja").select("*").eq("id", nuevoId).single()
+      if (!data) { setErrorGuardar("No se pudo recuperar el registro recién guardado"); return }
+      registroActivo = data as RegistroCaja
     }
-    await supabase.from("registros_caja").update({ estado: "confirmado", updated_at: new Date().toISOString() }).eq("id", regSel.id)
-    setGuardando(false)
-    await cargarDatos()
-    setVista("lista")
+
+    setGuardando(true)
+    try {
+      const supabase = createClient()
+      const { data: extracto } = await supabase
+        .from("extractos_caja").select("id")
+        .eq("caja_id", registroActivo.caja_id).eq("estado", "abierto").single()
+      if (!extracto) {
+        setErrorGuardar("No hay extracto abierto para esta caja. Abrí un extracto en Finanzas → Extractos de Caja.")
+        return
+      }
+      const { data: vals } = await supabase.from("registro_caja_valores").select("*").eq("registro_id", registroActivo.id)
+      for (const valor of (vals || [])) {
+        // estado_movimiento='confirmado' explícito — para que el cancelar
+        // pueda updatearlo a 'cancelado' y se vea claro en el extracto.
+        const { error: emov } = await supabase.from("movimientos_caja").insert({
+          extracto_id: extracto.id, valor_id: valor.valor_id, valor_nombre: valor.valor_nombre,
+          tipo_movimiento: "egreso", importe: valor.importe, moneda: valor.moneda,
+          concepto: "Registro de Caja", documento_origen_tipo: "registro_caja", documento_origen_id: registroActivo.id,
+          documento_origen_numero: registroActivo.numero,
+          estado_movimiento: "confirmado",
+        })
+        if (emov) throw new Error(emov.message)
+      }
+      const { error: eUpd } = await supabase.from("registros_caja")
+        .update({ estado: "confirmado", updated_at: new Date().toISOString() })
+        .eq("id", registroActivo.id)
+      if (eUpd) throw new Error(eUpd.message)
+
+      await cargarDatos()
+      setVista("lista")
+    } catch (err) {
+      setErrorGuardar(err instanceof Error ? err.message : "Error al confirmar")
+    } finally {
+      setGuardando(false)
+    }
   }
 
   const addComprobante = () => {
-    setComprobantes(prev => [...prev, { tipo: "Cuenta Contable", comprobante: "", proveedor_nombre: "", descripcion: "", cuenta_contable: "", cuenta_analitica: "", importe: 0, impuestos: 0, total: 0 }])
+    // Solo los 4 campos visibles. tipo/comprobante/proveedor/cuenta_analitica
+    // se quitaron del UI; el limpiarComprobante() del save tampoco los manda.
+    setComprobantes(prev => [...prev, { descripcion: "", cuenta_contable: "", importe: 0, impuestos: 0, total: 0 }])
   }
 
   const updateComprobante = (idx: number, field: string, value: string | number) => {
@@ -3732,10 +4114,18 @@ function RegistrosCaja() {
 
   const removeValor = (idx: number) => setValores(prev => prev.filter((_, i) => i !== idx))
 
-  const totalComprobantes = comprobantes.reduce((a, c) => a + Number(c.total || 0), 0)
+  // Total = importe + impuestos por línea. Antes leía c.total que era stale
+  // si el render usaba un comprobante recién agregado sin haber tocado importe.
+  const totalComprobantes = comprobantes.reduce((a, c) => a + Number(c.importe ?? 0) + Number(c.impuestos ?? 0), 0)
   const totalValores = valores.reduce((a, v) => a + Number(v.importe || 0), 0)
   const cajaSelObj = cajasDisp.find(c => c.id === formCaja)
-  const esConfirmado = regSel?.estado === "confirmado"
+  // `esConfirmadoEstricto`: solo cuando estado === 'confirmado' (mostramos
+  // botón Cancelar). `esCancelado`: estado terminal, todo read-only sin botones.
+  // `esConfirmado` (legacy nombre): cualquier estado bloqueado — usado para
+  // disabled de inputs y para ocultar botones "+ Añadir / Eliminar".
+  const esConfirmadoEstricto = regSel?.estado === "confirmado"
+  const esCancelado = regSel?.estado === "cancelado"
+  const esConfirmado = esConfirmadoEstricto || esCancelado
 
   if (vista === "lista") {
     return (
@@ -3772,8 +4162,14 @@ function RegistrosCaja() {
                     <td className="py-3 px-4 text-right font-mono">{formatMonto(Number(r.total_comprobantes))}</td>
                     <td className="py-3 px-4 text-right font-mono">{formatMonto(Number(r.total_valores))}</td>
                     <td className="py-3 px-4 text-center">
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${r.estado === "confirmado" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
-                        {r.estado === "confirmado" ? "Confirmado" : "Borrador"}
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        r.estado === "confirmado" ? "bg-green-100 text-green-700"
+                        : r.estado === "cancelado" ? "bg-red-100 text-red-700"
+                        : "bg-yellow-100 text-yellow-700"
+                      }`}>
+                        {r.estado === "confirmado" ? "Confirmado"
+                         : r.estado === "cancelado" ? "Cancelado"
+                         : "Borrador"}
                       </span>
                     </td>
                   </tr>
@@ -3794,24 +4190,55 @@ function RegistrosCaja() {
           <button onClick={() => setVista("lista")} className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium">← Registros</button>
           <h1 className="text-2xl font-bold text-amber-900">{regSel ? regSel.numero : "Nuevo Registro de Caja"}</h1>
           {regSel && (
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${regSel.estado === "confirmado" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
-              {regSel.estado === "confirmado" ? "Confirmado" : "Borrador"}
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+              regSel.estado === "confirmado" ? "bg-green-100 text-green-700"
+              : regSel.estado === "cancelado" ? "bg-red-100 text-red-700"
+              : "bg-yellow-100 text-yellow-700"
+            }`}>
+              {regSel.estado === "confirmado" ? "Confirmado"
+               : regSel.estado === "cancelado" ? "Cancelado"
+               : "Borrador"}
             </span>
           )}
         </div>
+        {/* Borrador → Guardar + Confirmar. Confirmado → Cancelar. Cancelado → ningún botón */}
         {!esConfirmado && (
           <div className="flex gap-2">
-            <button onClick={guardarRegistro} disabled={guardando} className="px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50">
+            <button
+              onClick={() => guardarRegistro(true)}
+              disabled={guardando}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+            >
               {guardando ? "Guardando..." : "Guardar"}
             </button>
-            {regSel?.id && (
-              <button onClick={confirmarRegistro} disabled={guardando} className="px-4 py-2 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800">
-                Confirmar
-              </button>
-            )}
+            <button
+              onClick={confirmarRegistro}
+              disabled={guardando}
+              className="px-4 py-2 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 disabled:opacity-50"
+            >
+              {guardando ? "Procesando…" : "Confirmar"}
+            </button>
+          </div>
+        )}
+        {esConfirmadoEstricto && (
+          <div className="flex gap-2">
+            <button
+              onClick={cancelarRegistro}
+              disabled={guardando}
+              className="px-4 py-2 text-sm border border-red-300 text-red-600 rounded-md hover:bg-red-50 disabled:opacity-50"
+            >
+              {guardando ? "Cancelando…" : "Cancelar"}
+            </button>
           </div>
         )}
       </div>
+
+      {/* Banner de error si el guardado falla */}
+      {errorGuardar && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+          {errorGuardar}
+        </div>
+      )}
 
       {/* Cabecera */}
       <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
@@ -3846,11 +4273,6 @@ function RegistrosCaja() {
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Fecha *</label>
               <input type="date" value={formFecha} onChange={e => setFormFecha(e.target.value)} disabled={esConfirmado}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none disabled:bg-gray-100" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Fecha Probable de Pago</label>
-              <input type="date" value={formFechaPago} onChange={e => setFormFechaPago(e.target.value)} disabled={esConfirmado}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none disabled:bg-gray-100" />
             </div>
           </div>
@@ -3892,14 +4314,11 @@ function RegistrosCaja() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b-2 border-gray-200">
-                    <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Tipo</th>
-                    <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Comprobante</th>
-                    <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Proveedor</th>
                     <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Descripción</th>
-                    <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Cta. Contable</th>
-                    <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Importe</th>
-                    <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Impuestos</th>
-                    <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Total</th>
+                    <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase w-[28%]">Cta. Contable</th>
+                    <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase w-28">Importe</th>
+                    <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase w-28">Impuestos</th>
+                    <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase w-28">Total</th>
                     {!esConfirmado && <th className="w-8"></th>}
                   </tr>
                 </thead>
@@ -3907,34 +4326,46 @@ function RegistrosCaja() {
                   {comprobantes.map((c, i) => (
                     <tr key={i} className="border-b border-gray-100">
                       <td className="py-2 px-3">
-                        <input value={c.tipo || ""} onChange={e => updateComprobante(i, "tipo", e.target.value)} disabled={esConfirmado}
+                        <input
+                          value={c.descripcion || ""}
+                          onChange={e => updateComprobante(i, "descripcion", e.target.value)}
+                          disabled={esConfirmado}
+                          placeholder="Ej: Almuerzo equipo, Compra ferretería, etc."
                           className="w-full border border-gray-200 rounded px-2 py-1 text-sm disabled:bg-gray-50" />
                       </td>
                       <td className="py-2 px-3">
-                        <input value={c.comprobante || ""} onChange={e => updateComprobante(i, "comprobante", e.target.value)} disabled={esConfirmado}
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm disabled:bg-gray-50" />
+                        <SearchableSelect
+                          value={c.cuenta_contable ?? ""}
+                          onChange={v => updateComprobante(i, "cuenta_contable", v == null ? "" : String(v))}
+                          options={cuentasContables.map(cc => ({
+                            value: `${cc.codigo} - ${cc.nombre}`,
+                            label: `${cc.codigo} - ${cc.nombre}`,
+                            searchExtra: cc.codigo,
+                          }))}
+                          placeholder="Elegir cuenta…"
+                          disabled={esConfirmado}
+                          allowClear
+                        />
                       </td>
                       <td className="py-2 px-3">
-                        <input value={c.proveedor_nombre || ""} onChange={e => updateComprobante(i, "proveedor_nombre", e.target.value)} disabled={esConfirmado}
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm disabled:bg-gray-50" />
+                        <input
+                          type="number" step="0.01"
+                          value={c.importe ?? ""}
+                          onChange={e => updateComprobante(i, "importe", parseFloat(e.target.value) || 0)}
+                          disabled={esConfirmado}
+                          className="w-full text-right border border-gray-200 rounded px-2 py-1 text-sm font-mono disabled:bg-gray-50" />
                       </td>
                       <td className="py-2 px-3">
-                        <input value={c.descripcion || ""} onChange={e => updateComprobante(i, "descripcion", e.target.value)} disabled={esConfirmado}
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm disabled:bg-gray-50" />
+                        <input
+                          type="number" step="0.01"
+                          value={c.impuestos ?? ""}
+                          onChange={e => updateComprobante(i, "impuestos", parseFloat(e.target.value) || 0)}
+                          disabled={esConfirmado}
+                          className="w-full text-right border border-gray-200 rounded px-2 py-1 text-sm font-mono disabled:bg-gray-50" />
                       </td>
-                      <td className="py-2 px-3">
-                        <input value={c.cuenta_contable || ""} onChange={e => updateComprobante(i, "cuenta_contable", e.target.value)} disabled={esConfirmado}
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm disabled:bg-gray-50" />
+                      <td className="py-2 px-3 text-right font-mono font-medium">
+                        {formatMonto(Number(c.importe ?? 0) + Number(c.impuestos ?? 0))}
                       </td>
-                      <td className="py-2 px-3">
-                        <input type="number" step="0.01" value={c.importe ?? ""} onChange={e => updateComprobante(i, "importe", parseFloat(e.target.value) || 0)} disabled={esConfirmado}
-                          className="w-20 text-right border border-gray-200 rounded px-2 py-1 text-sm font-mono disabled:bg-gray-50" />
-                      </td>
-                      <td className="py-2 px-3">
-                        <input type="number" step="0.01" value={c.impuestos ?? ""} onChange={e => updateComprobante(i, "impuestos", parseFloat(e.target.value) || 0)} disabled={esConfirmado}
-                          className="w-20 text-right border border-gray-200 rounded px-2 py-1 text-sm font-mono disabled:bg-gray-50" />
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono font-medium">{formatMonto(Number(c.total || 0))}</td>
                       {!esConfirmado && (
                         <td className="py-2 px-1">
                           <button onClick={() => removeComprobante(i)} className="text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
@@ -3945,7 +4376,7 @@ function RegistrosCaja() {
                 </tbody>
                 <tfoot>
                   <tr className="bg-gray-50 font-semibold">
-                    <td colSpan={7} className="py-2 px-3 text-right text-xs uppercase text-gray-500">Total</td>
+                    <td colSpan={4} className="py-2 px-3 text-right text-xs uppercase text-gray-500">Total</td>
                     <td className="py-2 px-3 text-right font-mono">{formatMonto(totalComprobantes)}</td>
                     {!esConfirmado && <td></td>}
                   </tr>
@@ -4421,18 +4852,20 @@ function AjustesCaja() {
 function RegistrosBanco() {
   const [registros, setRegistros] = useState<RegistroBanco[]>([])
   const [conceptos, setConceptos] = useState<ConceptoRegistroCaja[]>([])
+  const [cuentasContables, setCuentasContables] = useState<Array<{ id: string; codigo: string; nombre: string }>>([])
   const [loading, setLoading] = useState(true)
   const [vista, setVista] = useState<"lista" | "detalle">("lista")
   const [regSel, setRegSel] = useState<RegistroBanco | null>(null)
   const [tabActiva, setTabActiva] = useState<"comprobantes" | "valores" | "observaciones">("comprobantes")
   const [guardando, setGuardando] = useState(false)
+  const [errorGuardar, setErrorGuardar] = useState<string | null>(null)
 
   const [formCuenta, setFormCuenta] = useState("")
   const [formCuentaNombre, setFormCuentaNombre] = useState("")
   const [formConcepto, setFormConcepto] = useState("")
   const [formMoneda, setFormMoneda] = useState("ARS")
   const [formFecha, setFormFecha] = useState(new Date().toISOString().split("T")[0])
-  const [formFechaPago, setFormFechaPago] = useState("")
+  // Quitamos formFechaPago — el campo ya no aparece en el form (mismo cambio que caja).
   const [formObs, setFormObs] = useState("")
   const [formSucursal, setFormSucursal] = useState("")
   const [comprobantes, setComprobantes] = useState<Partial<RegistroCajaComprobante>[]>([])
@@ -4448,12 +4881,18 @@ function RegistrosBanco() {
   const cargarDatos = async () => {
     setLoading(true)
     const supabase = createClient()
-    const [regRes, conRes] = await Promise.all([
+    const [regRes, conRes, cuentasRes] = await Promise.all([
       supabase.from("registros_banco").select("*").order("created_at", { ascending: false }).limit(100),
       supabase.from("conceptos_registro_caja").select("*").eq("activo", true).eq("visible_en_banco", true).order("nombre"),
+      // Plan de cuentas para el dropdown de "Cta. Contable" — solo imputables.
+      fetch("/api/contabilidad/plan-cuentas?activo=true").then(r => r.ok ? r.json() : []).catch(() => []),
     ])
     setRegistros(regRes.data || [])
     setConceptos(conRes.data || [])
+    const cuentasFlat = (Array.isArray(cuentasRes) ? cuentasRes : [])
+      .filter((c: any) => c.es_imputable !== false)
+      .map((c: any) => ({ id: c.id, codigo: c.codigo, nombre: c.nombre }))
+    setCuentasContables(cuentasFlat)
     setLoading(false)
   }
 
@@ -4471,12 +4910,12 @@ function RegistrosBanco() {
     setFormConcepto(reg.concepto_id)
     setFormMoneda(reg.moneda)
     setFormFecha(reg.fecha)
-    setFormFechaPago(reg.fecha_probable_pago || "")
     setFormObs(reg.observaciones || "")
     setFormSucursal(reg.sucursal || "")
     setComprobantes(cR.data || [])
     setValoresBanco(vR.data || [])
     setTabActiva("comprobantes")
+    setErrorGuardar(null)
     setVista("detalle")
   }
 
@@ -4487,64 +4926,162 @@ function RegistrosBanco() {
     setFormConcepto("")
     setFormMoneda("ARS")
     setFormFecha(hoy)
-    setFormFechaPago("")
     setFormObs("")
     setFormSucursal("")
     setComprobantes([])
     setValoresBanco([])
     setTabActiva("comprobantes")
+    setErrorGuardar(null)
     setVista("detalle")
   }
 
-  const guardarRegistro = async () => {
-    if (!formCuentaNombre || !formConcepto || !formFecha) return
-    setGuardando(true)
-    const supabase = createClient()
-    const concepto = conceptos.find(c => c.id === formConcepto)
-    const totalC = comprobantes.reduce((a, c) => a + Number(c.total || 0), 0)
-    const totalV = valoresBanco.reduce((a, v) => a + Number(v.importe || 0), 0)
+  // Whitelist explícito de columnas reales — antes spreadeaba todo el objeto
+  // y arrastraba campos legacy, por eso el insert fallaba silenciosamente.
+  const limpiarComprobante = (c: Partial<RegistroCajaComprobante>, registroId: string) => ({
+    registro_id: registroId,
+    descripcion: c.descripcion ?? null,
+    cuenta_contable: c.cuenta_contable ?? null,
+    cuenta_analitica: c.cuenta_analitica ?? null,
+    importe: Number(c.importe ?? 0),
+    impuestos: Number(c.impuestos ?? 0),
+    total: Number(c.importe ?? 0) + Number(c.impuestos ?? 0),
+  })
+  const limpiarValor = (v: any, registroId: string) => ({
+    registro_id: registroId,
+    valor_id: v.valor_id ?? null,
+    valor_nombre: v.valor_nombre ?? v.nombre ?? null,
+    importe_comprobante: Number(v.importe_comprobante ?? 0),
+    moneda_comprobante: v.moneda_comprobante ?? null,
+    importe: Number(v.importe ?? 0),
+    moneda: v.moneda ?? null,
+  })
 
-    if (regSel?.id) {
-      await supabase.from("registros_banco").update({
-        cuenta_bancaria_nombre: formCuentaNombre, sucursal: formSucursal,
-        concepto_id: formConcepto, concepto_nombre: concepto?.nombre,
-        moneda: formMoneda, fecha: formFecha, fecha_probable_pago: formFechaPago || null,
-        observaciones: formObs, total_comprobantes: totalC, total_valores: totalV,
-      }).eq("id", regSel.id)
-      await supabase.from("registro_banco_comprobantes").delete().eq("registro_id", regSel.id)
-      if (comprobantes.length > 0) await supabase.from("registro_banco_comprobantes").insert(comprobantes.map(c => ({ ...c, id: undefined, registro_id: regSel.id })))
-      await supabase.from("registro_banco_valores").delete().eq("registro_id", regSel.id)
-      if (valoresBanco.length > 0) await supabase.from("registro_banco_valores").insert(valoresBanco.map(v => ({ ...v, id: undefined, registro_id: regSel.id })))
-    } else {
-      const { data: numData } = await supabase.rpc("generar_numero_registro_banco", { p_sucursal: formSucursal || "" })
-      const { data: newReg } = await supabase.from("registros_banco").insert({
-        numero: numData, cuenta_bancaria_nombre: formCuentaNombre, sucursal: formSucursal,
-        concepto_id: formConcepto, concepto_nombre: concepto?.nombre,
-        moneda: formMoneda, fecha: formFecha, fecha_probable_pago: formFechaPago || null,
-        observaciones: formObs, total_comprobantes: totalC, total_valores: totalV,
-      }).select().single()
-      if (newReg) {
-        if (comprobantes.length > 0) await supabase.from("registro_banco_comprobantes").insert(comprobantes.map(c => ({ ...c, id: undefined, registro_id: newReg.id })))
-        if (valoresBanco.length > 0) await supabase.from("registro_banco_valores").insert(valoresBanco.map(v => ({ ...v, id: undefined, registro_id: newReg.id })))
+  const guardarRegistro = async (volverALista = true): Promise<string | null> => {
+    setErrorGuardar(null)
+    if (!formCuentaNombre) { setErrorGuardar("Falta el nombre de la cuenta bancaria."); return null }
+    if (!formConcepto)     { setErrorGuardar("Elegí un concepto."); return null }
+    if (!formFecha)        { setErrorGuardar("Falta la fecha."); return null }
+    if (comprobantes.length === 0) { setErrorGuardar("Agregá al menos un comprobante."); return null }
+    setGuardando(true)
+    try {
+      const supabase = createClient()
+      const concepto = conceptos.find(c => c.id === formConcepto)
+      const totalC = comprobantes.reduce((a, c) => a + Number(c.importe ?? 0) + Number(c.impuestos ?? 0), 0)
+      const totalV = valoresBanco.reduce((a, v) => a + Number(v.importe || 0), 0)
+
+      let registroId = regSel?.id
+
+      if (registroId) {
+        const { error: e1 } = await supabase.from("registros_banco").update({
+          cuenta_bancaria_nombre: formCuentaNombre, sucursal: formSucursal,
+          concepto_id: formConcepto, concepto_nombre: concepto?.nombre,
+          moneda: formMoneda, fecha: formFecha,
+          observaciones: formObs, total_comprobantes: totalC, total_valores: totalV,
+        }).eq("id", registroId)
+        if (e1) throw new Error(e1.message)
+
+        const { error: e2 } = await supabase.from("registro_banco_comprobantes").delete().eq("registro_id", registroId)
+        if (e2) throw new Error(e2.message)
+        if (comprobantes.length > 0) {
+          const { error: e3 } = await supabase.from("registro_banco_comprobantes").insert(comprobantes.map(c => limpiarComprobante(c, registroId!)))
+          if (e3) throw new Error(e3.message)
+        }
+        const { error: e4 } = await supabase.from("registro_banco_valores").delete().eq("registro_id", registroId)
+        if (e4) throw new Error(e4.message)
+        if (valoresBanco.length > 0) {
+          const { error: e5 } = await supabase.from("registro_banco_valores").insert(valoresBanco.map(v => limpiarValor(v, registroId!)))
+          if (e5) throw new Error(e5.message)
+        }
+      } else {
+        const { data: numData, error: eNum } = await supabase.rpc("generar_numero_registro_banco", { p_sucursal: formSucursal || "" })
+        if (eNum) throw new Error(eNum.message)
+        const { data: newReg, error: eIns } = await supabase.from("registros_banco").insert({
+          numero: numData, cuenta_bancaria_nombre: formCuentaNombre, sucursal: formSucursal,
+          concepto_id: formConcepto, concepto_nombre: concepto?.nombre,
+          moneda: formMoneda, fecha: formFecha,
+          observaciones: formObs, total_comprobantes: totalC, total_valores: totalV,
+        }).select().single()
+        if (eIns || !newReg) throw new Error(eIns?.message ?? "No se pudo crear el registro")
+        registroId = newReg.id
+
+        if (comprobantes.length > 0) {
+          const { error: e6 } = await supabase.from("registro_banco_comprobantes").insert(comprobantes.map(c => limpiarComprobante(c, newReg.id)))
+          if (e6) throw new Error(e6.message)
+        }
+        if (valoresBanco.length > 0) {
+          const { error: e7 } = await supabase.from("registro_banco_valores").insert(valoresBanco.map(v => limpiarValor(v, newReg.id)))
+          if (e7) throw new Error(e7.message)
+        }
+        setRegSel(newReg as RegistroBanco)
       }
+
+      await cargarDatos()
+      if (volverALista) setVista("lista")
+      return registroId!
+    } catch (err) {
+      setErrorGuardar(err instanceof Error ? err.message : "Error al guardar")
+      return null
+    } finally {
+      setGuardando(false)
     }
-    setGuardando(false)
-    await cargarDatos()
-    setVista("lista")
+  }
+
+  /**
+   * Cancelar un registro confirmado: lo marca como "cancelado" (estado
+   * terminal, no editable, queda como rastro de auditoría).
+   * Si en el futuro el confirmar empieza a insertar en `movimientos_banco`,
+   * este handler tiene que reflejar la reversa también.
+   */
+  const cancelarRegistro = async () => {
+    if (!regSel?.id) return
+    if (!confirm("¿Cancelar este registro confirmado?\n\nPasará al estado 'Cancelado' (no se puede revertir).")) return
+    setErrorGuardar(null)
+    setGuardando(true)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.from("registros_banco")
+        .update({ estado: "cancelado" })
+        .eq("id", regSel.id)
+      if (error) throw new Error(error.message)
+      await cargarDatos()
+      const { data: actualizado } = await supabase.from("registros_banco").select("*").eq("id", regSel.id).single()
+      if (actualizado) setRegSel(actualizado as RegistroBanco)
+    } catch (err) {
+      setErrorGuardar(err instanceof Error ? err.message : "Error al cancelar")
+    } finally {
+      setGuardando(false)
+    }
   }
 
   const confirmarRegistro = async () => {
-    if (!regSel) return
+    setErrorGuardar(null)
+    let registroActivo = regSel
+    if (!registroActivo?.id) {
+      const nuevoId = await guardarRegistro(false)
+      if (!nuevoId) return
+      const supabase = createClient()
+      const { data } = await supabase.from("registros_banco").select("*").eq("id", nuevoId).single()
+      if (!data) { setErrorGuardar("No se pudo recuperar el registro recién guardado"); return }
+      registroActivo = data as RegistroBanco
+    }
     setGuardando(true)
-    const supabase = createClient()
-    await supabase.from("registros_banco").update({ estado: "confirmado" }).eq("id", regSel.id)
-    setGuardando(false)
-    await cargarDatos()
-    setVista("lista")
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.from("registros_banco")
+        .update({ estado: "confirmado" })
+        .eq("id", registroActivo.id)
+      if (error) throw new Error(error.message)
+      await cargarDatos()
+      setVista("lista")
+    } catch (err) {
+      setErrorGuardar(err instanceof Error ? err.message : "Error al confirmar")
+    } finally {
+      setGuardando(false)
+    }
   }
 
   const addComprobante = () => {
-    setComprobantes(prev => [...prev, { tipo: "Cuenta Contable", comprobante: "", proveedor_nombre: "", descripcion: "", cuenta_contable: "", cuenta_analitica: "", importe: 0, impuestos: 0, total: 0 }])
+    setComprobantes(prev => [...prev, { descripcion: "", cuenta_contable: "", importe: 0, impuestos: 0, total: 0 }])
   }
   const updateComprobante = (idx: number, field: string, value: string | number) => {
     setComprobantes(prev => {
@@ -4565,9 +5102,13 @@ function RegistrosBanco() {
   }
   const removeValorBanco = (idx: number) => setValoresBanco(prev => prev.filter((_, i) => i !== idx))
 
-  const totalComprobantes = comprobantes.reduce((a, c) => a + Number(c.total || 0), 0)
+  const totalComprobantes = comprobantes.reduce((a, c) => a + Number(c.importe ?? 0) + Number(c.impuestos ?? 0), 0)
   const totalValores = valoresBanco.reduce((a, v) => a + Number(v.importe || 0), 0)
-  const esConfirmado = regSel?.estado === "confirmado"
+  // Misma idea que en Caja: confirmado/cancelado bloquean el form;
+  // cancelado además oculta el botón Cancelar (estado terminal).
+  const esConfirmadoEstricto = regSel?.estado === "confirmado"
+  const esCancelado = regSel?.estado === "cancelado"
+  const esConfirmado = esConfirmadoEstricto || esCancelado
 
   if (vista === "lista") {
     return (
@@ -4602,8 +5143,14 @@ function RegistrosBanco() {
                     <td className="py-3 px-4 text-right font-mono">{formatMonto(Number(r.total_comprobantes))}</td>
                     <td className="py-3 px-4 text-right font-mono">{formatMonto(Number(r.total_valores))}</td>
                     <td className="py-3 px-4 text-center">
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${r.estado === "confirmado" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
-                        {r.estado === "confirmado" ? "Confirmado" : "Borrador"}
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        r.estado === "confirmado" ? "bg-green-100 text-green-700"
+                        : r.estado === "cancelado" ? "bg-red-100 text-red-700"
+                        : "bg-yellow-100 text-yellow-700"
+                      }`}>
+                        {r.estado === "confirmado" ? "Confirmado"
+                         : r.estado === "cancelado" ? "Cancelado"
+                         : "Borrador"}
                       </span>
                     </td>
                   </tr>
@@ -4624,24 +5171,54 @@ function RegistrosBanco() {
           <button onClick={() => setVista("lista")} className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium">← Registros</button>
           <h1 className="text-2xl font-bold text-amber-900">{regSel ? regSel.numero : "Nuevo Registro de Banco"}</h1>
           {regSel && (
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${regSel.estado === "confirmado" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
-              {regSel.estado === "confirmado" ? "Confirmado" : "Borrador"}
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+              regSel.estado === "confirmado" ? "bg-green-100 text-green-700"
+              : regSel.estado === "cancelado" ? "bg-red-100 text-red-700"
+              : "bg-yellow-100 text-yellow-700"
+            }`}>
+              {regSel.estado === "confirmado" ? "Confirmado"
+               : regSel.estado === "cancelado" ? "Cancelado"
+               : "Borrador"}
             </span>
           )}
         </div>
+        {/* Borrador → Guardar + Confirmar. Confirmado → Cancelar. Cancelado → ningún botón */}
         {!esConfirmado && (
           <div className="flex gap-2">
-            <button onClick={guardarRegistro} disabled={guardando} className="px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50">
+            <button
+              onClick={() => guardarRegistro(true)}
+              disabled={guardando}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+            >
               {guardando ? "Guardando..." : "Guardar"}
             </button>
-            {regSel?.id && (
-              <button onClick={confirmarRegistro} disabled={guardando} className="px-4 py-2 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800">
-                Confirmar
-              </button>
-            )}
+            <button
+              onClick={confirmarRegistro}
+              disabled={guardando}
+              className="px-4 py-2 text-sm bg-indigo-900 text-white rounded-md hover:bg-indigo-800 disabled:opacity-50"
+            >
+              {guardando ? "Procesando…" : "Confirmar"}
+            </button>
+          </div>
+        )}
+        {esConfirmadoEstricto && (
+          <div className="flex gap-2">
+            <button
+              onClick={cancelarRegistro}
+              disabled={guardando}
+              className="px-4 py-2 text-sm border border-red-300 text-red-600 rounded-md hover:bg-red-50 disabled:opacity-50"
+            >
+              {guardando ? "Cancelando…" : "Cancelar"}
+            </button>
           </div>
         )}
       </div>
+
+      {errorGuardar && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+          {errorGuardar}
+        </div>
+      )}
 
       <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
         <div className="grid grid-cols-3 gap-6">
@@ -4673,11 +5250,6 @@ function RegistrosBanco() {
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Fecha *</label>
               <input type="date" value={formFecha} onChange={e => setFormFecha(e.target.value)} disabled={esConfirmado}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none disabled:bg-gray-100" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Fecha Probable de Pago</label>
-              <input type="date" value={formFechaPago} onChange={e => setFormFechaPago(e.target.value)} disabled={esConfirmado}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none disabled:bg-gray-100" />
             </div>
             <div>
@@ -4722,33 +5294,59 @@ function RegistrosBanco() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b-2 border-gray-200">
-                    <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Tipo</th>
-                    <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Comprobante</th>
-                    <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Proveedor</th>
                     <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Descripción</th>
-                    <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Cta. Contable</th>
-                    <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Importe</th>
-                    <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Impuestos</th>
-                    <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase">Total</th>
+                    <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase w-[28%]">Cta. Contable</th>
+                    <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase w-28">Importe</th>
+                    <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase w-28">Impuestos</th>
+                    <th className="text-right py-2 px-3 text-xs font-semibold text-gray-500 uppercase w-28">Total</th>
                     {!esConfirmado && <th className="w-8"></th>}
                   </tr>
                 </thead>
                 <tbody>
                   {comprobantes.map((c, i) => (
                     <tr key={i} className="border-b border-gray-100">
-                      <td className="py-2 px-3"><input value={c.tipo || ""} onChange={e => updateComprobante(i, "tipo", e.target.value)} disabled={esConfirmado} className="w-full border border-gray-200 rounded px-2 py-1 text-sm disabled:bg-gray-50" /></td>
-                      <td className="py-2 px-3"><input value={c.comprobante || ""} onChange={e => updateComprobante(i, "comprobante", e.target.value)} disabled={esConfirmado} className="w-full border border-gray-200 rounded px-2 py-1 text-sm disabled:bg-gray-50" /></td>
-                      <td className="py-2 px-3"><input value={c.proveedor_nombre || ""} onChange={e => updateComprobante(i, "proveedor_nombre", e.target.value)} disabled={esConfirmado} className="w-full border border-gray-200 rounded px-2 py-1 text-sm disabled:bg-gray-50" /></td>
-                      <td className="py-2 px-3"><input value={c.descripcion || ""} onChange={e => updateComprobante(i, "descripcion", e.target.value)} disabled={esConfirmado} className="w-full border border-gray-200 rounded px-2 py-1 text-sm disabled:bg-gray-50" /></td>
-                      <td className="py-2 px-3"><input value={c.cuenta_contable || ""} onChange={e => updateComprobante(i, "cuenta_contable", e.target.value)} disabled={esConfirmado} className="w-full border border-gray-200 rounded px-2 py-1 text-sm disabled:bg-gray-50" /></td>
-                      <td className="py-2 px-3"><input type="number" step="0.01" value={c.importe ?? ""} onChange={e => updateComprobante(i, "importe", parseFloat(e.target.value) || 0)} disabled={esConfirmado} className="w-20 text-right border border-gray-200 rounded px-2 py-1 text-sm font-mono disabled:bg-gray-50" /></td>
-                      <td className="py-2 px-3"><input type="number" step="0.01" value={c.impuestos ?? ""} onChange={e => updateComprobante(i, "impuestos", parseFloat(e.target.value) || 0)} disabled={esConfirmado} className="w-20 text-right border border-gray-200 rounded px-2 py-1 text-sm font-mono disabled:bg-gray-50" /></td>
-                      <td className="py-2 px-3 text-right font-mono font-medium">{formatMonto(Number(c.total || 0))}</td>
+                      <td className="py-2 px-3">
+                        <input
+                          value={c.descripcion || ""}
+                          onChange={e => updateComprobante(i, "descripcion", e.target.value)}
+                          disabled={esConfirmado}
+                          placeholder="Ej: Comisión bancaria, Transferencia proveedor, etc."
+                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm disabled:bg-gray-50" />
+                      </td>
+                      <td className="py-2 px-3">
+                        <SearchableSelect
+                          value={c.cuenta_contable ?? ""}
+                          onChange={v => updateComprobante(i, "cuenta_contable", v == null ? "" : String(v))}
+                          options={cuentasContables.map(cc => ({
+                            value: `${cc.codigo} - ${cc.nombre}`,
+                            label: `${cc.codigo} - ${cc.nombre}`,
+                            searchExtra: cc.codigo,
+                          }))}
+                          placeholder="Elegir cuenta…"
+                          disabled={esConfirmado}
+                          allowClear
+                        />
+                      </td>
+                      <td className="py-2 px-3">
+                        <input type="number" step="0.01" value={c.importe ?? ""}
+                          onChange={e => updateComprobante(i, "importe", parseFloat(e.target.value) || 0)}
+                          disabled={esConfirmado}
+                          className="w-full text-right border border-gray-200 rounded px-2 py-1 text-sm font-mono disabled:bg-gray-50" />
+                      </td>
+                      <td className="py-2 px-3">
+                        <input type="number" step="0.01" value={c.impuestos ?? ""}
+                          onChange={e => updateComprobante(i, "impuestos", parseFloat(e.target.value) || 0)}
+                          disabled={esConfirmado}
+                          className="w-full text-right border border-gray-200 rounded px-2 py-1 text-sm font-mono disabled:bg-gray-50" />
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-medium">
+                        {formatMonto(Number(c.importe ?? 0) + Number(c.impuestos ?? 0))}
+                      </td>
                       {!esConfirmado && <td className="py-2 px-1"><button onClick={() => removeComprobante(i)} className="text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button></td>}
                     </tr>
                   ))}
                 </tbody>
-                <tfoot><tr className="bg-gray-50 font-semibold"><td colSpan={7} className="py-2 px-3 text-right text-xs uppercase text-gray-500">Total</td><td className="py-2 px-3 text-right font-mono">{formatMonto(totalComprobantes)}</td>{!esConfirmado && <td></td>}</tr></tfoot>
+                <tfoot><tr className="bg-gray-50 font-semibold"><td colSpan={4} className="py-2 px-3 text-right text-xs uppercase text-gray-500">Total</td><td className="py-2 px-3 text-right font-mono">{formatMonto(totalComprobantes)}</td>{!esConfirmado && <td></td>}</tr></tfoot>
               </table>
               {!esConfirmado && <button onClick={addComprobante} className="mt-3 text-sm text-indigo-700 hover:text-indigo-900 font-medium flex items-center gap-1"><Plus className="w-4 h-4" /> Añadir un elemento</button>}
             </div>

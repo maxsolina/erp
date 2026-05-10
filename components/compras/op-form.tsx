@@ -583,6 +583,7 @@ export default function OpForm({ initialId }: { initialId?: number }) {
                   value={nuevoValorId}
                   onChange={e => {
                     setNuevoValorId(e.target.value)
+                    // Moneda se deriva del valor seleccionado
                     const v = cajaValores.find(x => x.id === e.target.value)
                     if (v?.moneda === "USD") setNuevaMoneda("USD")
                     else setNuevaMoneda("ARS")
@@ -590,28 +591,19 @@ export default function OpForm({ initialId }: { initialId?: number }) {
                   className="w-full border rounded px-2 py-1.5 text-sm"
                 >
                   <option value="">Seleccionar…</option>
-                  {cajaValores.map(v => <option key={v.id} value={v.id}>{v.nombre} ({v.tipo}{v.subtipo ? `/${v.subtipo}` : ""})</option>)}
+                  {cajaValores.map(v => <option key={v.id} value={v.id}>{v.nombre} · {v.moneda}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Importe</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1">
+                  Importe{nuevoValorId ? <span className="ml-2 text-xs text-gray-400">(en {nuevaMoneda})</span> : null}
+                </label>
                 <input
                   type="number" step={0.01} min={0}
                   value={nuevoImporte}
                   onChange={e => setNuevoImporte(e.target.value)}
                   className="w-full border rounded px-2 py-1.5 text-sm"
                 />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Moneda</label>
-                <select
-                  value={nuevaMoneda}
-                  onChange={e => setNuevaMoneda(e.target.value as "ARS" | "USD")}
-                  className="w-full border rounded px-2 py-1.5 text-sm"
-                >
-                  <option value="ARS">ARS</option>
-                  <option value="USD">USD</option>
-                </select>
               </div>
             </div>
             <div className="flex gap-3 justify-end mt-5">

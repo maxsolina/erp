@@ -71,6 +71,10 @@ export async function POST(req: Request) {
   }
 
   // ── Insertar toma ─────────────────────────────────────────
+  // Persistimos cotizacion + tipo_cotizacion ahora porque la confirmación de
+  // la recepción ocurre días después y necesita la cotización del día de la
+  // toma para convertir USD→ARS en el asiento (sin esto la NC y la
+  // recepción quedan anotadas como pesos crudos).
   const { data: toma, error: tomaErr } = await supabase
     .from("tomas_equipo")
     .insert({
@@ -81,6 +85,8 @@ export async function POST(req: Request) {
       precio_base: precio_base_usd,
       descuentos: descuentos_usd,
       precio_final: precioFinalUsd,
+      cotizacion: cotiz,
+      tipo_cotizacion: "blue",
       estado: "confirmado",
       estado_recepcion: "pendiente",
       recepcion_numero: recepcionNumero,

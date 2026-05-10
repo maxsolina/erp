@@ -101,7 +101,9 @@ export default function AjusteForm({ tipo }: { tipo: "positivo" | "negativo" }) 
       fetch("/api/depositos").then(r => (r.ok ? r.json() : [])).catch(() => []),
       fetch("/api/ubicaciones").then(r => (r.ok ? r.json() : [])).catch(() => []),
     ]).then(([prods, deps, ubis]) => {
-      setProductos(Array.isArray(prods) ? prods : [])
+      // Excluir servicios — los servicios no llevan stock, no aplican a ajustes.
+      const filtrados = (Array.isArray(prods) ? prods : []).filter((p: any) => p.tipo !== "servicio")
+      setProductos(filtrados)
       setDepositos(Array.isArray(deps) ? deps : [])
       setUbicaciones(Array.isArray(ubis) ? ubis : [])
     })

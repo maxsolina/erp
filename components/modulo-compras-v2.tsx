@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
+import ComprobantePopup, { type ComprobantePopupProps } from "./comprobante-popup"
 import { useSearchParams } from "next/navigation"
 import ReactDOM from "react-dom"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Settings, Lock, Unlock, FileBox, Ship, Plane, Pencil, ChevronLeft, ChevronRight as ChevronRightIcon } from "lucide-react"
@@ -1756,6 +1757,102 @@ export default function ModuloCompras({
   const [cdcCotizacion, setCdcCotizacion] = useState<number>(0)
   const [cdcEjecutando, setCdcEjecutando] = useState(false)
   const [cdcRevertiendoId, setCdcRevertiendoId] = useState<number | null>(null)
+
+  // Popup compacto para previsualizar un comprobante desde la conciliación
+  // (lupita en cada línea de Conciliar/Historial). Es presentacional —
+  // recibe los props ya armados desde los helpers de abajo.
+  const [comprobantePopup, setComprobantePopup] = useState<ComprobantePopupProps | null>(null)
+  const cerrarComprobantePopup = () => setComprobantePopup(null)
+  const abrirPopupFacturaCompra = (f: any) => {
+    if (!f) return
+    setComprobantePopup({
+      open: true,
+      onClose: cerrarComprobantePopup,
+      tipoLabel: `FC ${f.tipo ?? ""}`.trim() || "Factura Compra",
+      tipoColor: "indigo",
+      numero: f.numero,
+      fecha: f.fecha,
+      estado: f.estado,
+      moneda: f.moneda ?? "ARS",
+      contraparteLabel: "Proveedor",
+      contraparteNombre: f.proveedor_nombre,
+      lineas: Array.isArray(f.lineas) ? f.lineas.map((l: any) => ({
+        descripcion: l.descripcion ?? l.producto_nombre ?? l.cuenta_codigo ?? "—",
+        cantidad: l.cantidad,
+        precio_unitario: l.precio_unitario,
+        subtotal: l.subtotal,
+      })) : undefined,
+      totales: [
+        ...(f.subtotal != null ? [{ label: "Subtotal", value: Number(f.subtotal) }] : []),
+        ...(f.impuestos != null && Number(f.impuestos) > 0 ? [{ label: "Impuestos", value: Number(f.impuestos) }] : []),
+        { label: "Total", value: Number(f.total ?? 0), bold: true },
+        ...(f.saldo != null ? [{ label: "Saldo", value: Number(f.saldo), color: Number(f.saldo) > 0 ? "red" as const : "emerald" as const }] : []),
+      ],
+    })
+  }
+  const abrirPopupOP = (o: any) => {
+    if (!o) return
+    setComprobantePopup({
+      open: true,
+      onClose: cerrarComprobantePopup,
+      tipoLabel: "Orden de Pago",
+      tipoColor: "blue",
+      numero: o.numero,
+      fecha: o.fecha,
+      estado: o.estado,
+      moneda: o.moneda ?? "ARS",
+      contraparteLabel: "Proveedor",
+      contraparteNombre: o.proveedor_nombre,
+      totales: [
+        { label: "Importe", value: Number(o.importe ?? 0), bold: true },
+        ...(o.importe_no_conciliado != null
+          ? [{ label: "No conciliado", value: Number(o.importe_no_conciliado), color: Number(o.importe_no_conciliado) > 0 ? "emerald" as const : "default" as const }]
+          : []),
+      ],
+      observaciones: o.observaciones,
+    })
+  }
+  const abrirPopupNCCompra = (n: any) => {
+    if (!n) return
+    setComprobantePopup({
+      open: true,
+      onClose: cerrarComprobantePopup,
+      tipoLabel: "Nota de Crédito",
+      tipoColor: "emerald",
+      numero: n.numero,
+      fecha: n.fecha,
+      estado: n.estado,
+      moneda: n.moneda ?? "ARS",
+      contraparteLabel: "Proveedor",
+      contraparteNombre: n.proveedor_nombre,
+      concepto: n.concepto || n.motivo,
+      totales: [
+        { label: "Total", value: Number(n.total ?? 0), bold: true },
+        ...(n.saldo_disponible != null
+          ? [{ label: "Saldo disponible", value: Number(n.saldo_disponible), color: "emerald" as const }]
+          : []),
+      ],
+    })
+  }
+  const abrirPopupNDCompra = (n: any) => {
+    if (!n) return
+    setComprobantePopup({
+      open: true,
+      onClose: cerrarComprobantePopup,
+      tipoLabel: "Nota de Débito",
+      tipoColor: "red",
+      numero: n.numero,
+      fecha: n.fecha,
+      estado: n.estado,
+      moneda: n.moneda ?? "ARS",
+      contraparteLabel: "Proveedor",
+      contraparteNombre: n.proveedor_nombre,
+      concepto: n.concepto || n.motivo,
+      totales: [
+        { label: "Total", value: Number(n.total ?? 0), bold: true },
+      ],
+    })
+  }
 
   // Helpers
   const formatCurrency = (amount: number, currency: string = "ARS") => {
@@ -4151,8 +4248,10 @@ export default function ModuloCompras({
                           }
                           setOcProductoDropdownAbierto(prev => ({ ...prev, [idx]: true }))
                           try {
+                            // Excluir servicios — no se compran (no van en OC).
                             const res = await fetchProductos({ busqueda: val, activo: true })
-                            setOcProductoOpciones(prev => ({ ...prev, [idx]: res }))
+                            const filtrado = (res ?? []).filter((p: any) => p.tipo !== "servicio")
+                            setOcProductoOpciones(prev => ({ ...prev, [idx]: filtrado }))
                           } catch {
                             setOcProductoOpciones(prev => ({ ...prev, [idx]: [] }))
                           }
@@ -4166,7 +4265,8 @@ export default function ModuloCompras({
                           // Cargar primeros productos si no hay búsqueda
                           try {
                             const res = await fetchProductos({ busqueda: currentSearch || "", activo: true })
-                            setOcProductoOpciones(prev => ({ ...prev, [idx]: res }))
+                            const filtrado = (res ?? []).filter((p: any) => p.tipo !== "servicio")
+                            setOcProductoOpciones(prev => ({ ...prev, [idx]: filtrado }))
                             setOcProductoDropdownAbierto(prev => ({ ...prev, [idx]: true }))
                           } catch {}
                         }}
@@ -8991,7 +9091,19 @@ export default function ModuloCompras({
                   return (
                     <tr key={f.id} onClick={() => !conciliada && toggleDebito(f.id, moneda, f.saldo)}
                       className={`border-b cursor-pointer ${sel ? 'bg-red-50' : 'hover:bg-gray-50'} ${conciliada ? 'opacity-40' : ''}`}>
-                      <td className="py-1 px-2 text-blue-600">{f.numero}</td>
+                      <td className="py-1 px-2 text-blue-600">
+                        <span className="inline-flex items-center gap-1.5">
+                          {f.numero}
+                          <button
+                            type="button"
+                            title="Ver factura de compra"
+                            className="text-gray-400 hover:text-indigo-700"
+                            onClick={e => { e.stopPropagation(); abrirPopupFacturaCompra(f) }}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        </span>
+                      </td>
                       <td className="py-1 px-2 text-gray-500">FC {f.tipo}</td>
                       <td className="py-1 px-2 text-gray-500">{f.fecha_vencimiento ? f.fecha_vencimiento.split('T')[0] : '-'}</td>
                       <td className="py-1 px-2 text-right">{moneda === 'USD' ? `USD ${f.total?.toLocaleString('es-AR')}` : `$${f.total?.toLocaleString('es-AR')}`}</td>
@@ -9047,7 +9159,23 @@ export default function ModuloCompras({
                       <td className="py-1 px-2 text-right font-semibold text-green-600">{moneda === 'USD' ? `USD ${saldo?.toLocaleString('es-AR')}` : `$${saldo?.toLocaleString('es-AR')}`}</td>
                       <td className="py-1 px-2 text-right">{moneda === 'USD' ? `USD ${o.importe?.toLocaleString('es-AR')}` : `$${o.importe?.toLocaleString('es-AR')}`}</td>
                       <td className="py-1 px-2 text-gray-500">{o.fecha?.split('T')[0]}</td>
-                      <td className="py-1 px-2 text-blue-600">{o.numero}</td>
+                      <td className="py-1 px-2 text-blue-600">
+                        <span className="inline-flex items-center gap-1.5">
+                          {o.numero}
+                          <button
+                            type="button"
+                            title="Ver orden de pago"
+                            className="text-gray-400 hover:text-indigo-700"
+                            onClick={e => {
+                              e.stopPropagation()
+                              const op = ordenesPago.find(x => x.id === o.id)
+                              abrirPopupOP(op)
+                            }}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        </span>
+                      </td>
                       <td className="py-1 px-2 text-gray-500">OP</td>
                     </tr>
                   )
@@ -9065,7 +9193,19 @@ export default function ModuloCompras({
                       <td className="py-1 px-2 text-right font-semibold text-green-600">{moneda === 'USD' ? `USD ${saldo?.toLocaleString('es-AR')}` : `$${saldo?.toLocaleString('es-AR')}`}</td>
                       <td className="py-1 px-2 text-right">{moneda === 'USD' ? `USD ${n.total?.toLocaleString('es-AR')}` : `$${n.total?.toLocaleString('es-AR')}`}</td>
                       <td className="py-1 px-2 text-gray-500">{n.fecha?.split('T')[0]}</td>
-                      <td className="py-1 px-2 text-emerald-700 font-medium">{n.numero}</td>
+                      <td className="py-1 px-2 text-emerald-700 font-medium">
+                        <span className="inline-flex items-center gap-1.5">
+                          {n.numero}
+                          <button
+                            type="button"
+                            title="Ver nota de crédito"
+                            className="text-gray-400 hover:text-indigo-700"
+                            onClick={e => { e.stopPropagation(); abrirPopupNCCompra(n) }}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        </span>
+                      </td>
                       <td className="py-1 px-2"><span className="bg-emerald-100 text-emerald-600 rounded px-1 text-xs">NC</span></td>
                     </tr>
                   )
@@ -9212,15 +9352,69 @@ export default function ModuloCompras({
                               const cm = a.credito_moneda ?? 'ARS'
                               const esMixto = dm !== cm
                               const parLabel = `${dm}→${cm}`
-                              const montoFmt = cm === 'USD'
+                              // El monto se guarda en moneda del DÉBITO — usar `dm`
+                              // para etiquetarlo (mismo bug que tenía ventas).
+                              const montoFmt = dm === 'USD'
                                 ? `USD ${a.monto.toLocaleString('es-AR', {minimumFractionDigits:2})}`
                                 : `$${a.monto.toLocaleString('es-AR', {minimumFractionDigits:2})}`
+
+                              // Resolver el comprobante en memoria por (tipo, numero) y abrir popup.
+                              const abrirDesdeHistorial = (tipo: string, numero: string) => {
+                                if (!numero) return
+                                const t = tipo.toLowerCase()
+                                if (t.startsWith('fc') || t.startsWith('factura')) {
+                                  const f = facturasCompra.find(x => x.numero === numero)
+                                  if (f) abrirPopupFacturaCompra(f)
+                                } else if (t === 'op') {
+                                  const o = ordenesPago.find(x => x.numero === numero)
+                                  if (o) abrirPopupOP(o)
+                                } else if (t.startsWith('nc')) {
+                                  const n = notasCreditoCompra.find(x => x.numero === numero)
+                                  if (n) abrirPopupNCCompra(n)
+                                } else if (t.startsWith('nd')) {
+                                  const n = notasDebitoCompra.find(x => x.numero === numero)
+                                  if (n) abrirPopupNDCompra(n)
+                                }
+                              }
+                              const tieneDeb = !!facturasCompra.find(x => x.numero === a.debito_numero)
+                                            || !!notasDebitoCompra.find(x => x.numero === a.debito_numero)
+                              const tieneCre = !!ordenesPago.find(x => x.numero === a.credito_numero)
+                                            || !!notasCreditoCompra.find(x => x.numero === a.credito_numero)
+
                               return (
                                 <tr key={i} className="border-t border-gray-100">
                                   <td className="py-1">{a.debito_tipo}</td>
-                                  <td className="py-1 text-blue-600">{a.debito_numero}</td>
+                                  <td className="py-1 text-blue-600">
+                                    <span className="inline-flex items-center gap-1.5">
+                                      {a.debito_numero}
+                                      {tieneDeb && (
+                                        <button
+                                          type="button"
+                                          title="Ver comprobante"
+                                          className="text-gray-400 hover:text-indigo-700 transition-colors"
+                                          onClick={() => abrirDesdeHistorial(a.debito_tipo, a.debito_numero)}
+                                        >
+                                          <Eye className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </span>
+                                  </td>
                                   <td className="py-1">{a.credito_tipo}</td>
-                                  <td className="py-1 text-blue-600">{a.credito_numero}</td>
+                                  <td className="py-1 text-blue-600">
+                                    <span className="inline-flex items-center gap-1.5">
+                                      {a.credito_numero}
+                                      {tieneCre && (
+                                        <button
+                                          type="button"
+                                          title="Ver comprobante"
+                                          className="text-gray-400 hover:text-indigo-700 transition-colors"
+                                          onClick={() => abrirDesdeHistorial(a.credito_tipo, a.credito_numero)}
+                                        >
+                                          <Eye className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </span>
+                                  </td>
                                   <td className="py-1">
                                     <div className="flex items-center gap-2">
                                       <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${esMixto ? 'bg-orange-100 text-orange-700' : cm === 'USD' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
@@ -9301,6 +9495,8 @@ export default function ModuloCompras({
     return (
       <div className="p-6 bg-gray-50 min-h-screen">
         {renderContent()}
+        {/* Popup de previsualización de comprobantes (lupita en conciliación) */}
+        {comprobantePopup && <ComprobantePopup {...comprobantePopup} />}
       </div>
     )
   }
@@ -9695,6 +9891,10 @@ export default function ModuloCompras({
           </div>
         </div>
       )}
+
+      {/* Popup compacto de previsualización de comprobantes (lupita en
+          conciliación de deuda). Renderizado a nivel raíz. */}
+      {comprobantePopup && <ComprobantePopup {...comprobantePopup} />}
     </div>
   )
 }

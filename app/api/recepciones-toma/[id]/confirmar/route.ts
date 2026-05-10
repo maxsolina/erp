@@ -38,10 +38,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "Recepción pendiente no encontrada" }, { status: 404 })
   }
 
-  // Obtener la toma para el producto_id y nombre del equipo
+  // Obtener la toma para el producto_id y nombre del equipo + cotización
+  // del día en que se valuó la toma (para convertir USD→ARS al asentar
+  // la recepción, que ocurre días después).
   const { data: toma } = await supabase
     .from("tomas_equipo")
-    .select("producto_id, modelo_equipo, precio_final, cliente_nombre")
+    .select("producto_id, modelo_equipo, precio_final, cliente_nombre, cotizacion, tipo_cotizacion")
     .eq("id", tomaId)
     .single()
 
@@ -128,6 +130,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const sucursalNombre = recepcion.sucursal_id
     ? (await supabase.from("sucursales").select("nombre").eq("id", recepcion.sucursal_id).maybeSingle()).data?.nombre ?? null
     : null
+  // La toma se valúa en USD; pasamos la cotización persistida para que el
+  // factory convierta a ARS. Sin esto el asiento queda como pesos crudos.
   const asientoRep = await generarAsientoRecepcionTomaEquipo(adminClient, {
     id: recepcion.id,
     numero: recepcion.numero,
@@ -135,6 +139,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     cliente_nombre: toma?.cliente_nombre ?? null,
     sucursal: sucursalNombre,
     total: toma?.precio_final ?? 0,
+    moneda: "USD",
+    cotizacion: toma?.cotizacion ?? null,
   })
   if (asientoRep.ok) {
     await supabase

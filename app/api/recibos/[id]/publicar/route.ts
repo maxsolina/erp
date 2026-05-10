@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 import { generarAsientoRecibo } from "@/lib/contabilidad-asiento-factory"
 import { registrarEvento } from "@/lib/seguimiento"
+import { emitirMovimientoBancoSiAplica } from "@/lib/movimientos-banco"
 
 function getSupabase() {
   return createClient(
@@ -157,6 +158,20 @@ export async function POST(
         .update({ origen_nombre: recibo.cliente_nombre })
         .eq("id", pago.cheque_id)
     }
+
+    // Movimiento bancario (no-op si el valor no es de banco)
+    await emitirMovimientoBancoSiAplica(supabase, {
+      caja_valor_id: pago.valor_id,
+      tipo: "ingreso",
+      importe: Number(pago.importe),
+      moneda: pago.moneda,
+      concepto: `Recibo ${recibo.numero} - ${recibo.cliente_nombre ?? ""}`,
+      fecha_operacion: recibo.fecha ?? recibo.created_at?.split("T")[0],
+      documento_origen_tipo: "recibo",
+      documento_origen_id: isUUID(String(recibo.id)) ? String(recibo.id) : null,
+      documento_origen_numero: recibo.numero,
+      tipo_operacion: "Cobranza",
+    })
   }
 
   // 4. Imputar comprobantes — actualizar saldo + estado según el tipo:

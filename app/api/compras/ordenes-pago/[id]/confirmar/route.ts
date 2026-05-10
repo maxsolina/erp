@@ -2,6 +2,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { generarAsientoOrdenPago } from "@/lib/contabilidad-asiento-factory"
 import { registrarEvento } from "@/lib/seguimiento"
+import { emitirMovimientoBancoSiAplica } from "@/lib/movimientos-banco"
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
@@ -192,6 +193,23 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       } else {
         return NextResponse.json({ error: "Error al registrar movimiento en caja: " + movErr.message }, { status: 500 })
       }
+    }
+
+    // Movimiento bancario (no-op si el medio de pago no es bancario)
+    if (medio.forma_pago_id) {
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      await emitirMovimientoBancoSiAplica(supabase, {
+        caja_valor_id: medio.forma_pago_id,
+        tipo: "egreso",
+        importe: Number(medio.importe ?? medio.importe_comp),
+        moneda: medio.moneda ?? op.moneda ?? "ARS",
+        concepto: `OP ${op.numero} - ${op.proveedor_nombre ?? ""}`,
+        fecha_operacion: op.fecha,
+        documento_origen_tipo: "orden_pago",
+        documento_origen_id: isUUID.test(String(op.id)) ? op.id : null,
+        documento_origen_numero: op.numero,
+        tipo_operacion: "Pago a proveedor",
+      })
     }
   }
 

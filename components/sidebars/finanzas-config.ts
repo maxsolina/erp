@@ -2,6 +2,7 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Banknote,
+  BookOpen,
   Calculator,
   CreditCard,
   Building2,
@@ -28,16 +29,24 @@ export const finanzasSidebarConfig: SidebarConfig = {
   accent: "purple",
   sections: [
     {
-      id: "banco_caja",
-      label: "Banco y Caja",
-      icon: Landmark,
+      id: "cajas",
+      label: "Cajas",
+      icon: Wallet,
       items: [
         { label: "Extractos de Caja", href: "/finanzas/extractos-caja", permKey: "extractos_caja", icon: FileText },
         { label: "Registros de Caja", href: "/finanzas/registros-caja", permKey: "registros_caja", icon: Wallet },
         { label: "Ajustes de Caja", href: "/finanzas/ajustes-caja", permKey: "ajustes_caja", icon: RefreshCw },
+        { label: "Transferencias de Caja", href: "/finanzas/transferencias-caja", permKey: "transferencias_caja", icon: Repeat },
+      ],
+    },
+    {
+      id: "bancos",
+      label: "Bancos",
+      icon: Landmark,
+      items: [
+        { label: "Movimientos Bancarios", href: "/finanzas/movimientos-bancarios", permKey: "movimientos_bancarios", icon: BookOpen },
         { label: "Registros de Banco", href: "/finanzas/registros-banco", permKey: "registros_banco", icon: Landmark },
         { label: "Ajustes de Banco", href: "/finanzas/ajustes-banco", permKey: "ajustes_banco", icon: RefreshCw },
-        { label: "Transferencias de Caja", href: "/finanzas/transferencias-caja", permKey: "transferencias_caja", icon: Repeat },
         { label: "Conciliación Bancaria", href: "/finanzas/conciliacion-bancaria", permKey: "conciliacion_bancaria", icon: RefreshCw },
       ],
     },

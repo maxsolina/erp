@@ -17,6 +17,7 @@ import {
 import ProductoDropdown from "@/components/producto-dropdown"
 import { useERP } from "@/contexts/erp-context"
 import { formatCurrency } from "@/lib/format"
+import SearchableSelect from "@/components/ui/searchable-select"
 import { getEstadoNVLabel } from "./_shared"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -737,10 +738,10 @@ export default function NvForm({ initialId }: { initialId?: number }) {
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
-                <select
-                  value={nvClienteId ?? ""}
-                  onChange={e => {
-                    const id = e.target.value ? parseInt(e.target.value, 10) : null
+                <SearchableSelect
+                  value={nvClienteId}
+                  onChange={v => {
+                    const id = v == null ? null : Number(v)
                     setNvClienteId(id)
                     setNvMonedaOverride(null) // user cambia cliente → ya no aplica la moneda original de la NV
                     if (id) {
@@ -748,13 +749,15 @@ export default function NvForm({ initialId }: { initialId?: number }) {
                       if (cli?.lista_precios_id) setNvListaPreciosId(cli.lista_precios_id)
                     }
                   }}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="">Seleccionar cliente…</option>
-                  {clientes.map(c => (
-                    <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre}</option>
-                  ))}
-                </select>
+                  options={clientes.map(c => ({
+                    value: String(c.id),
+                    label: c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre,
+                    hint: c.telefono ?? c.celular ? `Tel: ${c.telefono ?? c.celular}` : undefined,
+                    searchExtra: `${c.codigo ?? ""} ${c.telefono ?? ""} ${c.celular ?? ""} ${c.numero_documento ?? ""}`,
+                  }))}
+                  placeholder="Buscar cliente por nombre, código o teléfono…"
+                  required
+                />
               </div>
               {selectedCliente && (
                 <>
@@ -795,19 +798,20 @@ export default function NvForm({ initialId }: { initialId?: number }) {
               <div className="grid grid-cols-2 gap-4 items-end">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Lista de precios *</label>
-                  <select
-                    value={nvListaPreciosId ?? ""}
-                    onChange={e => {
+                  <SearchableSelect
+                    value={nvListaPreciosId}
+                    onChange={v => {
                       setNvMonedaOverride(null) // user cambia lista → respetar la moneda de esta lista
-                      setNvListaPreciosId(e.target.value ? parseInt(e.target.value, 10) : null)
+                      setNvListaPreciosId(v == null ? null : Number(v))
                     }}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    <option value="">Seleccionar lista…</option>
-                    {listasPrecios.filter(l => l.activa !== false).map(l => (
-                      <option key={l.id} value={l.id}>{l.nombre}</option>
-                    ))}
-                  </select>
+                    options={listasPrecios.filter(l => l.activa !== false).map(l => ({
+                      value: String(l.id),
+                      label: l.nombre,
+                      hint: l.moneda_base ?? undefined,
+                    }))}
+                    placeholder="Buscar lista de precios…"
+                    required
+                  />
                 </div>
                 <div className="text-sm text-gray-500">
                   {nvListaPreciosId && (

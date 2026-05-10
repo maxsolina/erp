@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation"
 import { AlertCircle, ArrowLeft, Plus, Save, Trash2 } from "lucide-react"
 import { useERP } from "@/contexts/erp-context"
 import { formatCurrency } from "@/lib/format"
+import SearchableSelect from "@/components/ui/searchable-select"
 
-interface ClienteOpt { id: number; codigo?: string; nombre: string }
+interface ClienteOpt { id: number; codigo?: string; nombre: string; telefono?: string; numero_documento?: string }
 interface NcCategoria { id: number; nombre: string; activa: boolean }
 
 interface Linea {
@@ -174,16 +175,18 @@ export default function AjusteForm({ tipo }: { tipo: TipoAjuste }) {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
-            <select
-              value={clienteId ?? ""}
-              onChange={e => setClienteId(e.target.value ? parseInt(e.target.value, 10) : null)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            >
-              <option value="">Seleccionar cliente…</option>
-              {clientes.map(c => (
-                <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={clienteId}
+              onChange={v => setClienteId(v == null ? null : Number(v))}
+              options={clientes.map(c => ({
+                value: String(c.id),
+                label: c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre,
+                hint: c.telefono ? `Tel: ${c.telefono}` : undefined,
+                searchExtra: `${c.codigo ?? ""} ${c.telefono ?? ""} ${c.numero_documento ?? ""}`,
+              }))}
+              placeholder="Buscar cliente por nombre, código o teléfono…"
+              required
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Moneda</label>

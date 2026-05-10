@@ -222,8 +222,10 @@ export default function OcForm({ initialId }: { initialId?: number }) {
     }
     setProductoDropdown(prev => ({ ...prev, [idx]: true }))
     try {
+      // Excluir servicios — no se compran (no van en OC ni recepciones).
       const res = await fetchProductos({ busqueda: query, activo: true })
-      setProductoOpciones(prev => ({ ...prev, [idx]: res }))
+      const filtrado = (res ?? []).filter((p: any) => p.tipo !== "servicio")
+      setProductoOpciones(prev => ({ ...prev, [idx]: filtrado }))
     } catch {
       setProductoOpciones(prev => ({ ...prev, [idx]: [] }))
     }
@@ -667,7 +669,8 @@ export default function OcForm({ initialId }: { initialId?: number }) {
                         }
                         try {
                           const res = await fetchProductos({ busqueda: q || "", activo: true })
-                          setProductoOpciones(prev => ({ ...prev, [idx]: res }))
+                          const filtrado = (res ?? []).filter((p: any) => p.tipo !== "servicio")
+                          setProductoOpciones(prev => ({ ...prev, [idx]: filtrado }))
                           setProductoDropdown(prev => ({ ...prev, [idx]: true }))
                         } catch {}
                       }}

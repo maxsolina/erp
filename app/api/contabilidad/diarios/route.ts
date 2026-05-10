@@ -85,6 +85,20 @@ export async function POST(req: Request) {
   return NextResponse.json(data, { status: 201 })
 }
 
+// Whitelist de columnas reales. El front spreadea todo el row del diario al
+// editar, lo cual incluye joins (`sucursal`, `cuenta_debito`...) y campos
+// derivados (`_sucursal_nombre`, `_activo_label`) que NO existen en la tabla.
+// Sin este filtro, Postgres tira "Could not find column X in schema cache".
+const COLUMNAS_PATCH = new Set([
+  "nombre", "codigo", "tipo", "moneda",
+  "sucursal_id", "caja_id", "cuenta_bancaria_id",
+  "cuenta_debito_predeterminada_id", "cuenta_haber_predeterminada_id",
+  "cuenta_puente_conciliacion_id",
+  "filtrar_por_sucursal", "filtrar_por_subcompania",
+  "permitir_cancelacion_asientos", "agrupar_lineas_factura",
+  "numero_cuenta_requerido", "activo", "es_automatico",
+])
+
 export async function PATCH(req: Request) {
   const supabase = getSupabase()
   const { searchParams } = new URL(req.url)
@@ -92,9 +106,15 @@ export async function PATCH(req: Request) {
   if (!id) return NextResponse.json({ error: "id requerido" }, { status: 400 })
 
   const body = await req.json()
+  const payload: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(body)) {
+    if (COLUMNAS_PATCH.has(k)) payload[k] = v
+  }
+  payload.updated_at = new Date().toISOString()
+
   const { data, error } = await supabase
     .from("contabilidad_diarios")
-    .update({ ...body, updated_at: new Date().toISOString() })
+    .update(payload)
     .eq("id", id)
     .select()
     .single()

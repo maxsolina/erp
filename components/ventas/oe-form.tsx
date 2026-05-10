@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { AlertCircle, ArrowLeft, Save } from "lucide-react"
+import SearchableSelect from "@/components/ui/searchable-select"
 
 interface NotaVentaConLineas {
   id: number
@@ -150,18 +151,18 @@ export default function OeForm() {
         <div className="col-span-2 space-y-6">
           <div className="bg-white rounded-lg shadow-sm p-4">
             <h3 className="font-semibold text-gray-900 mb-4">Seleccionar Nota de Venta</h3>
-            <select
-              value={oeNvId ?? ""}
-              onChange={e => setOeNvId(e.target.value ? parseInt(e.target.value, 10) : null)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            >
-              <option value="">Seleccionar NV…</option>
-              {nvs.map(nv => (
-                <option key={nv.id} value={nv.id}>
-                  {nv.numero} — {nv.cliente_nombre ?? "Sin cliente"}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={oeNvId}
+              onChange={v => setOeNvId(v == null ? null : Number(v))}
+              options={nvs.map(nv => ({
+                value: String(nv.id),
+                label: `${nv.numero} — ${nv.cliente_nombre ?? "Sin cliente"}`,
+                hint: nv.estado ?? undefined,
+                searchExtra: `${nv.numero} ${nv.cliente_nombre ?? ""}`,
+              }))}
+              placeholder="Buscar NV por número o cliente…"
+              required
+            />
           </div>
 
           {nvSeleccionada && clienteNV && (

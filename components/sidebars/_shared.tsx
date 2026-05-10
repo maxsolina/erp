@@ -9,8 +9,8 @@
 
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
-import { ChevronRight, type LucideIcon } from "lucide-react"
-import { useState, type ReactNode } from "react"
+import { ChevronRight, Menu, X, type LucideIcon } from "lucide-react"
+import { useEffect, useState, type ReactNode } from "react"
 import { useERP } from "@/contexts/erp-context"
 
 export interface SidebarItem {
@@ -79,6 +79,11 @@ export function ModuleSidebar({
   )
   const toggle = (id: string) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }))
 
+  // Mobile drawer: cerrado por default. Se abre con el FAB y se cierra al
+  // navegar o tocar el backdrop.
+  const [mobileOpen, setMobileOpen] = useState(false)
+  useEffect(() => { setMobileOpen(false) }, [pathname])
+
   // Pre-calculamos qué items son "padres" (otro item del sidebar tiene href
   // que empieza con `item.href + "/"`). Esos solo deben activarse por match
   // EXACTO de pathname — sino se duplica el highlight (ej: Dashboard
@@ -114,9 +119,36 @@ export function ModuleSidebar({
     item.permKey ? canSee(config.permModule, item.permKey) : true
 
   return (
-    <div className="flex flex-1 overflow-hidden bg-gray-50">
-      <aside className="w-56 bg-white border-r border-gray-200 overflow-y-auto shrink-0 flex flex-col">
-        {/* Header: cuadrado de color + icono + título + sucursal */}
+    <div className="flex flex-1 overflow-hidden bg-gray-50 relative">
+      {/* FAB mobile para abrir el sidebar — solo se ve cuando el drawer está cerrado.
+          Posición fixed para que siga visible al hacer scroll del contenido. */}
+      {!mobileOpen && (
+        <button
+          onClick={() => setMobileOpen(true)}
+          className={`md:hidden fixed left-3 bottom-3 z-30 ${accent.headerBg} text-white p-3 rounded-full shadow-lg active:scale-95 transition-transform`}
+          aria-label="Abrir menú"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+      )}
+
+      {/* Backdrop mobile */}
+      {mobileOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/40 z-40"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`
+          w-60 bg-white border-r border-gray-200 overflow-y-auto shrink-0 flex flex-col
+          fixed top-11 bottom-0 left-0 z-50 transform transition-transform duration-200
+          md:static md:translate-x-0 md:z-auto md:top-auto md:bottom-auto
+          ${mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
+        `}
+      >
+        {/* Header: cuadrado de color + icono + título + sucursal + close mobile */}
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center gap-2">
             {ModuloIcon && (
@@ -124,12 +156,19 @@ export function ModuleSidebar({
                 <ModuloIcon className="w-5 h-5 text-white" />
               </div>
             )}
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <h2 className="font-bold text-gray-900 truncate">{config.title}</h2>
               {sucursalActiva?.nombre && (
                 <p className="text-xs text-gray-500 truncate">{sucursalActiva.nombre}</p>
               )}
             </div>
+            <button
+              onClick={() => setMobileOpen(false)}
+              className="md:hidden text-gray-400 hover:text-gray-700 p-1 -mr-1"
+              aria-label="Cerrar menú"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
         </div>
 
@@ -166,7 +205,7 @@ export function ModuleSidebar({
                           }`}
                         >
                           {ItemIcon && <ItemIcon className="w-4 h-4 shrink-0" />}
-                          <span className="truncate">{item.label}</span>
+                          <span className="leading-tight">{item.label}</span>
                         </Link>
                       )
                     })}
@@ -177,7 +216,7 @@ export function ModuleSidebar({
           })}
         </nav>
       </aside>
-      <main className="flex-1 overflow-auto p-6">{children}</main>
+      <main className="flex-1 overflow-auto p-3 md:p-6 min-w-0">{children}</main>
     </div>
   )
 }

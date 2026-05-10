@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import ProductoDropdown from "@/components/producto-dropdown"
 import BloquesMediosPago, { type LineaPago } from "@/components/bloques-medios-pago"
+import SearchableSelect from "@/components/ui/searchable-select"
 import { formatCurrency } from "@/lib/format"
 
 interface ClienteOpt {
@@ -23,6 +24,7 @@ interface ClienteOpt {
   numero_documento?: string
   posicion_fiscal?: string
   direccion?: string
+  telefono?: string
   lista_precios_id?: number | null
   termino_pago_id?: number | null
 }
@@ -557,16 +559,18 @@ export default function FacturaForm({ initialId }: { initialId?: number }) {
             <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <User className="w-4 h-4" /> Cliente
             </h3>
-            <select
-              value={facturaClienteId ?? ""}
-              onChange={e => setFacturaClienteId(e.target.value ? parseInt(e.target.value, 10) : null)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            >
-              <option value="">Seleccionar cliente…</option>
-              {clientes.map(c => (
-                <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={facturaClienteId}
+              onChange={v => setFacturaClienteId(v == null ? null : Number(v))}
+              options={clientes.map(c => ({
+                value: String(c.id),
+                label: c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre,
+                hint: c.telefono ? `Tel: ${c.telefono}` : undefined,
+                searchExtra: `${c.codigo ?? ""} ${c.telefono ?? ""} ${c.numero_documento ?? ""}`,
+              }))}
+              placeholder="Buscar cliente por nombre, código o teléfono…"
+              required
+            />
             {selectedCliente && (
               <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
                 <div>
@@ -579,16 +583,18 @@ export default function FacturaForm({ initialId }: { initialId?: number }) {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-gray-500">Lista:</span>
-                  <select
-                    value={facturaListaPreciosId ?? ""}
-                    onChange={e => setFacturaListaPreciosId(e.target.value ? parseInt(e.target.value, 10) : null)}
-                    className="border border-gray-200 rounded px-2 py-1 text-sm"
-                  >
-                    <option value="">Sin lista</option>
-                    {listasPrecios.filter(l => l.activa !== false).map(l => (
-                      <option key={l.id} value={l.id}>{l.nombre}</option>
-                    ))}
-                  </select>
+                  <div className="flex-1">
+                    <SearchableSelect
+                      value={facturaListaPreciosId}
+                      onChange={v => setFacturaListaPreciosId(v == null ? null : Number(v))}
+                      options={listasPrecios.filter(l => l.activa !== false).map(l => ({
+                        value: String(l.id),
+                        label: l.nombre,
+                        hint: l.moneda_base ? l.moneda_base : undefined,
+                      }))}
+                      placeholder="Buscar lista…"
+                    />
+                  </div>
                   <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${facturaMoneda === "USD" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"}`}>
                     {facturaMoneda}
                   </span>

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { registrarEvento } from "@/lib/seguimiento"
+import { cancelarMovimientosBancoPorDocumento } from "@/lib/movimientos-banco"
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createClient()
@@ -36,6 +37,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     .update({ estado_movimiento: "cancelado" })
     .eq("documento_origen_tipo", "orden_pago")
     .eq("documento_origen_numero", op.numero)
+
+  // 4b. Revertir movimientos bancarios (OPs pagadas con banco)
+  await cancelarMovimientosBancoPorDocumento(supabase, "orden_pago", op.numero)
 
   // 5. Restaurar saldos de facturas
   const debitos = (comprobantes ?? []).filter(c => c.tipo === "debito")
