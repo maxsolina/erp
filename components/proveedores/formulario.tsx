@@ -717,7 +717,7 @@ export default function ProveedorFormulario({
   return (
     <div className="max-w-full">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <BotonVolver onClick={handleCancelar} variant="minimal" texto="" />
           <div>
@@ -764,7 +764,7 @@ export default function ProveedorFormulario({
 
       {/* Cabecera del formulario */}
       <div className="bg-white rounded-lg border p-6 mb-4">
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Columna izquierda */}
           <div className="space-y-4">
             <div>
@@ -791,7 +791,7 @@ export default function ProveedorFormulario({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de Documento</label>
                 <select
@@ -905,7 +905,7 @@ export default function ProveedorFormulario({
               </select>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Provincia</label>
                 {prov.pais === "Argentina" ? (
@@ -1068,7 +1068,7 @@ export default function ProveedorFormulario({
           {/* TAB: CONTACTOS */}
           {tabActivo === "contactos" && (
             <div>
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
                 <p className="text-sm text-gray-500">Personas de contacto dentro de esta empresa</p>
                 <button
                   onClick={addContacto}
@@ -1172,7 +1172,7 @@ export default function ProveedorFormulario({
 
           {/* TAB: VENTAS & COMPRAS */}
           {tabActivo === "ventas_compras" && (
-            <div className="grid grid-cols-2 gap-6 max-w-lg">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-lg">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Sucursal de Origen</label>
                 <select

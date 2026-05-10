@@ -184,7 +184,7 @@ export default function TransferenciaFormulario({ onCancelar, onCreada }: Props)
           <span className="text-blue-600">{numeroDocumento.split("-")[1]}</span>
         </h2>
 
-        <div className="grid grid-cols-2 gap-x-12 gap-y-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4 mb-6">
           <div className="space-y-4">
             <div className="flex items-center gap-4">
               <label className="w-32 text-sm text-gray-600">Depósito</label>

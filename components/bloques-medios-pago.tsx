@@ -438,7 +438,7 @@ export default function BloquesMediosPago({
 
   return (
     <div className="bg-white rounded-lg shadow-sm p-4">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <h3 className="font-semibold text-gray-900">Medios de Pago</h3>
         <button
           onClick={agregarLinea}

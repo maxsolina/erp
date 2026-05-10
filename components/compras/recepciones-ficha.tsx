@@ -183,7 +183,7 @@ export default function RecepcionFicha({ recId }: { recId: number }) {
         <>
           {/* Cabecera datos */}
           <div className="bg-white rounded-lg border p-6 mb-6">
-            <div className="grid grid-cols-3 gap-x-8 gap-y-4 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-4 text-sm">
               <DatoLabel label="Sucursal" valor={rec.sucursal} />
               <DatoLabel label="Depósito Destino" valor={rec.deposito_destino} />
               <DatoLabel label="Ubicación" valor={(rec as any).ubicacion} />

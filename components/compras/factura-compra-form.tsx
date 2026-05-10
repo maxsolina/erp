@@ -334,7 +334,7 @@ export default function FacturaCompraForm({ initialId }: { initialId?: number })
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-lg">
             <ArrowLeft className="w-4 h-4" />
@@ -376,7 +376,7 @@ export default function FacturaCompraForm({ initialId }: { initialId?: number })
       {/* Cabecera */}
       <div className="bg-white rounded-lg border p-6 mb-4">
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Datos del comprobante</h3>
-        <div className="grid grid-cols-3 gap-5 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-4">
           <div className="col-span-2">
             <label className="block text-xs font-medium text-gray-600 mb-1">
               Proveedor <span className="text-red-500">*</span>
@@ -432,7 +432,7 @@ export default function FacturaCompraForm({ initialId }: { initialId?: number })
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-5 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-4">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">N° comprobante</label>
             <input
@@ -464,7 +464,7 @@ export default function FacturaCompraForm({ initialId }: { initialId?: number })
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-5 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-4">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Moneda</label>
             <select

@@ -177,7 +177,7 @@ export default function OtFormulario({ onCancelar, onCreada }: Props) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button
             onClick={onCancelar}
@@ -204,7 +204,7 @@ export default function OtFormulario({ onCancelar, onCreada }: Props) {
         </div>
       </div>
       <div className="bg-white rounded-lg shadow-sm p-6">
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Col izquierda */}
           <div className="space-y-4">
             <div>
@@ -426,7 +426,7 @@ export default function OtFormulario({ onCancelar, onCreada }: Props) {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {[
                 { key: "ingresa_apagado", label: "Ingresa Apagado" },
                 { key: "ingresa_mojado", label: "Ingresa Mojado" },
@@ -469,7 +469,7 @@ export default function OtFormulario({ onCancelar, onCreada }: Props) {
         {/* Preview de repuestos sugeridos — antes de confirmar la OT */}
         {(formOT.equipo_id && formOT.falla_principal_id) && (
           <div className="mt-6 border-t border-gray-200 pt-5">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
               <h3 className="text-sm font-semibold text-gray-700">
                 Repuestos sugeridos
                 {previewLoading && <span className="ml-2 text-xs text-gray-400 italic">cargando…</span>}

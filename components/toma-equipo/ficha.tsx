@@ -303,7 +303,7 @@ export default function TomaEquipoFicha({ tomaId }: { tomaId: number }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         {/* Datos de la operación */}
         <div className="bg-white rounded-lg border p-5">
           <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Datos de la Operación</h3>
@@ -378,7 +378,7 @@ export default function TomaEquipoFicha({ tomaId }: { tomaId: number }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Nota de Crédito generada */}
         <div className="bg-white rounded-lg border p-5">
           <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b flex items-center gap-2">
@@ -830,7 +830,7 @@ export default function TomaEquipoFicha({ tomaId }: { tomaId: number }) {
                 </button>
               </div>
             </div>
-            <div className="px-6 py-4 border-b grid grid-cols-2 gap-3 text-sm">
+            <div className="px-6 py-4 border-b grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
               <div>
                 <span className="text-gray-400 text-xs uppercase font-medium">Cliente</span>
                 <p className="font-semibold text-gray-900 mt-0.5">{ncPopup.cliente_nombre}</p>
@@ -938,7 +938,7 @@ export default function TomaEquipoFicha({ tomaId }: { tomaId: number }) {
                 </button>
               </div>
             </div>
-            <div className="px-6 py-4 border-b grid grid-cols-2 gap-3 text-sm">
+            <div className="px-6 py-4 border-b grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
               <div>
                 <span className="text-gray-400 text-xs uppercase font-medium">Cliente</span>
                 <p className="font-semibold text-gray-900 mt-0.5">

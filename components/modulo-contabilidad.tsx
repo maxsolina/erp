@@ -401,7 +401,7 @@ function AnosFiscalesView() {
       <div className="bg-white border rounded-lg shadow-sm p-6 max-w-lg">
         <h2 className="text-lg font-bold text-amber-900 mb-4">Nuevo Año Fiscal</h2>
         {error && <div className="text-sm text-red-600 mb-3 flex items-center gap-1"><AlertCircle className="w-4 h-4" />{error}</div>}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
             <input className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
@@ -526,7 +526,7 @@ function TiposCuentaView() {
       </div>
       <div className="bg-white border rounded-lg shadow-sm p-6 max-w-lg">
         {error && <div className="text-sm text-red-600 mb-3 flex items-center gap-1"><AlertCircle className="w-4 h-4" />{error}</div>}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="col-span-2">
             <label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
             <input className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
@@ -728,7 +728,7 @@ function PlanCuentasView() {
 
     return (
       <div>
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <button onClick={() => { setEditando(false); setSelected(null); setModoEdicion(false) }}
               className="text-indigo-700 hover:text-indigo-900 flex items-center gap-1 text-sm font-medium">
@@ -781,7 +781,7 @@ function PlanCuentasView() {
         </div>
         <div className="bg-white border rounded-lg shadow-sm p-6">
           {error && <div className="text-sm text-red-600 mb-3 flex items-center gap-1"><AlertCircle className="w-4 h-4" />{error}</div>}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Código *</label>
               <input className={inputCls} disabled={ro}
@@ -1079,7 +1079,7 @@ function DiariosView() {
       </div>
       <div className="bg-white border rounded-lg shadow-sm p-6 max-w-2xl">
         {error && <div className="text-sm text-red-600 mb-3 flex items-center gap-1"><AlertCircle className="w-4 h-4" />{error}</div>}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="col-span-2">
             <label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
             <input className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
@@ -1182,7 +1182,7 @@ function DiariosView() {
           </div>
 
           {/* Campos principales: 2 columnas */}
-          <div className="px-6 py-5 grid grid-cols-2 gap-x-12 gap-y-5">
+          <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-5">
             {/* Col izquierda */}
             <div className="flex flex-col gap-5">
               {editando ? (
@@ -1294,7 +1294,7 @@ function DiariosView() {
                 en DB se mantienen por compat; si quedan algún día queriendo
                 usarse, se vuelven a exponer en el UI. */}
             {tab === "ajustes" && (
-              <div className="px-6 py-5 grid grid-cols-2 gap-x-12 gap-y-4">
+              <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
                 {editando ? (
                   <>
                     <div className="flex flex-col gap-3">
@@ -1669,7 +1669,7 @@ function AsientosView({ soloManuales = false }: { soloManuales?: boolean }) {
       <div className="bg-white border rounded-lg shadow-sm">
         <div className="p-6 border-b">
           {error && <div className="text-sm text-red-600 mb-4 flex items-center gap-2 bg-red-50 px-3 py-2 rounded"><AlertCircle className="w-4 h-4" />{error}</div>}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Diario *</label>
               <select className="w-full border rounded px-3 py-2 text-sm"
@@ -2063,7 +2063,7 @@ function LibroMayorView() {
     <div>
       <h1 className="text-2xl font-bold text-amber-900 mb-4">Libro Mayor por Cuenta</h1>
       <div className="bg-white border rounded-lg shadow-sm p-6 mb-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 md:grid-cols-4 gap-4">
           <div className="col-span-2 relative">
             <label className="block text-xs font-medium text-gray-600 mb-1">Cuenta *</label>
             <LibroMayorCuentaCombo
@@ -2255,7 +2255,7 @@ function MonedaView() {
   const cls = 'border border-gray-300 rounded-md px-3 py-1.5 text-sm w-full'
 
   const FormFields = ({ disabled = false }: { disabled?: boolean }) => (
-    <div className="grid grid-cols-2 gap-4 max-w-xl">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl">
       <div><label className="block text-xs text-gray-500 mb-1">Código</label><input value={form.codigo ?? ''} onChange={e => setForm(p => ({ ...p, codigo: e.target.value.toUpperCase() }))} className={cls} maxLength={10} disabled={selected?.es_base ?? false} /></div>
       <div><label className="block text-xs text-gray-500 mb-1">Nombre</label><input value={form.nombre ?? ''} onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))} className={cls} /></div>
       <div><label className="block text-xs text-gray-500 mb-1">Símbolo</label><input value={form.simbolo ?? ''} onChange={e => setForm(p => ({ ...p, simbolo: e.target.value }))} className={cls} maxLength={10} /></div>
@@ -2283,7 +2283,7 @@ function MonedaView() {
 
   if (editando && !selected) return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button onClick={() => setEditando(false)} className="p-1 rounded hover:bg-gray-100"><ArrowLeft className="w-5 h-5 text-gray-500" /></button>
           <h1 className="text-2xl font-bold text-amber-900">Nueva Moneda</h1>
@@ -2300,7 +2300,7 @@ function MonedaView() {
 
   if (selected) return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button onClick={() => { setSelected(null); setEditando(false); setError(null) }} className="p-1 rounded hover:bg-gray-100"><ArrowLeft className="w-5 h-5 text-gray-500" /></button>
           <h1 className="text-2xl font-bold text-amber-900">{editando ? 'Editar Moneda' : selected.nombre + ' (' + selected.codigo + ')'}</h1>
@@ -2361,7 +2361,7 @@ function MonedaView() {
       )}
       {(editando || tabMoneda === 'configuracion') && (
         editando ? <FormFields /> : (
-          <div className="grid grid-cols-2 gap-4 max-w-xl">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl">
             <div><label className="block text-xs text-gray-500 mb-1">Código</label><p className="text-sm font-mono font-bold">{selected.codigo}</p></div>
             <div><label className="block text-xs text-gray-500 mb-1">Nombre</label><p className="text-sm">{selected.nombre}</p></div>
             <div><label className="block text-xs text-gray-500 mb-1">Símbolo</label><p className="text-sm">{selected.simbolo}</p></div>

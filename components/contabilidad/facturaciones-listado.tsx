@@ -382,7 +382,7 @@ export default function FacturacionesListado() {
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-amber-900">Facturaciones</h1>
           <p className="text-sm text-gray-500 mt-0.5">

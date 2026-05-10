@@ -188,7 +188,7 @@ export default function VersionFicha({ versionId }: { versionId: number }) {
         </div>
       ) : (
       <div className="bg-white border border-gray-200 rounded p-6">
-        <div className="grid grid-cols-4 gap-4 mb-6 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 items-end">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Precios</label>
             <p className="text-gray-900 py-2">{version.lista_precios_nombre}</p>
@@ -224,7 +224,7 @@ export default function VersionFicha({ versionId }: { versionId: number }) {
 
         {/* Grilla de líneas (solo lectura) */}
         <div className="mb-4">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
             <h4 className="text-sm font-semibold text-gray-900">
               Líneas de Precios ({version.lineas.length})
             </h4>

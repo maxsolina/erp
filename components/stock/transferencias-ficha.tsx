@@ -75,7 +75,7 @@ export default function TransferenciaFicha({ transferenciaId }: { transferenciaI
           <span className="text-blue-600">{t.numero.split("-")[1] ?? t.numero}</span>
         </h2>
 
-        <div className="grid grid-cols-2 gap-x-12 gap-y-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4 mb-6">
           <div className="space-y-4">
             <Field label="Depósito" value={t.deposito_nombre} />
             <Field label="Ubicación Origen" value={t.ubicacion_origen_nombre} />

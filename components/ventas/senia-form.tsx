@@ -232,7 +232,7 @@ export default function SeniaForm() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-lg">
             <ArrowLeft className="w-4 h-4" />
@@ -272,7 +272,7 @@ export default function SeniaForm() {
           <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b flex items-center gap-2">
             <Calendar className="w-4 h-4 text-emerald-600" /> Datos de la Operación
           </h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Sucursal</label>
               <input
@@ -427,7 +427,7 @@ export default function SeniaForm() {
               )}
             </div>
 
-            <div className="grid grid-cols-3 gap-3 pt-1 border-t">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 border-t">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Precio de venta {seniaMoneda === "USD" ? "(USD)" : "($)"}
@@ -473,7 +473,7 @@ export default function SeniaForm() {
           <p className="text-sm font-medium text-gray-600 mb-2">
             Al confirmar se generará automáticamente:
           </p>
-          <div className="grid grid-cols-2 gap-2 text-sm text-gray-500">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-500">
             <div className="flex items-center gap-2">
               <FileText className="w-4 h-4 text-blue-500" /> Nota de Venta — Abierta
             </div>

@@ -196,7 +196,7 @@ export default function ImeiFicha({ unidadId }: { unidadId: number }) {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <BotonVolver onClick={() => router.push("/stock/lotes-series")} variant="ghost" />
           <div>

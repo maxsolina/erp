@@ -282,7 +282,7 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
     <form onSubmit={handleSubmit} className="flex flex-col h-full bg-gray-50">
       {/* Cabecera */}
       <div className="p-6 bg-white border-b border-gray-200">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
           <h2 className="text-xl font-bold text-amber-900">
             {!inicial
               ? "Nuevo Producto"
@@ -333,7 +333,7 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
           </div>
         </div>
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label required>Nombre del producto</Label>
               <Input value={form.nombre} onChange={e => set("nombre", e.target.value)} placeholder={form.tipo === "servicio" ? "Ej: Cambio de pantalla iPhone" : "Ej: iPhone 15 Pro Max 256GB Negro"} disabled={soloLectura} />
@@ -404,7 +404,7 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
           </div>
 
 
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
               <div className="flex items-center justify-between">
                 <Label required>Categoría</Label>
@@ -515,7 +515,7 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
             {form.tipo !== "servicio" && (
               <div className="bg-white rounded-lg border border-gray-200 p-4">
                 <h3 className="text-sm font-semibold text-gray-900 mb-4">Stock y niveles</h3>
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   {([
                     { key: "stock_real", label: "Stock real", readOnly: true },
                     { key: "stock_minimo", label: "Stock mínimo" },
@@ -553,7 +553,7 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
         {tab === "abastecimientos" && (
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-4">Costos</h3>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <button
                   type="button"
@@ -618,7 +618,7 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
 
         {tab === "ventas" && (
           <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Garantía propia</h3>
                 <div className="flex gap-2">
@@ -645,7 +645,7 @@ export function FormularioProducto({ inicial, onGuardar, onCancelar, soloLectura
 
         {tab === "contabilidad" && (
           <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label>IVA de venta</Label>
                 <Sel value={form.iva_venta} onChange={e => set("iva_venta", Number(e.target.value))} disabled={soloLectura}>

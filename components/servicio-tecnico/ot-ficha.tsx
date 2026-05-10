@@ -171,7 +171,7 @@ export default function OtFicha({ otId }: { otId: string }) {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push("/servicio-tecnico/ot")}
@@ -459,7 +459,7 @@ export default function OtFicha({ otId }: { otId: string }) {
       )}
 
       {/* Info dos columnas */}
-      <div className="grid grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div className="bg-white rounded-lg shadow-sm p-4 space-y-2">
           {[
             ["Área", ot.taller_areas_reparacion?.nombre],
@@ -1310,7 +1310,7 @@ function DocumentosComerciales({
 
           {/* Resumen económico */}
           {nvActiva && (
-            <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-3 gap-2 text-xs">
+            <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
               <div className="bg-gray-50 rounded p-2">
                 <p className="text-gray-500">Total NV</p>
                 <p className="font-semibold text-gray-900">{fmtMoney(totalNV)}</p>
@@ -1524,7 +1524,7 @@ function ModalRegistrarSenia({
           )}
 
           {esTarjeta && (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Tarjeta</label>
                 <input
@@ -1724,7 +1724,7 @@ function ModalCobrar({
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
               <label className="text-xs font-medium text-gray-700">Medios de Pago *</label>
               <button
                 onClick={agregarPago}
@@ -1774,7 +1774,7 @@ function ModalCobrar({
                       )}
                     </div>
                     {necesitaCot && (
-                      <div className="grid grid-cols-2 gap-2 bg-amber-50 border border-amber-200 rounded p-2">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 bg-amber-50 border border-amber-200 rounded p-2">
                         <div>
                           <label className="block text-[11px] font-medium text-amber-800">
                             Cotización {p.moneda} → ARS
@@ -1796,7 +1796,7 @@ function ModalCobrar({
                       </div>
                     )}
                     {v?.es_tarjeta && (
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         <input
                           type="text"
                           placeholder="Tarjeta (Visa, Master…)"

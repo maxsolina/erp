@@ -198,7 +198,7 @@ export default function RemitoForm({ prefillOeId }: { prefillOeId?: number }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-lg">
             <ArrowLeft className="w-4 h-4" />
@@ -233,7 +233,7 @@ export default function RemitoForm({ prefillOeId }: { prefillOeId?: number }) {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="col-span-2 space-y-6">
           <div className="bg-white rounded-lg shadow-sm p-4">
             <h3 className="font-semibold text-gray-900 mb-4">Orden de Entrega</h3>
@@ -260,7 +260,7 @@ export default function RemitoForm({ prefillOeId }: { prefillOeId?: number }) {
             <>
               <div className="bg-white rounded-lg shadow-sm p-4">
                 <h3 className="font-semibold text-gray-900 mb-4">Datos del Cliente</h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-gray-500">Cliente:</span>{" "}
                     <span className="font-medium">{clienteOE.nombre}</span>
@@ -274,7 +274,7 @@ export default function RemitoForm({ prefillOeId }: { prefillOeId?: number }) {
 
               <div className="bg-white rounded-lg shadow-sm p-4">
                 <h3 className="font-semibold text-gray-900 mb-4">Origen de Stock</h3>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Depósito</label>
                     <select

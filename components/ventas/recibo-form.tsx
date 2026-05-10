@@ -863,7 +863,7 @@ export default function ReciboForm({
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-lg">
             <ArrowLeft className="w-4 h-4" />
@@ -930,7 +930,7 @@ export default function ReciboForm({
 
       {/* Cabecera */}
       <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-3">
             <div>
               <label className="text-xs font-medium text-gray-500">Sucursal</label>
@@ -956,7 +956,7 @@ export default function ReciboForm({
                 required
               />
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <div>
                 <label className="text-xs font-medium text-gray-500">Importe</label>
                 <input
@@ -1353,7 +1353,7 @@ export default function ReciboForm({
       {showAddPagoModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
               <h3 className="text-lg font-semibold text-gray-900">Añadir medio de pago</h3>
               <button onClick={() => setShowAddPagoModal(false)} className="p-1 hover:bg-gray-100 rounded">
                 <X className="w-4 h-4" />

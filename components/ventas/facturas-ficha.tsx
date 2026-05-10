@@ -387,7 +387,7 @@ export default function FacturasFicha({ facturaId }: { facturaId: number }) {
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div className="flex items-center gap-3">
           <BotonVolver onClick={() => router.push("/ventas/facturas")} variant="minimal" texto="" />
           <div>
@@ -475,10 +475,10 @@ export default function FacturasFicha({ facturaId }: { facturaId: number }) {
 
       {/* Contenido */}
       <div className="bg-white rounded-b-lg shadow-sm p-6">
-        <div className="grid grid-cols-2 gap-8 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
           <div className="space-y-4">
             <h3 className="font-semibold text-gray-900 border-b pb-2">Datos de Factura</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div><span className="text-gray-500">Número:</span> <span className="font-medium">{factura.numero}</span></div>
               <div><span className="text-gray-500">Tipo:</span> <span className="font-medium">Factura</span></div>
               <div><span className="text-gray-500">Fecha:</span> <span className="font-medium">{formatDate(factura.fecha)}</span></div>
@@ -513,7 +513,7 @@ export default function FacturasFicha({ facturaId }: { facturaId: number }) {
           </div>
           <div className="space-y-4">
             <h3 className="font-semibold text-gray-900 border-b pb-2">Cliente</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div><span className="text-gray-500">Nombre:</span> <span className="font-medium">{factura.cliente_nombre ?? "—"}</span></div>
               {factura.cliente_documento && (
                 <div><span className="text-gray-500">Documento:</span> <span className="font-medium">{factura.cliente_documento}</span></div>

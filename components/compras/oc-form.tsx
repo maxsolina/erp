@@ -369,7 +369,7 @@ export default function OcForm({ initialId }: { initialId?: number }) {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-lg">
             <ArrowLeft className="w-4 h-4" />
@@ -410,7 +410,7 @@ export default function OcForm({ initialId }: { initialId?: number }) {
 
       {/* Cabecera */}
       <div className="bg-white rounded-lg border p-6 mb-4">
-        <div className="grid grid-cols-2 gap-x-12 gap-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
           {/* Columna izquierda */}
           <div className="space-y-4">
             <div>

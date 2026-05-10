@@ -178,7 +178,7 @@ export default function ProveedorFicha({ proveedorId }: { proveedorId: number })
       </div>
 
       {/* Tabs + Content */}
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="col-span-2">
           <div className="bg-white rounded-lg border overflow-hidden">
             <div className="flex border-b">
@@ -208,7 +208,7 @@ export default function ProveedorFicha({ proveedorId }: { proveedorId: number })
               {/* Tab: Contactos */}
               {tabActivo === "contactos" && (
                 <div className="space-y-6">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-gray-500">Razón Social:</span>
                       <span className="ml-2 font-medium">{proveedor.razon_social || proveedor.nombre}</span>
@@ -296,7 +296,7 @@ export default function ProveedorFicha({ proveedorId }: { proveedorId: number })
 
               {/* Tab: Ventas & Compras */}
               {tabActivo === "ventas_compras" && (
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-gray-500">Condición de Pago:</span>
                     <span className="ml-2 font-medium">{proveedor.condicion_pago || "—"}</span>
@@ -358,7 +358,7 @@ export default function ProveedorFicha({ proveedorId }: { proveedorId: number })
                     <span className="font-medium">Aplica Circuito de Compras</span>
                   </div>
                   {!(proveedor as any).aplica_circuito_compras && (
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <span className="text-gray-500">Cuenta Gastos por Defecto:</span>
                         <span className="ml-2 font-medium">

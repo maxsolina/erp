@@ -326,7 +326,7 @@ export default function SeniaFicha({ seniaId }: { seniaId: number }) {
       </div>
 
       {/* Datos de la Operación + Equipo (2 cols) */}
-      <div className="grid grid-cols-2 gap-5 mb-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
         <div className="bg-white rounded-lg border p-5">
           <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Datos de la Operación</h3>
           <div className="space-y-3 text-sm">
@@ -449,7 +449,7 @@ export default function SeniaFicha({ seniaId }: { seniaId: number }) {
               return (
                 <>
                   {/* Fila 1: Caja + Forma de pago */}
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Caja</label>
                       <select
@@ -487,7 +487,7 @@ export default function SeniaFicha({ seniaId }: { seniaId: number }) {
                   </div>
 
                   {/* Fila 2: Monto + (Cotización si difieren monedas) */}
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">
                         Monto recibido{monedaPagoOK ? ` (${monedaPago})` : ""}
@@ -573,7 +573,7 @@ export default function SeniaFicha({ seniaId }: { seniaId: number }) {
 
             {/* Medios de pago del saldo */}
             <div>
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                 <p className="text-sm font-medium text-gray-700">Medios de pago del saldo:</p>
                 <button onClick={() => setMediosCierre(prev => [...prev, { medio: "efectivo", monto: 0 }])}
                   className="text-xs text-emerald-600 hover:underline flex items-center gap-1">

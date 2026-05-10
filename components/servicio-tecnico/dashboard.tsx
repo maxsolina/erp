@@ -72,7 +72,7 @@ export default function ServicioTecnicoDashboard() {
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white rounded-lg shadow-sm p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-4">OTs por Estado</h3>
           <div className="space-y-2">

@@ -116,7 +116,7 @@ export default function CategoriaProveedorForm({ initialId }: { initialId?: numb
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-lg">
             <ArrowLeft className="w-4 h-4" />
@@ -164,7 +164,7 @@ export default function CategoriaProveedorForm({ initialId }: { initialId?: numb
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Cuenta a pagar (contable)</label>
             <select
@@ -209,7 +209,7 @@ export default function CategoriaProveedorForm({ initialId }: { initialId?: numb
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input
               type="checkbox"

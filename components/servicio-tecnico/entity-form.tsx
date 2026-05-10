@@ -116,7 +116,7 @@ export default function TallerEntityForm<T extends Record<string, unknown>>({
   return (
     <div>
       {/* Header — convención: back + título a la izq, Cancelar + Guardar a la derecha */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <BotonVolver onClick={() => router.push(backHref)} variant="minimal" texto="" />
           <h1 className="text-2xl font-bold text-amber-900">{title}</h1>

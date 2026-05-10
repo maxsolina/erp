@@ -125,7 +125,7 @@ export default function OeFicha({ oeId }: { oeId: number }) {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <BotonVolver onClick={() => router.push("/ventas/oe")} variant="minimal" texto="" />
           <div>
@@ -142,13 +142,13 @@ export default function OeFicha({ oeId }: { oeId: number }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Columna principal */}
         <div className="col-span-2 space-y-6">
           {/* Documentos Vinculados */}
           <div className="bg-white rounded-lg shadow-sm p-4">
             <h3 className="font-semibold text-gray-900 mb-4">Documentos Vinculados</h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="border rounded-lg p-4 bg-blue-50 border-blue-200">
                 <div className="flex items-center gap-2 mb-2">
                   <FileText className="w-5 h-5 text-blue-600" />
@@ -215,7 +215,7 @@ export default function OeFicha({ oeId }: { oeId: number }) {
           <div className="bg-white rounded-lg shadow-sm p-4">
             <h3 className="font-semibold text-gray-900 mb-4">Cliente</h3>
             {cliente ? (
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-gray-500 block">Nombre</span>
                   <span className="font-medium">{cliente.nombre}</span>

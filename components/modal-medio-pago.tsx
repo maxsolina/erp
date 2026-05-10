@@ -361,7 +361,7 @@ export function ModalMedioPago({
     if (valorSel.tipo === "efectivo") {
       return (
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Importe *</label>
               <input type="number" value={importe} onChange={e => setImporte(e.target.value)} min="0" step="0.01" className={cls} />
@@ -409,7 +409,7 @@ export function ModalMedioPago({
     // ── BANCO ─────────────────────────────────────────────────────────────
     if (subtipo === "banco") {
       return (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className={lbl}>Tipo de Operación *</label>
             <select value={bancoTipoOp} onChange={e => setBancoTipoOp(e.target.value)} className={cls}>
@@ -437,7 +437,7 @@ export function ModalMedioPago({
     // ── CHEQUE TERCERO ────────────────────────────────────────────────────
     if (subtipo === "cheque_tercero") {
       return (
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
           {/* Columna izquierda */}
           <div className="space-y-2">
             <div>
@@ -502,7 +502,7 @@ export function ModalMedioPago({
     // ── TARJETA ───────────────────────────────────────────────────────────
     if (subtipo === "tarjeta") {
       return (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className={lbl}>Tarjeta *</label>
             <select
@@ -529,7 +529,7 @@ export function ModalMedioPago({
     // ── RENDICIÓN DE GASTOS ───────────────────────────────────────────────
     if (subtipo === "rendicion_gastos") {
       return (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className={lbl}>Concepto *</label>
             <input value={rfConcepto} onChange={e => setRfConcepto(e.target.value)} className={cls} />
@@ -553,7 +553,7 @@ export function ModalMedioPago({
     // ── FONDO FIJO ────────────────────────────────────────────────────────
     if (subtipo === "fondo_fijo") {
       return (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className={lbl}>Concepto *</label>
             <input value={rfConcepto} onChange={e => setRfConcepto(e.target.value)} className={cls} />
@@ -592,7 +592,7 @@ export function ModalMedioPago({
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center justify-between mb-5 gap-2 flex-wrap">
           <h3 className="text-lg font-bold text-gray-900">Agregar Medio de Pago</h3>
           <button onClick={onCerrar} className="text-gray-400 hover:text-gray-600">
             <X className="w-5 h-5" />

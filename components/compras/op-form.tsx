@@ -331,7 +331,7 @@ export default function OpForm({ initialId }: { initialId?: number }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-lg">
             <ArrowLeft className="w-4 h-4" />
@@ -372,7 +372,7 @@ export default function OpForm({ initialId }: { initialId?: number }) {
 
       {/* Cabecera */}
       <div className="bg-white rounded-lg border p-6 mb-4">
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Sucursal</label>
@@ -420,7 +420,7 @@ export default function OpForm({ initialId }: { initialId?: number }) {
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Total medios</label>
                 <input value={`$ ${totalMedios.toLocaleString("es-AR")}`} disabled className="w-full border rounded px-2 py-1.5 text-sm bg-gray-50" />

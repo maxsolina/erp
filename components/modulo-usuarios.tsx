@@ -163,7 +163,7 @@ export default function ModuloUsuarios() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <h1 className="text-2xl font-bold text-amber-900">Usuarios</h1>
         <button
           onClick={() => setCreandoNuevo(true)}
@@ -539,7 +539,7 @@ export function FichaUsuario({
       </div>
 
       {/* Header con botones */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-3">
           <button onClick={onVolver} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500">
             <ArrowLeft className="w-5 h-5" />
@@ -597,7 +597,7 @@ export function FichaUsuario({
             )}
           </div>
 
-          <div className="flex-1 grid grid-cols-2 gap-x-6 gap-y-4">
+          <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
             {modo === "lectura" ? (
               <>
                 <CampoLectura icon={User}      label="Nombre"            value={v.nombre} />
@@ -859,7 +859,7 @@ export function FichaCrearUsuario({
       </div>
 
       {/* Header con back + título a la izquierda, botones a la derecha */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -914,7 +914,7 @@ export function FichaCrearUsuario({
             )}
           </div>
 
-          <div className="flex-1 grid grid-cols-2 gap-x-6 gap-y-4">
+          <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
             <CampoEdit label="Nombre *" value={nombre} onChange={setNombre} />
             <CampoEdit
               label="Usuario / Login *"
@@ -958,7 +958,7 @@ export function FichaCrearUsuario({
           <KeyRound className="w-4 h-4 text-gray-500" />
           Contraseña inicial
         </h3>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Contraseña *</label>
             <div className="relative">

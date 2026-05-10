@@ -93,7 +93,7 @@ export default function SeniaListado() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         <div className="bg-white rounded-lg border p-4">
           <p className="text-xs text-gray-500 uppercase font-medium mb-1">Total</p>
           <p className="text-2xl font-bold text-gray-900">{stats.total}</p>

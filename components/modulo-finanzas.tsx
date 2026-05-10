@@ -755,7 +755,7 @@ const CUOTAS_OPTIONS = [1, 2, 3, 4, 5, 6, 9, 12, 18, 24]
 
 function SectionHeader({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between mb-6">
+    <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
       <h2 className="text-2xl font-bold text-amber-900">{title}</h2>
       <div className="flex gap-2">{children}</div>
     </div>
@@ -867,7 +867,7 @@ function SeccionTarjetas({ tarjetas, setTarjetas }: { tarjetas: Tarjeta[]; setTa
   if (creando || editando) {
     return (
       <div>
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
           <div className="flex items-center gap-3">
             <button
               onClick={cancelar}
@@ -1177,7 +1177,7 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
     return (
       <div>
         {/* Header con back, título y botones de acción a la derecha */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
           <div className="flex items-center gap-3">
             <button
               onClick={cancelarEdicion}
@@ -1221,7 +1221,7 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           {/* Datos generales */}
           <div className="p-4 border-b bg-gray-50">
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-gray-700 mb-1">Nombre</label>
                 <input value={form.nombre || ""} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
@@ -1257,7 +1257,7 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
               {tarjetas.length === 0 ? (
                 <p className="text-sm text-gray-400 italic">No hay tarjetas cargadas. Andá a la sección Tarjetas para crear.</p>
               ) : (
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                   {tarjetas.map(t => (
                     <label key={t.id} className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${(form.tarjetas_ids || []).includes(t.id) ? "bg-emerald-50 border-emerald-300" : "border-gray-200 hover:border-gray-300"}`}>
                       <input type="checkbox" checked={(form.tarjetas_ids || []).includes(t.id)} onChange={() => toggleTarjeta(t.id)} className="rounded" />
@@ -1274,7 +1274,7 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
             <div className="p-4 bg-white">
               {(creandoCargo || editandoCargo) && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                  <div className="grid grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                     <div className="col-span-2">
                       <label className="block text-xs font-medium text-gray-700 mb-1">Nombre del cargo</label>
                       <input value={formCargo.nombre || ""} onChange={e => setFormCargo(f => ({ ...f, nombre: e.target.value }))}
@@ -1503,7 +1503,7 @@ function SeccionRecargos({ tarjetas, grupos, recargos, setRecargos }: {
   if (creando || editando) {
     return (
       <div>
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
           <div className="flex items-center gap-3">
             <button
               onClick={cancelar}
@@ -1545,7 +1545,7 @@ function SeccionRecargos({ tarjetas, grupos, recargos, setRecargos }: {
         </div>
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-          <div className="grid grid-cols-4 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Sucursal</label>
               <select value={form.sucursal || ""} onChange={e => setForm(f => ({ ...f, sucursal: e.target.value }))}
@@ -1576,7 +1576,7 @@ function SeccionRecargos({ tarjetas, grupos, recargos, setRecargos }: {
                 className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
             </div>
           </div>
-          <div className="grid grid-cols-4 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Desde cuota</label>
               <input type="number" min="1" value={form.desde_cuota ?? ""} onChange={e => setForm(f => ({ ...f, desde_cuota: parseInt(e.target.value) }))}
@@ -1740,7 +1740,7 @@ function SeccionSimulador({ tarjetas, grupos, recargos }: { tarjetas: Tarjeta[];
     <div>
       <SectionHeader title="Simulador de Recargos" />
 
-      <div className="grid grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <div className="bg-white rounded-lg shadow-sm p-6 space-y-4">
           <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Calculator className="w-5 h-5 text-emerald-600" /> Parámetros</h3>
           <div>
@@ -2258,7 +2258,7 @@ function SeccionExtractosCaja() {
   // ─── VISTA DETALLE ─────────────────────────────
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button onClick={() => setVista("lista")}
             className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium">
@@ -2282,7 +2282,7 @@ function SeccionExtractosCaja() {
         )}
       </div>
 
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-lg border border-gray-200 p-4">
           <p className="text-xs text-gray-500 uppercase mb-1">Responsable</p>
           <p className="font-medium text-gray-900">{extractoSel?.responsable_nombre || "—"}</p>
@@ -2501,7 +2501,7 @@ function SeccionExtractosCaja() {
                 <h3 className="text-lg font-bold text-indigo-900">Saldos</h3>
                 <button onClick={() => setSaldoSelDetalle(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
               </div>
-              <div className="p-4 grid grid-cols-2 gap-4 border-b">
+              <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4 border-b">
                 <div>
                   <p className="text-xs text-gray-500">Saldo de apertura</p>
                   <p className="font-mono font-semibold">{formatMonto(saldoApertura)}</p>
@@ -2616,7 +2616,7 @@ function FormularioCaja({ caja, onGuardar, guardando, triggerSubmit, onError }: 
           <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
         </div>
       )}
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Nombre *</label>
@@ -2912,7 +2912,7 @@ function ModalDetalleValor({ valor, cajaId, onClose, onActualizar }: {
 
         {/* Cuerpo scrollable */}
         <div className="flex-1 overflow-y-auto px-6 py-6">
-          <div className="grid grid-cols-2 gap-x-12 gap-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
 
             {/* ── Columna izquierda ── */}
             <div className="space-y-5">
@@ -3307,7 +3307,7 @@ function TabBancosPermitidos({ cajaId, bancos, onActualizar, modoEdicion }: {
       )}
       {agregando && (
         <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 mb-4">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
             <p className="text-sm font-medium text-indigo-900">Seleccionar diario bancario</p>
             <button onClick={() => setAgregando(false)} className="p-1 text-gray-400 hover:text-gray-600">
               <X className="w-4 h-4" />
@@ -3418,7 +3418,7 @@ function TabUsuarios({ cajaId, usuarios, soloTransferencias, onActualizar, modoE
     <div>
       {creando && (
         <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-4">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Nombre del usuario</label>
               <input value={form.usuario_nombre || ""} onChange={e => setForm(f => ({ ...f, usuario_nombre: e.target.value }))}
@@ -3674,7 +3674,7 @@ function ConfigCajas() {
         />
       ) : (
         <div className="bg-white rounded-lg shadow-sm p-6">
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
               <div>
                 <p className="text-xs font-medium text-gray-500 mb-1">Nombre</p>
@@ -4185,7 +4185,7 @@ function RegistrosCaja() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button onClick={() => setVista("lista")} className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium">← Registros</button>
           <h1 className="text-2xl font-bold text-amber-900">{regSel ? regSel.numero : "Nuevo Registro de Caja"}</h1>
@@ -4242,7 +4242,7 @@ function RegistrosCaja() {
 
       {/* Cabecera */}
       <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Caja *</label>
@@ -4687,7 +4687,7 @@ function AjustesCaja() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button onClick={() => setVista("lista")} className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium">← Ajustes</button>
           <h1 className="text-2xl font-bold text-amber-900">{ajusteSel ? ajusteSel.numero : "Nuevo Ajuste de Caja"}</h1>
@@ -4718,7 +4718,7 @@ function AjustesCaja() {
       )}
 
       <div className="bg-white rounded-lg shadow-sm p-6 space-y-6">
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Columna izquierda */}
           <div className="space-y-4">
             <div>
@@ -4775,7 +4775,7 @@ function AjustesCaja() {
 
         {/* Sección Valor — grilla multi-línea */}
         <div>
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
             <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Valor *</label>
             {!esPublicado && formCaja && (
               <button onClick={abrirModalValor} className="bg-indigo-900 text-white px-3 py-1.5 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-1.5">
@@ -5166,7 +5166,7 @@ function RegistrosBanco() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button onClick={() => setVista("lista")} className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium">← Registros</button>
           <h1 className="text-2xl font-bold text-amber-900">{regSel ? regSel.numero : "Nuevo Registro de Banco"}</h1>
@@ -5221,7 +5221,7 @@ function RegistrosBanco() {
       )}
 
       <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta Bancaria *</label>
@@ -5559,7 +5559,7 @@ function AjustesBanco() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button onClick={() => setVista("lista")} className="flex items-center gap-2 text-sm text-indigo-700 hover:text-indigo-900 font-medium">← Ajustes</button>
           <h1 className="text-2xl font-bold text-amber-900">{ajusteSel ? ajusteSel.numero : "Nuevo Ajuste de Banco"}</h1>
@@ -5584,7 +5584,7 @@ function AjustesBanco() {
       </div>
 
       <div className="bg-white rounded-lg shadow-sm p-6">
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta Bancaria *</label>
@@ -6048,7 +6048,7 @@ function TransferenciasCaja() {
 
       {/* Formulario cabecera */}
       <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Sucursal</label>
             <select value={formSucursal} onChange={e => setFormSucursal(e.target.value)} disabled={esSoloLectura}
@@ -6429,7 +6429,7 @@ function Depositos() {
         <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2 text-sm text-green-800"><Check className="w-4 h-4" /> Depósito publicado</div>
       )}
       <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta Bancaria</label>
             <select value={formCuenta} onChange={e => setFormCuenta(e.target.value)} disabled={esSoloLectura} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100">
@@ -6724,7 +6724,7 @@ function Extracciones() {
         <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2 text-sm text-green-800"><Check className="w-4 h-4" /> Extracción publicada</div>
       )}
       <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta Bancaria</label>
             <select value={formCuenta} onChange={e => setFormCuenta(e.target.value)} disabled={esSoloLectura} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100">
@@ -7019,7 +7019,7 @@ function TransferenciasBancarias() {
         <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2 text-sm text-green-800"><Check className="w-4 h-4" /> Transferencia publicada</div>
       )}
       <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Desde Cuenta</label>
             <select value={formDesde} onChange={e => setFormDesde(e.target.value)} disabled={esSoloLectura} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100">
@@ -7055,7 +7055,7 @@ function TransferenciasBancarias() {
         </div>
         <div className="p-4">
           {tabActiva === "banco_origen" && (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta</label>
                 <input value={cuentasBancarias.find(c => c.id === formDesde)?.banco_nombre || ""} disabled className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-100" />
@@ -7077,7 +7077,7 @@ function TransferenciasBancarias() {
             </div>
           )}
           {tabActiva === "banco_destino" && (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta</label>
                 <input value={cuentasBancarias.find(c => c.id === formHasta)?.banco_nombre || ""} disabled className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-100" />
@@ -7335,7 +7335,7 @@ function ConversionMonedas() {
         <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2 text-sm text-green-800"><Check className="w-4 h-4" /> Conversión publicada</div>
       )}
       <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Caja</label>
             <select value={formCaja} onChange={e => { setFormCaja(e.target.value); setFormValorOrigen(""); setFormValorDestino("") }} disabled={esSoloLectura} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm disabled:bg-gray-100">
@@ -7387,7 +7387,7 @@ function ConversionMonedas() {
           </div>
         </div>
         {/* Cálculo en tiempo real */}
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Importe Destino (calculado)</label>
             <div className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50 font-medium">
@@ -7412,7 +7412,7 @@ function ConversionMonedas() {
         </div>
         <div className="p-4">
           {tabActiva === "info" && (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Período Contable</label>
                 <input disabled className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-100" placeholder="Se completará desde Contabilidad" />
@@ -7761,27 +7761,27 @@ function Prestamos() {
                 </div>
               </div>
               {/* Cabecera dos columnas */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-3">
                   <div><label className="text-xs font-medium text-gray-500">Tipo</label>
                     <select value={formTipo} onChange={e => setFormTipo(e.target.value)} disabled={esSoloLectura} className="w-full text-sm border rounded p-1.5"><option value="">-- Seleccionar --</option>{tiposPrestamo.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div>
                   <div><label className="text-xs font-medium text-gray-500">Entidad</label>
                     <select value={formEntidad} onChange={e => setFormEntidad(e.target.value)} disabled={esSoloLectura} className="w-full text-sm border rounded p-1.5"><option value="">-- Seleccionar --</option>{cuentasBancarias.map(c => <option key={c.id} value={c.id}>{c.banco_nombre} - {c.numero_cuenta}</option>)}</select></div>
                   <div><label className="text-xs font-medium text-gray-500">N° Préstamo (banco)</label><input value={formNroPrestamo} onChange={e => setFormNroPrestamo(e.target.value)} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm h-8" /></div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <div><label className="text-xs font-medium text-gray-500">Moneda</label><select value={formMoneda} onChange={e => setFormMoneda(e.target.value)} disabled={esSoloLectura} className="w-full text-sm border rounded p-1.5"><option value="ARS">ARS</option><option value="USD">USD</option></select></div>
                     <div><label className="text-xs font-medium text-gray-500">Capital</label><input type="number" value={formCapital} onChange={e => setFormCapital(Number(e.target.value))} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm h-8" /></div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <div><label className="text-xs font-medium text-gray-500">Tasa %</label><input type="number" step="0.01" value={formTasa} onChange={e => setFormTasa(Number(e.target.value))} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm h-8" /></div>
                     <div><label className="text-xs font-medium text-gray-500">Capital Pendiente</label><input value={seleccion?.capital_pendiente?.toLocaleString() || "—"} disabled className="w-full border rounded px-2 py-1.5 text-sm h-8 bg-gray-50" /></div>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                     <div><label className="text-xs font-medium text-gray-500">IVA</label><input type="number" value={formIva} onChange={e => setFormIva(Number(e.target.value))} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm h-8" /></div>
                     <div><label className="text-xs font-medium text-gray-500">Perc. IVA</label><input type="number" value={formPercIva} onChange={e => setFormPercIva(Number(e.target.value))} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm h-8" /></div>
                     <div><label className="text-xs font-medium text-gray-500">Perc. IIBB</label><input type="number" value={formPercIibb} onChange={e => setFormPercIibb(Number(e.target.value))} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm h-8" /></div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <div><label className="text-xs font-medium text-gray-500">Otros Gastos</label><input type="number" value={formOtrosGastos} onChange={e => setFormOtrosGastos(Number(e.target.value))} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm h-8" /></div>
                     <div><label className="text-xs font-medium text-gray-500">Distrib. Pago</label><select value={formDistribucionPago} onChange={e => setFormDistribucionPago(e.target.value)} disabled={esSoloLectura} className="w-full text-sm border rounded p-1.5"><option value="Proporcional">Proporcional</option><option value="Capital">Capital</option></select></div>
                   </div>
@@ -7793,20 +7793,20 @@ function Prestamos() {
                   <div><label className="text-xs font-medium text-gray-500">Caja</label><select value={formCaja} onChange={e => setFormCaja(e.target.value)} disabled={esSoloLectura} className="w-full text-sm border rounded p-1.5"><option value="">-- Sin caja --</option>{cajasActivas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
                   <div><label className="text-xs font-medium text-gray-500">Sistema de Amortización</label><select value={formSistema} onChange={e => setFormSistema(e.target.value)} disabled={esSoloLectura} className="w-full text-sm border rounded p-1.5"><option value="frances">Francés</option><option value="aleman">Alemán</option><option value="americano">Americano</option><option value="bullet">Bullet</option></select></div>
                   <div className="flex items-center gap-2"><input type="checkbox" checked={formPreexistente} onChange={e => setFormPreexistente(e.target.checked)} disabled={esSoloLectura} className="rounded" /><label className="text-xs font-medium text-gray-500">Préstamo Preexistente</label></div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <div><label className="text-xs font-medium text-gray-500">Cuotas</label><input type="number" value={formCuotas} onChange={e => setFormCuotas(Number(e.target.value))} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm h-8" /></div>
                     <div><label className="text-xs font-medium text-gray-500">Periodicidad</label><select value={formPeriodicidad} onChange={e => setFormPeriodicidad(e.target.value)} disabled={esSoloLectura} className="w-full text-sm border rounded p-1.5"><option value="mensual">Mensual</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option></select></div>
                   </div>
                   <div><label className="text-xs font-medium text-gray-500">Fecha Primera Cuota</label><input type="date" value={formFechaPrimeraCuota} onChange={e => setFormFechaPrimeraCuota(e.target.value)} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm h-8" /></div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <div><label className="text-xs font-medium text-gray-500">Imp. Refinanciado</label><input type="number" value={formImporteRefinanciado} onChange={e => setFormImporteRefinanciado(Number(e.target.value))} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm h-8" /></div>
                     <div><label className="text-xs font-medium text-gray-500">Imp. Acreditado</label><input type="number" value={formImporteAcreditado} onChange={e => setFormImporteAcreditado(Number(e.target.value))} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm h-8" /></div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <div><label className="text-xs font-medium text-gray-500">Tipo Garante</label><input value={formTipoGarante} onChange={e => setFormTipoGarante(e.target.value)} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm h-8" /></div>
                     <div><label className="text-xs font-medium text-gray-500">Garante</label><input value={formGarante} onChange={e => setFormGarante(e.target.value)} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm h-8" /></div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <div><label className="text-xs font-medium text-gray-500">Forma de Pago</label><input value={formFormaPago} onChange={e => setFormFormaPago(e.target.value)} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm h-8" /></div>
                     <div><label className="text-xs font-medium text-gray-500">Tipo de Tasa</label><input value={formTipoTasa} onChange={e => setFormTipoTasa(e.target.value)} disabled={esSoloLectura} className="w-full border rounded px-2 py-1.5 text-sm h-8" /></div>
                   </div>
@@ -7814,7 +7814,7 @@ function Prestamos() {
               </div>
               {/* Totales */}
               {seleccion && seleccion.estado !== "borrador" && (
-                <div className="grid grid-cols-4 gap-3 bg-gray-50 p-3 rounded">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 bg-gray-50 p-3 rounded">
                   <div><span className="text-xs text-gray-500">Intereses</span><p className="font-medium">${seleccion.intereses_total?.toLocaleString() || "—"}</p></div>
                   <div><span className="text-xs text-gray-500">Total</span><p className="font-medium">${seleccion.total?.toLocaleString() || "—"}</p></div>
                   <div><span className="text-xs text-gray-500">Capital Pend.</span><p className="font-medium">${seleccion.capital_pendiente?.toLocaleString() || "—"}</p></div>
@@ -8149,11 +8149,11 @@ function NegociacionChequesComp() {
                   {seleccion && !["finalizada", "cancelada"].includes(seleccion.estado) && <button onClick={avanzarEstado} className="px-3 py-1.5 border rounded text-sm hover:bg-gray-50 flex items-center gap-1"><FileCheck className="h-4 w-4" />{seleccion.estado === "liquidacion" ? "Finalizar" : "Avanzar"}</button>}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-3">
                   <div><label className="text-xs font-medium text-gray-500">Caja</label><select value={formCaja} onChange={e => { setFormCaja(e.target.value); cargarChequesEnCartera(e.target.value) }} disabled={esSoloLectura} className="w-full text-sm border rounded p-1.5"><option value="">-- Seleccionar --</option>{cajasActivas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
                   <div><label className="text-xs font-medium text-gray-500">Tipo Acreditación</label><select value={formTipoAcred} onChange={e => setFormTipoAcred(e.target.value)} disabled={esSoloLectura} className="w-full text-sm border rounded p-1.5"><option value="neto">Neto</option><option value="bruto">Bruto</option></select></div>
-                  <div className="grid grid-cols-3 gap-2 bg-gray-50 p-2 rounded text-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 bg-gray-50 p-2 rounded text-sm">
                     <div><span className="text-xs text-gray-500">Negociado</span><p className="font-medium">${totalNeg.toLocaleString()}</p></div>
                     <div><span className="text-xs text-gray-500">Gastos</span><p className="font-medium">${totalGas.toLocaleString()}</p></div>
                     <div><span className="text-xs text-gray-500">Recibido</span><p className="font-medium text-green-700">${totalRecibido.toLocaleString()}</p></div>
@@ -8452,7 +8452,7 @@ function ConciliacionBancaria() {
     return (
       <div className="p-6 max-w-4xl">
         <h2 className="text-2xl font-bold text-amber-900 mb-6">Conciliación Bancaria — Filtros</h2>
-        <div className="grid grid-cols-2 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-1">Banco</label>
             <select value={filtros.cuentaBancariaId} onChange={e=>setFiltros(p=>({...p,cuentaBancariaId:e.target.value}))} className="w-full border rounded px-3 py-2 text-sm">
@@ -8482,7 +8482,7 @@ function ConciliacionBancaria() {
             </select>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <div>
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Sucursales</h3>
             <div className="border rounded p-3 space-y-1">
@@ -8519,7 +8519,7 @@ function ConciliacionBancaria() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <h2 className="text-2xl font-bold text-amber-900">Conciliación Bancaria</h2>
         <div className="flex gap-2">
           <button onClick={()=>setPantalla('filtros')} className="px-3 py-1.5 border rounded text-sm hover:bg-gray-50 flex items-center gap-1"><Filter className="w-4 h-4"/>Cambiar Filtros</button>
@@ -8529,7 +8529,7 @@ function ConciliacionBancaria() {
       </div>
 
       {/* Métricas */}
-      <div className="grid grid-cols-4 gap-4 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         {[
           { label: 'Saldo entre Fechas', val: metricas.saldoEntreFechas },
           { label: 'Saldo Actual', val: metricas.saldoActual },
@@ -8666,7 +8666,7 @@ function Cupones() {
         <button onClick={()=>setDetalle(null)} className="text-sm text-indigo-600 hover:underline mb-4 flex items-center gap-1"><X className="w-3 h-3"/>Volver al listado</button>
         <div className="bg-white border rounded-lg p-6">
           <h3 className="text-lg font-semibold mb-4">Cupón — {detalle.tarjeta_nombre} {detalle.numero_cupon}</h3>
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div><span className="text-gray-500">Tarjeta:</span> <strong>{detalle.tarjeta_nombre}</strong></div>
             <div><span className="text-gray-500">N° Cupón:</span> <strong>{detalle.numero_cupon}</strong></div>
             <div><span className="text-gray-500">N° Lote:</span> <strong>{detalle.numero_lote||'—'}</strong></div>
@@ -8869,7 +8869,7 @@ function ConciliacionTarjetas() {
     return (
       <div className="p-6">
         <button onClick={()=>{setDetalle(null); cargarLista()}} className="text-sm text-indigo-600 hover:underline mb-4 flex items-center gap-1"><X className="w-3 h-3"/>Volver al listado</button>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
           <h2 className="text-2xl font-bold text-amber-900">{detalle.numero}</h2>
           <div className="flex gap-2">
             {detalle.estado==='borrador' && (
@@ -8885,7 +8885,7 @@ function ConciliacionTarjetas() {
         </div>
 
         {/* Cabecera */}
-        <div className="grid grid-cols-2 gap-6 mb-4 bg-white border rounded-lg p-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4 bg-white border rounded-lg p-4">
           <div className="space-y-3">
             <div><label className="text-xs text-gray-500 block">Grupo</label>{modoEdicion ? <input value={form.grupo_tarjeta||''} onChange={e=>setForm(f=>({...f,grupo_tarjeta:e.target.value}))} className="w-full border rounded px-3 py-1.5 text-sm" placeholder="Payway, Viumi, Nave, Getnet" /> : <p className="text-sm font-medium">{detalle.grupo_tarjeta||'—'}</p>}</div>
             <div><label className="text-xs text-gray-500 block">Liquidación</label>{modoEdicion ? <input value={form.liquidacion||''} onChange={e=>setForm(f=>({...f,liquidacion:e.target.value}))} className="w-full border rounded px-3 py-1.5 text-sm" /> : <p className="text-sm font-medium">{detalle.liquidacion||'—'}</p>}</div>
@@ -8922,7 +8922,7 @@ function ConciliacionTarjetas() {
                 <button onClick={()=>setFiltroSucs([...filtroSucs,''])} className="text-xs text-indigo-600 hover:underline flex items-center gap-1"><Plus className="w-3 h-3"/>Añadir</button>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div><label className="text-sm text-gray-500 block mb-1">Fecha Desde</label><input type="date" value={filtroDesde} onChange={e=>setFiltroDesde(e.target.value)} className="w-full border rounded px-3 py-2 text-sm" /></div>
               <div><label className="text-sm text-gray-500 block mb-1">Fecha Hasta</label><input type="date" value={filtroHasta} onChange={e=>setFiltroHasta(e.target.value)} className="w-full border rounded px-3 py-2 text-sm" /></div>
             </div>
@@ -9023,7 +9023,7 @@ function ConciliacionTarjetas() {
   // Vista lista
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <h2 className="text-2xl font-bold text-amber-900">Conciliación de Tarjetas</h2>
         <button onClick={nuevaConciliacion} className="px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4"/>Nueva Conciliación</button>
       </div>
@@ -9142,7 +9142,7 @@ function ListaBancos() {
               <button onClick={() => setMostrarModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Código BCRA *</label>
                   <input value={form.codigo} onChange={e => setForm(f => ({ ...f, codigo: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" placeholder="ej: 285" />
@@ -9156,7 +9156,7 @@ function ListaBancos() {
                 <label className="block text-xs font-medium text-gray-700 mb-1">Dirección</label>
                 <input value={form.direccion} onChange={e => setForm(f => ({ ...f, direccion: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Teléfono</label>
                   <input value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
@@ -9265,7 +9265,7 @@ function ListaCuentasBancarias() {
   if (vista === 'detalle') {
     return (
       <div>
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
           <div className="flex items-center gap-4">
             <button onClick={() => setVista('lista')} className="text-sm text-indigo-700 hover:text-indigo-900 font-medium">← Cuentas</button>
             <h2 className="text-2xl font-bold text-amber-900">{editando ? `Cuenta ${editando.numero_cuenta}` : 'Nueva Cuenta Bancaria'}</h2>
@@ -9275,7 +9275,7 @@ function ListaCuentasBancarias() {
         <div className="bg-white rounded-lg shadow-sm p-6 space-y-6">
           <div>
             <h3 className="text-sm font-semibold text-gray-700 mb-3 border-b pb-2">Información del Banco</h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Banco</label>
                 <select value={form.banco_id} onChange={e => setForm(f => ({ ...f, banco_id: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
@@ -9310,7 +9310,7 @@ function ListaCuentasBancarias() {
 
           <div>
             <h3 className="text-sm font-semibold text-gray-700 mb-3 border-b pb-2">Propietario de la Cuenta</h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Propietario</label>
                 <input value={form.propietario} onChange={e => setForm(f => ({ ...f, propietario: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
@@ -9324,7 +9324,7 @@ function ListaCuentasBancarias() {
 
           <div>
             <h3 className="text-sm font-semibold text-gray-700 mb-3 border-b pb-2">Información Contable</h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Diario Contable</label>
                 <input value={form.diario_nombre} onChange={e => setForm(f => ({ ...f, diario_nombre: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" placeholder="ej: Banco Macro CC (ARS)" />
@@ -9552,7 +9552,7 @@ function ListaTiposMovimiento() {
               <button onClick={() => setMostrarModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Nombre *</label>
                   <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
@@ -9562,7 +9562,7 @@ function ListaTiposMovimiento() {
                   <input value={form.codigo_causal} onChange={e => setForm(f => ({ ...f, codigo_causal: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" placeholder="ej: TR, CHQD" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <label className="flex items-center gap-2"><input type="checkbox" checked={form.emite_cheques_diferidos} onChange={e => setForm(f => ({ ...f, emite_cheques_diferidos: e.target.checked }))} className="rounded" /><span className="text-sm">Emite Cheques Diferidos</span></label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={form.emite_cheques_corrientes} onChange={e => setForm(f => ({ ...f, emite_cheques_corrientes: e.target.checked }))} className="rounded" /><span className="text-sm">Emite Cheques Corrientes</span></label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={form.disponible_en_pagos} onChange={e => setForm(f => ({ ...f, disponible_en_pagos: e.target.checked }))} className="rounded" /><span className="text-sm">Disponible en Pagos</span></label>
@@ -9737,7 +9737,7 @@ function ModalConcepto({ concepto, onGuardar, onCerrar }: { concepto: ConceptoRe
           <button onClick={onCerrar} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
         </div>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Código *</label>
               <input value={form.codigo} onChange={e => setForm(f => ({ ...f, codigo: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" placeholder="ej: COM, DifCaja" />
@@ -9747,7 +9747,7 @@ function ModalConcepto({ concepto, onGuardar, onCerrar }: { concepto: ConceptoRe
               <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta Contable de Ingresos</label>
               <input value={form.cuenta_contable_ingresos} onChange={e => setForm(f => ({ ...f, cuenta_contable_ingresos: e.target.value }))} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" />
@@ -9760,7 +9760,7 @@ function ModalConcepto({ concepto, onGuardar, onCerrar }: { concepto: ConceptoRe
 
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Visible en</p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <label className="flex items-center gap-2"><input type="checkbox" checked={form.visible_en_ajuste_cajas} onChange={e => setForm(f => ({ ...f, visible_en_ajuste_cajas: e.target.checked }))} className="rounded" /><span className="text-sm">Ajuste de Cajas</span></label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={form.visible_en_ajuste_banco} onChange={e => setForm(f => ({ ...f, visible_en_ajuste_banco: e.target.checked }))} className="rounded" /><span className="text-sm">Ajuste de Banco</span></label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={form.visible_en_caja} onChange={e => setForm(f => ({ ...f, visible_en_caja: e.target.checked }))} className="rounded" /><span className="text-sm">Registros de Caja</span></label>

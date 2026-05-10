@@ -84,7 +84,7 @@ export default function AjustesFicha({ ajusteId, backHref, view }: Props) {
         <div className="ml-auto flex items-center gap-3" />
       </div>
 
-      <div className="grid grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div className="bg-white rounded-lg border p-5">
           <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Datos</h3>
           <div className="space-y-3 text-sm">

@@ -221,7 +221,7 @@ export default function RemitosFicha({ remitoId }: { remitoId: number }) {
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div className="flex items-center gap-3">
           <BotonVolver onClick={() => router.push("/ventas/remitos")} variant="minimal" texto="" />
           <div>
@@ -283,10 +283,10 @@ export default function RemitosFicha({ remitoId }: { remitoId: number }) {
 
       {/* Contenido */}
       <div className="bg-white rounded-b-lg shadow-sm p-6">
-        <div className="grid grid-cols-2 gap-8 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
           <div className="space-y-4">
             <h3 className="font-semibold text-gray-900 border-b pb-2">Datos del Remito</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div><span className="text-gray-500">Número:</span> <span className="font-medium">{remito.numero}</span></div>
               <div>
                 <span className="text-gray-500">OE:</span>{" "}
@@ -326,7 +326,7 @@ export default function RemitosFicha({ remitoId }: { remitoId: number }) {
           </div>
           <div className="space-y-4">
             <h3 className="font-semibold text-gray-900 border-b pb-2">Entrega</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div><span className="text-gray-500">Fecha Entrega:</span> <span className="font-medium">{remito.fecha ? formatDate(remito.fecha) : "-"}</span></div>
               <div><span className="text-gray-500">Bultos:</span> <span className="font-medium">{remito.bultos ?? "-"}</span></div>
               <div><span className="text-gray-500">Control Factura:</span> <span className="font-medium">{remito.control_factura === "facturado" ? "Facturado" : "Pendiente"}</span></div>
@@ -338,7 +338,7 @@ export default function RemitosFicha({ remitoId }: { remitoId: number }) {
 
         <h3 className="font-semibold text-gray-900 border-b pb-2 mb-4">Cliente</h3>
         {cliente ? (
-          <div className="grid grid-cols-4 gap-4 text-sm mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm mb-6">
             <div><span className="text-gray-500">Nombre:</span> <span className="font-medium">{cliente.nombre}</span></div>
             <div>
               <span className="text-gray-500">Documento:</span>{" "}
@@ -353,7 +353,7 @@ export default function RemitosFicha({ remitoId }: { remitoId: number }) {
           <div className="text-sm mb-6 text-gray-500">{remito.cliente_nombre ?? "—"}</div>
         )}
 
-        <div className="grid grid-cols-4 gap-4 text-sm bg-gray-50 p-4 rounded-lg mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm bg-gray-50 p-4 rounded-lg mb-6">
           <div><span className="text-gray-500">Peso Bruto:</span> <span className="font-medium">{remito.peso_kg ?? 0} kg</span></div>
           <div><span className="text-gray-500">Peso Neto:</span> <span className="font-medium">{remito.peso_neto_kg ?? 0} kg</span></div>
           <div><span className="text-gray-500">Bultos:</span> <span className="font-medium">{remito.bultos ?? 0}</span></div>

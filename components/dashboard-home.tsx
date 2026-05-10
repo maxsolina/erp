@@ -122,7 +122,7 @@ export default function DashboardHome() {
       </header>
 
       {/* KPIs */}
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <section className="grid grid-cols-1 md:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <KpiCard
           icon={ShoppingBag}
           label="NV abiertas"
@@ -161,7 +161,7 @@ export default function DashboardHome() {
       {/* Accesos rápidos */}
       <section>
         <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Accesos rápidos</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {accesos.map(a => {
             const Icon = a.icon
             return (

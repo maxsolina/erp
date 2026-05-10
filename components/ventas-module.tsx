@@ -790,7 +790,7 @@ function BloquesMediosPago({
   return (
     <div className="mt-6 border-t pt-5">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <h3 className="font-semibold text-gray-900 text-sm uppercase tracking-wide">Medios de Pago</h3>
         <button onClick={agregarLinea}
           className="flex items-center gap-1.5 text-sm text-emerald-700 hover:text-emerald-900 font-medium">
@@ -2912,7 +2912,7 @@ export default function ModuloVentas({
         <h1 className="text-2xl font-bold text-amber-900">Dashboard de Ventas</h1>
         
         {/* KPIs */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-emerald-500">
             <div className="flex items-center justify-between">
               <div>
@@ -2952,7 +2952,7 @@ export default function ModuloVentas({
         </div>
 
         {/* Recent Activity */}
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white rounded-lg shadow-sm p-4">
             <h3 className="font-semibold text-gray-900 mb-4">Últimas Notas de Venta</h3>
             <div className="space-y-3">
@@ -3039,7 +3039,7 @@ export default function ModuloVentas({
 
         {/* Contenido */}
         <div className="bg-white rounded-b-lg shadow-sm p-6">
-          <div className="grid grid-cols-2 gap-8 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
             {/* Datos del Equipo */}
             <div>
               <h3 className="font-semibold text-gray-900 mb-4">Datos del Equipo</h3>
@@ -3242,7 +3242,7 @@ export default function ModuloVentas({
               <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
                 <Building2 className="w-3.5 h-3.5" /> Identificación
               </h3>
-              <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Nombre / Razón Social *</label>
                   <input type="text" name="nombre" defaultValue={editingItem?.nombre || ""} required
@@ -3254,7 +3254,7 @@ export default function ModuloVentas({
                     className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3 mb-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Tipo Documento *</label>
                   <select name="tipo_documento" defaultValue={editingItem?.tipo_documento || "DNI"} required
@@ -3307,7 +3307,7 @@ export default function ModuloVentas({
               <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5" /> Dirección
               </h3>
-              <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Dirección</label>
                   <input type="text" name="direccion" defaultValue={editingItem?.direccion || ""}
@@ -3319,7 +3319,7 @@ export default function ModuloVentas({
                     className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Provincia</label>
                   <input type="text" name="provincia" defaultValue={editingItem?.provincia || "Santa Fe"}
@@ -3343,7 +3343,7 @@ export default function ModuloVentas({
               <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
                 <Phone className="w-3.5 h-3.5" /> Contacto
               </h3>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Teléfono</label>
                   <input type="text" name="telefono" defaultValue={editingItem?.telefono || ""}
@@ -3367,7 +3367,7 @@ export default function ModuloVentas({
               <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
                 <DollarSign className="w-3.5 h-3.5" /> Información Comercial
               </h3>
-              <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Vendedor</label>
                   <select name="vendedor_id" defaultValue={editingItem?.vendedor_id || ""}
@@ -3394,7 +3394,7 @@ export default function ModuloVentas({
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-0.5">Descuento Default (%)</label>
                   <input type="number" name="descuento_default" defaultValue={editingItem?.descuento_default || 0} min="0" max="100" step="0.5"
@@ -3813,7 +3813,7 @@ export default function ModuloVentas({
                   <div className="p-6">
                     {popupDocumento.tipo === "factura" && (
                       <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div><span className="text-sm text-gray-500">Cliente:</span> <span className="font-medium">{selectedCliente?.nombre}</span></div>
                           <div><span className="text-sm text-gray-500">CUIT:</span> <span className="font-medium">{selectedCliente?.documento}</span></div>
                           <div><span className="text-sm text-gray-500">Fecha:</span> <span className="font-medium">15/01/2026</span></div>
@@ -3830,7 +3830,7 @@ export default function ModuloVentas({
                     )}
                     {popupDocumento.tipo === "nv" && (
                       <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div><span className="text-sm text-gray-500">Cliente:</span> <span className="font-medium">{selectedCliente?.nombre}</span></div>
                           <div><span className="text-sm text-gray-500">Fecha:</span> <span className="font-medium">15/01/2026</span></div>
                           <div><span className="text-sm text-gray-500">Sucursal:</span> <span className="font-medium">{selectedCliente?.sucursal_origen}</span></div>
@@ -3847,7 +3847,7 @@ export default function ModuloVentas({
                     )}
                     {popupDocumento.tipo === "recibo" && (
                       <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div><span className="text-sm text-gray-500">Cliente:</span> <span className="font-medium">{selectedCliente?.nombre}</span></div>
                           <div><span className="text-sm text-gray-500">Fecha:</span> <span className="font-medium">15/01/2026</span></div>
                           <div><span className="text-sm text-gray-500">Importe:</span> <span className="font-medium text-emerald-600">$1.220.000,00</span></div>
@@ -3927,7 +3927,7 @@ export default function ModuloVentas({
 
           <div className="p-6">
             {activeTab === "general" && (
-              <div className="grid grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {/* Columna izquierda */}
                 <div className="space-y-6">
                   <div>
@@ -4037,7 +4037,7 @@ export default function ModuloVentas({
                 {/* Sección General */}
                 <div>
                   <h3 className="text-sm font-semibold text-gray-700 mb-4 pb-2 border-b">Configuración General</h3>
-                  <div className="grid grid-cols-3 gap-6 text-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
                     <div>
                       <span className="text-gray-500 block">Vendedor Asignado:</span>
                       <span className="font-medium">{vendedores.find(v => v.id === selectedCliente.vendedor_id)?.nombre || "-"}</span>
@@ -4060,7 +4060,7 @@ export default function ModuloVentas({
                 {/* Sección Ventas */}
                 <div>
                   <h3 className="text-sm font-semibold text-gray-700 mb-4 pb-2 border-b">Configuración de Ventas</h3>
-                  <div className="grid grid-cols-3 gap-6 text-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
                     <div>
                       <span className="text-gray-500 block">Término de Pago:</span>
                       <span className="font-medium">{terminosPago.find(t => t.id === selectedCliente.termino_pago_id)?.nombre}</span>
@@ -4079,7 +4079,7 @@ export default function ModuloVentas({
             {activeTab === "cuenta_corriente" && (
               <div className="space-y-6">
                 {/* Resumen de saldo */}
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                     <p className="text-sm text-red-600 mb-1">Total Débitos (Deuda)</p>
                     <p className="text-2xl font-bold text-red-700">
@@ -4740,11 +4740,11 @@ export default function ModuloVentas({
 
         {/* Contenido */}
         <div className="bg-white rounded-b-lg shadow-sm p-6">
-          <div className="grid grid-cols-2 gap-8 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
             {/* Datos del Cliente */}
             <div>
               <h3 className="font-semibold text-gray-900 mb-4">Datos del Cliente</h3>
-              <div className="grid grid-cols-2 gap-y-3 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-y-3 text-sm">
                 <div>
                   <span className="text-gray-500">Nombre:</span>
                   <span className="ml-2 font-medium">{selectedCliente?.nombre}</span>
@@ -4775,7 +4775,7 @@ export default function ModuloVentas({
             {/* Datos de la Venta */}
             <div>
               <h3 className="font-semibold text-gray-900 mb-4">Datos de la Venta</h3>
-              <div className="grid grid-cols-2 gap-y-3 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-y-3 text-sm">
                 <div>
                   <span className="text-gray-500">Depósito:</span>
                   <span className="ml-2 font-medium">{deposito?.nombre}</span>
@@ -4897,7 +4897,7 @@ export default function ModuloVentas({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Columna izquierda - Datos principales */}
           <div className="col-span-2 space-y-6">
             {/* Datos del cliente */}
@@ -4905,7 +4905,7 @@ export default function ModuloVentas({
               <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <User className="w-4 h-4" /> Datos del Cliente
               </h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
                   <select
@@ -4971,7 +4971,7 @@ export default function ModuloVentas({
               <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
                 <Tag className="w-4 h-4" /> Lista de Precios
               </h3>
-              <div className="grid grid-cols-2 gap-4 items-end">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Lista de precios *</label>
                   <select
@@ -5010,7 +5010,7 @@ export default function ModuloVentas({
               <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <Warehouse className="w-4 h-4" /> Ubicación de Stock
               </h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Depósito</label>
                   <select
@@ -5433,7 +5433,7 @@ export default function ModuloVentas({
         </div>
 
         {/* Header con botones */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
           <div className="flex items-center gap-3">
 <BotonVolver onClick={() => setSelectedNV(null)} variant="minimal" texto="" />
             <div>
@@ -5529,13 +5529,13 @@ export default function ModuloVentas({
         </div>
 
         {/* Content */}
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Main content */}
           <div className="col-span-2 space-y-6">
             {/* Encabezado */}
             <div className="bg-white rounded-lg shadow-sm p-6">
               <h3 className="font-semibold text-gray-900 mb-4">Datos de la Venta</h3>
-              <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                 <div>
                   <label className="text-gray-500 block">Cliente</label>
                   <p className="font-medium">{selectedNV.cliente_nombre}</p>
@@ -5666,7 +5666,7 @@ export default function ModuloVentas({
     return (
       <div>
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
           <div className="flex items-center gap-4">
             <BotonVolver onClick={() => setSelectedOE(null)} variant="minimal" texto="" />
             <div>
@@ -5683,13 +5683,13 @@ export default function ModuloVentas({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Columna principal */}
           <div className="col-span-2 space-y-6">
             {/* Documentos vinculados */}
             <div className="bg-white rounded-lg shadow-sm p-4">
               <h3 className="font-semibold text-gray-900 mb-4">Documentos Vinculados</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Nota de Venta */}
                 <div className="border rounded-lg p-4 bg-blue-50 border-blue-200">
                   <div className="flex items-center gap-2 mb-2">
@@ -5754,7 +5754,7 @@ export default function ModuloVentas({
             <div className="bg-white rounded-lg shadow-sm p-4">
               <h3 className="font-semibold text-gray-900 mb-4">Cliente</h3>
               {clienteOE && (
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-gray-500 block">Nombre</span>
                     <span className="font-medium">{clienteOE.nombre}</span>
@@ -5981,7 +5981,7 @@ export default function ModuloVentas({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="col-span-2 space-y-6">
             <div className="bg-white rounded-lg shadow-sm p-4">
               <h3 className="font-semibold text-gray-900 mb-4">Seleccionar Nota de Venta</h3>
@@ -6001,7 +6001,7 @@ export default function ModuloVentas({
               <>
                 <div className="bg-white rounded-lg shadow-sm p-4">
                   <h3 className="font-semibold text-gray-900 mb-4">Datos del Cliente</h3>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                     <div><span className="text-gray-500">Cliente:</span> <span className="font-medium">{clienteNV.nombre}</span></div>
                     <div><span className="text-gray-500">Documento:</span> <span className="font-medium">{clienteNV.tipo_documento}: {clienteNV.numero_documento}</span></div>
                     <div><span className="text-gray-500">Direccion:</span> <span className="font-medium">{clienteNV.direccion}</span></div>
@@ -6159,7 +6159,7 @@ export default function ModuloVentas({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           {/* Datos de la operación */}
           <div className="bg-white rounded-lg border p-5">
             <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Datos de la Operación</h3>
@@ -6203,7 +6203,7 @@ export default function ModuloVentas({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Nota de Crédito generada */}
           <div className="bg-white rounded-lg border p-5">
             <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b flex items-center gap-2">
@@ -6537,7 +6537,7 @@ export default function ModuloVentas({
 
                 {clienteSeleccionado && (
                   <div className="bg-gray-50 rounded-lg p-4 mt-4">
-                    <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                       <div>
                         <span className="text-gray-500">Documento:</span>
                         <span className="ml-2 font-medium">{clienteSeleccionado.tipo_documento}: {clienteSeleccionado.numero_documento}</span>
@@ -6642,7 +6642,7 @@ export default function ModuloVentas({
               <h2 className="text-lg font-semibold mb-4">Evaluación del Estado del Equipo</h2>
               <p className="text-sm text-gray-500 mb-6">Evalúe cada categoría según el estado real del equipo. Los descuentos se aplican en USD.</p>
 
-              <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 {tomaEquipoEvaluacion.map((ev, idx) => {
                   const opciones = criteriosDelModelo.filter(c => c.categoria_id === ev.categoria_id)
 
@@ -7137,7 +7137,7 @@ export default function ModuloVentas({
             <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b flex items-center gap-2">
               <Calendar className="w-4 h-4 text-emerald-600" /> Datos de la Operación
             </h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Sucursal</label>
                 <input type="text" value={sucursalActiva?.nombre ?? ""} readOnly
@@ -7277,7 +7277,7 @@ export default function ModuloVentas({
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-3 pt-1 border-t">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 border-t">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Precio de venta {seniaMoneda === 'USD' ? '(USD)' : '($)'}</label>
                   <input type="text" readOnly value={seniaMoneda === 'USD' ? `USD ${seniaPrecioVenta.toLocaleString('es-AR', {minimumFractionDigits:2})}` : formatCurrency(seniaPrecioVenta)}
@@ -7300,7 +7300,7 @@ export default function ModuloVentas({
           {/* DOCUMENTOS QUE SE GENERARÁN */}
           <div className="bg-gray-50 rounded-lg border border-dashed border-gray-300 p-4">
             <p className="text-sm font-medium text-gray-600 mb-2">Al confirmar se generará automáticamente:</p>
-            <div className="grid grid-cols-2 gap-2 text-sm text-gray-500">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-500">
               <div className="flex items-center gap-2"><FileText className="w-4 h-4 text-blue-500" /> Nota de Venta — Abierta</div>
               <div className="flex items-center gap-2"><Truck className="w-4 h-4 text-amber-500" /> Orden de Entrega — Confirmada</div>
             </div>
@@ -7567,7 +7567,7 @@ export default function ModuloVentas({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-5 mb-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
           {/* Datos de la operación */}
           <div className="bg-white rounded-lg border p-5">
             <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Datos de la Operación</h3>
@@ -7694,7 +7694,7 @@ export default function ModuloVentas({
                 const monedaPago = cajaValorSeleccionado?.moneda ?? 'ARS'
                 const pagoEnARS = monedaPago !== 'USD'
                 return (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Monto recibido ({monedaPago})</label>
                   <input type="number" min={0} value={seniaMontoInput} onChange={e => setSeniaMontoInput(Number(e.target.value))}
@@ -7884,7 +7884,7 @@ export default function ModuloVentas({
 
               {/* Medios de pago del saldo */}
               <div>
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                   <p className="text-sm font-medium text-gray-700">Medios de pago del saldo:</p>
                   <button onClick={() => setSeniaMediosCierre(prev => [...prev, { medio: "efectivo", monto: 0 }])}
                     className="text-xs text-emerald-600 hover:underline flex items-center gap-1">
@@ -8044,7 +8044,7 @@ export default function ModuloVentas({
         {(filtered) => (
           <>
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-4 mb-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
           <div className="bg-white rounded-lg border p-4">
             <p className="text-xs text-gray-500 uppercase font-medium mb-1">Total</p>
             <p className="text-2xl font-bold text-gray-900">{seniasEquipo.length}</p>
@@ -8170,7 +8170,7 @@ export default function ModuloVentas({
         {(filtered) => (
           <>
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
             <p className="text-sm text-gray-500">Total Operaciones</p>
             <p className="text-2xl font-bold text-gray-900">{tomasEquipo.length}</p>
@@ -8386,7 +8386,7 @@ export default function ModuloVentas({
           <span className="font-medium text-gray-900">{selectedRemito.numero}</span>
         </div>
 
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
           <div className="flex items-center gap-3">
 <BotonVolver onClick={() => setSelectedRemito(null)} variant="minimal" texto="" />
             <div>
@@ -8449,10 +8449,10 @@ export default function ModuloVentas({
         </div>
 
         <div className="bg-white rounded-b-lg shadow-sm p-6">
-          <div className="grid grid-cols-2 gap-8 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
             <div className="space-y-4">
               <h3 className="font-semibold text-gray-900 border-b pb-2">Datos del Remito</h3>
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div><span className="text-gray-500">Numero:</span> <span className="font-medium">{selectedRemito.numero}</span></div>
                 <div><span className="text-gray-500">OE:</span> <span className="font-medium text-emerald-700">{selectedRemito.orden_entrega_numero}</span></div>
                 <div><span className="text-gray-500">NV:</span> <span className="font-medium text-emerald-700">{selectedRemito.nota_venta_numero || "-"}</span></div>
@@ -8480,7 +8480,7 @@ export default function ModuloVentas({
             </div>
             <div className="space-y-4">
               <h3 className="font-semibold text-gray-900 border-b pb-2">Entrega</h3>
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div><span className="text-gray-500">Fecha Entrega:</span> <span className="font-medium">{formatDate(selectedRemito.fecha_entrega)}</span></div>
                 <div><span className="text-gray-500">Transporte:</span> <span className="font-medium">{selectedRemito.transporte || "-"}</span></div>
                 <div><span className="text-gray-500">Chofer:</span> <span className="font-medium">{selectedRemito.chofer || "-"}</span></div>
@@ -8492,7 +8492,7 @@ export default function ModuloVentas({
 
           <h3 className="font-semibold text-gray-900 border-b pb-2 mb-4">Cliente</h3>
           {clienteRemito && (
-            <div className="grid grid-cols-4 gap-4 text-sm mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm mb-6">
               <div><span className="text-gray-500">Nombre:</span> <span className="font-medium">{clienteRemito.nombre}</span></div>
               <div><span className="text-gray-500">Documento:</span> <span className="font-medium">{clienteRemito.tipo_documento}: {clienteRemito.numero_documento}</span></div>
               <div><span className="text-gray-500">Telefono:</span> <span className="font-medium">{clienteRemito.telefono || clienteRemito.celular || "-"}</span></div>
@@ -8500,7 +8500,7 @@ export default function ModuloVentas({
             </div>
           )}
 
-          <div className="grid grid-cols-4 gap-4 text-sm bg-gray-50 p-4 rounded-lg">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm bg-gray-50 p-4 rounded-lg">
             <div><span className="text-gray-500">Peso Bruto:</span> <span className="font-medium">{selectedRemito.peso_kg} kg</span></div>
             <div><span className="text-gray-500">Peso Neto:</span> <span className="font-medium">{selectedRemito.peso_neto_kg} kg</span></div>
             <div><span className="text-gray-500">Bultos:</span> <span className="font-medium">{selectedRemito.bultos}</span></div>
@@ -8913,11 +8913,11 @@ export default function ModuloVentas({
 
         {/* Contenido */}
         <div className="bg-white rounded-b-lg shadow-sm p-6">
-          <div className="grid grid-cols-2 gap-8 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
             {/* Datos del Cliente */}
             <div>
               <h3 className="font-semibold text-gray-900 mb-4">Datos del Cliente</h3>
-              <div className="grid grid-cols-2 gap-y-3 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-y-3 text-sm">
                 <div>
                   <span className="text-gray-500">Nombre:</span>
                   <span className="ml-2 font-medium">{clienteSeleccionado?.nombre}</span>
@@ -8945,7 +8945,7 @@ export default function ModuloVentas({
             {/* Datos de la Factura */}
             <div>
               <h3 className="font-semibold text-gray-900 mb-4">Datos de la Factura</h3>
-              <div className="grid grid-cols-2 gap-y-3 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-y-3 text-sm">
                 <div>
                   <span className="text-gray-500">Sucursal:</span>
                   <span className="ml-2 font-medium">Puerto Norte</span>
@@ -9154,7 +9154,7 @@ export default function ModuloVentas({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="col-span-2 space-y-6">
             <div className="bg-white rounded-lg shadow-sm p-4">
               <h3 className="font-semibold text-gray-900 mb-4">Cliente</h3>
@@ -9176,7 +9176,7 @@ export default function ModuloVentas({
                 ))}
               </select>
               {clienteSeleccionado && (
-                <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div><span className="text-gray-500">Documento:</span> <span className="font-medium">{clienteSeleccionado.tipo_documento}: {clienteSeleccionado.numero_documento}</span></div>
                   <div><span className="text-gray-500">Posicion Fiscal:</span> <span className="font-medium capitalize">{clienteSeleccionado.posicion_fiscal.replace('_', ' ')}</span></div>
 
@@ -9391,7 +9391,7 @@ export default function ModuloVentas({
           <span className="font-medium text-gray-900">{selectedFactura.numero}</span>
         </div>
 
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
           <div className="flex items-center gap-3">
 <BotonVolver onClick={() => setSelectedFactura(null)} variant="minimal" texto="" />
             <div>
@@ -9637,10 +9637,10 @@ export default function ModuloVentas({
         </div>
 
         <div className="bg-white rounded-b-lg shadow-sm p-6">
-          <div className="grid grid-cols-2 gap-8 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
             <div className="space-y-4">
               <h3 className="font-semibold text-gray-900 border-b pb-2">Datos de Factura</h3>
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div><span className="text-gray-500">Numero:</span> <span className="font-medium">{selectedFactura.numero}</span></div>
                 <div><span className="text-gray-500">Tipo:</span> <span className="font-medium">Factura</span></div>
                 <div><span className="text-gray-500">Fecha:</span> <span className="font-medium">{formatDate(selectedFactura.fecha)}</span></div>
@@ -9661,7 +9661,7 @@ export default function ModuloVentas({
             <div className="space-y-4">
               <h3 className="font-semibold text-gray-900 border-b pb-2">Cliente</h3>
               {clienteFactura && (
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div><span className="text-gray-500">Nombre:</span> <span className="font-medium">{clienteFactura.nombre}</span></div>
                   <div><span className="text-gray-500">Documento:</span> <span className="font-medium">{selectedFactura.cliente_documento}</span></div>
                   <div className="col-span-2"><span className="text-gray-500">Direccion:</span> <span className="font-medium">{selectedFactura.domicilio_facturacion}</span></div>
@@ -11016,7 +11016,7 @@ export default function ModuloVentas({
 
         {/* Cabecera 2 columnas */}
         <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-3">
               <div><label className="text-xs font-medium text-gray-500">Sucursal</label><input value={sucursalActiva?.nombre || ""} disabled className="w-full border rounded px-2 py-1.5 text-sm bg-gray-50" /></div>
               <div><label className="text-xs font-medium text-gray-500">Cliente *</label>
@@ -11025,7 +11025,7 @@ export default function ModuloVentas({
                   {clientes.map(c => <option key={c.id} value={c.id}>{c.codigo || ""} - {c.nombre}</option>)}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 <div><label className="text-xs font-medium text-gray-500">Importe</label><input value={`$ ${totalPagos.toLocaleString()}`} disabled className="w-full border rounded px-2 py-1.5 text-sm bg-gray-50" /></div>
                 <div><label className="text-xs font-medium text-gray-500">No Conciliado</label><input value={`$ ${noConciliado.toLocaleString()}`} disabled className="w-full border rounded px-2 py-1.5 text-sm bg-gray-50" /></div>
               </div>
@@ -12501,7 +12501,7 @@ export default function ModuloVentas({
 
     return (
       <div>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
           <h1 className="text-2xl font-bold text-amber-900">Conciliación de Deuda</h1>
           <div className="flex gap-2">
             <button onClick={() => setConciliacionTab("conciliar")}
@@ -12564,7 +12564,7 @@ export default function ModuloVentas({
 
               {/* ── Panel resumen de saldos ──────────────────────────── */}
               {conciliacionClienteId && (
-                <div className="mt-3 grid grid-cols-2 gap-4 border-t pt-3">
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-3">
                   <div className="bg-gray-50 rounded p-3">
                     <div className="text-xs font-semibold text-gray-600 mb-1">CC ARS</div>
                     <div className="flex items-center gap-4 text-sm">
@@ -12706,7 +12706,7 @@ export default function ModuloVentas({
         ) : (
           /* ── Tab Historial ────────────────────────────────────────────── */
           <div className="bg-white rounded-lg shadow-sm border p-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
               <h3 className="font-semibold text-gray-900">Historial de Conciliaciones</h3>
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-500">Moneda</label>
@@ -12921,7 +12921,7 @@ export default function ModuloVentas({
                 </button>
               </div>
             </div>
-            <div className="px-6 py-4 border-b grid grid-cols-2 gap-3 text-sm">
+            <div className="px-6 py-4 border-b grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
               <div>
                 <span className="text-gray-400 text-xs uppercase font-medium">Cliente</span>
                 <p className="font-semibold text-gray-900 mt-0.5">{ncDetallePopup.cliente_nombre}</p>
@@ -13001,7 +13001,7 @@ export default function ModuloVentas({
               </div>
             </div>
             {/* Info */}
-            <div className="px-6 py-4 border-b grid grid-cols-2 gap-3 text-sm">
+            <div className="px-6 py-4 border-b grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
               <div>
                 <span className="text-gray-400 text-xs uppercase font-medium">Cliente</span>
                 <p className="font-semibold text-gray-900 mt-0.5">{recDetallePopup.proveedor_nombre?.replace(' (toma de equipo)', '') ?? '—'}</p>
@@ -13165,7 +13165,7 @@ export default function ModuloVentas({
         </div>
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
           <div className="flex items-center gap-3">
             <button onClick={() => setSelectedAjuste(null)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500">
               <ArrowLeft className="w-5 h-5" />
@@ -13187,14 +13187,14 @@ export default function ModuloVentas({
           </span>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Columna principal */}
           <div className="col-span-2 space-y-4">
 
             {/* Datos generales */}
             <div className="bg-white rounded-lg shadow-sm p-5">
               <h3 className="font-semibold text-gray-900 mb-4">{titulo}</h3>
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-gray-400 text-xs uppercase font-medium block mb-0.5">Cliente</span>
                   <span className="font-semibold text-gray-900">{ajuste.cliente_nombre}</span>
@@ -13978,7 +13978,7 @@ export default function ModuloVentas({
 
         {/* Formulario */}
         <div className="bg-white border border-gray-200 rounded p-6">
-          <div className="grid grid-cols-2 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
               {isEditing ? (
@@ -14004,7 +14004,7 @@ export default function ModuloVentas({
               )}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
               {isEditing ? (
@@ -14033,7 +14033,7 @@ export default function ModuloVentas({
           {/* Cuenta contable a cobrar por defecto */}
           <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded">
             <h4 className="text-sm font-semibold text-amber-900 mb-3">Configuración Contable</h4>
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Cuenta a cobrar por defecto
@@ -14247,7 +14247,7 @@ export default function ModuloVentas({
         {/* Formulario */}
         <div className="bg-white border border-gray-200 rounded p-6">
           {/* Campos principales */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
               {isEditing ? (
@@ -14270,7 +14270,7 @@ export default function ModuloVentas({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4 mb-6 items-end">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 items-end">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Días de Validez</label>
               {isEditing ? (
@@ -14460,7 +14460,7 @@ export default function ModuloVentas({
                   <input type="text" value={nuevaVersionBasadaForm.nombre} onChange={(e) => setNuevaVersionBasadaForm({ ...nuevaVersionBasadaForm, nombre: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-emerald-500" placeholder={`Copia de ${selectedVersion.nombre}`} />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Fecha Inicial</label>
                     <input type="date" value={nuevaVersionBasadaForm.fecha_inicial} onChange={(e) => setNuevaVersionBasadaForm({ ...nuevaVersionBasadaForm, fecha_inicial: e.target.value })}
@@ -14639,7 +14639,7 @@ export default function ModuloVentas({
         {/* Formulario */}
         <div className="bg-white border border-gray-200 rounded p-6">
           {/* Cabecera de versión */}
-          <div className="grid grid-cols-4 gap-4 mb-6 items-end">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 items-end">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Precios</label>
               {isEditing && creandoVersion ? (
@@ -14702,7 +14702,7 @@ export default function ModuloVentas({
 
           {/* Grilla de Líneas */}
           <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
               <h4 className="text-sm font-semibold text-gray-900">Líneas de Precios ({currentVersion.lineas.length})</h4>
               {!creandoVersion && !modoEdicionVersion && (
                 <button onClick={iniciarEdicionVersion} className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200">
@@ -15196,7 +15196,7 @@ export default function ModuloVentas({
           if (creandoNV) setNvClienteId(c.id)
           onNuevoCliente?.(c)
         }) }} className="p-4 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre / Razón Social *</label>
               <input type="text" name="nombre" defaultValue={editingItem?.nombre || ""} required
@@ -15208,7 +15208,7 @@ export default function ModuloVentas({
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Tipo Documento *</label>
               <select name="tipo_documento" defaultValue={editingItem?.tipo_documento || "DNI"} required
@@ -15234,7 +15234,7 @@ export default function ModuloVentas({
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
               <input type="text" name="direccion" defaultValue={editingItem?.direccion || ""}
@@ -15246,7 +15246,7 @@ export default function ModuloVentas({
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
               <input type="text" name="telefono" defaultValue={editingItem?.telefono || ""}
@@ -15263,7 +15263,7 @@ export default function ModuloVentas({
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Categoría *</label>
               <select
@@ -15297,7 +15297,7 @@ export default function ModuloVentas({
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Término de Pago</label>
               <select name="termino_pago_id" defaultValue={editingItem?.termino_pago_id || 1}
@@ -15632,7 +15632,7 @@ export default function ModuloVentas({
             setEditingItem(null)
           }} className="p-4 space-y-4">
             {/* Datos generales */}
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
                 <select
@@ -15680,7 +15680,7 @@ export default function ModuloVentas({
                 <input type="hidden" name="tipo_venta_ctrl" value={tipoVentaForm} />
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Moneda</label>
                 <select name="moneda" defaultValue={editingItem?.moneda || "ARS"}
@@ -15928,7 +15928,7 @@ export default function ModuloVentas({
             setReciboPagos([])
             setReciboClienteId(null)
           }} className="p-4 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
                 <select value={reciboClienteId || ""} onChange={(e) => setReciboClienteId(parseInt(e.target.value))}
@@ -15949,7 +15949,7 @@ export default function ModuloVentas({
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Caja</label>
                 <select name="caja" defaultValue="Caja Principal"
@@ -16146,7 +16146,7 @@ export default function ModuloVentas({
           }} />
 
         {/* Header con back + título a la izquierda, Cancelar + Guardar arriba a la derecha */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
           <div className="flex items-center gap-4">
             <BotonVolver onClick={cancelarCrearAjuste} variant="minimal" texto="" />
             <div>

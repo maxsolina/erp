@@ -104,7 +104,7 @@ export default function CategoriaClienteForm({ initialId }: { initialId?: number
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-lg">
             <ArrowLeft className="w-4 h-4" />
@@ -160,7 +160,7 @@ export default function CategoriaClienteForm({ initialId }: { initialId?: number
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Lista de precios por defecto</label>
             <select

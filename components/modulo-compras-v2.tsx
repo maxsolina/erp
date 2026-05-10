@@ -2101,7 +2101,7 @@ export default function ModuloCompras({
     return (
       <div>
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-amber-900">Proveedores</h1>
             <p className="text-gray-500 mt-1">Gestione sus proveedores nacionales e internacionales</p>
@@ -2153,7 +2153,7 @@ export default function ModuloCompras({
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
             <p className="text-sm text-gray-500">Total Proveedores</p>
             <p className="text-2xl font-bold text-gray-900">{proveedores.length}</p>
@@ -2313,7 +2313,7 @@ export default function ModuloCompras({
         </div>
 
         {/* Tabs + Content */}
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="col-span-2">
             <div className="bg-white rounded-lg border overflow-hidden">
               <div className="flex border-b">
@@ -2339,7 +2339,7 @@ export default function ModuloCompras({
             {/* Tab: Contactos */}
             {proveedorTabActivo === "contactos" && (
               <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div><span className="text-gray-500">Razón Social:</span><span className="ml-2 font-medium">{selectedProveedor.razon_social || selectedProveedor.nombre}</span></div>
                   <div><span className="text-gray-500">Nombre Fantasía:</span><span className="ml-2 font-medium">{selectedProveedor.nombre_fantasia || "—"}</span></div>
                   <div><span className="text-gray-500">Tipo Documento:</span><span className="ml-2 font-medium">{selectedProveedor.tipo_documento || "—"}</span></div>
@@ -2381,7 +2381,7 @@ export default function ModuloCompras({
 
             {/* Tab: Ventas & Compras */}
             {proveedorTabActivo === "ventas_compras" && (
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div><span className="text-gray-500">Condición de Pago:</span><span className="ml-2 font-medium">{selectedProveedor.condicion_pago || "—"}</span></div>
                 <div><span className="text-gray-500">Moneda Habitual:</span><span className="ml-2 font-medium">{selectedProveedor.moneda_habitual || "ARS"}</span></div>
                 <div><span className="text-gray-500">Moneda por Defecto:</span><span className="ml-2 font-medium">{selectedProveedor.moneda_defecto || "—"}</span></div>
@@ -2403,7 +2403,7 @@ export default function ModuloCompras({
                   <span className="font-medium">Aplica Circuito de Compras</span>
                 </div>
                 {!(selectedProveedor as any).aplica_circuito_compras && (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div><span className="text-gray-500">Cuenta Gastos por Defecto:</span><span className="ml-2 font-medium">{selectedProveedor.cuenta_gastos_defecto_codigo ? `${selectedProveedor.cuenta_gastos_defecto_codigo} — ${selectedProveedor.cuenta_gastos_defecto_nombre}` : "—"}</span></div>
                     <div><span className="text-gray-500">Cuenta Analítica:</span><span className="ml-2 font-medium">{selectedProveedor.cuenta_analitica || "—"}</span></div>
                   </div>
@@ -2559,7 +2559,7 @@ export default function ModuloCompras({
     return (
       <div className="max-w-full">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
           <div className="flex items-center gap-4">
             <BotonVolver onClick={handleCancelar} variant="minimal" texto="" />
             <div>
@@ -2599,7 +2599,7 @@ export default function ModuloCompras({
 
         {/* Cabecera del formulario */}
         <div className="bg-white rounded-lg border p-6 mb-4">
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Columna izquierda */}
             <div className="space-y-4">
               {/* Razón Social */}
@@ -2629,7 +2629,7 @@ export default function ModuloCompras({
               </div>
 
               {/* Tipo y N° de Documento */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de Documento</label>
                   <select
@@ -2742,7 +2742,7 @@ export default function ModuloCompras({
               </div>
 
               {/* Provincia + Ciudad */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Provincia</label>
                   {prov.pais === "Argentina" ? (
@@ -2898,7 +2898,7 @@ export default function ModuloCompras({
             {/* TAB: CONTACTOS */}
             {proveedorTabActivo === "contactos" && (
               <div>
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
                   <p className="text-sm text-gray-500">Personas de contacto dentro de esta empresa</p>
                   <button
                     onClick={addContacto}
@@ -2969,7 +2969,7 @@ export default function ModuloCompras({
 
             {/* TAB: VENTAS & COMPRAS */}
             {proveedorTabActivo === "ventas_compras" && (
-              <div className="grid grid-cols-2 gap-6 max-w-lg">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-lg">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Sucursal de Origen</label>
                   <select
@@ -3111,7 +3111,7 @@ export default function ModuloCompras({
     return (
       <div>
         {/* Cabecera */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-amber-900">Órdenes de Compra</h1>
             <p className="text-gray-500 mt-1 text-sm">Gestione las órdenes de compra a proveedores</p>
@@ -3135,7 +3135,7 @@ export default function ModuloCompras({
         </div>
 
         {/* Estadísticas */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
             <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Total OC</p>
             <p className="text-2xl font-bold text-gray-900">{ordenesCompra.length}</p>
@@ -3600,7 +3600,7 @@ export default function ModuloCompras({
 
         {/* Cabecera datos */}
         <div className="bg-white rounded-lg border p-6 mb-4">
-          <div className="grid grid-cols-3 gap-x-8 gap-y-4 text-sm">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-4 text-sm">
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Sucursal</p>
               <p className="font-medium">{oc.sucursal || '-'}</p>
@@ -4013,7 +4013,7 @@ export default function ModuloCompras({
 
         {/* Cabecera */}
         <div className="bg-white rounded-lg border p-6 mb-4">
-          <div className="grid grid-cols-2 gap-x-12 gap-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
             {/* Columna izquierda */}
             <div className="space-y-4">
               <div>
@@ -4440,7 +4440,7 @@ export default function ModuloCompras({
       >
         {(filtered) => (
           <>
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
             <p className="text-sm text-gray-500">Total Legajos</p>
             <p className="text-2xl font-bold text-gray-900">{legajosImportacion.length}</p>
@@ -4676,7 +4676,7 @@ export default function ModuloCompras({
 
           {legajoTab === "gastos" && (
             <div>
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
                 <h3 className="font-semibold">Gastos de Importación</h3>
                 <button className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1">
                   <Plus className="w-4 h-4" /> Agregar Gasto
@@ -4805,7 +4805,7 @@ export default function ModuloCompras({
       >
         {(filtered) => (
           <>
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
             <p className="text-sm text-gray-500">Total Despachos</p>
             <p className="text-2xl font-bold text-gray-900">{despachosSimples.length}</p>
@@ -4958,7 +4958,7 @@ export default function ModuloCompras({
         {/* Gastos */}
         <div className="bg-white rounded-lg border p-6 mb-6">
           <h3 className="font-semibold mb-4">Gastos (Fletes)</h3>
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="border rounded-lg p-4">
               <h4 className="font-medium text-gray-700 mb-2">Flete Internacional</h4>
               <div className="space-y-2 text-sm">
@@ -5438,7 +5438,7 @@ export default function ModuloCompras({
         </div>
 
         {/* Estadísticas */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
             <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Total</p>
             <p className="text-2xl font-bold text-gray-900">{recepciones.length}</p>
@@ -5847,7 +5847,7 @@ export default function ModuloCompras({
           <>
         {/* Cabecera datos */}
         <div className="bg-white rounded-lg border p-6 mb-6">
-          <div className="grid grid-cols-3 gap-x-8 gap-y-4 text-sm">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-4 text-sm">
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Sucursal</p>
               <p className="font-medium">{rec.sucursal || '-'}</p>
@@ -6541,11 +6541,11 @@ export default function ModuloCompras({
 
           {/* Tab: Información */}
           {fcDetalleTab === "info" && (
-            <div className="grid grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="col-span-2 space-y-4">
                 <div className="bg-white rounded-lg border p-6">
                   <h3 className="font-semibold text-gray-900 mb-4">Datos del Comprobante</h3>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                     <div><span className="text-gray-500">Proveedor:</span><span className="ml-2 font-medium">{f.proveedor_nombre}</span></div>
                     <div><span className="text-gray-500">Tipo:</span><span className="ml-2 font-medium">Factura {f.tipo}</span></div>
                     <div><span className="text-gray-500">Número:</span><span className="ml-2 font-medium">{f.numero}</span></div>
@@ -6663,7 +6663,7 @@ export default function ModuloCompras({
 
       return (
         <div>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
             <div className="flex items-center gap-4">
               <BotonVolver onClick={() => { setCreandoFacturaCompra(false); setSelectedFacturaCompra(null) }} variant="minimal" texto="" />
               <h1 className="text-xl font-bold text-amber-900">
@@ -6690,7 +6690,7 @@ export default function ModuloCompras({
             <div className="px-6 py-2 bg-gray-50 border-b">
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Datos del comprobante</span>
             </div>
-            <div className="px-6 pt-5 pb-4 border-b grid grid-cols-3 gap-5">
+            <div className="px-6 pt-5 pb-4 border-b grid grid-cols-1 md:grid-cols-3 gap-5">
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-gray-600 mb-1">Proveedor <span className="text-red-500">*</span></label>
                 <ProveedorSelector
@@ -6719,7 +6719,7 @@ export default function ModuloCompras({
                   className="w-full border rounded px-3 py-2 text-sm bg-gray-100 text-gray-500 cursor-default" />
               </div>
             </div>
-            <div className="px-6 pt-4 pb-4 border-b grid grid-cols-3 gap-5">
+            <div className="px-6 pt-4 pb-4 border-b grid grid-cols-1 md:grid-cols-3 gap-5">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Fecha <span className="text-red-500">*</span></label>
                 <input type="date" value={f.fecha} onChange={e => setFc({ fecha: e.target.value })}
@@ -6745,7 +6745,7 @@ export default function ModuloCompras({
               </div>
             </div>
             {f.moneda !== "ARS" && (
-              <div className="px-6 pt-4 pb-4 border-b grid grid-cols-2 gap-5">
+              <div className="px-6 pt-4 pb-4 border-b grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Cotización ({f.moneda} → ARS)</label>
                   <input type="number" min="0" step="0.01" value={f.cotizacion ?? ""}
@@ -6950,7 +6950,7 @@ export default function ModuloCompras({
     // ── Vista lista ──
     return (
       <div>
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-amber-900">Facturas de Compra</h1>
             <p className="text-gray-500 mt-1">Gestione las facturas de proveedores</p>
@@ -6963,7 +6963,7 @@ export default function ModuloCompras({
           </button>
         </div>
 
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
             <p className="text-sm text-gray-500">Total Facturas</p>
             <p className="text-2xl font-bold text-gray-900">{facturasCompra.length}</p>
@@ -7565,7 +7565,7 @@ export default function ModuloCompras({
 
         {/* Cabecera datos - 2 columnas */}
         <div className="bg-white rounded-lg border p-6 mb-4">
-          <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
             {/* COLUMNA IZQUIERDA */}
             <div className="space-y-4">
               <div>
@@ -7806,7 +7806,7 @@ export default function ModuloCompras({
               <div className="space-y-6">
                 {/* DÉBITOS */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                     <h3 className="text-sm font-semibold text-gray-700 uppercase">Débitos (Facturas a pagar)</h3>
                     {editable && opForm.proveedor_id && (
                       <button
@@ -7943,7 +7943,7 @@ export default function ModuloCompras({
 
             {/* TAB OTRA INFORMACIÓN */}
             {opTabActivo === "otra_info" && (
-              <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                 <div>
                   <p className="text-xs text-gray-500 uppercase mb-1">Periodo</p>
                   <p className="font-medium">{opForm.periodo || (opForm.fecha ? `${String(new Date(opForm.fecha).getMonth()+1).padStart(2,"0")}/${new Date(opForm.fecha).getFullYear()}` : "-")}</p>
@@ -8091,7 +8091,7 @@ export default function ModuloCompras({
       >
         {(filtered) => (
           <>
-            <div className="grid grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <div className="bg-white rounded-lg border p-4">
                 <p className="text-sm text-gray-500">Total Órdenes</p>
                 <p className="text-2xl font-bold text-gray-900">{ordenesPago.length}</p>
@@ -8180,7 +8180,7 @@ export default function ModuloCompras({
       >
         {(filtered) => (
           <>
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="bg-white rounded-lg border p-4">
             <p className="text-sm text-gray-500">Total Deuda</p>
             <p className="text-2xl font-bold text-red-600">{formatCurrency(movimientosMock.reduce((s, m) => s + m.debe - m.haber, 0))}</p>
@@ -8454,11 +8454,11 @@ export default function ModuloCompras({
           </div>
 
           {/* Content */}
-          <div className="grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="col-span-2 space-y-6">
               <div className="bg-white rounded-lg border p-6">
                 <h3 className="font-semibold text-gray-900 mb-4">Configuración</h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-gray-500">Disponible para clientes:</span>
                     <span className={`ml-2 font-medium ${c.disponible_clientes ? "text-green-600" : "text-gray-400"}`}>
@@ -8493,7 +8493,7 @@ export default function ModuloCompras({
               {(c.cuenta_cobrar_defecto || c.cuenta_pagar_defecto || c.cuenta_pagar_id) && (
                 <div className="bg-white rounded-lg border p-6">
                   <h3 className="font-semibold text-gray-900 mb-4">Cuentas Contables</h3>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                     {c.cuenta_cobrar_defecto && (
                       <div>
                         <span className="text-gray-500">Cuenta a cobrar por defecto:</span>
@@ -8549,7 +8549,7 @@ export default function ModuloCompras({
             <span className="text-gray-900">{selectedCatProv ? selectedCatProv.nombre : "Nueva"}</span>
           </div>
           {/* Header con botones arriba a la derecha */}
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
             <div className="flex items-center gap-4">
               <BotonVolver onClick={cancelar} variant="minimal" texto="" />
               <h1 className="text-2xl font-bold text-amber-900">
@@ -9222,7 +9222,7 @@ export default function ModuloCompras({
 
     return (
       <div>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
           <h1 className="text-2xl font-bold text-amber-900">Conciliación de Deuda - Compras</h1>
           <div className="flex gap-2">
             <button onClick={() => setCdcTab('conciliar')} className={`px-4 py-2 text-sm font-medium rounded ${cdcTab === 'conciliar' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Conciliar</button>
@@ -9251,7 +9251,7 @@ export default function ModuloCompras({
                 </div>
               </div>
               {proveedorSel && (
-                <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="bg-red-50 rounded p-2 text-center"><p className="text-xs text-red-600">Deuda ARS</p><p className="text-sm font-bold text-red-700">${debitoARSTotal.toLocaleString('es-AR', {minimumFractionDigits:2})}</p></div>
                   <div className="bg-blue-50 rounded p-2 text-center"><p className="text-xs text-blue-600">Crédito ARS</p><p className="text-sm font-bold text-blue-700">${creditoARSTotal.toLocaleString('es-AR', {minimumFractionDigits:2})}</p></div>
                   <div className="bg-red-50 rounded p-2 text-center"><p className="text-xs text-red-600">Deuda USD</p><p className="text-sm font-bold text-red-700">USD {debitoUSDTotal.toLocaleString('es-AR', {minimumFractionDigits:2})}</p></div>
@@ -9590,7 +9590,7 @@ export default function ModuloCompras({
 
               {/* Barra de progreso + counter */}
               <div className="px-6 pt-4 pb-2">
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                   <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Progreso</span>
                   <span className="text-sm font-semibold text-gray-800">
                     <span className={completadas === cantTotal ? 'text-emerald-600' : 'text-amber-600'}>{completadas}</span>

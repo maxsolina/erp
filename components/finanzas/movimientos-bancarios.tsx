@@ -164,7 +164,7 @@ export default function MovimientosBancarios() {
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-amber-900 flex items-center gap-2">
             <BookOpen className="w-6 h-6" />
@@ -222,7 +222,7 @@ export default function MovimientosBancarios() {
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Fecha desde *</label>
                   <input
@@ -293,7 +293,7 @@ export default function MovimientosBancarios() {
         <>
           {/* Resumen arriba */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 md:grid-cols-5 gap-4">
               <div>
                 <div className="text-xs text-gray-500 uppercase mb-1 flex items-center gap-1">
                   <Building2 className="w-3 h-3" /> Cuenta

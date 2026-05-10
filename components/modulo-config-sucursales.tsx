@@ -49,7 +49,7 @@ export function FormSucursal({
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-5 space-y-4">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <h3 className="text-sm font-semibold text-gray-700">
           {initial.codigo ? `Editar sucursal: ${initial.nombre}` : "Nueva Sucursal"}
         </h3>
@@ -72,7 +72,7 @@ export function FormSucursal({
       {error && (
         <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</p>
       )}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Codigo *</label>
           <input

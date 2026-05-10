@@ -57,7 +57,7 @@ export default function RepuestosEditor({ value, onChange }: Props) {
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <h3 className="font-semibold text-gray-900">Repuestos sugeridos</h3>
         <button
           type="button"

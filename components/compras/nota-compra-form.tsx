@@ -152,7 +152,7 @@ export default function NotaCompraForm({ tipo }: { tipo: TipoNotaCompra }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <button onClick={() => router.push(labels.back)} className="p-2 hover:bg-gray-100 rounded-lg">
             <ArrowLeft className="w-4 h-4" />
@@ -192,7 +192,7 @@ export default function NotaCompraForm({ tipo }: { tipo: TipoNotaCompra }) {
       )}
 
       <div className="bg-white rounded-lg border p-6 space-y-5">
-        <div className="grid grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div className="col-span-2">
             <label className="block text-xs font-medium text-gray-600 mb-1">
               Proveedor <span className="text-red-500">*</span>
@@ -250,7 +250,7 @@ export default function NotaCompraForm({ tipo }: { tipo: TipoNotaCompra }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Número</label>
             <input
@@ -296,7 +296,7 @@ export default function NotaCompraForm({ tipo }: { tipo: TipoNotaCompra }) {
           />
         </div>
 
-        <div className="grid grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Subtotal *</label>
             <input

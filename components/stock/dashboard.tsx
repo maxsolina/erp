@@ -32,7 +32,7 @@ export default function StockDashboard() {
     <div>
       <h1 className="text-2xl font-bold text-amber-900 mb-6">Dashboard de Stock</h1>
 
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-emerald-500">
           <div className="flex items-center justify-between">
             <div>
@@ -73,7 +73,7 @@ export default function StockDashboard() {
 
       <div className="bg-white rounded-lg shadow-sm p-5">
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Accesos rápidos</h3>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Link
             href="/stock/transferencias"
             className="flex items-center gap-3 px-4 py-3 border rounded-lg hover:bg-amber-50 hover:border-amber-300 transition-colors"

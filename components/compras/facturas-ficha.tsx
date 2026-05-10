@@ -88,7 +88,7 @@ export default function FacturasGenericoFicha({ apiUrl, backHref, monolitoEditVi
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div className="flex items-center gap-3">
           <BotonVolver onClick={() => router.push(backHref)} variant="minimal" texto="" />
           <div>
@@ -128,13 +128,13 @@ export default function FacturasGenericoFicha({ apiUrl, backHref, monolitoEditVi
       </div>
 
       {/* Contenido — layout 3 columnas */}
-      <div className="grid grid-cols-3 gap-6 mt-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
         {/* Main */}
         <div className="col-span-2 space-y-6">
           {/* Datos */}
           <div className="bg-white rounded-lg shadow-sm p-6">
             <h3 className="font-semibold text-gray-900 mb-4">Datos de {etiqueta.singular}</h3>
-            <div className="grid grid-cols-3 gap-4 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
               <div>
                 <label className="text-gray-500 block">Proveedor</label>
                 <p className="font-medium">{data.proveedor_nombre ?? "—"}</p>

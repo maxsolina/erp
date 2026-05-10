@@ -84,7 +84,7 @@ export default function ProveedoresListado() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-amber-900">Proveedores</h1>
           <p className="text-gray-500 mt-1">Gestione sus proveedores nacionales e internacionales</p>
@@ -144,7 +144,7 @@ export default function ProveedoresListado() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-lg border p-4">
           <p className="text-sm text-gray-500">Total Proveedores</p>
           <p className="text-2xl font-bold text-gray-900">{proveedores.length}</p>

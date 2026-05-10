@@ -358,7 +358,7 @@ export default function ModuloInformes() {
       {/* Main Content — el sidebar del módulo lo provee app/(dashboard)/informes/layout.tsx */}
       <div>
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="text-gray-400">Notas de Venta /</span>
             <span className="text-gray-400">Nuevo /</span>
@@ -708,7 +708,7 @@ export default function ModuloInformes() {
           {/* Panel de configuración */}
             {mostrarConfigGraficos && (
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <h4 className="text-sm font-medium text-gray-700 mb-2">KPIs visibles</h4>
                     <div className="space-y-1">
@@ -773,7 +773,7 @@ export default function ModuloInformes() {
             )}
 
             {/* KPIs */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
               {kpisVisibles.includes("ventas_totales") && (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 shadow-sm">
                   <div className="flex items-center gap-2 mb-2">
@@ -1157,7 +1157,7 @@ export default function ModuloInformes() {
               </button>
             </div>
             <div className="p-6">
-              <div className="grid grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {/* Columna izquierda */}
                 <div>
                   <div className="mb-4">

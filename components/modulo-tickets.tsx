@@ -76,7 +76,7 @@ export default function ModuloTickets() {
 
         <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border p-6 space-y-6">
           {/* Categoría y Prioridad */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
               <select
@@ -269,7 +269,7 @@ export default function ModuloTickets() {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Conversación */}
           <div className="col-span-2 bg-white rounded-xl shadow-sm border overflow-hidden">
             {/* Mensajes */}
@@ -383,7 +383,7 @@ export default function ModuloTickets() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-emerald-900">Mis Tickets</h1>
           <p className="text-gray-500 mt-1">Gestione sus solicitudes de soporte</p>
@@ -398,7 +398,7 @@ export default function ModuloTickets() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-lg border p-4">
           <p className="text-sm text-gray-500">Total</p>
           <p className="text-2xl font-bold text-gray-900">{tickets.filter(t => t.usuario_id === currentUser?.id).length}</p>

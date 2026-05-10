@@ -42,7 +42,7 @@ export default function ClienteFicha({ clienteId }: { clienteId: number }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-3">
           <BotonVolver onClick={() => router.push("/ventas/clientes")} variant="minimal" texto="" />
           <div>
@@ -63,7 +63,7 @@ export default function ClienteFicha({ clienteId }: { clienteId: number }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white rounded-lg border p-5">
           <h3 className="font-semibold text-gray-900 mb-4 pb-2 border-b">Datos Generales</h3>
           <div className="space-y-3 text-sm">

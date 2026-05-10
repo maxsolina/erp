@@ -151,7 +151,7 @@ export default function CriteriosCotizador() {
   // ───────────────────────── Render
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <h1 className="text-2xl font-bold text-amber-900">Criterios para Cotizador</h1>
       </div>
 
@@ -723,7 +723,7 @@ function CriteriosTab({
       {editing && (
         <Modal title={creating ? "Nuevo criterio" : "Editar criterio"} onClose={() => { setEditing(null); setCreating(false) }}>
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Modelo *</label>
                 <select
@@ -777,7 +777,7 @@ function CriteriosTab({
                 )
               })()}
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Descuento USD *</label>
                 <input

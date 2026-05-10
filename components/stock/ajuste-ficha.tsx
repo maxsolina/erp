@@ -152,7 +152,7 @@ export default function AjusteFicha({
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <BotonVolver onClick={() => router.push(`/stock/ajustes/${tipo}s`)} variant="ghost" />
           <div>

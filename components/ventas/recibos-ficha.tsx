@@ -152,7 +152,7 @@ export default function RecibosFicha({ reciboId }: { reciboId: string }) {
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div className="flex items-center gap-3">
           <BotonVolver onClick={() => router.push("/ventas/recibos")} variant="minimal" texto="" />
           <div>
@@ -233,10 +233,10 @@ export default function RecibosFicha({ reciboId }: { reciboId: string }) {
 
       {/* Contenido */}
       <div className="bg-white rounded-b-lg shadow-sm p-6">
-        <div className="grid grid-cols-2 gap-8 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
           <div className="space-y-4">
             <h3 className="font-semibold text-gray-900 border-b pb-2">Datos del Recibo</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div><span className="text-gray-500">Número:</span> <span className="font-medium">{recibo.numero}</span></div>
               <div><span className="text-gray-500">Fecha:</span> <span className="font-medium">{formatDate(recibo.fecha)}</span></div>
               <div><span className="text-gray-500">Sucursal:</span> <span className="font-medium">{recibo.sucursal ?? "-"}</span></div>
@@ -287,7 +287,7 @@ export default function RecibosFicha({ reciboId }: { reciboId: string }) {
         </div>
 
         {/* Importe destacado */}
-        <div className="grid grid-cols-4 gap-4 text-sm bg-gray-50 p-4 rounded-lg mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm bg-gray-50 p-4 rounded-lg mb-6">
           <div>
             <span className="text-gray-500 block">Importe</span>
             <span className="font-bold text-2xl text-emerald-600">{formatCurrency(recibo.importe, moneda)}</span>

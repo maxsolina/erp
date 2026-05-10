@@ -330,7 +330,7 @@ export default function AjusteForm({ tipo }: { tipo: "positivo" | "negativo" }) 
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div className="flex items-center gap-4">
           <BotonVolver onClick={() => router.push(`/stock/ajustes/${tipo}s`)} variant="ghost" />
           <h1 className="text-2xl font-bold text-amber-900">{titulo}</h1>
@@ -443,7 +443,7 @@ export default function AjusteForm({ tipo }: { tipo: "positivo" | "negativo" }) 
 
       {/* Líneas */}
       <div className="bg-white rounded-lg shadow-sm p-5">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
           <h3 className="font-semibold text-gray-900">Productos a {verbo}</h3>
           <button
             type="button"
@@ -615,7 +615,7 @@ function LineaCard({
 
       {conIMEI && tipo === "positivo" && (
         <div>
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
             <span className="text-xs font-semibold text-gray-600 uppercase">Unidades a ingresar</span>
             <button
               type="button"

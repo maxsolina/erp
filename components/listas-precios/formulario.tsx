@@ -175,7 +175,7 @@ export default function ListaPreciosFormulario({
       </div>
 
       <div className="bg-white border border-gray-200 rounded p-6">
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
             <input
@@ -208,7 +208,7 @@ export default function ListaPreciosFormulario({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-4 mb-6 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 items-end">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Días de Validez</label>
             <input

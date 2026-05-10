@@ -272,7 +272,7 @@ export default function OcFicha({ ocId }: { ocId: number }) {
 
       {/* Cabecera datos */}
       <div className="bg-white rounded-lg border p-6 mb-4">
-        <div className="grid grid-cols-3 gap-x-8 gap-y-4 text-sm">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-4 text-sm">
           <DatoLabel label="Sucursal" valor={(oc as any).sucursal} />
           <DatoLabel label="Proveedor" valor={oc.proveedor_nombre} />
           <DatoLabel label="Término de Pago" valor={(oc as any).termino_pago} />

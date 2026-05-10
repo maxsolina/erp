@@ -273,7 +273,7 @@ export default function ClienteForm({ initialId }: { initialId?: number }) {
             <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
               <Building2 className="w-3.5 h-3.5" /> Identificación
             </h3>
-            <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <div>
                 <label className={labelStyle}>Nombre / Razón Social *</label>
                 <input
@@ -294,7 +294,7 @@ export default function ClienteForm({ initialId }: { initialId?: number }) {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3 mb-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
               <div>
                 <label className={labelStyle}>Tipo Documento *</label>
                 <select
@@ -352,7 +352,7 @@ export default function ClienteForm({ initialId }: { initialId?: number }) {
             <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5" /> Dirección
             </h3>
-            <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <div>
                 <label className={labelStyle}>Dirección</label>
                 <input
@@ -372,7 +372,7 @@ export default function ClienteForm({ initialId }: { initialId?: number }) {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
                 <label className={labelStyle}>Provincia</label>
                 <input
@@ -408,7 +408,7 @@ export default function ClienteForm({ initialId }: { initialId?: number }) {
             <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
               <Phone className="w-3.5 h-3.5" /> Contacto
             </h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <label className={labelStyle}>Celular</label>
                 <input
@@ -435,7 +435,7 @@ export default function ClienteForm({ initialId }: { initialId?: number }) {
             <h3 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
               <DollarSign className="w-3.5 h-3.5" /> Información Comercial
             </h3>
-            <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <div>
                 <label className={labelStyle}>Vendedor</label>
                 <SearchableSelect
@@ -462,7 +462,7 @@ export default function ClienteForm({ initialId }: { initialId?: number }) {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <label className={labelStyle}>Descuento Default (%)</label>
                 <input
