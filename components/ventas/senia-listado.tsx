@@ -78,7 +78,7 @@ export default function SeniaListado() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-amber-900">Seña de Equipo</h1>
           <p className="text-sm text-gray-500">Gestione las reservas de equipos con seña</p>
@@ -136,8 +136,8 @@ export default function SeniaListado() {
         filteredCount={filtered.length}
       />
 
-      <div className="mt-4 bg-white rounded-lg shadow-sm overflow-hidden">
-        <table className="w-full">
+      <div className="mt-4 bg-white rounded-lg shadow-sm overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">N° Seña</th>

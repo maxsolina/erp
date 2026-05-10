@@ -558,7 +558,7 @@ export default function OtFicha({ otId }: { otId: string }) {
           )}
           {activeTab === "repuestos" && (
             <div>
-              <div className="flex justify-between items-center mb-3">
+              <div className="flex justify-between items-center mb-3 gap-2 flex-wrap">
                 <p className="text-xs text-gray-500">
                   Los repuestos sugeridos se cargan automáticamente al crear la OT, basándose en la combinación equipo + fallas configurada en{" "}
                   <strong>Fallas por Equipos</strong>.
@@ -674,7 +674,7 @@ export default function OtFicha({ otId }: { otId: string }) {
 
                 return (
                   <div key={ctrl.id} className="mb-4 border rounded-lg p-3">
-                    <div className="flex justify-between items-center mb-3">
+                    <div className="flex justify-between items-center mb-3 gap-2 flex-wrap">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">
                           {ctrl.tipo === "inicial" ? "Control Inicial" : "Control Final"}

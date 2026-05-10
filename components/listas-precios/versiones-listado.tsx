@@ -108,7 +108,7 @@ export default function VersionesListado({ listaId }: VersionesListadoProps) {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
         <h1 className="text-2xl font-bold text-amber-900">
           {listaId ? "Versiones de la Lista" : "Versiones de Lista de Precios"}
         </h1>
@@ -166,8 +166,8 @@ export default function VersionesListado({ listaId }: VersionesListadoProps) {
         filteredCount={filtered.length}
       />
 
-      <div className="mt-4 bg-white border border-gray-200 rounded overflow-hidden">
-        <table className="w-full">
+      <div className="mt-4 bg-white border border-gray-200 rounded overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr className="text-xs text-gray-500 uppercase tracking-wider">
               <th className="text-left py-3 px-4 font-medium">Lista</th>

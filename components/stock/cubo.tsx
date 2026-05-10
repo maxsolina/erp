@@ -76,7 +76,7 @@ export default function CuboStock() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
         <h1 className="text-2xl font-bold text-amber-900 flex items-center gap-2">
           <Activity className="w-6 h-6" />
           Cubo de Stock

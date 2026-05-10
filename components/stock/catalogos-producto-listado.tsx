@@ -23,7 +23,7 @@ export default function CatalogosProductoListado() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
         <h1 className="text-2xl font-bold text-amber-900">Catálogos de Productos</h1>
       </div>
 

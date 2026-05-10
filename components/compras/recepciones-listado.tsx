@@ -74,7 +74,7 @@ export default function RecepcionesListado() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-amber-900">Recepciones</h1>
           <p className="text-xs text-gray-500 mt-1">
@@ -107,8 +107,8 @@ export default function RecepcionesListado() {
         filteredCount={filtered.length}
       />
 
-      <div className="mt-4 bg-white rounded-lg shadow-sm overflow-hidden">
-        <table className="w-full">
+      <div className="mt-4 bg-white rounded-lg shadow-sm overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Número</th>

@@ -69,7 +69,7 @@ export default function TomaEquipoListado() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-amber-900">Toma de Equipo en Parte de Pago</h1>
           <p className="text-sm text-gray-500 mt-0.5">Gestione las tomas de equipos usados como parte de pago</p>
@@ -140,8 +140,8 @@ export default function TomaEquipoListado() {
       </div>
 
       {/* Tabla */}
-      <div className="bg-white rounded-lg border overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white rounded-lg border overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead className="bg-gray-50 border-b">
             <tr className="text-xs text-gray-500 uppercase">
               <th className="text-left py-3 px-4">Número</th>

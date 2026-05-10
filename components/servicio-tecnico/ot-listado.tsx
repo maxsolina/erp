@@ -109,7 +109,7 @@ export default function OtListado() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
         <h1 className="text-2xl font-bold text-amber-900">Órdenes de Trabajo</h1>
         <div className="flex gap-2">
           <button
@@ -150,8 +150,8 @@ export default function OtListado() {
         filteredCount={ordenesFiltradas.length}
       />
 
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <table className="min-w-full">
+      <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+        <table className="min-w-[640px] w-full">
           <thead>
             <tr className="border-b bg-gray-50">
               {["Número", "Fecha", "Cliente", "Equipo", "Falla", "Estado", "Técnico", "Presupuesto"].map(h => (

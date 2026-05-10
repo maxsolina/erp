@@ -144,7 +144,7 @@ export default function ReservadoListado() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
         <h1 className="text-2xl font-bold text-amber-900">Stock Reservado</h1>
         <span className="text-sm text-gray-500">
           {filtrados.length} {filtrados.length === 1 ? "unidad reservada" : "unidades reservadas"}

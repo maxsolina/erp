@@ -1122,7 +1122,7 @@ function VentasListSection<T extends object>({
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-amber-900">{title}</h1>
           {subtitle && <p className="text-gray-500 mt-1 text-sm">{subtitle}</p>}
@@ -3113,7 +3113,7 @@ export default function ModuloVentas({
 
     return (
       <div>
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
           <h1 className="text-2xl font-bold text-amber-900">Clientes</h1>
           <button 
             onClick={() => { setEditingItem(null); setFormClienteCategoriaId(null); setFormClienteListaPreciosId(null); setCreandoCliente(true) }}
@@ -3148,8 +3148,8 @@ export default function ModuloVentas({
         </div>
 
         {/* Table */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead>
               <tr className="border-b bg-gray-50">
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Código</th>
@@ -4192,7 +4192,7 @@ export default function ModuloVentas({
   
   return (
       <div>
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
           <h1 className="text-2xl font-bold text-amber-900">Notas de Venta</h1>
           <button 
             onClick={() => { 
@@ -4244,8 +4244,8 @@ export default function ModuloVentas({
         </div>
 
         {/* Table */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead>
               <tr className="border-b bg-gray-50">
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Comprobante</th>
@@ -8066,8 +8066,8 @@ export default function ModuloVentas({
         </div>
 
         {/* Tabla */}
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg border overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-gray-50 border-b">
               <tr className="text-xs text-gray-500 uppercase tracking-wide">
                 <th className="text-left py-3 px-4">N° Seña</th>
@@ -8194,8 +8194,8 @@ export default function ModuloVentas({
         </div>
 
         {/* Table */}
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg border overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-gray-50 border-b">
               <tr className="text-xs text-gray-500 uppercase">
                 <th className="text-left py-3 px-4">Número</th>
@@ -8281,7 +8281,7 @@ export default function ModuloVentas({
     
     return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
         <h1 className="text-2xl font-bold text-amber-900">Ordenes de Entrega</h1>
         <button
           onClick={() => { setCreandoOE(true); setOeNvId(null) }}
@@ -8325,8 +8325,8 @@ export default function ModuloVentas({
         />
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead>
             <tr className="border-b bg-gray-50">
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
@@ -8527,8 +8527,8 @@ export default function ModuloVentas({
       filterFields={[{field: "estado", label: "Estado"}, {field: "control_factura", label: "Control Factura"}]}
     >
       {(filtered) => (
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead>
             <tr className="border-b bg-gray-50">
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
@@ -10083,7 +10083,7 @@ export default function ModuloVentas({
     
     return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
         <h1 className="text-2xl font-bold text-amber-900">Facturas</h1>
         <div className="flex items-center gap-2">
           <button
@@ -10143,8 +10143,8 @@ export default function ModuloVentas({
         />
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead>
             <tr className="border-b bg-gray-50">
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
@@ -11587,7 +11587,7 @@ export default function ModuloVentas({
 
     return (
       <div>
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
           <h1 className="text-2xl font-bold text-amber-900">Recibos</h1>
           <button onClick={() => { resetFormRecibo(); setCreandoRecibo(true); setSelectedRecibo(null); setEditandoRecibo(false); cargarCajasDisponibles() }} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" />Nuevo Recibo</button>
         </div>
@@ -11605,8 +11605,8 @@ export default function ModuloVentas({
             totalCount={recibos.length} filteredCount={listaFiltrada.length}
           />
         </div>
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead><tr className="bg-gray-50 border-b text-left text-xs text-gray-500 uppercase"><th className="px-4 py-3">Número</th><th className="px-4 py-3">Cliente</th><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Nota de Venta</th><th className="px-4 py-3">Estado</th><th className="px-4 py-3">Moneda</th><th className="px-4 py-3 text-right">Importe</th></tr></thead>
             <tbody>{listaFiltrada.map(r => (
               <tr key={r.id} onClick={async () => { await cargarDetalleRecibo(r.id); cargarCajasDisponibles(); if (r.caja_id) cargarValoresCaja(r.caja_id) }} className="border-b hover:bg-gray-50 cursor-pointer">
@@ -13095,8 +13095,8 @@ export default function ModuloVentas({
       }
     >
       {(filtered) => (
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead>
             <tr className="border-b bg-gray-50">
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
@@ -13274,7 +13274,7 @@ export default function ModuloVentas({
 
     return (
         <div>
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-amber-900">{titulo}</h1>
           </div>
@@ -13825,8 +13825,8 @@ export default function ModuloVentas({
         }
       >
         {(filtered) => (
-        <div className="bg-white border border-gray-200 rounded overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white border border-gray-200 rounded overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr className="text-xs text-gray-500 uppercase tracking-wider">
                 <th className="text-left py-3 px-4 font-medium">Nombre</th>
@@ -14105,8 +14105,8 @@ export default function ModuloVentas({
         }
       >
         {(filtered) => (
-        <div className="bg-white border border-gray-200 rounded overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white border border-gray-200 rounded overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr className="text-xs text-gray-500 uppercase tracking-wider">
                 <th className="text-left py-3 px-4 font-medium">Nombre</th>
@@ -14527,8 +14527,8 @@ export default function ModuloVentas({
         }
       >
         {(filtered) => (
-        <div className="bg-white border border-gray-200 rounded overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white border border-gray-200 rounded overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr className="text-xs text-gray-500 uppercase tracking-wider">
                 <th className="text-left py-3 px-4 font-medium">Lista</th>

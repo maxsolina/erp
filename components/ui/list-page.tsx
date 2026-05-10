@@ -58,7 +58,7 @@ export function ListPageHeader({
   actions?: React.ReactNode
 }) {
   return (
-    <div className="flex justify-between items-center mb-4">
+    <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
       <h1 className={TITLE_CLASS}>{title}</h1>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>

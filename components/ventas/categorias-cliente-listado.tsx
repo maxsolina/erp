@@ -59,7 +59,7 @@ export default function CategoriasClienteListado() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
         <h1 className="text-2xl font-bold text-amber-900">Categorías de Clientes</h1>
         <Link
           href="/ventas/categorias-cliente/nueva"
@@ -91,8 +91,8 @@ export default function CategoriasClienteListado() {
         filteredCount={filtered.length}
       />
 
-      <div className="mt-4 bg-white rounded-lg shadow-sm overflow-hidden">
-        <table className="w-full">
+      <div className="mt-4 bg-white rounded-lg shadow-sm overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Nombre</th>

@@ -164,9 +164,9 @@ export default function OdooFilterBar({
     <div className="bg-white rounded-lg shadow-sm border border-gray-200">
       {/* Barra principal */}
       <div className="p-3">
-        <div className="flex items-center gap-2">
-          {/* Campo de búsqueda con tags */}
-          <div className="flex-1 flex items-center gap-2 min-w-0 border border-gray-200 rounded-lg px-3 py-1.5 focus-within:ring-2 focus-within:ring-amber-500 focus-within:border-transparent bg-white">
+        <div className="flex flex-wrap md:flex-nowrap items-center gap-2">
+          {/* Campo de búsqueda con tags — full width en mobile, flex-1 en desktop */}
+          <div className="w-full md:flex-1 flex items-center gap-2 min-w-0 border border-gray-200 rounded-lg px-3 py-1.5 focus-within:ring-2 focus-within:ring-amber-500 focus-within:border-transparent bg-white">
             <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
             
             {/* Tags de agrupaciones activas */}

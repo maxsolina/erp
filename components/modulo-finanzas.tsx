@@ -955,8 +955,8 @@ function SeccionTarjetas({ tarjetas, setTarjetas }: { tarjetas: Tarjeta[]; setTa
         </button>
       </SectionHeader>
 
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead>
             <tr className="bg-gray-50 border-b-2 border-gray-200 text-xs font-semibold text-gray-500 uppercase">
               <th className="text-left py-3 px-4">Nombre</th>
@@ -1353,8 +1353,8 @@ function SeccionGrupos({ tarjetas, grupos, setGrupos }: { tarjetas: Tarjeta[]; g
         </button>
       </SectionHeader>
 
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead>
             <tr className="bg-gray-50 border-b-2 border-gray-200 text-xs font-semibold text-gray-500 uppercase">
               <th className="text-left py-3 px-4">Nombre</th>
@@ -2117,8 +2117,8 @@ function SeccionExtractosCaja() {
           actions={<button onClick={iniciarApertura} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Extracto</button>}
         >
           {(filtered) => (
-          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-            <table className="w-full">
+          <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+            <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="bg-gray-50 border-b-2 border-gray-200">
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Número</th>
@@ -3575,7 +3575,7 @@ function ConfigCajas() {
   if (vista === "lista") {
     return (
       <div>
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex justify-between items-center mb-6 gap-2 flex-wrap">
           <div>
             <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Configuración</p>
             <h1 className="text-2xl font-bold text-amber-900">Cajas</h1>
@@ -3588,8 +3588,8 @@ function ConfigCajas() {
         {loading ? (
           <div className="text-center py-12 text-gray-500">Cargando...</div>
         ) : (
-          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-            <table className="w-full">
+          <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+            <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="bg-gray-50 border-b-2 border-gray-200">
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Caja</th>
@@ -4137,8 +4137,8 @@ function RegistrosCaja() {
         actions={<button onClick={nuevoRegistro} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Registro</button>}
       >
         {(filtered) => (
-          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-            <table className="w-full">
+          <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+            <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="bg-gray-50 border-b-2 border-gray-200">
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">N° Registro</th>
@@ -4649,8 +4649,8 @@ function AjustesCaja() {
         actions={<button onClick={nuevoAjuste} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Ajuste</button>}
       >
         {(filtered) => (
-          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-            <table className="w-full">
+          <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+            <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="bg-gray-50 border-b-2 border-gray-200">
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">N° Ajuste</th>
@@ -5120,8 +5120,8 @@ function RegistrosBanco() {
         actions={<button onClick={nuevoRegistro} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Registro</button>}
       >
         {(filtered) => (
-          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-            <table className="w-full">
+          <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+            <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="bg-gray-50 border-b-2 border-gray-200">
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">N° Registro</th>
@@ -5521,8 +5521,8 @@ function AjustesBanco() {
         actions={<button onClick={nuevoAjuste} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Ajuste</button>}
       >
         {(filtered) => (
-          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-            <table className="w-full">
+          <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+            <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="bg-gray-50 border-b-2 border-gray-200">
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">N° Ajuste</th>
@@ -8609,7 +8609,7 @@ function ConciliacionBancaria() {
       {modalAjuste && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-[450px]">
-            <div className="flex justify-between items-center mb-4"><h3 className="font-semibold">Crear Ajuste de Banco</h3><button onClick={()=>setModalAjuste(null)}><X className="w-4 h-4"/></button></div>
+            <div className="flex justify-between items-center mb-4 gap-2 flex-wrap"><h3 className="font-semibold">Crear Ajuste de Banco</h3><button onClick={()=>setModalAjuste(null)}><X className="w-4 h-4"/></button></div>
             <div className="space-y-3">
               <div><label className="text-sm text-gray-500">Cuenta</label><p className="text-sm font-medium">{cuentas.find(c=>c.id===filtros.cuentaBancariaId)?.banco_nombre}</p></div>
               <div><label className="text-sm text-gray-500 block">Concepto</label><input value={ajusteConcepto} onChange={e=>setAjusteConcepto(e.target.value)} className="w-full border rounded px-3 py-2 text-sm" /></div>
@@ -9098,8 +9098,8 @@ function ListaBancos() {
         <button onClick={abrirNuevo} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Banco</button>
       </div>
       {loading ? <div className="text-center py-12 text-gray-500">Cargando...</div> : (
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead>
               <tr className="bg-gray-50 border-b-2 border-gray-200">
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Código</th>
@@ -9137,7 +9137,7 @@ function ListaBancos() {
       {mostrarModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
               <h3 className="text-lg font-semibold text-gray-900">{editando ? 'Editar Banco' : 'Nuevo Banco'}</h3>
               <button onClick={() => setMostrarModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
@@ -9414,8 +9414,8 @@ function ListaCuentasBancarias() {
         <button onClick={nueva} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nueva Cuenta Bancaria</button>
       </div>
       {loading ? <div className="text-center py-12 text-gray-500">Cargando...</div> : (
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead>
               <tr className="bg-gray-50 border-b-2 border-gray-200">
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">N° Cuenta</th>
@@ -9504,8 +9504,8 @@ function ListaTiposMovimiento() {
         <button onClick={abrirNuevo} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"><Plus className="w-4 h-4" /> Nuevo Tipo</button>
       </div>
       {loading ? <div className="text-center py-12 text-gray-500">Cargando...</div> : (
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead>
               <tr className="bg-gray-50 border-b-2 border-gray-200">
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Nombre</th>
@@ -9547,7 +9547,7 @@ function ListaTiposMovimiento() {
       {mostrarModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
               <h3 className="text-lg font-semibold text-gray-900">{editando ? 'Editar Tipo de Movimiento' : 'Nuevo Tipo de Movimiento'}</h3>
               <button onClick={() => setMostrarModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
@@ -9638,7 +9638,7 @@ function Conceptos() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 gap-2 flex-wrap">
         <div>
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Configuración</p>
           <h1 className="text-2xl font-bold text-amber-900">Conceptos</h1>
@@ -9647,8 +9647,8 @@ function Conceptos() {
       </div>
 
       {loading ? <div className="text-center py-12 text-gray-500">Cargando...</div> : (
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead>
               <tr className="bg-gray-50 border-b-2 border-gray-200">
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Código</th>
@@ -9732,7 +9732,7 @@ function ModalConcepto({ concepto, onGuardar, onCerrar }: { concepto: ConceptoRe
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6">
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
           <h3 className="text-lg font-semibold text-gray-900">{concepto ? 'Editar Concepto' : 'Nuevo Concepto'}</h3>
           <button onClick={onCerrar} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
         </div>
@@ -9810,7 +9810,7 @@ function TiposPrestamos() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 gap-2 flex-wrap">
         <div>
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Configuración</p>
           <h1 className="text-2xl font-bold text-amber-900">Tipos de Préstamos</h1>
@@ -9819,8 +9819,8 @@ function TiposPrestamos() {
       </div>
 
       {loading ? <div className="text-center py-12 text-gray-500">Cargando...</div> : (
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead>
               <tr className="bg-gray-50 border-b-2 border-gray-200">
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Nombre</th>
@@ -9903,7 +9903,7 @@ function ModalTipoPrestamo({ tipo, onGuardar, onCerrar }: { tipo: TipoPrestamo |
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
           <h3 className="text-lg font-semibold text-gray-900">{tipo ? 'Editar Tipo de Préstamo' : 'Nuevo Tipo de Préstamo'}</h3>
           <button onClick={onCerrar} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
         </div>
@@ -10008,7 +10008,7 @@ function FinanzasListSection<T extends object>({
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
         <div>
           {subtitle && <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">{subtitle}</p>}
           <h1 className="text-2xl font-bold text-amber-900">{title}</h1>

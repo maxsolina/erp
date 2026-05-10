@@ -70,7 +70,7 @@ export function ContabilidadConfigList<T>({
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
         <h1 className="text-2xl font-bold text-amber-900">{title}</h1>
         <Link
           href={`/?module=contabilidad&view=${monolithView}`}
@@ -102,8 +102,8 @@ export function ContabilidadConfigList<T>({
         filteredCount={filtered.length}
       />
 
-      <div className="mt-4 bg-white rounded-lg shadow-sm overflow-hidden">
-        <table className="w-full">
+      <div className="mt-4 bg-white rounded-lg shadow-sm overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
               {columns.map((col, i) => (

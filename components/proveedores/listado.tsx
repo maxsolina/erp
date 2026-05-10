@@ -177,8 +177,8 @@ export default function ProveedoresListado() {
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-lg border overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white rounded-lg border overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead className="bg-gray-50 border-b">
             <tr className="text-xs text-gray-500 uppercase">
               <th className="text-left py-3 px-4">Nombre</th>

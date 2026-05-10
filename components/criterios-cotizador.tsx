@@ -343,8 +343,8 @@ function ModelosTab({
         addLabel="Agregar modelo"
       />
 
-      <div className="bg-white border border-gray-200 rounded overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white border border-gray-200 rounded overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr className="text-xs text-gray-500 uppercase tracking-wider">
               <th className="text-left py-3 px-4 font-medium">Producto</th>
@@ -656,8 +656,8 @@ function CriteriosTab({
         </div>
       )}
 
-      <div className="bg-white border border-gray-200 rounded overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white border border-gray-200 rounded overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr className="text-xs text-gray-500 uppercase tracking-wider">
               <th className="text-left py-3 px-4 font-medium">Modelo</th>
@@ -910,8 +910,8 @@ function ExclusionesTab({ exclusiones, onChange, onError }: { exclusiones: Exclu
         </button>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white border border-gray-200 rounded overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr className="text-xs text-gray-500 uppercase tracking-wider">
               <th className="w-8"></th>
@@ -1033,8 +1033,8 @@ function CategoriasTab({ categorias, onChange, onError }: { categorias: Categori
         </button>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white border border-gray-200 rounded overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr className="text-xs text-gray-500 uppercase tracking-wider">
               <th className="w-8"></th>
@@ -1209,8 +1209,8 @@ function EtiquetasTab({
         </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white border border-gray-200 rounded overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr className="text-xs text-gray-500 uppercase tracking-wider">
               <th className="w-8"></th>

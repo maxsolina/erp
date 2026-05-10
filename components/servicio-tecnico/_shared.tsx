@@ -117,7 +117,7 @@ export function CRUDTableWithFilter({
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
         <h1 className="text-2xl font-bold text-amber-900">{title}</h1>
         <button
           onClick={onNew}
@@ -146,8 +146,8 @@ export function CRUDTableWithFilter({
         totalCount={data.length}
         filteredCount={filtered.length}
       />
-      <div className="mt-4 bg-white rounded-lg shadow-sm overflow-hidden">
-        <table className="min-w-full">
+      <div className="mt-4 bg-white rounded-lg shadow-sm overflow-x-auto">
+        <table className="min-w-[640px] w-full">
           <thead>
             <tr className="border-b bg-gray-50">
               {columns.map(c => (

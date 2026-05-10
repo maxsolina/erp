@@ -676,7 +676,7 @@ function ComprasListSection<T extends object>({
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-amber-900">{title}</h1>
           {subtitle && <p className="text-gray-500 mt-1 text-sm">{subtitle}</p>}
@@ -2173,8 +2173,8 @@ export default function ModuloCompras({
         </div>
 
         {/* Table */}
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg border overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-gray-50 border-b">
               <tr className="text-xs text-gray-500 uppercase">
                 <th className="text-left py-3 px-4">Nombre</th>
@@ -3196,8 +3196,8 @@ export default function ModuloCompras({
         </div>
 
         {/* Tabla */}
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg border overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-gray-50 border-b">
               <tr className="text-xs text-gray-500 uppercase tracking-wider">
                 <th className="text-left py-3 px-4">N° OC</th>
@@ -4459,8 +4459,8 @@ export default function ModuloCompras({
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg border overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-gray-50 border-b">
               <tr className="text-xs text-gray-500 uppercase">
                 <th className="text-left py-3 px-4">N��mero</th>
@@ -4824,8 +4824,8 @@ export default function ModuloCompras({
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg border overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-gray-50 border-b">
               <tr className="text-xs text-gray-500 uppercase">
                 <th className="text-left py-3 px-4">Número</th>
@@ -5497,8 +5497,8 @@ export default function ModuloCompras({
         </div>
 
         {/* Tabla */}
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg border overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-gray-50 border-b">
               <tr className="text-xs text-gray-500 uppercase tracking-wider">
                 <th className="text-left py-3 px-4">N° Recepción</th>
@@ -7013,8 +7013,8 @@ export default function ModuloCompras({
           />
         </div>
 
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg border overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="border-b bg-gray-50">
               <tr>
                 {["Número", "Fecha", "Proveedor", "Subtotal", "IVA", "Total", "Saldo", "Estado"].map(h => (
@@ -7074,8 +7074,8 @@ export default function ModuloCompras({
         }
       >
         {(filtered) => (
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg border overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-gray-50 border-b">
               <tr className="text-xs text-gray-500 uppercase">
                 <th className="text-left py-3 px-4">Número</th>
@@ -7134,8 +7134,8 @@ export default function ModuloCompras({
         }
       >
         {(filtered) => (
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg border overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-gray-50 border-b">
               <tr className="text-xs text-gray-500 uppercase">
                 <th className="text-left py-3 px-4">Número</th>
@@ -8112,8 +8112,8 @@ export default function ModuloCompras({
               </div>
             </div>
 
-            <div className="bg-white rounded-lg border overflow-hidden">
-              <table className="w-full">
+            <div className="bg-white rounded-lg border overflow-x-auto">
+              <table className="w-full min-w-[640px]">
                 <thead className="bg-gray-50 border-b">
                   <tr className="text-xs font-semibold text-gray-600 uppercase">
                     <th className="text-left py-3 px-4">Número</th>
@@ -8195,8 +8195,8 @@ export default function ModuloCompras({
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg border overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-gray-50 border-b">
               <tr className="text-xs text-gray-500 uppercase">
                 <th className="text-left py-3 px-4">Fecha</th>
@@ -8256,8 +8256,8 @@ export default function ModuloCompras({
         }
       >
         {(filtered) => (
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg border overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-gray-50 border-b">
               <tr className="text-xs text-gray-500 uppercase">
                 <th className="text-left py-3 px-4">Código</th>
@@ -8703,8 +8703,8 @@ export default function ModuloCompras({
         }
       >
         {(filtered) => (
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg border overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-gray-50 border-b">
               <tr className="text-xs text-gray-500 uppercase">
                 <th className="text-left py-3 px-4">Nombre</th>

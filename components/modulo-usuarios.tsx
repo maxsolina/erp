@@ -212,8 +212,8 @@ export default function ModuloUsuarios() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead>
             <tr className="border-b bg-gray-50">
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Usuario</th>
