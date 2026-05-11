@@ -5,10 +5,15 @@ import { NextResponse } from "next/server"
 const SELECT_LIST = "id, numero, caja_id, caja_nombre, sucursal, responsable_nombre, fecha_apertura, fecha_cierre, estado"
 
 // GET /api/extractos-caja
+//
+// Por default enriquece cada extracto con `saldos` (lista de extracto_saldos
+// con `saldo_estimado` calculado server-side ignorando cancelados). Pasar
+// ?sin_saldos=1 para una lista sin enriquecimiento (más rápido).
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const limit = Number(searchParams.get("limit") ?? 200)
   const estado = searchParams.get("estado")
+  const sinSaldos = searchParams.get("sin_saldos") === "1"
 
   const supabase = await createClient()
   let query = supabase
@@ -21,7 +26,43 @@ export async function GET(req: Request) {
 
   const { data, error } = await query
   if (error) return dbError(error)
-  return NextResponse.json(data ?? [])
+  if (!data || data.length === 0 || sinSaldos) return NextResponse.json(data ?? [])
+
+  // Enriquecimiento: una sola query por saldos + una sola por movimientos
+  // sumarizados, indexados por (extracto_id, valor_id).
+  const ids = data.map(e => (e as { id: string }).id)
+  const [{ data: saldos }, { data: movs }] = await Promise.all([
+    supabase.from("extracto_saldos")
+      .select("id, extracto_id, valor_id, valor_nombre, valor_codigo, moneda, saldo_apertura, saldo_cierre_ingresado")
+      .in("extracto_id", ids),
+    supabase.from("movimientos_caja")
+      .select("extracto_id, valor_id, tipo_movimiento, importe, estado_movimiento")
+      .in("extracto_id", ids),
+  ])
+
+  // Index: (extracto_id|valor_id) → {ingresos, egresos}
+  const movMap = new Map<string, { ingresos: number; egresos: number }>()
+  for (const m of movs ?? []) {
+    if (m.estado_movimiento === "cancelado") continue
+    const key = `${m.extracto_id}|${m.valor_id}`
+    const cur = movMap.get(key) ?? { ingresos: 0, egresos: 0 }
+    if (m.tipo_movimiento === "ingreso") cur.ingresos += Number(m.importe ?? 0)
+    else if (m.tipo_movimiento === "egreso") cur.egresos += Number(m.importe ?? 0)
+    movMap.set(key, cur)
+  }
+
+  const saldosByExt = new Map<string, any[]>()
+  for (const s of saldos ?? []) {
+    const mov = movMap.get(`${s.extracto_id}|${s.valor_id}`)
+    const saldoEstimado = Number(s.saldo_apertura ?? 0) + (mov?.ingresos ?? 0) - (mov?.egresos ?? 0)
+    const enriched = { ...s, saldo_estimado: Math.round(saldoEstimado * 100) / 100 }
+    const arr = saldosByExt.get(s.extracto_id as string) ?? []
+    arr.push(enriched)
+    saldosByExt.set(s.extracto_id as string, arr)
+  }
+
+  const enriched = data.map(e => ({ ...(e as any), saldos: saldosByExt.get((e as { id: string }).id) ?? [] }))
+  return NextResponse.json(enriched)
 }
 
 // POST /api/extractos-caja — abre un extracto nuevo en una caja.
