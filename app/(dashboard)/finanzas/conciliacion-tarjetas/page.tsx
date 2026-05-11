@@ -1,3 +1,17 @@
 "use client"
-import FinanzasRedirectStub from "@/components/finanzas/redirect-stub"
-export default function Page() { return <FinanzasRedirectStub view="conciliacion_tarjetas" permKey="conciliacion_tarjetas" /> }
+
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useERP } from "@/contexts/erp-context"
+import ConciliacionTarjetas from "@/components/finanzas/conciliacion-tarjetas"
+
+export default function Page() {
+  const router = useRouter()
+  const { canSee } = useERP()
+
+  useEffect(() => {
+    if (!canSee("finanzas", "conciliacion_tarjetas")) router.replace("/")
+  }, [canSee, router])
+
+  return <ConciliacionTarjetas />
+}

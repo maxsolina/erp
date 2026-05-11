@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
-import { AlertCircle, ArrowLeft, Save, X, ExternalLink } from "lucide-react"
+import { AlertCircle, ArrowLeft, Save, X } from "lucide-react"
 import { useERP } from "@/contexts/erp-context"
+import { createClient } from "@/lib/supabase/client"
+import { TabValores, TabBancosPermitidos, TabUsuarios, type CajaValor, type CajaUsuario, type CajaBancoPermitido } from "./caja-tabs"
 
 type Form = {
   nombre: string
@@ -99,10 +100,8 @@ export default function CajaForm({ initialId }: { initialId?: string }) {
     </div>
   )
 
-  const monolithHref = `/?module=finanzas&view=cajas${isEdit ? `&caja_id=${initialId}` : ""}`
-
   return (
-    <div className="max-w-4xl">
+    <div>
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-lg"><ArrowLeft className="w-4 h-4" /></button>
@@ -178,18 +177,61 @@ export default function CajaForm({ initialId }: { initialId?: string }) {
         </div>
       </div>
 
-      {isEdit && (
-        <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-blue-900 mb-2">Configuración avanzada</h3>
-          <p className="text-xs text-blue-800 mb-3">
-            La gestión de <strong>Valores Permitidos</strong>, <strong>Bancos Permitidos</strong> y <strong>Usuarios</strong> de esta caja
-            se hace en el módulo Finanzas. Hacé click abajo para abrir la ficha completa con sus tabs.
-          </p>
-          <Link href={monolithHref} className="inline-flex items-center gap-2 text-sm text-indigo-900 hover:text-indigo-700 font-medium">
-            <ExternalLink className="w-4 h-4" /> Abrir ficha completa en módulo Finanzas
-          </Link>
-        </div>
-      )}
+      {isEdit && initialId && <CajaSubTabs cajaId={initialId} />}
+    </div>
+  )
+}
+
+// ─── Sub-tabs (Valores / Bancos / Usuarios) ─────────────────────────────────
+// Solo se renderizan en modo edición (cuando ya existe la caja).
+function CajaSubTabs({ cajaId }: { cajaId: string }) {
+  const [tab, setTab] = useState<"valores" | "bancos" | "usuarios">("valores")
+  const [valores, setValores] = useState<CajaValor[]>([])
+  const [bancos, setBancos] = useState<CajaBancoPermitido[]>([])
+  const [usuarios, setUsuarios] = useState<CajaUsuario[]>([])
+  const [cargando, setCargando] = useState(true)
+
+  const recargar = async () => {
+    setCargando(true)
+    const supabase = createClient()
+    const [v, b, u] = await Promise.all([
+      supabase.from("caja_valores").select("*").eq("caja_id", cajaId).order("codigo"),
+      supabase.from("caja_bancos_permitidos").select("*").eq("caja_id", cajaId).order("codigo"),
+      supabase.from("caja_usuarios").select("*").eq("caja_id", cajaId).order("usuario_nombre"),
+    ])
+    setValores((v.data as CajaValor[]) ?? [])
+    setBancos((b.data as CajaBancoPermitido[]) ?? [])
+    setUsuarios((u.data as CajaUsuario[]) ?? [])
+    setCargando(false)
+  }
+
+  useEffect(() => { recargar() }, [cajaId])
+
+  return (
+    <div className="mt-6 bg-white rounded-lg border">
+      <div className="flex border-b">
+        {([
+          { id: "valores", label: `Valores (${valores.length})` },
+          { id: "bancos", label: `Bancos Permitidos (${bancos.length})` },
+          { id: "usuarios", label: `Usuarios (${usuarios.length})` },
+        ] as const).map(t => (
+          <button key={t.id} type="button" onClick={() => setTab(t.id)}
+            className={`px-4 py-2 text-sm border-b-2 ${tab === t.id ? "border-indigo-700 text-indigo-700 font-medium" : "border-transparent text-gray-500"}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="p-4">
+        {cargando ? (
+          <p className="text-sm text-gray-400 text-center py-6">Cargando…</p>
+        ) : tab === "valores" ? (
+          <TabValores cajaId={cajaId} valores={valores} onActualizar={recargar} modoEdicion={true} />
+        ) : tab === "bancos" ? (
+          <TabBancosPermitidos cajaId={cajaId} bancos={bancos} onActualizar={recargar} modoEdicion={true} />
+        ) : (
+          <TabUsuarios cajaId={cajaId} usuarios={usuarios} soloTransferencias={false} onActualizar={recargar} modoEdicion={true} />
+        )}
+      </div>
     </div>
   )
 }

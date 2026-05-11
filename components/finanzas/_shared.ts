@@ -85,12 +85,23 @@ export interface Tarjeta {
   activa: boolean
 }
 
+export interface CargoGrupo {
+  id?: number
+  nombre: string
+  tipo: string
+  arancel: number
+  es_porcentaje: boolean
+  cuenta_contable: string
+}
+
 export interface GrupoTarjeta {
   id: number
   nombre: string
   banco: string | null
   tipo_movimiento: string | null
   activo: boolean
+  tarjetas_ids?: number[]
+  cargos?: CargoGrupo[]
 }
 
 export interface RecargoTarjeta {
@@ -103,6 +114,7 @@ export interface RecargoTarjeta {
   fecha_desde: string | null
   fecha_hasta: string | null
   recargo_pct: number
+  dias: { lun: boolean; mar: boolean; mie: boolean; jue: boolean; vie: boolean; sab: boolean; dom: boolean }
   activo: boolean
 }
 
@@ -120,6 +132,33 @@ export interface CuponTarjeta {
   estado: "en_cartera" | "conciliado" | "rechazado" | "cancelado"
   fecha_conciliacion: string | null
   venta_numero: string | null
+}
+
+export interface ConciliacionTarjetaCargo {
+  id: string
+  conciliacion_id: string
+  descripcion: string
+  cuenta_contable: string
+  importe: number
+  impuestos: number
+  total: number
+}
+
+export interface ConciliacionTarjeta {
+  id: string
+  numero: string
+  grupo_tarjeta: string
+  liquidacion: string
+  fecha: string
+  sucursal: string
+  importe_conciliado: number
+  importe_cargos: number
+  importe_total: number
+  importe_cupones_rechazados: number
+  estado: "borrador" | "confirmado"
+  observaciones: string
+  cupones?: CuponTarjeta[]
+  cargos?: ConciliacionTarjetaCargo[]
 }
 
 export interface RegistroCaja {
