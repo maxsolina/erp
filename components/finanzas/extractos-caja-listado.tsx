@@ -4,8 +4,25 @@ import { useEffect, useState } from "react"
 import { ContabilidadConfigList } from "@/components/contabilidad/config-list-shell"
 import { type ExtractoCaja, formatDate, estadoBadgeClass, estadoLabel } from "./_shared"
 
+interface SaldoEnriquecido {
+  id: string
+  valor_id: string
+  valor_nombre: string
+  moneda: string
+  saldo_apertura: number
+  saldo_cierre_ingresado: number | null
+  saldo_estimado?: number
+}
+
+interface ExtractoConSaldos extends ExtractoCaja {
+  saldos?: SaldoEnriquecido[]
+}
+
+const formatMonto = (n: number) =>
+  new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
+
 export default function ExtractosCajaListado() {
-  const [items, setItems] = useState<ExtractoCaja[]>([])
+  const [items, setItems] = useState<ExtractoConSaldos[]>([])
   const [cargando, setCargando] = useState(true)
   const [search, setSearch] = useState("")
 
@@ -18,7 +35,7 @@ export default function ExtractosCajaListado() {
   }, [])
 
   return (
-    <ContabilidadConfigList<ExtractoCaja>
+    <ContabilidadConfigList<ExtractoConSaldos>
       title="Extractos de Caja"
       moduleName="finanzas_extractos_caja"
       monolithModule="finanzas"
@@ -45,7 +62,7 @@ export default function ExtractosCajaListado() {
           ],
         },
       ]}
-      rowFilter={(r, fs) => fs.every(f => String(r[f.field as keyof ExtractoCaja] ?? "") === f.value)}
+      rowFilter={(r, fs) => fs.every(f => String(r[f.field as keyof ExtractoConSaldos] ?? "") === f.value)}
       rowKey={r => r.id}
       emptyText="No hay extractos de caja"
       columns={[
@@ -62,6 +79,30 @@ export default function ExtractosCajaListado() {
             {estadoLabel(r.estado)}
           </span>
         ) },
+        {
+          label: "Saldo Estimado",
+          render: r => {
+            const saldos = r.saldos ?? []
+            if (saldos.length === 0) return <span className="text-xs text-gray-400">—</span>
+            return (
+              <div className="flex flex-col gap-0.5">
+                {saldos.map(s => {
+                  const monto = r.estado === "cerrado"
+                    ? Number(s.saldo_cierre_ingresado ?? s.saldo_estimado ?? s.saldo_apertura ?? 0)
+                    : Number(s.saldo_estimado ?? s.saldo_apertura ?? 0)
+                  return (
+                    <span key={s.id} className="text-xs font-mono whitespace-nowrap">
+                      <span className="text-gray-500">{s.valor_nombre}:</span>{" "}
+                      <span className={monto < 0 ? "text-red-600 font-semibold" : "text-gray-900"}>
+                        {s.moneda !== "ARS" ? `${s.moneda} ` : "$"}{formatMonto(monto)}
+                      </span>
+                    </span>
+                  )
+                })}
+              </div>
+            )
+          },
+        },
       ]}
     />
   )

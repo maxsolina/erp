@@ -4,8 +4,13 @@ import { NextResponse } from "next/server"
 
 // GET /api/extractos-caja/[id]
 //
-// Devuelve el extracto + saldos con saldo_estimado calculado (suma signed de
-// movimientos_caja confirmados/pendientes por valor, ignorando cancelados).
+// Devuelve el extracto + saldos (con saldo_estimado + transacciones)
+// + movimientos completos (ordenados desc por fecha).
+//
+// Auto-fix de huérfanos: si hay movimientos_caja con valor_id que no aparece
+// en extracto_saldos (puede pasar si se agregó un valor a la caja después de
+// abrir el extracto), se insertan filas nuevas en extracto_saldos con
+// saldo_apertura=0. Solo aplica al extracto abierto.
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
   const supabase = await createClient()
@@ -18,25 +23,58 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (error) return dbError(error)
   if (!extracto) return apiError("Extracto no encontrado", 404)
 
-  const [{ data: saldos }, { data: movs }] = await Promise.all([
-    supabase.from("extracto_saldos").select("id, valor_id, valor_nombre, valor_codigo, moneda, saldo_apertura, saldo_cierre_ingresado").eq("extracto_id", id),
-    supabase.from("movimientos_caja").select("valor_id, tipo_movimiento, importe, estado_movimiento").eq("extracto_id", id),
+  let [{ data: saldos }, { data: movs }] = await Promise.all([
+    supabase.from("extracto_saldos")
+      .select("id, valor_id, valor_nombre, valor_codigo, moneda, saldo_apertura, saldo_cierre_ingresado")
+      .eq("extracto_id", id),
+    supabase.from("movimientos_caja")
+      .select("id, extracto_id, valor_id, valor_nombre, tipo_movimiento, importe, moneda, concepto, documento_origen_tipo, documento_origen_id, documento_origen_numero, estado_movimiento, fecha")
+      .eq("extracto_id", id)
+      .order("fecha", { ascending: false }),
   ])
 
-  const movsByValor = new Map<string, { ingresos: number; egresos: number }>()
-  for (const m of movs ?? []) {
-    if (m.estado_movimiento === "cancelado") continue
-    const cur = movsByValor.get(m.valor_id as string) ?? { ingresos: 0, egresos: 0 }
-    if (m.tipo_movimiento === "ingreso") cur.ingresos += Number(m.importe ?? 0)
-    else if (m.tipo_movimiento === "egreso") cur.egresos += Number(m.importe ?? 0)
-    movsByValor.set(m.valor_id as string, cur)
+  // Auto-fix de huérfanos solo si está abierto.
+  if (extracto.estado === "abierto" && saldos && movs) {
+    const valorIdsRegistrados = new Set((saldos as any[]).map(s => s.valor_id))
+    const huerfanos = new Map<string, any>()
+    for (const m of movs as any[]) {
+      if (m.valor_id && !valorIdsRegistrados.has(m.valor_id) && !huerfanos.has(m.valor_id)) {
+        huerfanos.set(m.valor_id, m)
+      }
+    }
+    if (huerfanos.size > 0) {
+      const filasNuevas = Array.from(huerfanos.values()).map(m => ({
+        extracto_id: id,
+        valor_id: m.valor_id,
+        valor_nombre: m.valor_nombre,
+        valor_codigo: m.valor_nombre,
+        moneda: m.moneda,
+        saldo_apertura: 0,
+      }))
+      const { data: insertados } = await supabase.from("extracto_saldos").insert(filasNuevas).select()
+      if (insertados) saldos = [...(saldos as any[]), ...(insertados as any[])]
+    }
   }
 
-  const saldosEnriquecidos = (saldos ?? []).map(s => {
+  const movsByValor = new Map<string, { ingresos: number; egresos: number; transacciones: number }>()
+  for (const m of movs ?? []) {
+    if ((m as any).estado_movimiento === "cancelado") continue
+    const cur = movsByValor.get((m as any).valor_id as string) ?? { ingresos: 0, egresos: 0, transacciones: 0 }
+    if ((m as any).tipo_movimiento === "ingreso") cur.ingresos += Number((m as any).importe ?? 0)
+    else if ((m as any).tipo_movimiento === "egreso") cur.egresos += Number((m as any).importe ?? 0)
+    cur.transacciones += 1
+    movsByValor.set((m as any).valor_id as string, cur)
+  }
+
+  const saldosEnriquecidos = (saldos ?? []).map((s: any) => {
     const mov = movsByValor.get(s.valor_id as string)
     const saldoEstimado = Number(s.saldo_apertura ?? 0) + (mov?.ingresos ?? 0) - (mov?.egresos ?? 0)
-    return { ...s, saldo_estimado: Math.round(saldoEstimado * 100) / 100 }
+    return {
+      ...s,
+      saldo_estimado: Math.round(saldoEstimado * 100) / 100,
+      transacciones: mov?.transacciones ?? 0,
+    }
   })
 
-  return NextResponse.json({ ...extracto, saldos: saldosEnriquecidos })
+  return NextResponse.json({ ...extracto, saldos: saldosEnriquecidos, movimientos: movs ?? [] })
 }
