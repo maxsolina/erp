@@ -1,3 +1,17 @@
 "use client"
-import FinanzasRedirectStub from "@/components/finanzas/redirect-stub"
-export default function Page() { return <FinanzasRedirectStub view="conceptos" permKey="conceptos" /> }
+
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useERP } from "@/contexts/erp-context"
+import ConceptosListado from "@/components/finanzas/conceptos-listado"
+
+export default function Page() {
+  const router = useRouter()
+  const { canSee } = useERP()
+
+  useEffect(() => {
+    if (!canSee("finanzas", "conceptos")) router.replace("/")
+  }, [canSee, router])
+
+  return <ConceptosListado />
+}

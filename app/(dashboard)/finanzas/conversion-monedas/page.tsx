@@ -1,3 +1,17 @@
 "use client"
-import FinanzasRedirectStub from "@/components/finanzas/redirect-stub"
-export default function Page() { return <FinanzasRedirectStub view="conversion_monedas" permKey="conversion_monedas" /> }
+
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useERP } from "@/contexts/erp-context"
+import ConversionMonedasListado from "@/components/finanzas/conversion-monedas-listado"
+
+export default function Page() {
+  const router = useRouter()
+  const { canSee } = useERP()
+
+  useEffect(() => {
+    if (!canSee("finanzas", "conversion_monedas")) router.replace("/")
+  }, [canSee, router])
+
+  return <ConversionMonedasListado />
+}

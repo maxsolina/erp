@@ -69,9 +69,8 @@ export default function CajasListado() {
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-amber-900">Cajas</h1>
         <Link
-          href="/?module=finanzas&view=cajas"
+          href="/finanzas/cajas/nueva"
           className="bg-indigo-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-800 flex items-center gap-2"
-          title="La gestión de cajas se hace en el módulo Finanzas"
         >
           <Plus className="w-4 h-4" />
           Nueva Caja
@@ -117,9 +116,9 @@ export default function CajasListado() {
               <tr><td colSpan={5} className="py-8 text-center text-gray-400">Cargando...</td></tr>
             )}
             {!cargando && filtered.map(c => {
-              // Click en la fila → abrir la ficha de la caja en el monolito
-              // (la gestión completa de valores/bancos/usuarios sigue ahí)
-              const href = `/?module=finanzas&view=cajas&caja_id=${c.id}`
+              // Click en la fila → ficha de la caja en su ruta propia.
+              // Los tabs avanzados (valores/bancos/usuarios) siguen en el monolito.
+              const href = `/finanzas/cajas/${c.id}/editar`
               return (
                 <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
                   <td className="p-0"><Link href={href} className="block py-3 px-4 font-mono text-sm text-gray-500">{c.codigo ?? "—"}</Link></td>

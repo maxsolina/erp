@@ -90,9 +90,107 @@ Los 25 stubs de Finanzas y los 19 de Contabilidad siguen siendo los blocs grande
 - **Reportes** (requieren más diseño que un listado simple — agregaciones, filtros por período, etc.): Balance General, Balance de Sumas y Saldos, Estado de Resultados, Libro Mayor, Libro IVA Digital, Informes Contables, Diagrama de Impuestos.
 - **Sin API o features placeholder**: Amortizaciones, Control Presupuestario, Devengamientos Diferidos.
 
-**Pendientes en Finanzas (24 rutas):**
-- 24 stubs leen Supabase directo desde el cliente — requieren agregar API antes de extraer (mismo patrón que `/api/recibos` y `/api/nc-categorias` que se agregaron post-PR-18).
-- Algunos pueden ser features placeholder sin data real, igual que los Compras stubs no extraídos.
+**Finanzas — extracción masiva (sesión post-PR-65):**
+
+Se generalizó `ContabilidadConfigList` (ahora acepta `monolithModule` y `eyebrow`) y se extrajeron 20 vistas más a partir de Cajas + BancosConfig. Cada una agrega:
+- Endpoint GET en `app/api/<entidad>/route.ts` (server-side, respeta RLS).
+- `components/finanzas/<entidad>-listado.tsx` montando el shell con sus columnas.
+- `app/(dashboard)/finanzas/<entidad>/page.tsx` reemplazando el redirect-stub.
+
+Tipos y badge helpers (`estadoBadgeClass`/`estadoLabel`) viven en `components/finanzas/_shared.ts`.
+
+| Listado | API nueva | Tabla |
+|---------|-----------|-------|
+| Bancos Config (3 sub-tabs) | `/api/bancos`, `/api/cuentas-bancarias`, `/api/tipos-movimiento-bancario` | `bancos`, `cuentas_bancarias`, `tipos_movimiento_bancario` |
+| Conceptos | `/api/conceptos-registro-caja` | `conceptos_registro_caja` |
+| Tipos de Préstamos | `/api/tipos-prestamo` | `tipos_prestamo` |
+| Tarjetas | (reusa `/api/tarjetas`) | `tarjetas` |
+| Grupos | (reusa `/api/grupos-tarjeta`) | `grupos_tarjeta` |
+| Recargos | (reusa `/api/recargos-tarjeta`) | `recargos_tarjeta` |
+| Cupones | `/api/cupones-tarjeta` | `cupones_tarjeta` |
+| Registros de Caja | `/api/registros-caja` | `registros_caja` |
+| Registros de Banco | `/api/registros-banco` | `registros_banco` |
+| Ajustes de Caja | `/api/ajustes-caja` | `ajustes_caja` |
+| Ajustes de Banco | `/api/ajustes-banco` | `ajustes_banco` |
+| Transferencias de Caja | `/api/transferencias-caja` | `transferencias_caja` |
+| Transferencias Bancarias | `/api/transferencias-bancarias` | `transferencias_bancarias` |
+| Depósitos | `/api/depositos-bancarios` | `depositos_bancarios` |
+| Extracciones | `/api/extracciones` | `extracciones` |
+| Conversión de Monedas | `/api/conversiones-moneda` | `conversiones_moneda` |
+| Préstamos | `/api/prestamos` | `prestamos` |
+| Cheques de Terceros | `/api/cheques-terceros` | `cheques_terceros` |
+| Negociación de Cheques | `/api/negociaciones-cheques` | `negociaciones_cheques` |
+| Extractos de Caja | `/api/extractos-caja` | `extractos_caja` |
+
+El botón "Nuevo X" y los clicks en la fila linkean al monolito (`/?module=finanzas&view=<id>`) — la edición sigue ahí; el listing es read-only.
+
+**Stubs que se mantienen embedded (sin extraer):**
+- **Cheques Propios** — placeholder en el monolito (`setLista([])`, no hay tabla aún). Los cheques propios se generan al pagar con cheque en Compras → Órdenes de Pago.
+- **Conciliación Bancaria** — flujo con detail + cargos + matching contra movimientos; merece su propio diseño cuando se migre.
+- **Conciliación de Tarjetas** — flujo con detail + cupones + cargos; misma razón.
+- **Simulador** — calculadora interactiva, no es una listing.
+
+Total Finanzas tras esta sesión: **22 de 25 rutas extraídas con listing real**; 3 mountan el monolito inline (URL clean, sidebar/topbar global preservados).
+
+**Finanzas — forms a rutas propias (sesión post-listings):**
+
+Patrón A (componente standalone con `initialId`, POST + PUT endpoints server-side, ruta `/nuevo` y `/[id]/editar`). El shell `ContabilidadConfigList` se extendió con `newHref` + `editHref` para que cada listing apunte directo a sus rutas.
+
+**15 forms migrados:**
+
+Configs y maestros (single-table CRUD):
+
+| Entidad | API new | Form / pages |
+|---------|---------|--------------|
+| Conceptos | `POST /api/conceptos-registro-caja` + `PUT /[id]` | `concepto-form.tsx` |
+| Tipos de Préstamos | `POST /api/tipos-prestamo` + `PUT /[id]` | `tipo-prestamo-form.tsx` |
+| Bancos | `POST /api/bancos` + `PUT /[id]` | `banco-form.tsx` (en `bancos-config/bancos/`) |
+| Cuentas Bancarias | `POST /api/cuentas-bancarias` + `PUT /[id]` | `cuenta-bancaria-form.tsx` |
+| Tipos Movimiento Banc. | `POST /api/tipos-movimiento-bancario` + `PUT /[id]` | `tipo-movimiento-bancario-form.tsx` |
+| Tarjetas | (PUT/POST ya existía) | `tarjeta-form.tsx` |
+| Grupos | `POST` extendido con `tarjeta_ids` + `cargos` | `grupo-form.tsx` |
+| Recargos | (PUT/POST ya existía) | `recargo-form.tsx` |
+
+Transaccionales (multi-tabla + publicar workflow):
+
+| Entidad | Endpoints | Form |
+|---------|-----------|------|
+| Ajustes Banco | `POST/PUT` + RPC `generar_numero_ajuste_banco` | `ajuste-banco-form.tsx` |
+| Conversión de Monedas | `POST/PUT` + `[id]/publicar` (egreso/ingreso valor + diferencia redondeo) | `conversion-moneda-form.tsx` |
+| Transferencias Bancarias | `POST/PUT` + `[id]/publicar` (2 mov_banco) | `transferencia-bancaria-form.tsx` |
+| Depósitos | `POST/PUT` con líneas `deposito_bancario_valores` + `[id]/publicar` (mov_caja egreso por línea + mov_banco ingreso total) | `deposito-form.tsx` |
+| Extracciones | `POST/PUT` con líneas `extraccion_valores` + `[id]/publicar` (mov_caja ingreso por línea + mov_banco egreso, valida valor en caja destino) | `extraccion-form.tsx` |
+| Ajustes Caja | `POST/PUT` con líneas `ajuste_caja_valores` (tipo `entrada`/`salida`) + `[id]/publicar` (mov_caja por línea) | `ajuste-caja-form.tsx` |
+| Transferencias de Caja | `POST/PUT` + `[id]/publicar` (mov_caja egreso confirmado + ingreso pendiente) + `[id]/recibir` (confirma ingreso) + `[id]/cancelar` (cancela ambos movs) | `transferencia-caja-form.tsx` |
+
+Helpers compartidos en [lib/finanzas-server.ts](lib/finanzas-server.ts): `getExtractoAbierto`, `getValorEnCaja`.
+
+**6 forms transaccionales complejos (sesión final):**
+
+| Entidad | Endpoints | Workflow |
+|---------|-----------|----------|
+| Registros de Caja | `POST/PUT` con comprobantes + valores + `[id]/confirmar` (mov_caja egreso por valor) + `[id]/cancelar` (marca movs como cancelados, valida extracto abierto) | borrador → confirmado → cancelado |
+| Registros de Banco | `POST/PUT` con comprobantes + valores + `[id]/confirmar` (mov_banco egreso por valor) | borrador → confirmado |
+| Préstamos | `POST/PUT` + `[id]/confirmar` (genera cuotas según sistema francés/alemán/americano/bullet + mov_caja ingreso si no es preexistente) + `[id]/cuotas/[cuotaId]/pagar` (mov_caja egreso + actualiza saldo) | borrador → pendiente → cerrado |
+| Negociación de Cheques | `POST/PUT` con items (cheques) + gastos + `[id]/avanzar` (flujo borrador → en_negociacion → cobranza → liquidacion → finalizada, con mov_caja egreso + mov_banco ingreso al finalizar) + `[id]/rechazar-cheque` (genera ND + marca cheque rechazado) | flujo 5 estados |
+| Extractos de Caja | `POST` apertura (genera saldos por valor desde último cierre) + `[id]/cerrar` (registra saldos físicos) | abierto → cerrado |
+| Cajas | `POST/PUT` con info básica + flags de cierre diario. Los tabs Valores/Bancos/Usuarios siguen mostrándose en el monolito (link desde la ficha de edit). | — |
+
+Helpers: `generarCuotasPrestamo` en [lib/finanzas-server.ts](lib/finanzas-server.ts) — algoritmos de amortización (francés, alemán, americano, bullet) reutilizables.
+
+## Finanzas — estado final
+
+**21 forms migrados a rutas propias** con Patrón A (POST/PUT server-side, /nuevo y /[id]/editar). Cubre 100% de las entidades editables del módulo (los 4 stubs sin form — Cheques Propios placeholder, Conciliaciones, Simulador — siguen embedded por diseño).
+
+Cuando bug-cero esté validado, el siguiente paso es borrar los `function XxxForm()` / `ConfigCajas` / `function Prestamos()` etc. del monolito `components/modulo-finanzas.tsx` — son ~7.000 líneas de dead code listas para eliminarse.
+
+**Sin form (read-only en monolito):**
+- Cupones — se crean automáticamente desde Ventas con tarjeta
+- Cheques de Terceros — se crean automáticamente desde Cobros con cheque
+- Cheques Propios — placeholder (sin tabla aún; se crearán desde OP de Compras)
+
+**Permanecen embedded sin extraer:**
+- Conciliación Bancaria, Conciliación de Tarjetas, Simulador — flujos con detail + matching, necesitan su propio diseño.
 
 **Compras stubs sin data source real:** Legajos de Importación, Despachos Simples y Conciliación de Deuda quedan como redirect-stubs porque en el monolito sólo tienen `useState([])` sin `setX()` — son features placeholder que aún no están conectadas a Supabase. Extraerlas sin data sería deshonesto.
 
