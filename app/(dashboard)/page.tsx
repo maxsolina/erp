@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import { Menu } from "lucide-react"
 import DashboardHome from "@/components/dashboard-home"
 import ModuloVentas, { type ClienteVenta } from "@/components/ventas-module"
@@ -10,7 +10,7 @@ import ModuloCompras from "@/components/modulo-compras-v2"
 // ModuloStock fue migrado a /stock top-level (PR 9). Import eliminado.
 import ModuloInformes from "@/components/modulo-informes"
 import ModuloContabilidad from "@/components/modulo-contabilidad"
-import ModuloFinanzas from "@/components/modulo-finanzas"
+// ModuloFinanzas fue eliminado; Finanzas vive enteramente en /finanzas/* (App Router).
 import ModuloConfigSucursales from "@/components/modulo-config-sucursales"
 import ModuloUsuarios from "@/components/modulo-usuarios"
 // ModuloTaller fue migrado a /servicio-tecnico top-level (PR 7). Import eliminado.
@@ -1192,9 +1192,7 @@ function CellHomeERPContent() {
   />
   </div>
   ) : activeModule === "finanzas" ? (
-  <div>
-  <ModuloFinanzas />
-  </div>
+  <FinanzasRedirect />
   ) : activeModule === "contabilidad" ? (
   <div>
   <ModuloContabilidad />
@@ -2370,6 +2368,20 @@ function ConfigModal({ title, onClose, onSave, children }: ConfigModalProps) {
       </div>
     </div>
   )
+}
+
+// Redirige el legacy ?module=finanzas a la ruta App Router /finanzas/<view>
+// para compatibilidad con links viejos. Finanzas ya no se renderiza desde
+// este shell — vive en app/(dashboard)/finanzas/.
+function FinanzasRedirect() {
+  const sp = useSearchParams()
+  const router = useRouter()
+  useEffect(() => {
+    const view = sp?.get("view") ?? ""
+    const target = view ? `/finanzas/${view.replace(/_/g, "-")}` : "/finanzas/registros-caja"
+    router.replace(target)
+  }, [sp, router])
+  return <div className="p-12 text-center text-gray-500">Redirigiendo a Finanzas…</div>
 }
 
 // Export wrapped component with auth
