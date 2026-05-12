@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertCircle, ArrowLeft, Save, X } from "lucide-react"
+import { AlertCircle, ArrowLeft, Save, X, Check } from "lucide-react"
 import { useERP } from "@/contexts/erp-context"
 import { createClient } from "@/lib/supabase/client"
 import { TabValores, TabBancosPermitidos, TabUsuarios, type CajaValor, type CajaUsuario, type CajaBancoPermitido } from "./caja-tabs"
@@ -81,8 +81,8 @@ export default function CajaForm({ initialId }: { initialId?: string }) {
       if (!isEdit) {
         router.push(`/finanzas/cajas/${data.id}/editar`)
       } else {
-        setOkMsg("Guardado")
-        setTimeout(() => setOkMsg(null), 2000)
+        setOkMsg("Cambios guardados correctamente")
+        setTimeout(() => setOkMsg(null), 3000)
       }
     } catch (e: any) {
       setError(`Error de red: ${e?.message ?? e}`)
@@ -114,8 +114,10 @@ export default function CajaForm({ initialId }: { initialId?: string }) {
           <button onClick={() => router.back()} className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-1">
             <X className="w-4 h-4" /> Cancelar
           </button>
-          <button onClick={guardar} disabled={guardando} className="px-4 py-2 text-sm bg-indigo-900 hover:bg-indigo-800 text-white rounded-lg disabled:opacity-50 flex items-center gap-1">
-            <Save className="w-4 h-4" /> {guardando ? "Guardando…" : "Guardar"}
+          <button onClick={guardar} disabled={guardando}
+            className={`px-4 py-2 text-sm rounded-lg disabled:opacity-50 flex items-center gap-1 text-white transition-colors ${okMsg ? "bg-green-600 hover:bg-green-700" : "bg-indigo-900 hover:bg-indigo-800"}`}>
+            {okMsg ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+            {guardando ? "Guardando…" : okMsg ? "Guardado" : "Guardar"}
           </button>
         </div>
       </div>

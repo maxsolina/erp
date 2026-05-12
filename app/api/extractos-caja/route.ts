@@ -31,7 +31,7 @@ export async function GET(req: Request) {
   // Enriquecimiento: una sola query por saldos + una sola por movimientos
   // sumarizados, indexados por (extracto_id, valor_id).
   const ids = data.map(e => (e as { id: string }).id)
-  const [{ data: saldos }, { data: movs }] = await Promise.all([
+  let [{ data: saldos }, { data: movs }] = await Promise.all([
     supabase.from("extracto_saldos")
       .select("id, extracto_id, valor_id, valor_nombre, valor_codigo, moneda, saldo_apertura, saldo_cierre_ingresado")
       .in("extracto_id", ids),
@@ -39,6 +39,23 @@ export async function GET(req: Request) {
       .select("extracto_id, valor_id, tipo_movimiento, importe, estado_movimiento")
       .in("extracto_id", ids),
   ])
+
+  // Excluir valores asociados a bancos permitidos (no son valores físicos de la caja).
+  const valorIdsTodos = Array.from(new Set([
+    ...((saldos ?? []).map(s => (s as any).valor_id)),
+    ...((movs ?? []).map(m => (m as any).valor_id)),
+  ].filter(Boolean)))
+  if (valorIdsTodos.length > 0) {
+    const { data: cv } = await supabase
+      .from("caja_valores")
+      .select("id, banco_permitido_id")
+      .in("id", valorIdsTodos)
+    const bancoIds = new Set((cv ?? []).filter((v: any) => v.banco_permitido_id).map((v: any) => v.id))
+    if (bancoIds.size > 0) {
+      saldos = (saldos ?? []).filter((s: any) => !bancoIds.has(s.valor_id))
+      movs = (movs ?? []).filter((m: any) => !bancoIds.has(m.valor_id))
+    }
+  }
 
   // Index: (extracto_id|valor_id) → {ingresos, egresos}
   const movMap = new Map<string, { ingresos: number; egresos: number }>()

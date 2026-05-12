@@ -24,11 +24,19 @@ export async function GET(req: Request) {
 // POST /api/ajustes-banco — crea un ajuste de banco. Genera número via RPC.
 export async function POST(req: Request) {
   const body = await req.json()
-  if (!body.cuenta_bancaria_nombre || !body.concepto_id || body.importe == null) {
-    return apiError("cuenta_bancaria_nombre, concepto_id e importe son requeridos", 400)
+  if (!body.cuenta_bancaria_id || !body.concepto_id || body.importe == null) {
+    return apiError("cuenta_bancaria_id, concepto_id e importe son requeridos", 400)
   }
 
   const supabase = await createClient()
+
+  // Resolver nombre del banco a partir del id
+  const { data: cuenta } = await supabase
+    .from("cuentas_bancarias")
+    .select("banco_nombre, numero_cuenta")
+    .eq("id", body.cuenta_bancaria_id)
+    .maybeSingle()
+  if (!cuenta) return apiError("Cuenta bancaria no encontrada", 400)
 
   // Resolver concepto_nombre del concepto seleccionado.
   const { data: concepto } = await supabase
@@ -47,7 +55,8 @@ export async function POST(req: Request) {
     .from("ajustes_banco")
     .insert({
       numero,
-      cuenta_bancaria_nombre: body.cuenta_bancaria_nombre,
+      cuenta_bancaria_id: body.cuenta_bancaria_id,
+      cuenta_bancaria_nombre: `${cuenta.banco_nombre} - ${cuenta.numero_cuenta}`,
       concepto_id: body.concepto_id,
       concepto_nombre: concepto?.nombre ?? "",
       importe: body.importe,

@@ -2,7 +2,7 @@ import { apiError, dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
-const SELECT_FULL = "id, numero, caja_id, caja_nombre, sucursal, concepto_id, concepto_nombre, moneda, total_comprobantes, total_valores, fecha, observaciones, estado"
+const SELECT_FULL = "id, numero, caja_id, caja_nombre, sucursal, concepto_id, concepto_nombre, moneda, cotizacion, tipo_cotizacion, total_comprobantes, total_valores, fecha, observaciones, estado"
 
 interface Comprobante {
   descripcion?: string | null
@@ -67,8 +67,18 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
 
   const comprobantes: Comprobante[] = Array.isArray(body.comprobantes) ? body.comprobantes : []
   const valores: ValorLinea[] = Array.isArray(body.valores) ? body.valores : []
+  const registroMoneda = (body.moneda ?? "ARS") as string
+  const cotizacion = Number(body.cotizacion ?? 0)
+  const aMonedaRegistro = (importe: number, monedaValor?: string | null): number => {
+    const mv = monedaValor || registroMoneda
+    if (mv === registroMoneda) return importe
+    if (cotizacion <= 0) return importe
+    if (registroMoneda === "ARS" && mv !== "ARS") return importe * cotizacion
+    if (registroMoneda !== "ARS" && mv === "ARS") return importe / cotizacion
+    return importe
+  }
   const totalC = comprobantes.reduce((s, c) => s + Number(c.importe ?? 0) + Number(c.impuestos ?? 0), 0)
-  const totalV = valores.reduce((s, v) => s + Number(v.importe ?? 0), 0)
+  const totalV = valores.reduce((s, v) => s + aMonedaRegistro(Number(v.importe ?? 0), v.moneda), 0)
 
   const update: Record<string, unknown> = {}
   if (body.caja_id !== undefined) {
@@ -84,7 +94,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     const { data: co } = await supabase.from("conceptos_registro_caja").select("nombre").eq("id", body.concepto_id).maybeSingle()
     if (co) update.concepto_nombre = co.nombre
   }
-  for (const f of ["moneda", "fecha", "observaciones"]) {
+  for (const f of ["moneda", "fecha", "observaciones", "cotizacion", "tipo_cotizacion"]) {
     if (body[f] !== undefined) update[f] = body[f]
   }
   update.total_comprobantes = totalC

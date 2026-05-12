@@ -2039,3 +2039,611 @@ export async function generarAsientoAjuste(
   return { ok: true, asiento_id: asiento.id }
 }
 
+// ─── Registro de Caja ────────────────────────────────────────────────────────
+// Genera asiento contable para un Registro de Caja confirmado.
+// DEBE: cuenta_contable del comprobante × (importe + impuestos).
+// HABER: cuenta_haber del caja_valor × importe (convertido a moneda del registro).
+// Total DEBE = Total HABER (ya validado en confirmar).
+// Diario: primer valor pagado → diario por caja_id + tipo. Fallback: General.
+export async function generarAsientoRegistroCaja(
+  supabase: SupabaseClient,
+  registro: {
+    id: string
+    numero: string
+    fecha: string
+    caja_id: string
+    sucursal: string | null
+    concepto_nombre: string
+    moneda: string
+    cotizacion: number | null
+  }
+): Promise<ResultadoAsiento> {
+  const moneda = registro.moneda || "ARS"
+  const cot = Number(registro.cotizacion ?? 0)
+  if (moneda !== "ARS" && cot <= 0) {
+    return { ok: false, error: `Falta la cotización del registro para generar el asiento en ${moneda}.` }
+  }
+  // Conversión a ARS (moneda base del asiento).
+  const aARS = (importe: number, monedaValor: string): number => {
+    if (!monedaValor || monedaValor === "ARS") return importe
+    if (cot <= 0) return importe
+    return importe * cot
+  }
+  const compAARS = (importe: number): number => {
+    if (moneda === "ARS") return importe
+    if (cot <= 0) return importe
+    return importe * cot
+  }
+
+  const [{ data: comps }, { data: vals }] = await Promise.all([
+    supabase
+      .from("registro_caja_comprobantes")
+      .select("descripcion, cuenta_contable, importe, impuestos")
+      .eq("registro_id", registro.id),
+    supabase
+      .from("registro_caja_valores")
+      .select("valor_id, valor_nombre, importe, moneda")
+      .eq("registro_id", registro.id),
+  ])
+  if (!comps || comps.length === 0) return { ok: false, error: "Registro sin comprobantes." }
+  if (!vals || vals.length === 0) return { ok: false, error: "Registro sin valores pagados." }
+
+  // 1) Resolver cuenta_contable_id por código (DEBE)
+  const codigosDebe = Array.from(new Set(comps.map((c: any) => c.cuenta_contable).filter(Boolean)))
+  if (codigosDebe.length === 0) return { ok: false, error: "Falta cuenta contable en los comprobantes." }
+  const { data: cuentasDebe } = await supabase
+    .from("contabilidad_plan_cuentas")
+    .select("id, codigo, nombre")
+    .in("codigo", codigosDebe)
+  const cuentaByCodigo = new Map<string, { id: string; codigo: string; nombre: string }>()
+  for (const cc of cuentasDebe ?? []) cuentaByCodigo.set(cc.codigo, cc as any)
+  for (const cod of codigosDebe) {
+    if (!cuentaByCodigo.has(cod)) return { ok: false, error: `Cuenta contable "${cod}" no encontrada en el plan de cuentas.` }
+  }
+
+  // 2) Resolver cuenta_haber del caja_valor (HABER)
+  const valorIds = Array.from(new Set(vals.map((v: any) => v.valor_id).filter(Boolean)))
+  if (valorIds.length === 0) return { ok: false, error: "Los valores del registro no tienen valor_id." }
+  const { data: cajaValores } = await supabase
+    .from("caja_valores")
+    .select("id, codigo, nombre, tipo, caja_id, cuenta_haber_id, contabilidad_plan_cuentas:cuenta_haber_id(id, codigo, nombre)")
+    .in("id", valorIds)
+  const cajaValorById = new Map<string, any>()
+  for (const cv of cajaValores ?? []) cajaValorById.set(cv.id, cv)
+  for (const vid of valorIds) {
+    const cv = cajaValorById.get(vid)
+    if (!cv) return { ok: false, error: `Valor de caja ${vid} no encontrado.` }
+    if (!cv.cuenta_haber_id) return { ok: false, error: `El valor "${cv.nombre}" no tiene cuenta_haber configurada.` }
+  }
+
+  // 3) Diario: primer valor → caja_id + tipo. Fallback: General.
+  const primerValor = cajaValorById.get(vals[0].valor_id)
+  let diario_id: string | null = null
+  if (primerValor?.caja_id && primerValor?.tipo) {
+    const tipoDiario = primerValor.tipo === "efectivo" ? "efectivo" : "banco_cheques"
+    const { data: d } = await supabase
+      .from("contabilidad_diarios")
+      .select("id")
+      .eq("caja_id", primerValor.caja_id)
+      .eq("tipo", tipoDiario)
+      .eq("activo", true)
+      .limit(1)
+      .maybeSingle()
+    if (d) diario_id = d.id
+  }
+  if (!diario_id) {
+    const { data: gen } = await supabase
+      .from("contabilidad_diarios")
+      .select("id")
+      .eq("tipo", "general")
+      .eq("activo", true)
+      .limit(1)
+      .maybeSingle()
+    if (gen) diario_id = gen.id
+  }
+  if (!diario_id) return { ok: false, error: "No se encontró diario contable para el asiento (ni para la caja ni General)." }
+
+  const fechaDate = registro.fecha.split("T")[0]
+  const { data: periodo_id } = await supabase.rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate })
+
+  // 4) Construir líneas
+  type Linea = {
+    cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
+    debe: number; haber: number; descripcion: string | null; orden: number
+    importe_moneda_original?: number | null
+  }
+  const lineas: Linea[] = []
+  let orden = 0
+
+  for (const c of comps as any[]) {
+    const cuenta = cuentaByCodigo.get(c.cuenta_contable)!
+    const importeReg = Number(c.importe ?? 0) + Number(c.impuestos ?? 0)
+    const importeARS = Math.round(compAARS(importeReg) * 100) / 100
+    if (importeARS <= 0) continue
+    lineas.push({
+      cuenta_id: cuenta.id,
+      cuenta_codigo: cuenta.codigo,
+      cuenta_nombre: cuenta.nombre,
+      debe: importeARS,
+      haber: 0,
+      descripcion: c.descripcion ?? registro.concepto_nombre ?? null,
+      orden: orden++,
+      importe_moneda_original: moneda !== "ARS" ? importeReg : null,
+    })
+  }
+
+  for (const v of vals as any[]) {
+    const cv = cajaValorById.get(v.valor_id)
+    const cuentaHaber = cv.contabilidad_plan_cuentas as { id: string; codigo: string; nombre: string }
+    if (!cuentaHaber) return { ok: false, error: `El valor "${cv.nombre}" no tiene cuenta_haber válida.` }
+    const importeARS = Math.round(aARS(Number(v.importe ?? 0), v.moneda) * 100) / 100
+    if (importeARS <= 0) continue
+    lineas.push({
+      cuenta_id: cuentaHaber.id,
+      cuenta_codigo: cuentaHaber.codigo,
+      cuenta_nombre: cuentaHaber.nombre,
+      debe: 0,
+      haber: importeARS,
+      descripcion: `Pago con ${v.valor_nombre}`,
+      orden: orden++,
+      importe_moneda_original: moneda !== "ARS" ? Number(v.importe ?? 0) : null,
+    })
+  }
+
+  const totalDebe = lineas.reduce((s, l) => s + l.debe, 0)
+  const totalHaber = lineas.reduce((s, l) => s + l.haber, 0)
+  if (Math.abs(totalDebe - totalHaber) > 0.01) {
+    return { ok: false, error: `Asiento desbalanceado: debe=${totalDebe.toFixed(2)}, haber=${totalHaber.toFixed(2)}.` }
+  }
+
+  const { data: numero } = await supabase.rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario_id, p_fecha: fechaDate })
+
+  const { data: asiento, error: asientoErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null,
+      diario_id,
+      periodo_id: periodo_id ?? null,
+      fecha: fechaDate,
+      sucursal_id: null,
+      concepto: `Registro de Caja ${registro.numero} — ${registro.concepto_nombre}`,
+      referencia: registro.numero,
+      comprobante_tipo: "registro_caja",
+      moneda_original: moneda,
+      cotizacion_aplicada: moneda !== "ARS" ? cot : null,
+      es_manual: false,
+      estado: "publicado",
+    })
+    .select("id")
+    .single()
+  if (asientoErr) return { ok: false, error: `Error al crear asiento: ${asientoErr.message}` }
+
+  const { error: linErr } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineas.map(l => ({ ...l, asiento_id: asiento.id })))
+  if (linErr) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
+    return { ok: false, error: `Error en líneas del asiento: ${linErr.message}` }
+  }
+
+  return { ok: true, asiento_id: asiento.id }
+}
+
+// ─── Registro de Banco ──────────────────────────────────────────────────────
+// DEBE: cuenta_contable de cada comprobante (gasto/contrapartida) por importe+imp.
+// HABER: cuenta del banco (del diario vinculado a cuenta_bancaria_id) por importe
+//        de cada valor pagado (convertido a ARS si moneda != ARS).
+export async function generarAsientoRegistroBanco(
+  supabase: SupabaseClient,
+  registro: {
+    id: string
+    numero: string
+    fecha: string
+    cuenta_bancaria_id: string
+    cuenta_bancaria_nombre: string
+    sucursal: string | null
+    concepto_nombre: string
+    moneda: string
+    cotizacion: number | null
+  }
+): Promise<ResultadoAsiento> {
+  const moneda = registro.moneda || "ARS"
+  const cot = Number(registro.cotizacion ?? 0)
+  if (moneda !== "ARS" && cot <= 0) {
+    return { ok: false, error: `Falta la cotización del registro para generar el asiento en ${moneda}.` }
+  }
+  const aARS = (importe: number, monedaValor: string): number => {
+    if (!monedaValor || monedaValor === "ARS") return importe
+    if (cot <= 0) return importe
+    return importe * cot
+  }
+  const compAARS = (importe: number): number => {
+    if (moneda === "ARS") return importe
+    if (cot <= 0) return importe
+    return importe * cot
+  }
+
+  const [{ data: comps }, { data: vals }] = await Promise.all([
+    supabase
+      .from("registro_banco_comprobantes")
+      .select("descripcion, cuenta_contable, importe, impuestos")
+      .eq("registro_id", registro.id),
+    supabase
+      .from("registro_banco_valores")
+      .select("nombre, importe, moneda")
+      .eq("registro_id", registro.id),
+  ])
+  if (!comps || comps.length === 0) return { ok: false, error: "Registro sin comprobantes." }
+  if (!vals || vals.length === 0) return { ok: false, error: "Registro sin valores pagados." }
+
+  // Cuentas DEBE por código
+  const codigosDebe = Array.from(new Set(comps.map((c: any) => c.cuenta_contable).filter(Boolean)))
+  if (codigosDebe.length === 0) return { ok: false, error: "Falta cuenta contable en los comprobantes." }
+  const { data: cuentasDebe } = await supabase
+    .from("contabilidad_plan_cuentas")
+    .select("id, codigo, nombre")
+    .in("codigo", codigosDebe)
+  const cuentaByCodigo = new Map<string, { id: string; codigo: string; nombre: string }>()
+  for (const cc of cuentasDebe ?? []) cuentaByCodigo.set(cc.codigo, cc as any)
+  for (const cod of codigosDebe) {
+    if (!cuentaByCodigo.has(cod)) return { ok: false, error: `Cuenta contable "${cod}" no encontrada en el plan de cuentas.` }
+  }
+
+  // Diario por cuenta_bancaria_id + cuenta del banco
+  const { data: diario } = await supabase
+    .from("contabilidad_diarios")
+    .select("id, cuenta_debito_predeterminada_id, cuenta_haber_predeterminada_id")
+    .eq("cuenta_bancaria_id", registro.cuenta_bancaria_id)
+    .eq("activo", true)
+    .limit(1)
+    .maybeSingle()
+  if (!diario) return { ok: false, error: `No se encontró diario contable para la cuenta bancaria. Configurá uno en Contabilidad → Diarios.` }
+  const cuentaBancoId = diario.cuenta_haber_predeterminada_id ?? diario.cuenta_debito_predeterminada_id
+  if (!cuentaBancoId) return { ok: false, error: `El diario de la cuenta bancaria no tiene cuenta_debito/cuenta_haber configurada.` }
+  const { data: cuentaBanco } = await supabase
+    .from("contabilidad_plan_cuentas")
+    .select("id, codigo, nombre")
+    .eq("id", cuentaBancoId)
+    .maybeSingle()
+  if (!cuentaBanco) return { ok: false, error: "Cuenta contable del banco no encontrada en el plan de cuentas." }
+
+  const fechaDate = registro.fecha.split("T")[0]
+  const { data: periodo_id } = await supabase.rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate })
+
+  type Linea = {
+    cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
+    debe: number; haber: number; descripcion: string | null; orden: number
+    importe_moneda_original?: number | null
+  }
+  const lineas: Linea[] = []
+  let orden = 0
+
+  for (const c of comps as any[]) {
+    const cuenta = cuentaByCodigo.get(c.cuenta_contable)!
+    const importeReg = Number(c.importe ?? 0) + Number(c.impuestos ?? 0)
+    const importeARS = Math.round(compAARS(importeReg) * 100) / 100
+    if (importeARS <= 0) continue
+    lineas.push({
+      cuenta_id: cuenta.id, cuenta_codigo: cuenta.codigo, cuenta_nombre: cuenta.nombre,
+      debe: importeARS, haber: 0, descripcion: c.descripcion ?? registro.concepto_nombre ?? null, orden: orden++,
+      importe_moneda_original: moneda !== "ARS" ? importeReg : null,
+    })
+  }
+
+  for (const v of vals as any[]) {
+    const importeARS = Math.round(aARS(Number(v.importe ?? 0), v.moneda) * 100) / 100
+    if (importeARS <= 0) continue
+    lineas.push({
+      cuenta_id: cuentaBanco.id, cuenta_codigo: cuentaBanco.codigo, cuenta_nombre: cuentaBanco.nombre,
+      debe: 0, haber: importeARS, descripcion: `${v.nombre || "Pago"} — ${registro.cuenta_bancaria_nombre}`, orden: orden++,
+      importe_moneda_original: moneda !== "ARS" ? Number(v.importe ?? 0) : null,
+    })
+  }
+
+  const totalDebe = lineas.reduce((s, l) => s + l.debe, 0)
+  const totalHaber = lineas.reduce((s, l) => s + l.haber, 0)
+  if (Math.abs(totalDebe - totalHaber) > 0.01) {
+    return { ok: false, error: `Asiento desbalanceado: debe=${totalDebe.toFixed(2)}, haber=${totalHaber.toFixed(2)}.` }
+  }
+
+  const { data: numero } = await supabase.rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario.id, p_fecha: fechaDate })
+
+  const { data: asiento, error: asientoErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null,
+      diario_id: diario.id,
+      periodo_id: periodo_id ?? null,
+      fecha: fechaDate,
+      sucursal_id: null,
+      concepto: `Registro de Banco ${registro.numero} — ${registro.concepto_nombre}`,
+      referencia: registro.numero,
+      comprobante_tipo: "registro_banco",
+      moneda_original: moneda,
+      cotizacion_aplicada: moneda !== "ARS" ? cot : null,
+      es_manual: false,
+      estado: "publicado",
+    })
+    .select("id")
+    .single()
+  if (asientoErr) return { ok: false, error: `Error al crear asiento: ${asientoErr.message}` }
+
+  const { error: linErr } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineas.map(l => ({ ...l, asiento_id: asiento.id })))
+  if (linErr) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
+    return { ok: false, error: `Error en líneas del asiento: ${linErr.message}` }
+  }
+
+  return { ok: true, asiento_id: asiento.id }
+}
+
+// ─── Ajuste de Banco ────────────────────────────────────────────────────────
+// Lógica: el ajuste tiene un único `importe` (positivo o negativo) y una
+// `cuenta_analitica` (la contrapartida). El signo positivo es entrada (sube saldo).
+//   - entrada (importe > 0): DEBE cuenta_banco, HABER cuenta_analitica
+//   - salida  (importe < 0): DEBE cuenta_analitica, HABER cuenta_banco
+//     (se aplica abs)
+export async function generarAsientoAjusteBanco(
+  supabase: SupabaseClient,
+  ajuste: {
+    id: string
+    numero: string
+    fecha: string
+    cuenta_bancaria_id: string | null
+    cuenta_bancaria_nombre: string
+    sucursal: string | null
+    concepto_nombre: string
+    cuenta_analitica: string | null
+    importe: number
+  }
+): Promise<ResultadoAsiento> {
+  if (!ajuste.cuenta_analitica) {
+    return { ok: false, error: "Falta cuenta contable en el ajuste — cargala antes de publicar." }
+  }
+  if (!ajuste.cuenta_bancaria_id) {
+    return { ok: false, error: "Falta cuenta_bancaria_id en el ajuste." }
+  }
+
+  // Cuenta contrapartida
+  const { data: cuentaContra } = await supabase
+    .from("contabilidad_plan_cuentas")
+    .select("id, codigo, nombre")
+    .eq("codigo", ajuste.cuenta_analitica)
+    .maybeSingle()
+  if (!cuentaContra) return { ok: false, error: `Cuenta contable "${ajuste.cuenta_analitica}" no encontrada.` }
+
+  // Diario + cuenta banco
+  const { data: diario } = await supabase
+    .from("contabilidad_diarios")
+    .select("id, cuenta_debito_predeterminada_id, cuenta_haber_predeterminada_id")
+    .eq("cuenta_bancaria_id", ajuste.cuenta_bancaria_id)
+    .eq("activo", true)
+    .limit(1)
+    .maybeSingle()
+  if (!diario) return { ok: false, error: `No se encontró diario contable para la cuenta bancaria.` }
+  const cuentaBancoId = diario.cuenta_haber_predeterminada_id ?? diario.cuenta_debito_predeterminada_id
+  if (!cuentaBancoId) return { ok: false, error: `El diario del banco no tiene cuenta_debito/cuenta_haber configurada.` }
+  const { data: cuentaBanco } = await supabase
+    .from("contabilidad_plan_cuentas")
+    .select("id, codigo, nombre")
+    .eq("id", cuentaBancoId)
+    .maybeSingle()
+  if (!cuentaBanco) return { ok: false, error: "Cuenta contable del banco no encontrada en el plan de cuentas." }
+
+  const fechaDate = ajuste.fecha.split("T")[0]
+  const { data: periodo_id } = await supabase.rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate })
+
+  const importe = Math.round(Math.abs(Number(ajuste.importe ?? 0)) * 100) / 100
+  if (importe <= 0) return { ok: false, error: "Importe del ajuste debe ser > 0." }
+  const esEntrada = Number(ajuste.importe) > 0
+
+  type Linea = {
+    cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
+    debe: number; haber: number; descripcion: string | null; orden: number
+  }
+  const lineas: Linea[] = esEntrada
+    ? [
+        { cuenta_id: cuentaBanco.id, cuenta_codigo: cuentaBanco.codigo, cuenta_nombre: cuentaBanco.nombre,
+          debe: importe, haber: 0, descripcion: `Ajuste ${ajuste.cuenta_bancaria_nombre}`, orden: 0 },
+        { cuenta_id: cuentaContra.id, cuenta_codigo: cuentaContra.codigo, cuenta_nombre: cuentaContra.nombre,
+          debe: 0, haber: importe, descripcion: ajuste.concepto_nombre, orden: 1 },
+      ]
+    : [
+        { cuenta_id: cuentaContra.id, cuenta_codigo: cuentaContra.codigo, cuenta_nombre: cuentaContra.nombre,
+          debe: importe, haber: 0, descripcion: ajuste.concepto_nombre, orden: 0 },
+        { cuenta_id: cuentaBanco.id, cuenta_codigo: cuentaBanco.codigo, cuenta_nombre: cuentaBanco.nombre,
+          debe: 0, haber: importe, descripcion: `Ajuste ${ajuste.cuenta_bancaria_nombre}`, orden: 1 },
+      ]
+
+  const { data: numero } = await supabase.rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario.id, p_fecha: fechaDate })
+
+  const { data: asiento, error: asientoErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null,
+      diario_id: diario.id,
+      periodo_id: periodo_id ?? null,
+      fecha: fechaDate,
+      sucursal_id: null,
+      concepto: `Ajuste de Banco ${ajuste.numero} — ${ajuste.concepto_nombre}`,
+      referencia: ajuste.numero,
+      comprobante_tipo: "ajuste_banco",
+      moneda_original: "ARS",
+      es_manual: false,
+      estado: "publicado",
+    })
+    .select("id")
+    .single()
+  if (asientoErr) return { ok: false, error: `Error al crear asiento: ${asientoErr.message}` }
+
+  const { error: linErr } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineas.map(l => ({ ...l, asiento_id: asiento.id })))
+  if (linErr) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
+    return { ok: false, error: `Error en líneas del asiento: ${linErr.message}` }
+  }
+
+  return { ok: true, asiento_id: asiento.id }
+}
+
+// ─── Ajuste de Caja ──────────────────────────────────────────────────────────
+// Genera asiento contable para un Ajuste de Caja publicado.
+// Lógica:
+//   - Línea "entrada" (sobrante): DEBE caja_valor.cuenta_contable (la caja aumenta),
+//     HABER cuenta_analitica del ajuste (contrapartida — ej: ingreso por diferencia).
+//   - Línea "salida" (faltante): DEBE cuenta_analitica del ajuste (gasto por diferencia),
+//     HABER caja_valor.cuenta_haber (la caja disminuye).
+//   - Diario: el del caja_valor de la primer línea (caja_id + tipo). Fallback: General.
+export async function generarAsientoAjusteCaja(
+  supabase: SupabaseClient,
+  ajuste: {
+    id: string
+    numero: string
+    fecha: string
+    caja_id: string
+    sucursal: string | null
+    concepto_nombre: string
+    cuenta_analitica: string | null
+  }
+): Promise<ResultadoAsiento> {
+  if (!ajuste.cuenta_analitica) {
+    return { ok: false, error: "Falta cuenta contable en el ajuste — cargala antes de publicar." }
+  }
+
+  // Cuenta contrapartida (cuenta_analitica del ajuste)
+  const { data: cuentaContra } = await supabase
+    .from("contabilidad_plan_cuentas")
+    .select("id, codigo, nombre")
+    .eq("codigo", ajuste.cuenta_analitica)
+    .maybeSingle()
+  if (!cuentaContra) return { ok: false, error: `Cuenta contable "${ajuste.cuenta_analitica}" no encontrada en el plan de cuentas.` }
+
+  const { data: vals } = await supabase
+    .from("ajuste_caja_valores")
+    .select("valor_id, valor_nombre, tipo_movimiento, importe")
+    .eq("ajuste_id", ajuste.id)
+  if (!vals || vals.length === 0) return { ok: false, error: "Ajuste sin líneas de valor." }
+
+  // Resolver cuentas del caja_valor por valor_id
+  const valorIds = Array.from(new Set(vals.map((v: any) => v.valor_id).filter(Boolean)))
+  if (valorIds.length === 0) return { ok: false, error: "Las líneas del ajuste no tienen valor_id." }
+  const { data: cajaValores } = await supabase
+    .from("caja_valores")
+    .select("id, nombre, tipo, caja_id, cuenta_contable_id, cuenta_haber_id, cuenta_debe:cuenta_contable_id(id, codigo, nombre), cuenta_haber:cuenta_haber_id(id, codigo, nombre)")
+    .in("id", valorIds)
+  const cvById = new Map<string, any>()
+  for (const cv of cajaValores ?? []) cvById.set(cv.id, cv)
+  for (const vid of valorIds) {
+    const cv = cvById.get(vid)
+    if (!cv) return { ok: false, error: `Valor de caja ${vid} no encontrado.` }
+    if (!cv.cuenta_debe || !cv.cuenta_haber) {
+      return { ok: false, error: `El valor "${cv.nombre}" no tiene cuenta_contable/cuenta_haber configurada.` }
+    }
+  }
+
+  // Diario: primer caja_valor → buscar por caja_id + tipo. Fallback General.
+  const primerCV = cvById.get(vals[0].valor_id)
+  let diario_id: string | null = null
+  if (primerCV?.caja_id && primerCV?.tipo) {
+    const tipoDiario = primerCV.tipo === "efectivo" ? "efectivo" : "banco_cheques"
+    const { data: d } = await supabase
+      .from("contabilidad_diarios")
+      .select("id")
+      .eq("caja_id", primerCV.caja_id)
+      .eq("tipo", tipoDiario)
+      .eq("activo", true)
+      .limit(1)
+      .maybeSingle()
+    if (d) diario_id = d.id
+  }
+  if (!diario_id) {
+    const { data: gen } = await supabase
+      .from("contabilidad_diarios")
+      .select("id")
+      .eq("tipo", "general")
+      .eq("activo", true)
+      .limit(1)
+      .maybeSingle()
+    if (gen) diario_id = gen.id
+  }
+  if (!diario_id) return { ok: false, error: "No se encontró diario contable (ni para la caja ni General)." }
+
+  const fechaDate = ajuste.fecha.split("T")[0]
+  const { data: periodo_id } = await supabase.rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate })
+
+  type Linea = {
+    cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
+    debe: number; haber: number; descripcion: string | null; orden: number
+  }
+  const lineas: Linea[] = []
+  let orden = 0
+
+  for (const v of vals as any[]) {
+    const cv = cvById.get(v.valor_id)
+    const importe = Math.round(Number(v.importe ?? 0) * 100) / 100
+    if (importe <= 0) continue
+    const desc = `Ajuste ${v.valor_nombre} — ${ajuste.concepto_nombre}`
+    if (v.tipo_movimiento === "entrada") {
+      // Sobrante: la caja sube → DEBE caja, HABER contrapartida
+      lineas.push({
+        cuenta_id: cv.cuenta_debe.id, cuenta_codigo: cv.cuenta_debe.codigo, cuenta_nombre: cv.cuenta_debe.nombre,
+        debe: importe, haber: 0, descripcion: desc, orden: orden++,
+      })
+      lineas.push({
+        cuenta_id: cuentaContra.id, cuenta_codigo: cuentaContra.codigo, cuenta_nombre: cuentaContra.nombre,
+        debe: 0, haber: importe, descripcion: ajuste.concepto_nombre, orden: orden++,
+      })
+    } else {
+      // Faltante: la caja baja → DEBE contrapartida (gasto), HABER caja
+      lineas.push({
+        cuenta_id: cuentaContra.id, cuenta_codigo: cuentaContra.codigo, cuenta_nombre: cuentaContra.nombre,
+        debe: importe, haber: 0, descripcion: ajuste.concepto_nombre, orden: orden++,
+      })
+      lineas.push({
+        cuenta_id: cv.cuenta_haber.id, cuenta_codigo: cv.cuenta_haber.codigo, cuenta_nombre: cv.cuenta_haber.nombre,
+        debe: 0, haber: importe, descripcion: desc, orden: orden++,
+      })
+    }
+  }
+
+  const totalDebe = lineas.reduce((s, l) => s + l.debe, 0)
+  const totalHaber = lineas.reduce((s, l) => s + l.haber, 0)
+  if (Math.abs(totalDebe - totalHaber) > 0.01) {
+    return { ok: false, error: `Asiento desbalanceado: debe=${totalDebe.toFixed(2)}, haber=${totalHaber.toFixed(2)}.` }
+  }
+
+  const { data: numero } = await supabase.rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario_id, p_fecha: fechaDate })
+
+  const { data: asiento, error: asientoErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null,
+      diario_id,
+      periodo_id: periodo_id ?? null,
+      fecha: fechaDate,
+      sucursal_id: null,
+      concepto: `Ajuste de Caja ${ajuste.numero} — ${ajuste.concepto_nombre}`,
+      referencia: ajuste.numero,
+      comprobante_tipo: "ajuste_caja",
+      moneda_original: "ARS",
+      es_manual: false,
+      estado: "publicado",
+    })
+    .select("id")
+    .single()
+  if (asientoErr) return { ok: false, error: `Error al crear asiento: ${asientoErr.message}` }
+
+  const { error: linErr } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineas.map(l => ({ ...l, asiento_id: asiento.id })))
+  if (linErr) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
+    return { ok: false, error: `Error en líneas del asiento: ${linErr.message}` }
+  }
+
+  return { ok: true, asiento_id: asiento.id }
+}
+

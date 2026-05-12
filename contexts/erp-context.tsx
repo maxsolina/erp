@@ -426,9 +426,12 @@ const ERPContext = createContext<ERPContextType | undefined>(undefined)
 // Sucursales se cargan desde Supabase
 const sucursalesIniciales: Sucursal[] = []
 
+// Usuarios hardcoded — compatibilidad para cuentas que todavía no migraron a la
+// tabla `usuarios`. Cuando un usuario está en la DB el login lo usa desde ahí
+// (los IDs hardcoded no coinciden con los reales y rompen filtros por usuario_id).
+// solinamax fue migrado a la DB (id=1) — removido de acá.
 const usuariosIniciales: Usuario[] = [
   { id: 1, username: "admin", nombre: "Administrador", email: "admin@cellhome.com", rol: "admin", sucursal_id: 1, sucursal_nombre: "Puerto Norte", activo: true, ultimo_acceso: "2026-03-16T10:00:00" },
-  { id: 2, username: "solinamax", nombre: "Max Solina", email: "max.solina@gmail.com", rol: "vendedor", sucursal_id: 1, sucursal_nombre: "Puerto Norte", activo: true, ultimo_acceso: "2026-03-16T09:00:00" },
   { id: 3, username: "juanperez", nombre: "Juan Pérez", email: "juan@cellhome.com", rol: "cajero", sucursal_id: 2, sucursal_nombre: "Centro", activo: true, ultimo_acceso: "2026-03-15T18:00:00" },
 ]
 
@@ -452,6 +455,40 @@ const productosIniciales: Producto[] = [
 // PROVIDER
 // =====================================================
 
+// Cache de permisos en localStorage para evitar el flash de 1s en la topbar
+// donde solo se ven Home + Mensajes mientras carga /api/usuarios/me.
+const PERMS_CACHE_KEY = "erp:perms:v1"
+type CachedPerms = {
+  isSuperuser: boolean
+  vistas: Record<string, boolean>
+  permisos: Record<string, Record<string, string | boolean>>
+  sinPerfilDB: boolean
+}
+function readCachedPerms(): CachedPerms {
+  if (typeof window === "undefined") return { isSuperuser: false, vistas: {}, permisos: {}, sinPerfilDB: false }
+  try {
+    const raw = window.localStorage.getItem(PERMS_CACHE_KEY)
+    if (!raw) return { isSuperuser: false, vistas: {}, permisos: {}, sinPerfilDB: false }
+    const parsed = JSON.parse(raw) as Partial<CachedPerms>
+    return {
+      isSuperuser: !!parsed.isSuperuser,
+      vistas: parsed.vistas ?? {},
+      permisos: parsed.permisos ?? {},
+      sinPerfilDB: !!parsed.sinPerfilDB,
+    }
+  } catch {
+    return { isSuperuser: false, vistas: {}, permisos: {}, sinPerfilDB: false }
+  }
+}
+function writeCachedPerms(p: CachedPerms) {
+  if (typeof window === "undefined") return
+  try { window.localStorage.setItem(PERMS_CACHE_KEY, JSON.stringify(p)) } catch { /* quota / private mode */ }
+}
+function clearCachedPerms() {
+  if (typeof window === "undefined") return
+  try { window.localStorage.removeItem(PERMS_CACHE_KEY) } catch { /* ignore */ }
+}
+
 export function ERPProvider({ children }: { children: ReactNode }) {
   // Usuario actual
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null)
@@ -460,14 +497,17 @@ export function ERPProvider({ children }: { children: ReactNode }) {
   // Mientras restauramos la sesión Supabase tras un F5, evitamos que el auth gate redirija a /login.
   const [restaurandoSesion, setRestaurandoSesion] = useState(true)
 
-  // Permisos del usuario logueado (cargados desde /api/usuarios/me al loguearse)
-  const [isSuperuser, setIsSuperuser] = useState(false)
-  const [vistas, setVistas] = useState<Record<string, boolean>>({})
-  const [permisos, setPermisos] = useState<Record<string, Record<string, string | boolean>>>({})
+  // Permisos del usuario logueado (cargados desde /api/usuarios/me al loguearse).
+  // Hidratamos desde localStorage para que en F5/reentrada la topbar se pinte sin
+  // flash de 1s mostrando solo Home + Mensajes. El fetch posterior los refresca.
+  const cachedPerms = readCachedPerms()
+  const [isSuperuser, setIsSuperuser] = useState(cachedPerms.isSuperuser)
+  const [vistas, setVistas] = useState<Record<string, boolean>>(cachedPerms.vistas)
+  const [permisos, setPermisos] = useState<Record<string, Record<string, string | boolean>>>(cachedPerms.permisos)
   // Si la consulta a /api/usuarios/me devuelve 404 (perfil ERP no cargado todavía),
   // marcamos al usuario como "sin perfil" y le permitimos ver todo (compatibilidad
   // con admin/solinamax/juanperez del array hardcodeado, hasta que se migren a DB).
-  const [sinPerfilDB, setSinPerfilDB] = useState(false)
+  const [sinPerfilDB, setSinPerfilDB] = useState(cachedPerms.sinPerfilDB)
 
   // Restaura currentUser + permisos desde Supabase al montar (al hacer F5).
   // Importante: cargamos permisos ACÁ (no en otro useEffect aparte) para que cuando
@@ -509,6 +549,12 @@ export function ERPProvider({ children }: { children: ReactNode }) {
         setIsSuperuser(!!me.is_superuser)
         setVistas(me.vistas ?? {})
         setPermisos(me.permisos ?? {})
+        writeCachedPerms({
+          isSuperuser: !!me.is_superuser,
+          vistas: me.vistas ?? {},
+          permisos: me.permisos ?? {},
+          sinPerfilDB: false,
+        })
       } catch {
         // ignorar — quedará sin usuario y el auth gate redirige a /login
       } finally {
@@ -538,6 +584,7 @@ export function ERPProvider({ children }: { children: ReactNode }) {
         setIsSuperuser(false)
         setVistas({})
         setPermisos({})
+        writeCachedPerms({ isSuperuser: false, vistas: {}, permisos: {}, sinPerfilDB: true })
         return
       }
       if (!res.ok) return
@@ -546,6 +593,12 @@ export function ERPProvider({ children }: { children: ReactNode }) {
       setIsSuperuser(!!me.is_superuser)
       setVistas(me.vistas ?? {})
       setPermisos(me.permisos ?? {})
+      writeCachedPerms({
+        isSuperuser: !!me.is_superuser,
+        vistas: me.vistas ?? {},
+        permisos: me.permisos ?? {},
+        sinPerfilDB: false,
+      })
     } catch {
       // ignorar
     }
@@ -560,6 +613,7 @@ export function ERPProvider({ children }: { children: ReactNode }) {
       setVistas({})
       setPermisos({})
       setSinPerfilDB(false)
+      clearCachedPerms()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id])
@@ -727,28 +781,51 @@ export function ERPProvider({ children }: { children: ReactNode }) {
           u => u.email.toLowerCase() === email.toLowerCase() || u.username.toLowerCase() === username.toLowerCase()
         )
 
-        // 2) Si no aparece, lo buscamos en la tabla `usuarios` real vía /api/usuarios/me
-        if (!matchedUser) {
-          try {
-            const meRes = await fetch("/api/usuarios/me")
-            if (meRes.ok) {
-              const me = await meRes.json()
-              matchedUser = {
-                id: me.id,
-                username: me.username,
-                nombre: me.nombre,
-                email: me.email,
-                rol: me.is_superuser ? "admin" : "vendedor",
-                sucursal_id: me.sucursal_default_id ?? 0,
-                sucursal_nombre: me.sucursal_default_nombre ?? "",
-                activo: !!me.is_active,
-                ultimo_acceso: me.last_login_at ?? new Date().toISOString(),
-                avatar: me.avatar_url ?? undefined,
-              }
+        // 2) SIEMPRE buscamos en /api/usuarios/me para precargar permisos/vistas antes
+        // de redirigir al dashboard. Si no hubiera este fetch acá, el dashboard montaría
+        // con vistas={} y el topbar parpadearía ~1s mostrando solo Home + Mensajes hasta
+        // que `reloadPermisos` complete. Aplica tanto a usuarios hardcoded (donde el
+        // endpoint devuelve 404 → modo permisivo) como a usuarios reales de la tabla.
+        try {
+          const meRes = await fetch("/api/usuarios/me")
+          if (meRes.ok) {
+            const me = await meRes.json()
+            // Si el usuario existe en la DB, usamos sus datos como fuente de verdad.
+            // Esto incluye SOBREESCRIBIR el id del usuario hardcoded — los IDs del
+            // array hardcoded no coinciden con los reales de la tabla usuarios y
+            // hacen fallar cualquier filtro por usuario_id (ej: concepto_usuarios).
+            matchedUser = {
+              id: me.id,
+              username: me.username,
+              nombre: me.nombre,
+              email: me.email,
+              rol: me.is_superuser ? "admin" : (matchedUser?.rol ?? "vendedor"),
+              sucursal_id: me.sucursal_default_id ?? matchedUser?.sucursal_id ?? 0,
+              sucursal_nombre: me.sucursal_default_nombre ?? matchedUser?.sucursal_nombre ?? "",
+              activo: !!me.is_active,
+              ultimo_acceso: me.last_login_at ?? new Date().toISOString(),
+              avatar: me.avatar_url ?? matchedUser?.avatar,
             }
-          } catch {
-            // si no hay perfil ERP, dejamos matchedUser undefined y arriba va a quedar sin currentUser
+            setSinPerfilDB(false)
+            setIsSuperuser(!!me.is_superuser)
+            setVistas(me.vistas ?? {})
+            setPermisos(me.permisos ?? {})
+            writeCachedPerms({
+              isSuperuser: !!me.is_superuser,
+              vistas: me.vistas ?? {},
+              permisos: me.permisos ?? {},
+              sinPerfilDB: false,
+            })
+          } else if (meRes.status === 404) {
+            // Sin perfil ERP → modo permisivo (ve todo). Para hardcoded users (admin/solinamax/juanperez) este es el path normal.
+            setSinPerfilDB(true)
+            setIsSuperuser(false)
+            setVistas({})
+            setPermisos({})
+            writeCachedPerms({ isSuperuser: false, vistas: {}, permisos: {}, sinPerfilDB: true })
           }
+        } catch {
+          // si el fetch falla, dejamos el state como esté; el useEffect de currentUser.id volverá a reintentar
         }
 
         if (matchedUser) {

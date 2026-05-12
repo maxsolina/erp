@@ -3,10 +3,13 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { AlertCircle, ArrowLeft, Save, X, CheckCircle, Plus, Trash2 } from "lucide-react"
-import { type ConceptoRegistroCaja } from "./_shared"
+import SearchableSelect from "@/components/ui/searchable-select"
+import { type ConceptoRegistroCaja, cuentasPermitidasParaConcepto } from "./_shared"
+import { useERP } from "@/contexts/erp-context"
 
 interface CajaDisp { id: string; nombre: string; sucursal: string }
-interface ValorCaja { id: string; caja_id: string; nombre: string; tipo: string; moneda: string }
+interface CuentaContable { id: string; codigo: string; nombre: string }
+interface ValorCaja { id: string; caja_id: string; nombre: string; tipo: string; moneda: string; banco_permitido_id?: string | null }
 interface ValorLinea { valor_id: string; valor_nombre: string; tipo_movimiento: "entrada" | "salida"; importe: number }
 
 type Form = {
@@ -36,11 +39,13 @@ const empty = (): Form => ({
 export default function AjusteCajaForm({ initialId }: { initialId?: string }) {
   const router = useRouter()
   const isEdit = initialId != null
+  const { currentUser } = useERP()
 
   const [form, setForm] = useState<Form>(empty())
   const [cajas, setCajas] = useState<CajaDisp[]>([])
   const [conceptos, setConceptos] = useState<ConceptoRegistroCaja[]>([])
   const [valores, setValores] = useState<ValorCaja[]>([])
+  const [cuentasContables, setCuentasContables] = useState<CuentaContable[]>([])
   const [estado, setEstado] = useState<string>("borrador")
   const [cargando, setCargando] = useState(isEdit)
   const [errorCarga, setErrorCarga] = useState<string | null>(null)
@@ -50,17 +55,30 @@ export default function AjusteCajaForm({ initialId }: { initialId?: string }) {
   const [okMsg, setOkMsg] = useState<string | null>(null)
 
   useEffect(() => {
+    const userParam = currentUser?.id ? `&for_user=${encodeURIComponent(currentUser.id)}` : ""
     Promise.all([
       fetch("/api/cajas").then(r => r.json()),
-      fetch("/api/conceptos-registro-caja").then(r => r.json()),
+      fetch(`/api/conceptos-registro-caja?con_relaciones=1${userParam}`).then(r => r.json()),
       fetch("/api/caja-valores").then(r => r.json()),
-    ]).then(([c, co, v]) => {
+      fetch("/api/contabilidad/plan-cuentas?activo=true").then(r => r.json()).catch(() => []),
+    ]).then(([c, co, v, pc]) => {
       if (Array.isArray(c)) setCajas(c)
       // Solo conceptos visibles en ajuste de cajas.
       if (Array.isArray(co)) setConceptos(co.filter((x: ConceptoRegistroCaja) => x.visible_en_ajuste_cajas))
       if (Array.isArray(v)) setValores(v)
+      if (Array.isArray(pc)) setCuentasContables(pc.map((x: any) => ({ id: x.id, codigo: x.codigo, nombre: x.nombre })))
     }).catch(console.error)
-  }, [])
+  }, [currentUser?.id])
+
+  // Auto-cargar cuenta_analitica cuando se elige concepto (preferir egresos, fallback ingresos).
+  useEffect(() => {
+    if (!form.concepto_id) return
+    const concepto = conceptos.find(c => c.id === form.concepto_id)
+    if (!concepto) return
+    const cuenta = concepto.cuenta_contable_egresos || concepto.cuenta_contable_ingresos
+    if (!cuenta) return
+    setForm(f => f.cuenta_analitica ? f : { ...f, cuenta_analitica: cuenta })
+  }, [form.concepto_id, conceptos])
 
   useEffect(() => {
     if (!isEdit || !initialId) return
@@ -94,7 +112,18 @@ export default function AjusteCajaForm({ initialId }: { initialId?: string }) {
 
   const conceptoSel = conceptos.find(c => c.id === form.concepto_id)
   const requiereObs = conceptoSel?.requiere_observacion
-  const valoresDisp = useMemo(() => valores.filter(v => v.caja_id === form.caja_id), [valores, form.caja_id])
+  // Excluir valores que sean punteros a bancos permitidos: un banco no es un
+  // "valor físico" de la caja, los ajustes de banco se hacen desde Ajuste de Banco.
+  const valoresDisp = useMemo(
+    () => valores.filter(v => v.caja_id === form.caja_id && !v.banco_permitido_id),
+    [valores, form.caja_id],
+  )
+
+  const cuentasContablesFiltradas = useMemo(() => {
+    const permitidas = cuentasPermitidasParaConcepto(conceptoSel)
+    if (!permitidas) return cuentasContables
+    return cuentasContables.filter(c => permitidas.has(c.codigo))
+  }, [cuentasContables, conceptoSel])
   const importeTotal = form.valores.reduce((s, v) => s + v.importe, 0)
 
   // El tipo por defecto se infiere del concepto: si tiene solo cuenta_ingresos → "entrada", si no → "salida".
@@ -124,49 +153,74 @@ export default function AjusteCajaForm({ initialId }: { initialId?: string }) {
   }
   const delLinea = (idx: number) => setForm(f => ({ ...f, valores: f.valores.filter((_, i) => i !== idx) }))
 
-  const guardar = async () => {
-    if (esSoloLectura) return
-    if (!form.caja_id) return setError("Seleccionar caja")
-    if (!form.concepto_id) return setError("Seleccionar concepto")
-    if (form.valores.length === 0) return setError("Agregar al menos una línea de valor")
-    if (importeTotal <= 0) return setError("Importe total debe ser mayor a 0")
-    if (requiereObs && !form.observaciones.trim()) return setError("Observaciones obligatorias para este concepto")
-    if (guardando) return
+  const guardar = async (opts?: { silenciarRedirect?: boolean }): Promise<string | null> => {
+    if (esSoloLectura) return null
+    if (!form.caja_id) { setError("Seleccionar caja"); return null }
+    if (!form.concepto_id) { setError("Seleccionar concepto"); return null }
+    if (form.valores.length === 0) { setError("Agregar al menos una línea de valor"); return null }
+    if (importeTotal <= 0) { setError("Importe total debe ser mayor a 0"); return null }
+    if (requiereObs && !form.observaciones.trim()) { setError("Observaciones obligatorias para este concepto"); return null }
+    if (guardando) return null
     setError(null)
     setOkMsg(null)
     setGuardando(true)
     try {
+      // Derivar tipo_ajuste de las líneas: si todas son "entrada" → ingreso,
+      // si todas son "salida" → egreso, si mixto → según el concepto.
+      const tiposLinea = new Set(form.valores.map(v => v.tipo_movimiento))
+      let tipoAjuste: "ingreso" | "egreso" = "egreso"
+      if (tiposLinea.size === 1) {
+        tipoAjuste = tiposLinea.has("entrada") ? "ingreso" : "egreso"
+      } else if (conceptoSel?.cuenta_contable_ingresos && !conceptoSel?.cuenta_contable_egresos) {
+        tipoAjuste = "ingreso"
+      }
+      const payload = { ...form, tipo_ajuste: tipoAjuste }
+
       const res = await fetch(
         isEdit ? `/api/ajustes-caja/${initialId}` : "/api/ajustes-caja",
-        { method: isEdit ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) },
+        { method: isEdit ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
       )
-      if (!res.ok) { setError(`Error: ${await res.text()}`); setGuardando(false); return }
+      if (!res.ok) { setError(`Error: ${await res.text()}`); return null }
       const data = await res.json()
-      if (!isEdit) {
-        router.push(`/finanzas/ajustes-caja/${data.id}/editar`)
-      } else {
+      const newId = data.id ?? initialId
+      if (!isEdit && !opts?.silenciarRedirect) {
+        router.push(`/finanzas/ajustes-caja/${newId}/editar`)
+      } else if (isEdit) {
         setOkMsg("Guardado")
         setTimeout(() => setOkMsg(null), 2000)
       }
+      return newId
     } catch (e: any) {
       setError(`Error de red: ${e?.message ?? e}`)
+      return null
     } finally {
       setGuardando(false)
     }
   }
 
-  const publicar = async () => {
-    if (!isEdit || estado !== "borrador" || publicando) return
+  const doConfirmar = async (id: string) => {
+    if (publicando) return
     setError(null)
     setPublicando(true)
     try {
-      const res = await fetch(`/api/ajustes-caja/${initialId}/publicar`, { method: "POST" })
+      const res = await fetch(`/api/ajustes-caja/${id}/publicar`, { method: "POST" })
       if (!res.ok) { setError(`Error: ${await res.text()}`); setPublicando(false); return }
       router.push("/finanzas/ajustes-caja")
     } catch (e: any) {
       setError(`Error de red: ${e?.message ?? e}`)
       setPublicando(false)
     }
+  }
+
+  const confirmar = async () => {
+    // Si no hay id (registro nuevo) guardamos primero, después publicamos.
+    let id = initialId
+    if (!id) {
+      const saved = await guardar({ silenciarRedirect: true })
+      if (!saved) return
+      id = saved
+    }
+    await doConfirmar(id)
   }
 
   if (cargando) return <div className="p-12 text-center text-gray-500">Cargando…</div>
@@ -196,14 +250,14 @@ export default function AjusteCajaForm({ initialId }: { initialId?: string }) {
             <X className="w-4 h-4" /> {esSoloLectura ? "Cerrar" : "Cancelar"}
           </button>
           {!esSoloLectura && (
-            <button onClick={guardar} disabled={guardando} className="px-4 py-2 text-sm bg-indigo-900 hover:bg-indigo-800 text-white rounded-lg disabled:opacity-50 flex items-center gap-1">
-              <Save className="w-4 h-4" /> {guardando ? "Guardando…" : "Guardar"}
-            </button>
-          )}
-          {isEdit && estado === "borrador" && (
-            <button onClick={publicar} disabled={publicando} className="px-4 py-2 text-sm bg-green-700 hover:bg-green-800 text-white rounded-lg disabled:opacity-50 flex items-center gap-1">
-              <CheckCircle className="w-4 h-4" /> {publicando ? "Publicando…" : "Publicar"}
-            </button>
+            <>
+              <button onClick={() => guardar()} disabled={guardando || publicando} className="px-4 py-2 text-sm bg-indigo-900 hover:bg-indigo-800 text-white rounded-lg disabled:opacity-50 flex items-center gap-1">
+                <Save className="w-4 h-4" /> {guardando ? "Guardando…" : "Guardar"}
+              </button>
+              <button onClick={confirmar} disabled={guardando || publicando} className="px-4 py-2 text-sm bg-green-700 hover:bg-green-800 text-white rounded-lg disabled:opacity-50 flex items-center gap-1">
+                <CheckCircle className="w-4 h-4" /> {publicando ? "Confirmando…" : "Confirmar"}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -241,21 +295,21 @@ export default function AjusteCajaForm({ initialId }: { initialId?: string }) {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Fecha</label>
-              <input type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)}
-                className="w-full border rounded px-3 py-2 text-sm" />
+              <label className="block text-xs font-medium text-gray-600 mb-1">Cuenta Contable</label>
+              <SearchableSelect
+                value={form.cuenta_analitica || null}
+                onChange={v => set("cuenta_analitica", v == null ? "" : String(v))}
+                options={cuentasContablesFiltradas.map(c => ({
+                  value: c.codigo,
+                  label: `${c.codigo} - ${c.nombre}`,
+                  searchExtra: c.nombre,
+                }))}
+                placeholder={form.concepto_id ? "Elegir cuenta…" : "Elegí un concepto primero"}
+                emptyText="Sin cuentas permitidas para este concepto"
+                disabled={!form.concepto_id}
+                allowClear
+              />
             </div>
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Cuenta Analítica</label>
-              <input value={form.cuenta_analitica} onChange={e => set("cuenta_analitica", e.target.value)}
-                className="w-full border rounded px-3 py-2 text-sm" />
-            </div>
-            <label className="flex items-center gap-2 cursor-pointer text-sm">
-              <input type="checkbox" checked={form.es_automatico} onChange={e => set("es_automatico", e.target.checked)} className="w-4 h-4" />
-              <span>Automático</span>
-            </label>
           </div>
         </div>
 

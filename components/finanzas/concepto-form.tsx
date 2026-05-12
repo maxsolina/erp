@@ -2,15 +2,20 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertCircle, ArrowLeft, Save, X } from "lucide-react"
+import { AlertCircle, ArrowLeft, Save, X, Plus, Trash2 } from "lucide-react"
+import SearchableSelect from "@/components/ui/searchable-select"
+
+interface CuentaContable { id: string; codigo: string; nombre: string }
+// usuarios.id en DB es BIGINT (number). Manejamos number en todo el flujo.
+interface UsuarioDisp { id: number; username: string; nombre: string; email: string }
+interface UsuarioAsignado { usuario_id: number; username?: string; nombre?: string; email?: string }
+interface CuentaPermitida { cuenta_codigo: string; cuenta_nombre?: string | null }
 
 const VISIBILITY_FLAGS = [
   { key: "visible_en_ajuste_cajas", label: "Ajuste de Cajas" },
   { key: "visible_en_ajuste_banco", label: "Ajuste de Banco" },
   { key: "visible_en_caja", label: "Registros de Caja" },
   { key: "visible_en_banco", label: "Registros de Banco" },
-  { key: "visible_en_transferencias", label: "Transferencias entre Cajas" },
-  { key: "visible_en_cancelaciones", label: "Cancelaciones Auto." },
 ] as const
 
 type Form = {
@@ -48,22 +53,45 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
   const isEdit = initialId != null
 
   const [form, setForm] = useState<Form>(empty)
+  const [cuentasContables, setCuentasContables] = useState<CuentaContable[]>([])
+  const [usuariosDisp, setUsuariosDisp] = useState<UsuarioDisp[]>([])
+  const [usuariosAsignados, setUsuariosAsignados] = useState<UsuarioAsignado[]>([])
+  const [cuentasPermitidas, setCuentasPermitidas] = useState<CuentaPermitida[]>([])
+  const [tab, setTab] = useState<"usuarios" | "cuentas">("usuarios")
+  const [usuarioNuevo, setUsuarioNuevo] = useState<string | null>(null)
+  const [cuentaNueva, setCuentaNueva] = useState<string | null>(null)
   const [cargando, setCargando] = useState(isEdit)
   const [errorCarga, setErrorCarga] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    Promise.all([
+      fetch("/api/contabilidad/plan-cuentas?activo=true").then(r => r.json()).catch(() => []),
+      fetch("/api/usuarios").then(r => r.json()).catch(() => []),
+    ]).then(([pc, us]) => {
+      if (Array.isArray(pc)) setCuentasContables(pc.map((c: any) => ({ id: c.id, codigo: c.codigo, nombre: c.nombre })))
+      if (Array.isArray(us)) setUsuariosDisp(us.map((u: any) => ({ id: u.id, username: u.username, nombre: u.nombre, email: u.email })))
+    })
+  }, [])
+
+  useEffect(() => {
     if (!isEdit || !initialId) return
     fetch(`/api/conceptos-registro-caja/${initialId}`)
       .then(r => r.ok ? r.json() : Promise.reject(r))
-      .then((data: Partial<Form>) => {
+      .then((data: any) => {
         setForm({
           ...empty,
           ...data,
           cuenta_contable_ingresos: data.cuenta_contable_ingresos ?? "",
           cuenta_contable_egresos: data.cuenta_contable_egresos ?? "",
         })
+        setUsuariosAsignados((data.usuarios ?? []).map((u: any) => ({
+          usuario_id: u.usuario_id, username: u.username, nombre: u.nombre, email: u.email,
+        })))
+        setCuentasPermitidas((data.cuentas_permitidas ?? []).map((c: any) => ({
+          cuenta_codigo: c.cuenta_codigo, cuenta_nombre: c.cuenta_nombre,
+        })))
         setCargando(false)
       })
       .catch(() => { setErrorCarga("Concepto no encontrado"); setCargando(false) })
@@ -78,12 +106,17 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
     setError(null)
     setGuardando(true)
     try {
+      const payload = {
+        ...form,
+        usuarios: usuariosAsignados.map(u => u.usuario_id),
+        cuentas_permitidas: cuentasPermitidas,
+      }
       const res = await fetch(
         isEdit ? `/api/conceptos-registro-caja/${initialId}` : "/api/conceptos-registro-caja",
         {
           method: isEdit ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(form),
+          body: JSON.stringify(payload),
         },
       )
       if (!res.ok) {
@@ -107,8 +140,46 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
     </div>
   )
 
+  const cuentaOptions = cuentasContables.map(c => ({
+    value: c.codigo,
+    label: `${c.codigo} - ${c.nombre}`,
+    searchExtra: c.nombre,
+  }))
+
+  // Usuarios todavía no asignados (para el picker)
+  const usuariosAsignadosIds = new Set(usuariosAsignados.map(u => Number(u.usuario_id)))
+  const usuariosOptions = usuariosDisp
+    .filter(u => !usuariosAsignadosIds.has(Number(u.id)))
+    .map(u => ({ value: u.id, label: u.nombre || u.username, hint: u.email, searchExtra: u.username }))
+
+  // Cuentas todavía no permitidas (para el picker)
+  const cuentasYaUsadas = new Set([
+    ...cuentasPermitidas.map(c => c.cuenta_codigo),
+    form.cuenta_contable_ingresos,
+    form.cuenta_contable_egresos,
+  ].filter(Boolean))
+  const cuentasOptionsDisp = cuentasContables
+    .filter(c => !cuentasYaUsadas.has(c.codigo))
+    .map(c => ({ value: c.codigo, label: `${c.codigo} - ${c.nombre}`, searchExtra: c.nombre }))
+
+  const addUsuario = (id: number) => {
+    const u = usuariosDisp.find(x => Number(x.id) === Number(id))
+    if (!u) return
+    setUsuariosAsignados(prev => [...prev, { usuario_id: u.id, username: u.username, nombre: u.nombre, email: u.email }])
+    setUsuarioNuevo(null)
+  }
+  const removeUsuario = (id: number) => setUsuariosAsignados(prev => prev.filter(u => Number(u.usuario_id) !== Number(id)))
+
+  const addCuenta = (codigo: string) => {
+    const c = cuentasContables.find(x => x.codigo === codigo)
+    if (!c) return
+    setCuentasPermitidas(prev => [...prev, { cuenta_codigo: c.codigo, cuenta_nombre: c.nombre }])
+    setCuentaNueva(null)
+  }
+  const removeCuenta = (codigo: string) => setCuentasPermitidas(prev => prev.filter(c => c.cuenta_codigo !== codigo))
+
   return (
-    <div className="max-w-3xl">
+    <div>
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-lg">
@@ -135,7 +206,7 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
         </div>
       )}
 
-      <div className="bg-white rounded-lg border p-6 space-y-5">
+      <div className="bg-white rounded-lg border p-6 space-y-5 mb-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Código *</label>
@@ -153,13 +224,25 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Cuenta Contable de Ingresos</label>
-            <input value={form.cuenta_contable_ingresos} onChange={e => set("cuenta_contable_ingresos", e.target.value)}
-              className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <SearchableSelect
+              value={form.cuenta_contable_ingresos || null}
+              onChange={v => set("cuenta_contable_ingresos", v == null ? "" : String(v))}
+              options={cuentaOptions}
+              placeholder="Elegir cuenta…"
+              emptyText="Sin resultados"
+              allowClear
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Cuenta Contable de Egresos</label>
-            <input value={form.cuenta_contable_egresos} onChange={e => set("cuenta_contable_egresos", e.target.value)}
-              className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <SearchableSelect
+              value={form.cuenta_contable_egresos || null}
+              onChange={v => set("cuenta_contable_egresos", v == null ? "" : String(v))}
+              options={cuentaOptions}
+              placeholder="Elegir cuenta…"
+              emptyText="Sin resultados"
+              allowClear
+            />
           </div>
         </div>
 
@@ -177,13 +260,132 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
 
         <div className="flex gap-6 pt-2 border-t">
           <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={form.requiere_observacion} onChange={e => set("requiere_observacion", e.target.checked)} className="w-4 h-4" />
-            <span className="text-sm">Requiere observación</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={form.activo} onChange={e => set("activo", e.target.checked)} className="w-4 h-4" />
             <span className="text-sm">Activo</span>
           </label>
+        </div>
+      </div>
+
+      {/* Tabs Usuarios / Cuentas Permitidas */}
+      <div className="bg-white rounded-lg border">
+        <div className="flex border-b">
+          {([
+            { id: "usuarios", label: `Usuarios (${usuariosAsignados.length})` },
+            { id: "cuentas", label: `Cuentas Permitidas (${cuentasPermitidas.length})` },
+          ] as const).map(t => (
+            <button key={t.id} type="button" onClick={() => setTab(t.id)}
+              className={`px-4 py-2 text-sm border-b-2 ${tab === t.id ? "border-indigo-700 text-indigo-700 font-medium" : "border-transparent text-gray-500"}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="p-4">
+          {tab === "usuarios" && (
+            <>
+              <div className="flex items-end gap-3 mb-4">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Agregar usuario</label>
+                  <SearchableSelect
+                    value={usuarioNuevo}
+                    onChange={v => { if (v != null) addUsuario(Number(v)) }}
+                    options={usuariosOptions}
+                    placeholder={usuariosOptions.length === 0 ? "Todos los usuarios ya están asignados" : "Buscar usuario por nombre o email…"}
+                    emptyText="Sin resultados"
+                    disabled={usuariosOptions.length === 0}
+                    allowClear
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">
+                {usuariosAsignados.length === 0
+                  ? "⚠ Sin usuarios asignados → nadie verá este concepto en los registros."
+                  : `Solo estos ${usuariosAsignados.length} usuario(s) verán el concepto en los registros.`}
+              </p>
+              {usuariosAsignados.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-6 border border-dashed rounded">Sin usuarios.</p>
+              ) : (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-xs text-gray-500">
+                      <tr>
+                        <th className="text-left py-2 px-3">Usuario</th>
+                        <th className="text-left px-3">Nombre</th>
+                        <th className="text-left px-3">Email</th>
+                        <th className="px-2 w-8"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usuariosAsignados.map(u => (
+                        <tr key={u.usuario_id} className="border-t">
+                          <td className="py-1 px-3 font-mono text-xs">{u.username ?? "—"}</td>
+                          <td className="px-3">{u.nombre ?? "—"}</td>
+                          <td className="px-3 text-gray-500">{u.email ?? "—"}</td>
+                          <td className="px-2">
+                            <button type="button" onClick={() => removeUsuario(Number(u.usuario_id))} className="text-red-500 hover:text-red-700">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+
+          {tab === "cuentas" && (
+            <>
+              <div className="flex items-end gap-3 mb-4">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Agregar cuenta contable</label>
+                  <SearchableSelect
+                    value={cuentaNueva}
+                    onChange={v => v && addCuenta(String(v))}
+                    options={cuentasOptionsDisp}
+                    placeholder={cuentasOptionsDisp.length === 0 ? "Sin cuentas adicionales disponibles" : "Buscar por código o nombre…"}
+                    emptyText="Sin resultados"
+                    disabled={cuentasOptionsDisp.length === 0}
+                    allowClear
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">
+                Las cuentas listadas acá + las de la cabecera (Ingresos/Egresos) son las únicas habilitadas al cargar comprobantes con este concepto.
+              </p>
+              {cuentasPermitidas.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-6 border border-dashed rounded">
+                  Solo se permitirán las cuentas de Ingresos / Egresos de la cabecera.
+                </p>
+              ) : (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-xs text-gray-500">
+                      <tr>
+                        <th className="text-left py-2 px-3 w-32">Código</th>
+                        <th className="text-left px-3">Nombre</th>
+                        <th className="px-2 w-8"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cuentasPermitidas.map(c => (
+                        <tr key={c.cuenta_codigo} className="border-t">
+                          <td className="py-1 px-3 font-mono text-xs">{c.cuenta_codigo}</td>
+                          <td className="px-3">{c.cuenta_nombre ?? "—"}</td>
+                          <td className="px-2">
+                            <button type="button" onClick={() => removeCuenta(c.cuenta_codigo)} className="text-red-500 hover:text-red-700">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>

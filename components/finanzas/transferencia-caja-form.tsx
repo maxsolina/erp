@@ -6,7 +6,7 @@ import { AlertCircle, ArrowLeft, Save, X, CheckCircle, ArrowDownToLine, Ban } fr
 import { useERP } from "@/contexts/erp-context"
 
 interface CajaDisp { id: string; nombre: string; sucursal: string }
-interface ValorCaja { id: string; caja_id: string; nombre: string; tipo: string; moneda: string }
+interface ValorCaja { id: string; caja_id: string; nombre: string; tipo: string; moneda: string; banco_permitido_id?: string | null }
 
 type Form = {
   caja_desde_id: string
@@ -52,6 +52,7 @@ export default function TransferenciaCajaForm({ initialId }: { initialId?: strin
   const [cajas, setCajas] = useState<CajaDisp[]>([])
   const [valores, setValores] = useState<ValorCaja[]>([])
   const [estado, setEstado] = useState<string>("borrador")
+  const [tab, setTab] = useState<"valores" | "obs">("valores")
   const [cargando, setCargando] = useState(isEdit)
   const [errorCarga, setErrorCarga] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
@@ -93,7 +94,12 @@ export default function TransferenciaCajaForm({ initialId }: { initialId?: strin
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm(f => ({ ...f, [k]: v }))
   const esSoloLectura = isEdit && estado !== "borrador"
   const cajasDestino = useMemo(() => cajas.filter(c => c.id !== form.caja_desde_id), [cajas, form.caja_desde_id])
-  const valoresOrigen = useMemo(() => valores.filter(v => v.caja_id === form.caja_desde_id), [valores, form.caja_desde_id])
+  // Excluir bancos permitidos: una transferencia entre cajas mueve valores físicos,
+  // no se puede transferir desde/hacia un banco usando este formulario.
+  const valoresOrigen = useMemo(
+    () => valores.filter(v => v.caja_id === form.caja_desde_id && !v.banco_permitido_id),
+    [valores, form.caja_desde_id],
+  )
 
   const guardar = async () => {
     if (esSoloLectura) return
@@ -201,8 +207,28 @@ export default function TransferenciaCajaForm({ initialId }: { initialId?: strin
       )}
       {okMsg && <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-700">{okMsg}</div>}
 
-      <fieldset disabled={esSoloLectura}>
-        <div className="bg-white rounded-lg border p-6 space-y-5">
+      {/* Cabecera */}
+      <div className="bg-white rounded-lg border p-6 space-y-5 mb-4">
+        {esSoloLectura ? (
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Caja Origen</p>
+              <p className="text-sm font-medium text-gray-800">
+                {cajas.find(c => c.id === form.caja_desde_id)?.nombre ?? "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Caja Destino</p>
+              <p className="text-sm font-medium text-gray-800">
+                {cajas.find(c => c.id === form.caja_hasta_id)?.nombre ?? "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Sucursal</p>
+              <p className="text-sm font-medium text-gray-800">{form.sucursal || "—"}</p>
+            </div>
+          </div>
+        ) : (
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Caja Origen *</label>
@@ -236,40 +262,78 @@ export default function TransferenciaCajaForm({ initialId }: { initialId?: strin
               </select>
             </div>
           </div>
+        )}
+      </div>
 
-          <div className="grid grid-cols-4 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Valor *</label>
-              <select value={form.valor_id} onChange={e => set("valor_id", e.target.value)}
-                disabled={!form.caja_desde_id}
-                className="w-full border rounded px-3 py-2 text-sm disabled:bg-gray-50">
-                <option value="">Seleccionar…</option>
-                {valoresOrigen.map(v => <option key={v.id} value={v.id}>{v.nombre} ({v.moneda})</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Importe *</label>
-              <input type="number" step="0.01" value={form.importe} onChange={e => set("importe", Number(e.target.value))}
-                className="w-full border rounded px-3 py-2 text-sm text-right font-mono" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Concepto</label>
-              <input value={form.concepto} onChange={e => set("concepto", e.target.value)}
-                className="w-full border rounded px-3 py-2 text-sm" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Fecha</label>
-              <input type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)}
-                className="w-full border rounded px-3 py-2 text-sm" />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Observaciones</label>
-            <textarea value={form.observaciones} onChange={e => set("observaciones", e.target.value)} rows={3}
+      {/* Tabs — fuera del fieldset para poder navegar aunque esté en read-only */}
+      <div className="bg-white rounded-lg border">
+        <div className="flex border-b">
+          {([
+            { id: "valores", label: "Valores (1)" },
+            { id: "obs", label: "Observaciones" },
+          ] as const).map(t => (
+            <button key={t.id} type="button" onClick={() => setTab(t.id)}
+              className={`px-4 py-2 text-sm border-b-2 ${tab === t.id ? "border-indigo-700 text-indigo-700 font-medium" : "border-transparent text-gray-500"}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <fieldset disabled={esSoloLectura} className="p-4">
+          {tab === "valores" && (() => {
+            // En read-only buscamos el valor en TODOS los caja_valores (no solo los de origen).
+            const valorActual = valores.find(v => v.id === form.valor_id) ?? valoresOrigen.find(v => v.id === form.valor_id)
+            return (
+              <div className="border rounded-lg overflow-visible">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-xs text-gray-500">
+                    <tr>
+                      <th className="text-left py-2 px-3">Valor</th>
+                      <th className="text-left px-3 w-24">Moneda</th>
+                      <th className="text-right px-3 w-40">Importe</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-t align-top">
+                      <td className="py-2 px-3">
+                        {esSoloLectura ? (
+                          <span className="text-sm font-medium text-gray-800">{valorActual?.nombre ?? "—"}</span>
+                        ) : (
+                          <select value={form.valor_id} onChange={e => set("valor_id", e.target.value)}
+                            disabled={!form.caja_desde_id}
+                            className="w-full border rounded px-2 py-1.5 text-sm disabled:bg-gray-50">
+                            <option value="">Seleccionar…</option>
+                            {valoresOrigen.map(v => <option key={v.id} value={v.id}>{v.nombre} ({v.moneda})</option>)}
+                          </select>
+                        )}
+                      </td>
+                      <td className="px-3 text-xs text-gray-600 font-mono py-2">
+                        {valorActual?.moneda ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        {esSoloLectura ? (
+                          <span className="font-mono font-semibold text-amber-900">
+                            ${Number(form.importe).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                          </span>
+                        ) : (
+                          <input type="number" step="0.01" value={form.importe} onChange={e => set("importe", Number(e.target.value))}
+                            className="w-full border rounded px-2 py-1.5 text-sm text-right font-mono" />
+                        )}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )
+          })()}
+          {tab === "obs" && (
+            <textarea value={form.observaciones} onChange={e => set("observaciones", e.target.value)} rows={4}
               className="w-full border rounded px-3 py-2 text-sm" />
-          </div>
+          )}
+        </fieldset>
+      </div>
 
+      <fieldset disabled={esSoloLectura} className="mt-4">
+        <div className="space-y-5">
           {isEdit && estado === "pendiente" && (
             <div className="bg-amber-50 border border-amber-200 rounded p-3 text-sm text-amber-800">
               La transferencia está pendiente de recepción en la caja destino. Hacé click en <strong>Recibir</strong> cuando la caja destino confirme el ingreso del valor.

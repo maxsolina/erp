@@ -1,11 +1,15 @@
 import { apiError, dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
+import { generarAsientoRegistroBanco } from "@/lib/contabilidad-asiento-factory"
 import { NextResponse } from "next/server"
 
 // POST /api/registros-banco/[id]/confirmar
 //
-// Por cada valor inserta un movimiento_banco egreso en la cuenta bancaria.
-// Marca el registro como confirmado.
+// Flujo:
+//   1. Valida cuadre + cotización (si moneda != ARS).
+//   2. Genera el asiento contable (BLOQUEANTE).
+//   3. Inserta los movimientos bancarios (egreso).
+//   4. Marca el registro como confirmado.
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
   const supabase = await createClient()
@@ -15,6 +19,30 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   if (!reg) return apiError("Registro no encontrado", 404)
   if (reg.estado !== "borrador") return apiError("Solo se pueden confirmar registros en borrador", 409)
 
+  const totalC = Number(reg.total_comprobantes ?? 0)
+  const totalV = Number(reg.total_valores ?? 0)
+  if (Math.abs(totalC - totalV) > 0.01) {
+    return apiError(`Total comprobantes (${totalC.toFixed(2)}) no coincide con total valores (${totalV.toFixed(2)}). Corregí antes de confirmar.`, 422)
+  }
+  if (reg.moneda && reg.moneda !== "ARS" && !reg.cotizacion) {
+    return apiError(`Falta la cotización para ${reg.moneda}. Cargala antes de confirmar.`, 422)
+  }
+
+  // ── 1. Asiento contable (bloqueante) ─────────────────────────────────────
+  const asientoRes = await generarAsientoRegistroBanco(supabase, {
+    id: reg.id,
+    numero: reg.numero,
+    fecha: reg.fecha,
+    cuenta_bancaria_id: reg.cuenta_bancaria_id,
+    cuenta_bancaria_nombre: reg.cuenta_bancaria_nombre ?? "",
+    sucursal: reg.sucursal,
+    concepto_nombre: reg.concepto_nombre ?? "",
+    moneda: reg.moneda ?? "ARS",
+    cotizacion: reg.cotizacion,
+  })
+  if (!asientoRes.ok) return apiError(`No se pudo generar el asiento contable: ${asientoRes.error}`, 422)
+
+  // ── 2. Movimientos bancarios ─────────────────────────────────────────────
   const { data: vals } = await supabase
     .from("registro_banco_valores")
     .select("nombre, importe, moneda")
@@ -34,7 +62,11 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
       documento_origen_numero: reg.numero,
       conciliado: false,
     })
-    if (emov) return dbError(emov)
+    if (emov) {
+      await supabase.from("contabilidad_asientos_lineas").delete().eq("asiento_id", asientoRes.asiento_id)
+      await supabase.from("contabilidad_asientos").delete().eq("id", asientoRes.asiento_id)
+      return dbError(emov)
+    }
   }
 
   const { error: eUpd } = await supabase
@@ -43,5 +75,5 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     .eq("id", id)
   if (eUpd) return dbError(eUpd)
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, asiento_id: asientoRes.asiento_id })
 }

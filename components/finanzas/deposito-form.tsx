@@ -95,7 +95,11 @@ export default function DepositoForm({ initialId }: { initialId?: string }) {
     [valores, form.caja_egreso_id],
   )
 
+  const cajaSel = cajas.find(c => c.id === form.caja_egreso_id)
+  const cuentaSel = cuentas.find(c => c.id === form.cuenta_bancaria_id)
+  const moneda = cuentaSel?.moneda ?? "ARS"
   const importeTotal = form.valores.reduce((s, v) => s + v.importe, 0)
+  const fmt = (n: number) => `${moneda === "ARS" ? "$" : `${moneda} `}${n.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
 
   const addLinea = () => {
     if (valoresDisp.length === 0) return
@@ -210,48 +214,67 @@ export default function DepositoForm({ initialId }: { initialId?: string }) {
       {okMsg && <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-700">{okMsg}</div>}
 
       <fieldset disabled={esSoloLectura}>
-        <div className="bg-white rounded-lg border p-6 space-y-5 mb-4">
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Cuenta Bancaria *</label>
-              <select value={form.cuenta_bancaria_id} onChange={e => set("cuenta_bancaria_id", e.target.value)}
-                className="w-full border rounded px-3 py-2 text-sm">
-                <option value="">Seleccionar…</option>
-                {cuentas.map(c => <option key={c.id} value={c.id}>{c.banco_nombre} — {c.numero_cuenta} ({c.moneda})</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Caja de Egreso *</label>
-              <select value={form.caja_egreso_id} onChange={e => { set("caja_egreso_id", e.target.value); set("valores", []) }}
-                className="w-full border rounded px-3 py-2 text-sm">
-                <option value="">Seleccionar…</option>
-                {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.sucursal})</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Sucursal</label>
-              <select value={form.sucursal} onChange={e => set("sucursal", e.target.value)}
-                className="w-full border rounded px-3 py-2 text-sm">
-                <option value="">—</option>
-                {sucursales.map(s => <option key={s.id ?? s.nombre} value={s.nombre}>{s.nombre}</option>)}
-              </select>
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <div className="col-span-2 bg-white rounded-lg border p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Cuenta Bancaria *</label>
+                <select value={form.cuenta_bancaria_id} onChange={e => set("cuenta_bancaria_id", e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm">
+                  <option value="">Seleccionar…</option>
+                  {cuentas.map(c => <option key={c.id} value={c.id}>{c.banco_nombre} — {c.numero_cuenta} ({c.moneda})</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Caja de Egreso *</label>
+                <select value={form.caja_egreso_id} onChange={e => { set("caja_egreso_id", e.target.value); set("valores", []) }}
+                  className="w-full border rounded px-3 py-2 text-sm">
+                  <option value="">Seleccionar…</option>
+                  {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.sucursal})</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Sucursal</label>
+                <select value={form.sucursal} onChange={e => set("sucursal", e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm">
+                  <option value="">—</option>
+                  {sucursales.map(s => <option key={s.id ?? s.nombre} value={s.nombre}>{s.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Tipo Operación</label>
+                <input value={form.tipo_operacion} onChange={e => set("tipo_operacion", e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">N° Operación</label>
+                <input value={form.numero_operacion} onChange={e => set("numero_operacion", e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Fecha Operación</label>
+                <input type="date" value={form.fecha_operacion} onChange={e => set("fecha_operacion", e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm" />
+              </div>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Tipo Operación</label>
-              <input value={form.tipo_operacion} onChange={e => set("tipo_operacion", e.target.value)}
-                className="w-full border rounded px-3 py-2 text-sm" />
+          <div className="flex flex-col gap-3">
+            <div className="bg-white rounded-lg border p-3">
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Caja → Cuenta</p>
+              <p className="text-sm font-medium text-gray-800 mt-1 truncate">
+                {cajaSel ? cajaSel.nombre : "—"}
+                {cajaSel && cuentaSel && <span className="text-gray-400"> → </span>}
+                {cuentaSel ? cuentaSel.banco_nombre : ""}
+              </p>
+              {cajaSel && <p className="text-xs text-gray-500">{cajaSel.sucursal}</p>}
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">N° Operación</label>
-              <input value={form.numero_operacion} onChange={e => set("numero_operacion", e.target.value)}
-                className="w-full border rounded px-3 py-2 text-sm" />
+            <div className="bg-white rounded-lg border p-3">
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Cantidad de Valores</p>
+              <p className="text-lg font-mono font-semibold text-gray-700 mt-1">{form.valores.length}</p>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Fecha Operación</label>
-              <input type="date" value={form.fecha_operacion} onChange={e => set("fecha_operacion", e.target.value)}
-                className="w-full border rounded px-3 py-2 text-sm" />
+            <div className="bg-white rounded-lg border p-3">
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Total a Depositar</p>
+              <p className="text-lg font-mono font-semibold text-amber-900 mt-1">{fmt(importeTotal)}</p>
             </div>
           </div>
         </div>
@@ -264,9 +287,6 @@ export default function DepositoForm({ initialId }: { initialId?: string }) {
                 {t.label}
               </button>
             ))}
-            <div className="ml-auto px-4 py-2 text-xs text-gray-500">
-              Total: <span className="font-mono font-semibold text-amber-900">${importeTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
-            </div>
           </div>
           <div className="p-6">
             {tab === "valores" && (

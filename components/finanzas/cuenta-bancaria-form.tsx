@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { AlertCircle, ArrowLeft, Save, X, Info } from "lucide-react"
-import { type Banco } from "./_shared"
+import { type Banco, useMonedas } from "./_shared"
 
 type Form = {
   banco_id: string
@@ -37,6 +37,7 @@ export default function CuentaBancariaForm({ initialId }: { initialId?: string }
 
   const [form, setForm] = useState<Form>(empty)
   const [bancos, setBancos] = useState<Banco[]>([])
+  const monedas = useMonedas()
   const [cargando, setCargando] = useState(isEdit)
   const [errorCarga, setErrorCarga] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
@@ -157,8 +158,9 @@ export default function CuentaBancariaForm({ initialId }: { initialId?: string }
               <label className="block text-xs font-medium text-gray-600 mb-1">Moneda</label>
               <select value={form.moneda} onChange={e => set("moneda", e.target.value)}
                 className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                <option value="ARS">ARS</option>
-                <option value="USD">USD</option>
+                {monedas.length === 0
+                  ? <option value={form.moneda || "ARS"}>{form.moneda || "ARS"}</option>
+                  : monedas.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo}</option>)}
               </select>
             </div>
           </div>
