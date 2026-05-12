@@ -24,7 +24,17 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   if (actual.estado !== "borrador") return apiError("Solo se pueden editar ajustes en borrador", 409)
 
   const update: Record<string, unknown> = {}
-  if (body.cuenta_bancaria_nombre !== undefined) update.cuenta_bancaria_nombre = body.cuenta_bancaria_nombre
+  if (body.cuenta_bancaria_id !== undefined) {
+    update.cuenta_bancaria_id = body.cuenta_bancaria_id
+    const { data: c } = await supabase
+      .from("cuentas_bancarias")
+      .select("banco_nombre, numero_cuenta")
+      .eq("id", body.cuenta_bancaria_id)
+      .maybeSingle()
+    if (c) update.cuenta_bancaria_nombre = `${c.banco_nombre} - ${c.numero_cuenta}`
+  } else if (body.cuenta_bancaria_nombre !== undefined) {
+    update.cuenta_bancaria_nombre = body.cuenta_bancaria_nombre
+  }
   if (body.concepto_id !== undefined) {
     update.concepto_id = body.concepto_id
     const { data: concepto } = await supabase

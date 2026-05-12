@@ -33,6 +33,25 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       .order("fecha", { ascending: false }),
   ])
 
+  // Excluir valores que sean punteros a bancos permitidos: el banco no es un
+  // "valor físico" de la caja, sus movimientos se ven en el extracto del banco.
+  const valorIdsTodos = Array.from(new Set([
+    ...((saldos ?? []).map(s => (s as any).valor_id)),
+    ...((movs ?? []).map(m => (m as any).valor_id)),
+  ].filter(Boolean)))
+  let bancoValorIds = new Set<string>()
+  if (valorIdsTodos.length > 0) {
+    const { data: cv } = await supabase
+      .from("caja_valores")
+      .select("id, banco_permitido_id")
+      .in("id", valorIdsTodos)
+    bancoValorIds = new Set((cv ?? []).filter((v: any) => v.banco_permitido_id).map((v: any) => v.id))
+  }
+  if (bancoValorIds.size > 0) {
+    saldos = (saldos ?? []).filter((s: any) => !bancoValorIds.has(s.valor_id))
+    movs = (movs ?? []).filter((m: any) => !bancoValorIds.has(m.valor_id))
+  }
+
   // Auto-fix de huérfanos solo si está abierto.
   if (extracto.estado === "abierto" && saldos && movs) {
     const valorIdsRegistrados = new Set((saldos as any[]).map(s => s.valor_id))

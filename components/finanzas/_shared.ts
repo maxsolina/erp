@@ -1,5 +1,25 @@
 // Tipos compartidos para Finanzas (top-level migradas).
 
+import { useEffect, useState } from "react"
+
+// Hook reutilizable: trae las monedas activas desde contabilidad_monedas.
+// Reemplaza los <option value="ARS"/USD/EUR> hardcoded en los selects.
+export interface MonedaItem { codigo: string; nombre: string }
+export function useMonedas(): MonedaItem[] {
+  const [monedas, setMonedas] = useState<MonedaItem[]>([])
+  useEffect(() => {
+    fetch("/api/contabilidad/monedas")
+      .then(r => r.ok ? r.json() : [])
+      .then((data: any) => {
+        if (Array.isArray(data)) {
+          setMonedas(data.filter(m => m.activo).map((m: any) => ({ codigo: m.codigo, nombre: m.nombre })))
+        }
+      })
+      .catch(() => {})
+  }, [])
+  return monedas
+}
+
 export interface Caja {
   id: string
   nombre: string
@@ -60,6 +80,24 @@ export interface ConceptoRegistroCaja {
   visible_en_transferencias: boolean
   visible_en_cancelaciones: boolean
   activo: boolean
+  // Solo presentes si el endpoint se llamó con ?con_relaciones=1 o ?for_user=
+  usuario_ids?: string[]
+  cuentas_permitidas?: { cuenta_codigo: string; cuenta_nombre?: string | null }[]
+}
+
+// Construye el conjunto de códigos de cuenta permitidos para un concepto:
+// cabecera (ingresos + egresos) + cuentas_permitidas. Si retorna null,
+// significa "sin restricción" (concepto sin reglas → permitir todas).
+export function cuentasPermitidasParaConcepto(c: ConceptoRegistroCaja | undefined | null): Set<string> | null {
+  if (!c) return null
+  const codigos = new Set<string>()
+  if (c.cuenta_contable_ingresos) codigos.add(c.cuenta_contable_ingresos)
+  if (c.cuenta_contable_egresos) codigos.add(c.cuenta_contable_egresos)
+  for (const cp of c.cuentas_permitidas ?? []) {
+    if (cp.cuenta_codigo) codigos.add(cp.cuenta_codigo)
+  }
+  // Si no hay ninguna cuenta definida (ni cabecera ni permitidas), no restringimos.
+  return codigos.size === 0 ? null : codigos
 }
 
 export interface TipoPrestamo {

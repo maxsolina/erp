@@ -2,8 +2,8 @@ import { apiError, dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
-const SELECT_LIST = "id, numero, cuenta_bancaria_nombre, sucursal, concepto_nombre, moneda, total_comprobantes, total_valores, fecha, estado"
-const SELECT_FULL = "id, numero, cuenta_bancaria_id, cuenta_bancaria_nombre, sucursal, concepto_id, concepto_nombre, moneda, total_comprobantes, total_valores, fecha, observaciones, estado"
+const SELECT_LIST = "id, numero, cuenta_bancaria_nombre, sucursal, concepto_nombre, moneda, cotizacion, tipo_cotizacion, total_comprobantes, total_valores, fecha, estado"
+const SELECT_FULL = "id, numero, cuenta_bancaria_id, cuenta_bancaria_nombre, sucursal, concepto_id, concepto_nombre, moneda, cotizacion, tipo_cotizacion, total_comprobantes, total_valores, fecha, observaciones, estado"
 
 interface Comprobante {
   descripcion?: string | null
@@ -74,8 +74,18 @@ export async function POST(req: Request) {
     return apiError("El concepto requiere observación", 400)
   }
 
+  const registroMoneda = (body.moneda ?? "ARS") as string
+  const cotizacion = Number(body.cotizacion ?? 0)
+  const aMonedaRegistro = (importe: number, monedaValor?: string | null): number => {
+    const mv = monedaValor || registroMoneda
+    if (mv === registroMoneda) return importe
+    if (cotizacion <= 0) return importe
+    if (registroMoneda === "ARS" && mv !== "ARS") return importe * cotizacion
+    if (registroMoneda !== "ARS" && mv === "ARS") return importe / cotizacion
+    return importe
+  }
   const totalC = comprobantes.reduce((s, c) => s + Number(c.importe ?? 0) + Number(c.impuestos ?? 0), 0)
-  const totalV = valores.reduce((s, v) => s + Number(v.importe ?? 0), 0)
+  const totalV = valores.reduce((s, v) => s + aMonedaRegistro(Number(v.importe ?? 0), v.moneda), 0)
 
   const sucursal = body.sucursal ?? ""
   const { data: numero, error: rpcErr } = await supabase.rpc("generar_numero_registro_banco", { p_sucursal: sucursal })
@@ -91,6 +101,8 @@ export async function POST(req: Request) {
       concepto_id: body.concepto_id,
       concepto_nombre: concepto.nombre,
       moneda: body.moneda ?? "ARS",
+      cotizacion: body.cotizacion ?? null,
+      tipo_cotizacion: body.tipo_cotizacion ?? null,
       fecha: body.fecha,
       observaciones: body.observaciones ?? "",
       total_comprobantes: totalC,

@@ -8,6 +8,7 @@
 import React, { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { AlertCircle, Edit, Plus, Trash2, UserPlus, X } from "lucide-react"
+import { useMonedas } from "./_shared"
 import SearchableSelect from "@/components/ui/searchable-select"
 
 export interface CajaValor {
@@ -154,6 +155,9 @@ function ModalDetalleValor({ valor, cajaId, onClose, onActualizar }: {
   const [usuarioAAgregarVal, setUsuarioAAgregarVal] = useState<string | number | null>(null)
   const [agregandoVal, setAgregandoVal] = useState(false)
   const [errorUsuariosVal, setErrorUsuariosVal] = useState<string | null>(null)
+
+  // Monedas desde contabilidad_monedas (hook compartido).
+  const monedas = useMonedas()
 
   useEffect(() => {
     if (esNuevo || !valor.id) return
@@ -380,9 +384,11 @@ function ModalDetalleValor({ valor, cajaId, onClose, onActualizar }: {
                 {modoEdicion ? (
                   <select value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}
                     className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none">
-                    <option value="ARS">ARS</option>
-                    <option value="USD">USD</option>
-                    <option value="EUR">EUR</option>
+                    {monedas.length === 0 ? (
+                      <option value={form.moneda || "ARS"}>{form.moneda || "ARS"}</option>
+                    ) : (
+                      monedas.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} — {m.nombre}</option>)
+                    )}
                   </select>
                 ) : (
                   <p className="font-mono text-gray-900">{valor.moneda}</p>

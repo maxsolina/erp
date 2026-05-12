@@ -55,7 +55,7 @@ export async function POST(req: Request) {
       sucursal,
       concepto_id: body.concepto_id,
       concepto_nombre: concepto.nombre,
-      tipo_ajuste: body.tipo_ajuste ?? null,
+      tipo_ajuste: body.tipo_ajuste || null,
       importe: importeTotal,
       fecha: body.fecha,
       cuenta_analitica: body.cuenta_analitica || null,

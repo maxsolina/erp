@@ -205,7 +205,7 @@ export default function ExtractoCajaForm({ initialId }: { initialId?: string }) 
   if (!isEdit) {
     const cajasDisponibles = cajas.filter(c => !cajasConAbierto.has(c.id))
     return (
-      <div className="max-w-2xl">
+      <div>
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
             <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-lg"><ArrowLeft className="w-4 h-4" /></button>
@@ -250,11 +250,6 @@ export default function ExtractoCajaForm({ initialId }: { initialId?: string }) 
               <span className="font-medium">{cajas.find(c => c.id === form.caja_id)?.sucursal}</span>
             </div>
           )}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Responsable</label>
-            <input value={form.responsable_nombre} onChange={e => set("responsable_nombre", e.target.value)}
-              className="w-full border rounded px-3 py-2 text-sm" placeholder="Nombre del cajero/responsable" />
-          </div>
           {ultimosSaldos && ultimosSaldos.length > 0 && (
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase mb-2">Saldos del último cierre (se usarán como apertura)</p>

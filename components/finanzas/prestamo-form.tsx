@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertCircle, ArrowLeft, Save, X, CheckCircle, DollarSign } from "lucide-react"
+import { AlertCircle, ArrowLeft, Save, X, CheckCircle, DollarSign, Plus, Trash2 } from "lucide-react"
 import { useERP } from "@/contexts/erp-context"
-import { type TipoPrestamo, type CuentaBancaria, formatCurrency } from "./_shared"
+import { type TipoPrestamo, type CuentaBancaria, formatCurrency, useMonedas } from "./_shared"
 
 interface CajaDisp { id: string; nombre: string; sucursal: string }
 interface Cuota {
@@ -17,6 +17,12 @@ interface Cuota {
   saldo: number
   estado: "pendiente" | "conciliado" | "vencido"
   fecha_pago: string | null
+}
+interface Gasto {
+  id: string
+  descripcion: string
+  importe: number
+  cuenta_contable: string
 }
 
 type Form = {
@@ -92,18 +98,23 @@ export default function PrestamoForm({ initialId }: { initialId?: string }) {
   const { sucursales } = useERP()
 
   const [form, setForm] = useState<Form>(empty())
+  const monedas = useMonedas()
   const [tipos, setTipos] = useState<TipoPrestamo[]>([])
   const [cuentas, setCuentas] = useState<CuentaBancaria[]>([])
   const [cajas, setCajas] = useState<CajaDisp[]>([])
   const [cuotas, setCuotas] = useState<Cuota[]>([])
+  const [gastos, setGastos] = useState<Gasto[]>([])
   const [estado, setEstado] = useState<string>("borrador")
-  const [tab, setTab] = useState<"info" | "cuotas" | "obs">("info")
+  const [tab, setTab] = useState<"info" | "cuotas" | "gastos" | "obs">("info")
   const [cargando, setCargando] = useState(isEdit)
   const [errorCarga, setErrorCarga] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
   const [accion, setAccion] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [okMsg, setOkMsg] = useState<string | null>(null)
+
+  // Estado nuevo gasto
+  const [nuevoGasto, setNuevoGasto] = useState({ descripcion: "", importe: 0, cuenta_contable: "" })
 
   useEffect(() => {
     Promise.all([
@@ -152,6 +163,7 @@ export default function PrestamoForm({ initialId }: { initialId?: string }) {
       observaciones: d.observaciones ?? "",
     })
     setCuotas(d.cuotas ?? [])
+    setGastos(d.gastos ?? [])
   }
 
   useEffect(() => {
@@ -163,6 +175,12 @@ export default function PrestamoForm({ initialId }: { initialId?: string }) {
 
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm(f => ({ ...f, [k]: v }))
   const esSoloLectura = isEdit && estado !== "borrador"
+
+  // ── Resúmenes (cabecera) ────────────────────────────────────────────────────
+  const totalCuotas = useMemo(() => cuotas.reduce((s, c) => s + Number(c.total ?? 0), 0), [cuotas])
+  const totalPagado = useMemo(() => cuotas.filter(c => c.estado === "conciliado").reduce((s, c) => s + Number(c.total ?? 0), 0), [cuotas])
+  const totalPendiente = useMemo(() => cuotas.filter(c => c.estado !== "conciliado").reduce((s, c) => s + Number(c.total ?? 0), 0), [cuotas])
+  const totalGastos = useMemo(() => gastos.reduce((s, g) => s + Number(g.importe ?? 0), 0), [gastos])
 
   const guardar = async (): Promise<string | null> => {
     if (esSoloLectura) return null
@@ -227,6 +245,42 @@ export default function PrestamoForm({ initialId }: { initialId?: string }) {
     }
   }
 
+  const agregarGasto = async () => {
+    if (!isEdit || accion) return
+    if (!nuevoGasto.importe || nuevoGasto.importe <= 0) { setError("Importe inválido para el gasto"); return }
+    setError(null)
+    setAccion("AddGasto")
+    try {
+      const res = await fetch(`/api/prestamos/${initialId}/gastos`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(nuevoGasto),
+      })
+      if (!res.ok) { setError(`Error: ${await res.text()}`); setAccion(null); return }
+      const data = await res.json()
+      setGastos(g => [...g, data])
+      setNuevoGasto({ descripcion: "", importe: 0, cuenta_contable: "" })
+    } catch (e: any) {
+      setError(`Error de red: ${e?.message ?? e}`)
+    } finally {
+      setAccion(null)
+    }
+  }
+
+  const eliminarGasto = async (gastoId: string) => {
+    if (!isEdit || accion) return
+    if (!confirm("¿Eliminar este gasto?")) return
+    setError(null)
+    setAccion(`DelGasto ${gastoId}`)
+    try {
+      const res = await fetch(`/api/prestamos/${initialId}/gastos/${gastoId}`, { method: "DELETE" })
+      if (!res.ok) { setError(`Error: ${await res.text()}`); setAccion(null); return }
+      setGastos(g => g.filter(x => x.id !== gastoId))
+    } catch (e: any) {
+      setError(`Error de red: ${e?.message ?? e}`)
+    } finally {
+      setAccion(null)
+    }
+  }
+
   if (cargando) return <div className="p-12 text-center text-gray-500">Cargando…</div>
   if (errorCarga) return (
     <div className="p-12 text-center">
@@ -273,11 +327,33 @@ export default function PrestamoForm({ initialId }: { initialId?: string }) {
       )}
       {okMsg && <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-700">{okMsg}</div>}
 
+      {isEdit && estado !== "borrador" && (
+        <div className="grid grid-cols-4 gap-4 mb-4">
+          <div className="bg-white rounded-lg border p-3">
+            <p className="text-xs text-gray-500 uppercase">Capital</p>
+            <p className="text-lg font-mono font-semibold text-amber-900">{formatCurrency(form.capital, form.moneda)}</p>
+          </div>
+          <div className="bg-white rounded-lg border p-3">
+            <p className="text-xs text-gray-500 uppercase">Total Cuotas</p>
+            <p className="text-lg font-mono font-semibold text-gray-700">{formatCurrency(totalCuotas, form.moneda)}</p>
+          </div>
+          <div className="bg-white rounded-lg border p-3">
+            <p className="text-xs text-gray-500 uppercase">Pagado</p>
+            <p className="text-lg font-mono font-semibold text-green-700">{formatCurrency(totalPagado, form.moneda)}</p>
+          </div>
+          <div className="bg-white rounded-lg border p-3">
+            <p className="text-xs text-gray-500 uppercase">Pendiente</p>
+            <p className="text-lg font-mono font-semibold text-blue-700">{formatCurrency(totalPendiente, form.moneda)}</p>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-lg border mb-4">
         <div className="flex border-b">
           {([
             { id: "info", label: "Información" },
             { id: "cuotas", label: `Cuotas (${cuotas.length})`, disabled: cuotas.length === 0 },
+            { id: "gastos", label: `Gastos (${gastos.length})`, disabled: !isEdit },
             { id: "obs", label: "Observaciones" },
           ] as const).map(t => (
             <button key={t.id} type="button" onClick={() => !t.disabled && setTab(t.id)} disabled={t.disabled}
@@ -285,6 +361,11 @@ export default function PrestamoForm({ initialId }: { initialId?: string }) {
               {t.label}
             </button>
           ))}
+          {isEdit && (
+            <div className="ml-auto px-4 py-2 text-xs text-gray-500 flex items-center gap-4">
+              <span>Gastos: <span className="font-mono font-semibold text-amber-900">{formatCurrency(totalGastos, form.moneda)}</span></span>
+            </div>
+          )}
         </div>
 
         <fieldset disabled={esSoloLectura} className="p-6">
@@ -316,8 +397,9 @@ export default function PrestamoForm({ initialId }: { initialId?: string }) {
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Moneda</label>
                   <select value={form.moneda} onChange={e => set("moneda", e.target.value)} className="w-full border rounded px-3 py-2 text-sm">
-                    <option value="ARS">ARS</option>
-                    <option value="USD">USD</option>
+                    {monedas.length === 0
+                      ? <option value={form.moneda || "ARS"}>{form.moneda || "ARS"}</option>
+                      : monedas.map(m => <option key={m.codigo} value={m.codigo}>{m.codigo}</option>)}
                   </select>
                 </div>
                 <div>
@@ -465,6 +547,82 @@ export default function PrestamoForm({ initialId }: { initialId?: string }) {
                           </td>
                         </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === "gastos" && (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs text-gray-500">Gastos asociados al préstamo (sellos, comisiones, etc.).</p>
+              </div>
+
+              {!esSoloLectura && (
+                <div className="grid grid-cols-12 gap-2 items-end mb-3 p-3 border rounded-lg bg-gray-50">
+                  <div className="col-span-5">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Descripción</label>
+                    <input value={nuevoGasto.descripcion}
+                      onChange={e => setNuevoGasto(g => ({ ...g, descripcion: e.target.value }))}
+                      className="w-full border rounded px-2 py-1.5 text-sm" placeholder="Ej: Sellado" />
+                  </div>
+                  <div className="col-span-3">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Cuenta contable</label>
+                    <input value={nuevoGasto.cuenta_contable}
+                      onChange={e => setNuevoGasto(g => ({ ...g, cuenta_contable: e.target.value }))}
+                      className="w-full border rounded px-2 py-1.5 text-sm" placeholder="Código" />
+                  </div>
+                  <div className="col-span-3">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Importe</label>
+                    <input type="number" step="0.01" value={nuevoGasto.importe}
+                      onChange={e => setNuevoGasto(g => ({ ...g, importe: Number(e.target.value) }))}
+                      className="w-full border rounded px-2 py-1.5 text-sm text-right font-mono" />
+                  </div>
+                  <div className="col-span-1">
+                    <button type="button" onClick={agregarGasto} disabled={!!accion}
+                      className="w-full px-2 py-1.5 text-xs bg-indigo-900 hover:bg-indigo-800 text-white rounded disabled:opacity-50 flex items-center justify-center gap-1">
+                      <Plus className="w-3 h-3" /> {accion === "AddGasto" ? "..." : "Agregar"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {gastos.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-6 border border-dashed rounded">Sin gastos registrados.</p>
+              ) : (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-xs text-gray-500">
+                      <tr>
+                        <th className="text-left py-2 px-3">Descripción</th>
+                        <th className="text-left px-3">Cuenta contable</th>
+                        <th className="text-right px-3 w-32">Importe</th>
+                        <th className="px-2 w-8"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {gastos.map(g => (
+                        <tr key={g.id} className="border-t">
+                          <td className="py-1 px-3">{g.descripcion || <span className="text-gray-400 italic">—</span>}</td>
+                          <td className="px-3 text-gray-600">{g.cuenta_contable || <span className="text-gray-400 italic">—</span>}</td>
+                          <td className="px-3 text-right font-mono">{formatCurrency(g.importe, form.moneda)}</td>
+                          <td className="px-2">
+                            {!esSoloLectura && (
+                              <button type="button" onClick={() => eliminarGasto(g.id)} disabled={!!accion}
+                                className="text-red-500 hover:text-red-700 disabled:opacity-50">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr className="border-t bg-gray-50 font-medium">
+                        <td colSpan={2} className="py-2 px-3 text-right text-xs uppercase text-gray-600">Total Gastos</td>
+                        <td className="px-3 text-right font-mono">{formatCurrency(totalGastos, form.moneda)}</td>
+                        <td></td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>

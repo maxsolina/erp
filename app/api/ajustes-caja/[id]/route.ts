@@ -51,9 +51,11 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     if (c) update.concepto_nombre = c.nombre
   }
   if (importeTotal > 0) update.importe = importeTotal
-  for (const f of ["sucursal", "tipo_ajuste", "fecha", "observaciones", "es_automatico"]) {
+  for (const f of ["sucursal", "fecha", "observaciones", "es_automatico"]) {
     if (body[f] !== undefined) update[f] = body[f]
   }
+  // tipo_ajuste: empty string fails the check constraint → convertimos a null.
+  if (body.tipo_ajuste !== undefined) update.tipo_ajuste = body.tipo_ajuste || null
   if (body.cuenta_analitica !== undefined) update.cuenta_analitica = body.cuenta_analitica || null
 
   const { data, error } = await supabase.from("ajustes_caja").update(update).eq("id", id).select(SELECT_FULL).single()

@@ -64,6 +64,27 @@ const HREF_ORIGEN: Record<string, (numero: string | null) => string | null> = {
   transferencia_bancaria: () => "/finanzas/transferencias-bancarias",
   conversion_moneda: () => "/finanzas/conversion-monedas",
   negociacion_cheques: () => "/finanzas/negociacion-cheques",
+  // Cobranzas / recibos
+  recibo: () => "/ventas/recibos",
+  cobranza: () => "/ventas/recibos",
+  // Transferencias de caja (cuando una transfer entra/sale por banco permitido)
+  transferencia_caja_entrada: () => "/finanzas/transferencias-caja",
+  transferencia_caja_salida: () => "/finanzas/transferencias-caja",
+}
+
+// Etiquetas amigables para el documento de origen.
+const LABEL_ORIGEN: Record<string, string> = {
+  registro_banco: "Registro de Banco",
+  ajuste_banco: "Ajuste de Banco",
+  deposito: "Depósito",
+  extraccion: "Extracción",
+  transferencia_bancaria: "Transf. Bancaria",
+  conversion_moneda: "Conversión Moneda",
+  negociacion_cheques: "Negociación Cheques",
+  recibo: "Recibo",
+  cobranza: "Cobranza",
+  transferencia_caja_entrada: "Transf. Caja (entrada)",
+  transferencia_caja_salida: "Transf. Caja (salida)",
 }
 
 export default function ConciliacionBancaria() {
@@ -88,7 +109,9 @@ export default function ConciliacionBancaria() {
     hasta: new Date().toISOString().split("T")[0],
     tipoFecha: "fecha_operacion",
     sucursales: sucursales.filter(s => s.activa).map(s => s.nombre),
-    tiposMovimiento: DEFAULT_TIPOS,
+    // Sin filtro por tipo: queremos ver TODOS los movimientos no conciliados,
+    // independientemente del tipo (incluyendo "Cobranza", transferencias, etc.).
+    tiposMovimiento: [],
     incluirNoClasificados: true,
     soloConciliados: false,
   })
@@ -277,12 +300,12 @@ export default function ConciliacionBancaria() {
     }
   }
 
+  // Modal "Ver comprobante" — muestra los datos del movimiento sin sacar al
+  // usuario de la pantalla de conciliación.
+  const [modalOrigen, setModalOrigen] = useState<MovimientoBancoConciliacion | null>(null)
   const verOrigen = (m: MovimientoBancoConciliacion) => {
     if (!m.documento_origen_tipo) return
-    const builder = HREF_ORIGEN[m.documento_origen_tipo]
-    if (!builder) return
-    const href = builder(m.documento_origen_numero)
-    if (href) router.push(href)
+    setModalOrigen(m)
   }
 
   // ── Render: pantalla de filtros ──────────────────────────────────────────
@@ -297,7 +320,7 @@ export default function ConciliacionBancaria() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-6 mb-6 max-w-4xl">
+        <div className="grid grid-cols-4 gap-6 mb-6">
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-1">Banco / Cuenta *</label>
             <select value={filtros.cuentaBancariaId} onChange={e => setFiltros(p => ({ ...p, cuentaBancariaId: e.target.value }))}
@@ -305,24 +328,6 @@ export default function ConciliacionBancaria() {
               <option value="">Seleccionar cuenta…</option>
               {cuentas.map(c => <option key={c.id} value={c.id}>{c.banco_nombre} — {c.numero_cuenta} ({c.moneda})</option>)}
             </select>
-          </div>
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1">Tipo de Fecha</label>
-            <select value={filtros.tipoFecha} onChange={e => setFiltros(p => ({ ...p, tipoFecha: e.target.value as "fecha_operacion" | "fecha_creacion" }))}
-              className="w-full border rounded px-3 py-2 text-sm">
-              <option value="fecha_operacion">Fecha de operación</option>
-              <option value="fecha_creacion">Fecha de creación</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1">Desde</label>
-            <input type="date" value={filtros.desde} onChange={e => setFiltros(p => ({ ...p, desde: e.target.value }))}
-              className="w-full border rounded px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1">Hasta</label>
-            <input type="date" value={filtros.hasta} onChange={e => setFiltros(p => ({ ...p, hasta: e.target.value }))}
-              className="w-full border rounded px-3 py-2 text-sm" />
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-1">Conciliado</label>
@@ -338,38 +343,15 @@ export default function ConciliacionBancaria() {
               <option value="todos">Todos</option>
             </select>
           </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-6 mb-6 max-w-4xl">
           <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">Tipos de Movimiento</h3>
-            <div className="border rounded p-3 space-y-1">
-              {filtros.tiposMovimiento.map((t, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <input value={t}
-                    onChange={e => {
-                      const nt = [...filtros.tiposMovimiento]
-                      nt[i] = e.target.value
-                      setFiltros(p => ({ ...p, tiposMovimiento: nt }))
-                    }}
-                    className="flex-1 border rounded px-2 py-1 text-sm" placeholder="Tipo" />
-                  <button onClick={() => setFiltros(p => ({ ...p, tiposMovimiento: p.tiposMovimiento.filter((_, idx) => idx !== i) }))}
-                    className="text-red-500 hover:text-red-700">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-              <button onClick={() => setFiltros(p => ({ ...p, tiposMovimiento: [...p.tiposMovimiento, ""] }))}
-                className="text-xs text-indigo-600 hover:underline flex items-center gap-1 mt-1">
-                <Plus className="w-3 h-3" />Añadir elemento
-              </button>
-              <label className="flex items-center gap-2 mt-2 text-sm">
-                <input type="checkbox" checked={filtros.incluirNoClasificados}
-                  onChange={e => setFiltros(p => ({ ...p, incluirNoClasificados: e.target.checked }))}
-                  className="rounded" />
-                Incluir movimientos no clasificados
-              </label>
-            </div>
+            <label className="text-sm font-medium text-gray-700 block mb-1">Desde</label>
+            <input type="date" value={filtros.desde} onChange={e => setFiltros(p => ({ ...p, desde: e.target.value }))}
+              className="w-full border rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-1">Hasta</label>
+            <input type="date" value={filtros.hasta} onChange={e => setFiltros(p => ({ ...p, hasta: e.target.value }))}
+              className="w-full border rounded px-3 py-2 text-sm" />
           </div>
         </div>
 
@@ -431,44 +413,14 @@ export default function ConciliacionBancaria() {
         ))}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-4 border-b mb-4">
-        <button onClick={() => setTabActivo("filtros")}
-          className={`pb-2 text-sm font-medium ${tabActivo === "filtros" ? "border-b-2 border-indigo-600 text-indigo-600" : "text-gray-500"}`}>
-          Resumen de filtros
-        </button>
-        <button onClick={() => setTabActivo("movimientos")}
-          className={`pb-2 text-sm font-medium ${tabActivo === "movimientos" ? "border-b-2 border-indigo-600 text-indigo-600" : "text-gray-500"}`}>
-          Movimientos
-        </button>
-      </div>
-
-      {tabActivo === "filtros" ? (
-        <div className="text-sm text-gray-600 space-y-2 bg-white border rounded-lg p-4">
-          <p><strong>Cuenta:</strong> {cuentaSel?.banco_nombre} — {cuentaSel?.numero_cuenta}</p>
-          <p><strong>Período:</strong> {filtros.desde} al {filtros.hasta} ({filtros.tipoFecha === "fecha_operacion" ? "Fecha de operación" : "Fecha de creación"})</p>
-          <p><strong>Conciliado:</strong> {filtros.soloConciliados === null ? "Todos" : filtros.soloConciliados ? "Sí" : "No"}</p>
-          <p><strong>Tipos:</strong> {filtros.tiposMovimiento.filter(Boolean).join(", ") || "Todos"}</p>
-          <p><strong>Incluir no clasificados:</strong> {filtros.incluirNoClasificados ? "Sí" : "No"}</p>
-        </div>
-      ) : (
-        <>
-          {/* Mini-filtros */}
+      <>
+          {/* Buscador */}
           <div className="flex items-center gap-3 mb-3 flex-wrap">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
               <input placeholder="Buscar en concepto, operación..." value={busqueda} onChange={e => setBusqueda(e.target.value)}
                 className="w-full pl-8 h-9 border rounded text-sm" />
             </div>
-            <input type="number" placeholder="Filtrar por importe" value={filtroImporte} onChange={e => setFiltroImporte(e.target.value)}
-              className="w-36 border rounded px-2 h-9 text-sm" />
-            <select value={filtroDebeHaber} onChange={e => setFiltroDebeHaber(e.target.value as "todos" | "debe" | "haber")}
-              className="border rounded px-2 h-9 text-sm">
-              <option value="todos">Todos</option>
-              <option value="debe">En el Debe</option>
-              <option value="haber">En el Haber</option>
-            </select>
-            <span className="text-xs text-gray-500">Modificado(s): {metricas.cantidadModificados}</span>
           </div>
 
           {loading ? (
@@ -480,28 +432,44 @@ export default function ConciliacionBancaria() {
                   <tr className="bg-gray-50 border-b text-left text-xs text-gray-500">
                     <th className="py-2 px-2">Fecha Op.</th>
                     <th className="px-2">Fecha Creac.</th>
-                    <th className="px-2">Tipo Op. / Ref.</th>
+                    <th className="px-2">Tipo Comprobante</th>
                     <th className="px-2">N° Op.</th>
                     <th className="px-2">Chequera</th>
                     <th className="px-2">N° Cheque</th>
+                    <th className="px-2">Observaciones</th>
                     <th className="px-2 text-right">Debe</th>
                     <th className="px-2 text-right">Haber</th>
                     <th className="px-2 text-center">Conc.</th>
-                    <th className="px-2">Acc.</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtrados.map(m => {
                     const esConciliado = cambios[m.id] !== undefined ? cambios[m.id] : m.conciliado
                     const bgColor = esConciliado ? "bg-green-50" : !m.documento_origen_tipo ? "bg-gray-50" : ""
+                    const labelOrigen = m.documento_origen_tipo ? (LABEL_ORIGEN[m.documento_origen_tipo] ?? m.documento_origen_tipo) : null
+                    const tipoMostrar = labelOrigen ?? m.tipo_operacion ?? "—"
+                    const tieneLink = m.documento_origen_tipo && HREF_ORIGEN[m.documento_origen_tipo]
+                    const nroOp = m.numero_operacion ?? m.documento_origen_numero ?? "—"
                     return (
                       <tr key={m.id} className={`border-b ${bgColor}`}>
                         <td className="py-1.5 px-2">{m.fecha_operacion ?? "—"}</td>
                         <td className="px-2 text-gray-500">{m.fecha_creacion ? new Date(m.fecha_creacion).toLocaleDateString() : "—"}</td>
-                        <td className="px-2">{m.tipo_operacion ?? m.concepto ?? "—"}</td>
-                        <td className="px-2">{m.numero_operacion ?? "—"}</td>
+                        <td className="px-2">
+                          <div className="flex items-center gap-1.5">
+                            <span>{tipoMostrar}</span>
+                            {tieneLink && (
+                              <button title="Ver documento" onClick={() => verOrigen(m)} className="text-gray-400 hover:text-indigo-600">
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-2 font-mono text-xs">{nroOp}</td>
                         <td className="px-2">{m.chequera ?? "—"}</td>
                         <td className="px-2">{m.numero_cheque ?? "—"}</td>
+                        <td className="px-2 text-xs text-gray-600 max-w-[260px] truncate" title={m.concepto ?? ""}>
+                          {m.concepto ?? "—"}
+                        </td>
                         <td className="px-2 text-right text-red-600">
                           {m.tipo_movimiento === "egreso" ? `$${m.importe.toLocaleString("es-AR", { minimumFractionDigits: 2 })}` : ""}
                         </td>
@@ -510,18 +478,6 @@ export default function ConciliacionBancaria() {
                         </td>
                         <td className="px-2 text-center">
                           <input type="checkbox" checked={esConciliado} onChange={() => toggleConciliado(m)} className="rounded" />
-                        </td>
-                        <td className="px-2">
-                          <div className="flex gap-1">
-                            {m.documento_origen_tipo && HREF_ORIGEN[m.documento_origen_tipo] && (
-                              <button title="Ver documento" onClick={() => verOrigen(m)} className="text-gray-400 hover:text-indigo-600">
-                                <Eye className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                            <button title="Crear ajuste" onClick={() => abrirModalAjuste(m)} className="text-gray-400 hover:text-indigo-600">
-                              <Plus className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
                         </td>
                       </tr>
                     )
@@ -534,6 +490,97 @@ export default function ConciliacionBancaria() {
             </div>
           )}
         </>
+
+      {/* Modal Ver Comprobante de Origen */}
+      {modalOrigen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setModalOrigen(null)}>
+          <div className="bg-white rounded-lg p-6 w-[560px] max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Comprobante de origen</p>
+                <h3 className="text-lg font-semibold text-amber-900">
+                  {LABEL_ORIGEN[modalOrigen.documento_origen_tipo ?? ""] ?? modalOrigen.documento_origen_tipo ?? "—"}
+                </h3>
+              </div>
+              <button onClick={() => setModalOrigen(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-gray-500 uppercase">N° Operación</p>
+                  <p className="font-mono">{modalOrigen.numero_operacion ?? modalOrigen.documento_origen_numero ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase">Fecha</p>
+                  <p>{modalOrigen.fecha_operacion ?? "—"}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-gray-500 uppercase">Tipo</p>
+                  <p className="capitalize">{modalOrigen.tipo_movimiento}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase">Importe</p>
+                  <p className={`font-mono font-semibold ${modalOrigen.tipo_movimiento === "egreso" ? "text-red-600" : "text-green-600"}`}>
+                    ${modalOrigen.importe.toLocaleString("es-AR", { minimumFractionDigits: 2 })} {modalOrigen.moneda ?? ""}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-500 uppercase">Cuenta Bancaria</p>
+                <p>{modalOrigen.cuenta_bancaria_nombre ?? "—"}</p>
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-500 uppercase">Concepto / Observaciones</p>
+                <p className="text-gray-800">{modalOrigen.concepto ?? "—"}</p>
+              </div>
+
+              {(modalOrigen.chequera || modalOrigen.numero_cheque) && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase">Chequera</p>
+                    <p>{modalOrigen.chequera ?? "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase">N° Cheque</p>
+                    <p>{modalOrigen.numero_cheque ?? "—"}</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-gray-500 uppercase">Estado Conciliación</p>
+                  <p className={modalOrigen.conciliado ? "text-green-700 font-medium" : "text-gray-600"}>
+                    {modalOrigen.conciliado ? "Conciliado" : "No conciliado"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase">Fecha Creación</p>
+                  <p className="text-gray-500 text-xs">{modalOrigen.fecha_creacion ? new Date(modalOrigen.fecha_creacion).toLocaleString() : "—"}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center mt-5 pt-4 border-t">
+              {(() => {
+                const builder = modalOrigen.documento_origen_tipo ? HREF_ORIGEN[modalOrigen.documento_origen_tipo] : null
+                const href = builder ? builder(modalOrigen.documento_origen_numero) : null
+                return href ? (
+                  <a href={href} target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-700 hover:text-indigo-900 flex items-center gap-1">
+                    <Eye className="w-4 h-4" /> Abrir comprobante completo en pestaña nueva
+                  </a>
+                ) : <span />
+              })()}
+              <button onClick={() => setModalOrigen(null)} className="px-4 py-2 border rounded text-sm hover:bg-gray-50">Cerrar</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal Ajuste de Banco */}
