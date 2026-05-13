@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertCircle, ArrowLeft, Save, X, Plus, Trash2 } from "lucide-react"
+import { AlertCircle, ArrowLeft, Save, X, Trash2, Edit } from "lucide-react"
 import SearchableSelect from "@/components/ui/searchable-select"
 
 interface CuentaContable { id: string; codigo: string; nombre: string }
@@ -64,6 +64,15 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
   const [errorCarga, setErrorCarga] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [okMsg, setOkMsg] = useState<string | null>(null)
+  // En edición arranca read-only; en nuevo arranca editable.
+  const [modoEdicion, setModoEdicion] = useState(!isEdit)
+  // Snapshot para revertir si el usuario cancela la edición.
+  const [snapshot, setSnapshot] = useState<{
+    form: Form
+    usuarios: UsuarioAsignado[]
+    cuentas: CuentaPermitida[]
+  } | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -104,6 +113,7 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
     if (!form.nombre.trim()) return setError("El nombre es obligatorio")
     if (guardando) return
     setError(null)
+    setOkMsg(null)
     setGuardando(true)
     try {
       const payload = {
@@ -125,11 +135,38 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
         setGuardando(false)
         return
       }
-      router.push("/finanzas/conceptos")
+      if (!isEdit) {
+        // Nuevo: navegar al detalle del concepto recién creado (modo vista).
+        const data = await res.json()
+        if (data?.id) router.push(`/finanzas/conceptos/${data.id}/editar`)
+      } else {
+        setOkMsg("Guardado")
+        setModoEdicion(false)
+        setSnapshot(null)
+        setTimeout(() => setOkMsg(null), 2000)
+      }
     } catch (e: any) {
       setError(`Error de red: ${e?.message ?? e}`)
+    } finally {
       setGuardando(false)
     }
+  }
+
+  const entrarEdicion = () => {
+    setSnapshot({ form, usuarios: usuariosAsignados, cuentas: cuentasPermitidas })
+    setModoEdicion(true)
+    setError(null)
+  }
+
+  const cancelarEdicion = () => {
+    if (snapshot) {
+      setForm(snapshot.form)
+      setUsuariosAsignados(snapshot.usuarios)
+      setCuentasPermitidas(snapshot.cuentas)
+    }
+    setSnapshot(null)
+    setModoEdicion(false)
+    setError(null)
   }
 
   if (cargando) return <div className="p-12 text-center text-gray-500">Cargando…</div>
@@ -186,16 +223,33 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
             <ArrowLeft className="w-4 h-4" />
           </button>
           <h1 className="text-2xl font-bold text-amber-900">
-            {isEdit ? "Editar Concepto" : "Nuevo Concepto"}
+            {isEdit ? (modoEdicion ? "Editar Concepto" : (form.nombre || "Concepto")) : "Nuevo Concepto"}
           </h1>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => router.back()} className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-1">
-            <X className="w-4 h-4" /> Cancelar
-          </button>
-          <button onClick={guardar} disabled={guardando} className="px-4 py-2 text-sm bg-indigo-900 hover:bg-indigo-800 text-white rounded-lg disabled:opacity-50 flex items-center gap-1">
-            <Save className="w-4 h-4" /> {guardando ? "Guardando…" : "Guardar"}
-          </button>
+          {modoEdicion ? (
+            <>
+              <button onClick={isEdit ? cancelarEdicion : () => router.back()}
+                className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-1">
+                <X className="w-4 h-4" /> Cancelar
+              </button>
+              <button onClick={guardar} disabled={guardando}
+                className={`px-4 py-2 text-sm rounded-lg disabled:opacity-50 flex items-center gap-1 text-white ${okMsg ? "bg-green-600" : "bg-indigo-900 hover:bg-indigo-800"}`}>
+                <Save className="w-4 h-4" /> {guardando ? "Guardando…" : okMsg ? "Guardado ✓" : "Guardar"}
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => router.back()}
+                className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-1">
+                <X className="w-4 h-4" /> Cerrar
+              </button>
+              <button onClick={entrarEdicion}
+                className="px-4 py-2 text-sm bg-indigo-900 hover:bg-indigo-800 text-white rounded-lg flex items-center gap-1">
+                <Edit className="w-4 h-4" /> Editar
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -205,7 +259,11 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
           <span>{error}</span>
         </div>
       )}
+      {okMsg && (
+        <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-700">{okMsg}</div>
+      )}
 
+      <fieldset disabled={!modoEdicion} className="space-y-4">
       <div className="bg-white rounded-lg border p-6 space-y-5 mb-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -230,6 +288,7 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
               options={cuentaOptions}
               placeholder="Elegir cuenta…"
               emptyText="Sin resultados"
+              disabled={!modoEdicion}
               allowClear
             />
           </div>
@@ -241,6 +300,7 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
               options={cuentaOptions}
               placeholder="Elegir cuenta…"
               emptyText="Sin resultados"
+              disabled={!modoEdicion}
               allowClear
             />
           </div>
@@ -283,20 +343,22 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
         <div className="p-4">
           {tab === "usuarios" && (
             <>
-              <div className="flex items-end gap-3 mb-4">
-                <div className="flex-1">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Agregar usuario</label>
-                  <SearchableSelect
-                    value={usuarioNuevo}
-                    onChange={v => { if (v != null) addUsuario(Number(v)) }}
-                    options={usuariosOptions}
-                    placeholder={usuariosOptions.length === 0 ? "Todos los usuarios ya están asignados" : "Buscar usuario por nombre o email…"}
-                    emptyText="Sin resultados"
-                    disabled={usuariosOptions.length === 0}
-                    allowClear
-                  />
+              {modoEdicion && (
+                <div className="flex items-end gap-3 mb-4">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Agregar usuario</label>
+                    <SearchableSelect
+                      value={usuarioNuevo}
+                      onChange={v => { if (v != null) addUsuario(Number(v)) }}
+                      options={usuariosOptions}
+                      placeholder={usuariosOptions.length === 0 ? "Todos los usuarios ya están asignados" : "Buscar usuario por nombre o email…"}
+                      emptyText="Sin resultados"
+                      disabled={usuariosOptions.length === 0}
+                      allowClear
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
               <p className="text-xs text-gray-500 mb-3">
                 {usuariosAsignados.length === 0
                   ? "⚠ Sin usuarios asignados → nadie verá este concepto en los registros."
@@ -312,7 +374,7 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
                         <th className="text-left py-2 px-3">Usuario</th>
                         <th className="text-left px-3">Nombre</th>
                         <th className="text-left px-3">Email</th>
-                        <th className="px-2 w-8"></th>
+                        {modoEdicion && <th className="px-2 w-8"></th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -321,11 +383,13 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
                           <td className="py-1 px-3 font-mono text-xs">{u.username ?? "—"}</td>
                           <td className="px-3">{u.nombre ?? "—"}</td>
                           <td className="px-3 text-gray-500">{u.email ?? "—"}</td>
-                          <td className="px-2">
-                            <button type="button" onClick={() => removeUsuario(Number(u.usuario_id))} className="text-red-500 hover:text-red-700">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
+                          {modoEdicion && (
+                            <td className="px-2">
+                              <button type="button" onClick={() => removeUsuario(Number(u.usuario_id))} className="text-red-500 hover:text-red-700">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -337,20 +401,22 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
 
           {tab === "cuentas" && (
             <>
-              <div className="flex items-end gap-3 mb-4">
-                <div className="flex-1">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Agregar cuenta contable</label>
-                  <SearchableSelect
-                    value={cuentaNueva}
-                    onChange={v => v && addCuenta(String(v))}
-                    options={cuentasOptionsDisp}
-                    placeholder={cuentasOptionsDisp.length === 0 ? "Sin cuentas adicionales disponibles" : "Buscar por código o nombre…"}
-                    emptyText="Sin resultados"
-                    disabled={cuentasOptionsDisp.length === 0}
-                    allowClear
-                  />
+              {modoEdicion && (
+                <div className="flex items-end gap-3 mb-4">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Agregar cuenta contable</label>
+                    <SearchableSelect
+                      value={cuentaNueva}
+                      onChange={v => v && addCuenta(String(v))}
+                      options={cuentasOptionsDisp}
+                      placeholder={cuentasOptionsDisp.length === 0 ? "Sin cuentas adicionales disponibles" : "Buscar por código o nombre…"}
+                      emptyText="Sin resultados"
+                      disabled={cuentasOptionsDisp.length === 0}
+                      allowClear
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
               <p className="text-xs text-gray-500 mb-3">
                 Las cuentas listadas acá + las de la cabecera (Ingresos/Egresos) son las únicas habilitadas al cargar comprobantes con este concepto.
               </p>
@@ -365,7 +431,7 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
                       <tr>
                         <th className="text-left py-2 px-3 w-32">Código</th>
                         <th className="text-left px-3">Nombre</th>
-                        <th className="px-2 w-8"></th>
+                        {modoEdicion && <th className="px-2 w-8"></th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -373,11 +439,13 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
                         <tr key={c.cuenta_codigo} className="border-t">
                           <td className="py-1 px-3 font-mono text-xs">{c.cuenta_codigo}</td>
                           <td className="px-3">{c.cuenta_nombre ?? "—"}</td>
-                          <td className="px-2">
-                            <button type="button" onClick={() => removeCuenta(c.cuenta_codigo)} className="text-red-500 hover:text-red-700">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
+                          {modoEdicion && (
+                            <td className="px-2">
+                              <button type="button" onClick={() => removeCuenta(c.cuenta_codigo)} className="text-red-500 hover:text-red-700">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -388,6 +456,7 @@ export default function ConceptoForm({ initialId }: { initialId?: string }) {
           )}
         </div>
       </div>
+      </fieldset>
     </div>
   )
 }

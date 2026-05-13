@@ -112,7 +112,7 @@ export default function TipoPrestamoForm({ initialId }: { initialId?: string }) 
   )
 
   return (
-    <div className="max-w-3xl">
+    <div>
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-lg">
@@ -149,7 +149,7 @@ export default function TipoPrestamoForm({ initialId }: { initialId?: string }) 
 
         <div>
           <p className="text-xs font-semibold text-gray-500 uppercase mb-3">Cuentas Contables</p>
-          <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-4">
             {CUENTAS.map(c => (
               <div key={c.key}>
                 <label className="block text-xs font-medium text-gray-600 mb-1">{c.label}</label>

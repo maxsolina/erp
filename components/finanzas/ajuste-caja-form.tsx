@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { AlertCircle, ArrowLeft, Save, X, CheckCircle, Plus, Trash2 } from "lucide-react"
 import SearchableSelect from "@/components/ui/searchable-select"
-import { type ConceptoRegistroCaja, cuentasPermitidasParaConcepto } from "./_shared"
+import { type ConceptoRegistroCaja, cuentasPermitidasParaConcepto, useCajasPermitidasParaUsuario, useValoresIdsPermitidasParaUsuario } from "./_shared"
 import { useERP } from "@/contexts/erp-context"
 
 interface CajaDisp { id: string; nombre: string; sucursal: string }
@@ -42,7 +42,8 @@ export default function AjusteCajaForm({ initialId }: { initialId?: string }) {
   const { currentUser } = useERP()
 
   const [form, setForm] = useState<Form>(empty())
-  const [cajas, setCajas] = useState<CajaDisp[]>([])
+  const [cajasRaw, setCajasRaw] = useState<CajaDisp[]>([])
+  const cajas = useCajasPermitidasParaUsuario(cajasRaw, currentUser)
   const [conceptos, setConceptos] = useState<ConceptoRegistroCaja[]>([])
   const [valores, setValores] = useState<ValorCaja[]>([])
   const [cuentasContables, setCuentasContables] = useState<CuentaContable[]>([])
@@ -62,7 +63,7 @@ export default function AjusteCajaForm({ initialId }: { initialId?: string }) {
       fetch("/api/caja-valores").then(r => r.json()),
       fetch("/api/contabilidad/plan-cuentas?activo=true").then(r => r.json()).catch(() => []),
     ]).then(([c, co, v, pc]) => {
-      if (Array.isArray(c)) setCajas(c)
+      if (Array.isArray(c)) setCajasRaw(c)
       // Solo conceptos visibles en ajuste de cajas.
       if (Array.isArray(co)) setConceptos(co.filter((x: ConceptoRegistroCaja) => x.visible_en_ajuste_cajas))
       if (Array.isArray(v)) setValores(v)
@@ -114,9 +115,14 @@ export default function AjusteCajaForm({ initialId }: { initialId?: string }) {
   const requiereObs = conceptoSel?.requiere_observacion
   // Excluir valores que sean punteros a bancos permitidos: un banco no es un
   // "valor físico" de la caja, los ajustes de banco se hacen desde Ajuste de Banco.
+  const valoresPermitidos = useValoresIdsPermitidasParaUsuario(currentUser)
   const valoresDisp = useMemo(
-    () => valores.filter(v => v.caja_id === form.caja_id && !v.banco_permitido_id),
-    [valores, form.caja_id],
+    () => valores.filter(v =>
+      v.caja_id === form.caja_id
+      && !v.banco_permitido_id
+      && (valoresPermitidos?.has(v.id) ?? false)
+    ),
+    [valores, form.caja_id, valoresPermitidos],
   )
 
   const cuentasContablesFiltradas = useMemo(() => {

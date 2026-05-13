@@ -1,10 +1,13 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ContabilidadConfigList } from "@/components/contabilidad/config-list-shell"
-import { type RegistroCaja, formatCurrency, formatDate, estadoBadgeClass, estadoLabel } from "./_shared"
+import { useERP } from "@/contexts/erp-context"
+import { type RegistroCaja, formatCurrency, formatDate, estadoBadgeClass, estadoLabel, useCajasIdsPermitidasParaUsuario } from "./_shared"
 
 export default function RegistrosCajaListado() {
+  const { currentUser } = useERP()
+  const cajasPermitidas = useCajasIdsPermitidasParaUsuario(currentUser)
   const [items, setItems] = useState<RegistroCaja[]>([])
   const [cargando, setCargando] = useState(true)
   const [search, setSearch] = useState("")
@@ -17,6 +20,11 @@ export default function RegistrosCajaListado() {
       .finally(() => setCargando(false))
   }, [])
 
+  const itemsVisibles = useMemo(() => {
+    if (cajasPermitidas === null) return []
+    return items.filter(e => e.caja_id && cajasPermitidas.has(e.caja_id))
+  }, [items, cajasPermitidas])
+
   return (
     <ContabilidadConfigList<RegistroCaja>
       title="Registros de Caja"
@@ -26,8 +34,8 @@ export default function RegistrosCajaListado() {
       monolithLabel="Nuevo Registro"
       newHref="/finanzas/registros-caja/nuevo"
       editHref={r => `/finanzas/registros-caja/${r.id}/editar`}
-      data={items}
-      cargando={cargando}
+      data={itemsVisibles}
+      cargando={cargando || cajasPermitidas === null}
       searchTerm={search}
       onSearchChange={setSearch}
       searchFilter={(r, q) =>

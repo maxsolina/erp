@@ -1,6 +1,6 @@
 import { apiError, dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
-import { getExtractoAbierto } from "@/lib/finanzas-server"
+import { getExtractoAbierto, validarSaldoSuficienteEfectivo } from "@/lib/finanzas-server"
 import { generarAsientoRegistroCaja } from "@/lib/contabilidad-asiento-factory"
 import { NextResponse } from "next/server"
 
@@ -32,6 +32,24 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
 
   const extracto = await getExtractoAbierto(supabase, reg.caja_id, reg.caja_nombre)
   if (!extracto.ok) return apiError(extracto.error, 409)
+
+  // ── 0. Validar saldo suficiente para egresos en efectivo ─────────────────
+  // Sumamos importes por valor_id (por si el mismo valor aparece más de una vez)
+  // y verificamos que el saldo del extracto alcance.
+  const { data: valsCheck } = await supabase
+    .from("registro_caja_valores")
+    .select("valor_id, valor_nombre, importe")
+    .eq("registro_id", id)
+  const importePorValor = new Map<string, { nombre: string; importe: number }>()
+  for (const v of valsCheck ?? []) {
+    const cur = importePorValor.get(v.valor_id as string) ?? { nombre: v.valor_nombre as string, importe: 0 }
+    cur.importe += Number(v.importe ?? 0)
+    importePorValor.set(v.valor_id as string, cur)
+  }
+  for (const [valorId, { nombre, importe }] of importePorValor.entries()) {
+    const check = await validarSaldoSuficienteEfectivo(supabase, extracto.extractoId, valorId, importe, nombre)
+    if (!check.ok) return apiError(check.error, 409)
+  }
 
   // ── 1. Asiento contable (bloqueante) ─────────────────────────────────────
   const asientoRes = await generarAsientoRegistroCaja(supabase, {

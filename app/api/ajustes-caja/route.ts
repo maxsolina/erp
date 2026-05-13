@@ -2,7 +2,7 @@ import { apiError, dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
-const SELECT_LIST = "id, numero, caja_nombre, sucursal, concepto_nombre, tipo_ajuste, importe, fecha, es_automatico, estado"
+const SELECT_LIST = "id, numero, caja_id, caja_nombre, sucursal, concepto_nombre, tipo_ajuste, importe, fecha, es_automatico, estado"
 const SELECT_FULL = "id, numero, caja_id, caja_nombre, sucursal, concepto_id, concepto_nombre, tipo_ajuste, importe, fecha, cuenta_analitica, es_automatico, observaciones, estado"
 
 interface ValorLinea { valor_id: string; valor_nombre: string; tipo_movimiento: "entrada" | "salida"; importe: number }

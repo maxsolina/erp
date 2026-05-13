@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertCircle, ArrowLeft, Save, X, CheckCircle, Plus, Trash2 } from "lucide-react"
+import { AlertCircle, ArrowLeft, Save, X, CheckCircle, Plus, Trash2, Ban } from "lucide-react"
 import { useERP } from "@/contexts/erp-context"
-import { type CuentaBancaria } from "./_shared"
+import { type CuentaBancaria, useCajasPermitidasParaUsuario, useValoresIdsPermitidasParaUsuario } from "./_shared"
 
 interface CajaDisp { id: string; nombre: string; sucursal: string }
 interface ValorCaja { id: string; caja_id: string; nombre: string; tipo: string; moneda: string }
@@ -27,7 +27,7 @@ const empty = (): Form => ({
   caja_egreso_id: "",
   tipo_operacion: "Depósito",
   numero_operacion: "",
-  fecha_operacion: "",
+  fecha_operacion: new Date().toISOString().split("T")[0],
   observaciones: "",
   valores: [],
 })
@@ -35,11 +35,12 @@ const empty = (): Form => ({
 export default function DepositoForm({ initialId }: { initialId?: string }) {
   const router = useRouter()
   const isEdit = initialId != null
-  const { sucursales } = useERP()
+  const { currentUser } = useERP()
 
   const [form, setForm] = useState<Form>(empty())
   const [cuentas, setCuentas] = useState<CuentaBancaria[]>([])
-  const [cajas, setCajas] = useState<CajaDisp[]>([])
+  const [cajasRaw, setCajasRaw] = useState<CajaDisp[]>([])
+  const cajas = useCajasPermitidasParaUsuario(cajasRaw, currentUser)
   const [valores, setValores] = useState<ValorCaja[]>([])
   const [estado, setEstado] = useState<string>("borrador")
   const [tab, setTab] = useState<"valores" | "obs">("valores")
@@ -47,6 +48,8 @@ export default function DepositoForm({ initialId }: { initialId?: string }) {
   const [errorCarga, setErrorCarga] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
   const [publicando, setPublicando] = useState(false)
+  const [cancelando, setCancelando] = useState(false)
+  const [mostrarConfirmCancel, setMostrarConfirmCancel] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [okMsg, setOkMsg] = useState<string | null>(null)
 
@@ -57,7 +60,7 @@ export default function DepositoForm({ initialId }: { initialId?: string }) {
       fetch("/api/caja-valores").then(r => r.json()),
     ]).then(([cb, c, v]) => {
       if (Array.isArray(cb)) setCuentas(cb)
-      if (Array.isArray(c)) setCajas(c)
+      if (Array.isArray(c)) setCajasRaw(c)
       if (Array.isArray(v)) setValores(v)
     }).catch(console.error)
   }, [])
@@ -90,9 +93,14 @@ export default function DepositoForm({ initialId }: { initialId?: string }) {
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm(f => ({ ...f, [k]: v }))
   const esSoloLectura = isEdit && estado !== "borrador"
 
+  const valoresPermitidos = useValoresIdsPermitidasParaUsuario(currentUser)
   const valoresDisp = useMemo(
-    () => valores.filter(v => v.caja_id === form.caja_egreso_id),
-    [valores, form.caja_egreso_id],
+    () => valores.filter(v =>
+      v.caja_id === form.caja_egreso_id
+      && v.tipo === "efectivo"
+      && (valoresPermitidos?.has(v.id) ?? false),
+    ),
+    [valores, form.caja_egreso_id, valoresPermitidos],
   )
 
   const cajaSel = cajas.find(c => c.id === form.caja_egreso_id)
@@ -127,6 +135,7 @@ export default function DepositoForm({ initialId }: { initialId?: string }) {
     if (esSoloLectura) return
     if (!form.cuenta_bancaria_id) return setError("Seleccionar cuenta bancaria")
     if (!form.caja_egreso_id) return setError("Seleccionar caja de egreso")
+    if (!form.numero_operacion.trim()) return setError("Ingresar N° de Operación")
     if (form.valores.length === 0) return setError("Agregar al menos una línea de valor")
     if (importeTotal <= 0) return setError("Importe total debe ser mayor a 0")
     if (guardando) return
@@ -167,6 +176,21 @@ export default function DepositoForm({ initialId }: { initialId?: string }) {
     }
   }
 
+  const cancelarOperacion = async () => {
+    if (!isEdit || estado !== "publicado" || cancelando) return
+    setError(null)
+    setMostrarConfirmCancel(false)
+    setCancelando(true)
+    try {
+      const res = await fetch(`/api/depositos-bancarios/${initialId}/cancelar`, { method: "POST" })
+      if (!res.ok) { setError(`Error: ${await res.text()}`); setCancelando(false); return }
+      router.push("/finanzas/depositos")
+    } catch (e: any) {
+      setError(`Error de red: ${e?.message ?? e}`)
+      setCancelando(false)
+    }
+  }
+
   if (cargando) return <div className="p-12 text-center text-gray-500">Cargando…</div>
   if (errorCarga) return (
     <div className="p-12 text-center">
@@ -183,8 +207,12 @@ export default function DepositoForm({ initialId }: { initialId?: string }) {
           <div>
             <h1 className="text-2xl font-bold text-amber-900">{isEdit ? "Depósito" : "Nuevo Depósito"}</h1>
             {isEdit && (
-              <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${estado === "borrador" ? "bg-gray-100 text-gray-700" : "bg-green-100 text-green-700"}`}>
-                {estado === "borrador" ? "Borrador" : "Publicado"}
+              <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                estado === "borrador" ? "bg-gray-100 text-gray-700"
+                : estado === "cancelado" ? "bg-red-100 text-red-700"
+                : "bg-green-100 text-green-700"
+              }`}>
+                {estado === "borrador" ? "Borrador" : estado === "cancelado" ? "Cancelado" : "Publicado"}
               </span>
             )}
           </div>
@@ -200,11 +228,54 @@ export default function DepositoForm({ initialId }: { initialId?: string }) {
           )}
           {isEdit && estado === "borrador" && (
             <button onClick={publicar} disabled={publicando} className="px-4 py-2 text-sm bg-green-700 hover:bg-green-800 text-white rounded-lg disabled:opacity-50 flex items-center gap-1">
-              <CheckCircle className="w-4 h-4" /> {publicando ? "Publicando…" : "Publicar"}
+              <CheckCircle className="w-4 h-4" /> {publicando ? "Confirmando…" : "Confirmar"}
+            </button>
+          )}
+          {isEdit && estado === "publicado" && (
+            <button onClick={() => setMostrarConfirmCancel(true)} disabled={cancelando} className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-1">
+              <Ban className="w-4 h-4" /> Cancelar Operación
             </button>
           )}
         </div>
       </div>
+
+      {publicando && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg px-8 py-6 shadow-xl flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-indigo-700 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-sm font-medium text-gray-700">Confirmando depósito…</p>
+          </div>
+        </div>
+      )}
+
+      {cancelando && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg px-8 py-6 shadow-xl flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-sm font-medium text-gray-700">Cancelando depósito…</p>
+          </div>
+        </div>
+      )}
+
+      {mostrarConfirmCancel && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 shadow-xl max-w-md">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Cancelar depósito</h3>
+            <p className="text-sm text-gray-600 mb-5">
+              Se van a anular los movimientos de caja, el movimiento bancario y se generará un asiento de reversa.
+              Esta acción no se puede deshacer.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setMostrarConfirmCancel(false)} className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+                No, volver
+              </button>
+              <button onClick={cancelarOperacion} className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center gap-1">
+                <Ban className="w-4 h-4" /> Sí, cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700 flex items-start gap-2">
@@ -219,42 +290,36 @@ export default function DepositoForm({ initialId }: { initialId?: string }) {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Cuenta Bancaria *</label>
-                <select value={form.cuenta_bancaria_id} onChange={e => set("cuenta_bancaria_id", e.target.value)}
-                  className="w-full border rounded px-3 py-2 text-sm">
-                  <option value="">Seleccionar…</option>
-                  {cuentas.map(c => <option key={c.id} value={c.id}>{c.banco_nombre} — {c.numero_cuenta} ({c.moneda})</option>)}
-                </select>
+                {esSoloLectura ? (
+                  <p className="text-sm text-gray-800 py-2">{cuentaSel ? `${cuentaSel.banco_nombre} — ${cuentaSel.numero_cuenta} (${cuentaSel.moneda})` : "—"}</p>
+                ) : (
+                  <select value={form.cuenta_bancaria_id} onChange={e => set("cuenta_bancaria_id", e.target.value)}
+                    className="w-full border rounded px-3 py-2 text-sm">
+                    <option value="">Seleccionar…</option>
+                    {cuentas.map(c => <option key={c.id} value={c.id}>{c.banco_nombre} — {c.numero_cuenta} ({c.moneda})</option>)}
+                  </select>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Caja de Egreso *</label>
-                <select value={form.caja_egreso_id} onChange={e => { set("caja_egreso_id", e.target.value); set("valores", []) }}
-                  className="w-full border rounded px-3 py-2 text-sm">
-                  <option value="">Seleccionar…</option>
-                  {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.sucursal})</option>)}
-                </select>
+                {esSoloLectura ? (
+                  <p className="text-sm text-gray-800 py-2">{cajaSel ? `${cajaSel.nombre} (${cajaSel.sucursal})` : "—"}</p>
+                ) : (
+                  <select value={form.caja_egreso_id} onChange={e => { set("caja_egreso_id", e.target.value); set("valores", []) }}
+                    className="w-full border rounded px-3 py-2 text-sm">
+                    <option value="">Seleccionar…</option>
+                    {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.sucursal})</option>)}
+                  </select>
+                )}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Sucursal</label>
-                <select value={form.sucursal} onChange={e => set("sucursal", e.target.value)}
-                  className="w-full border rounded px-3 py-2 text-sm">
-                  <option value="">—</option>
-                  {sucursales.map(s => <option key={s.id ?? s.nombre} value={s.nombre}>{s.nombre}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Tipo Operación</label>
-                <input value={form.tipo_operacion} onChange={e => set("tipo_operacion", e.target.value)}
-                  className="w-full border rounded px-3 py-2 text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">N° Operación</label>
-                <input value={form.numero_operacion} onChange={e => set("numero_operacion", e.target.value)}
-                  className="w-full border rounded px-3 py-2 text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Fecha Operación</label>
-                <input type="date" value={form.fecha_operacion} onChange={e => set("fecha_operacion", e.target.value)}
-                  className="w-full border rounded px-3 py-2 text-sm" />
+                <label className="block text-xs font-medium text-gray-600 mb-1">N° Operación *</label>
+                {esSoloLectura ? (
+                  <p className="text-sm text-gray-800 py-2 font-mono">{form.numero_operacion || "—"}</p>
+                ) : (
+                  <input value={form.numero_operacion} onChange={e => set("numero_operacion", e.target.value)}
+                    className="w-full border rounded px-3 py-2 text-sm" />
+                )}
               </div>
             </div>
           </div>
@@ -293,10 +358,12 @@ export default function DepositoForm({ initialId }: { initialId?: string }) {
               <>
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-xs text-gray-500">Valores de la caja que se depositan.</p>
-                  <button type="button" onClick={addLinea} disabled={!form.caja_egreso_id || valoresDisp.length === 0}
-                    className="text-xs text-indigo-700 hover:text-indigo-900 disabled:opacity-50 flex items-center gap-1">
-                    <Plus className="w-3 h-3" /> Agregar valor
-                  </button>
+                  {!esSoloLectura && (
+                    <button type="button" onClick={addLinea} disabled={!form.caja_egreso_id || valoresDisp.length === 0}
+                      className="text-xs text-indigo-700 hover:text-indigo-900 disabled:opacity-50 flex items-center gap-1">
+                      <Plus className="w-3 h-3" /> Agregar valor
+                    </button>
+                  )}
                 </div>
                 {form.valores.length === 0 ? (
                   <p className="text-xs text-gray-400 text-center py-6 border border-dashed rounded">
@@ -309,28 +376,38 @@ export default function DepositoForm({ initialId }: { initialId?: string }) {
                         <tr>
                           <th className="text-left py-2 px-3">Valor</th>
                           <th className="text-right px-3">Importe</th>
-                          <th className="px-2 w-8"></th>
+                          {!esSoloLectura && <th className="px-2 w-8"></th>}
                         </tr>
                       </thead>
                       <tbody>
                         {form.valores.map((v, idx) => (
                           <tr key={idx} className="border-t">
                             <td className="py-1 px-3">
-                              <select value={v.valor_id} onChange={e => updLinea(idx, { valor_id: e.target.value })}
-                                className="w-full border rounded px-2 py-1 text-sm">
-                                {valoresDisp.map(x => <option key={x.id} value={x.id}>{x.nombre} ({x.moneda})</option>)}
-                              </select>
+                              {esSoloLectura ? (
+                                <span className="text-sm text-gray-800">{v.valor_nombre}</span>
+                              ) : (
+                                <select value={v.valor_id} onChange={e => updLinea(idx, { valor_id: e.target.value })}
+                                  className="w-full border rounded px-2 py-1 text-sm">
+                                  {valoresDisp.map(x => <option key={x.id} value={x.id}>{x.nombre} ({x.moneda})</option>)}
+                                </select>
+                              )}
                             </td>
                             <td className="px-3">
-                              <input type="number" step="0.01" value={v.importe}
-                                onChange={e => updLinea(idx, { importe: Number(e.target.value) })}
-                                className="w-32 border rounded px-2 py-1 text-sm text-right font-mono" />
+                              {esSoloLectura ? (
+                                <span className="text-sm font-mono text-right block">{fmt(v.importe)}</span>
+                              ) : (
+                                <input type="number" step="0.01" value={v.importe}
+                                  onChange={e => updLinea(idx, { importe: Number(e.target.value) })}
+                                  className="w-32 border rounded px-2 py-1 text-sm text-right font-mono" />
+                              )}
                             </td>
-                            <td className="px-2">
-                              <button type="button" onClick={() => delLinea(idx)} className="text-red-500 hover:text-red-700">
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
+                            {!esSoloLectura && (
+                              <td className="px-2">
+                                <button type="button" onClick={() => delLinea(idx)} className="text-red-500 hover:text-red-700">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>
@@ -340,8 +417,12 @@ export default function DepositoForm({ initialId }: { initialId?: string }) {
               </>
             )}
             {tab === "obs" && (
-              <textarea value={form.observaciones} onChange={e => set("observaciones", e.target.value)} rows={4}
-                className="w-full border rounded px-3 py-2 text-sm" />
+              esSoloLectura ? (
+                <p className="text-sm text-gray-700 whitespace-pre-wrap">{form.observaciones || <span className="text-gray-400">Sin observaciones.</span>}</p>
+              ) : (
+                <textarea value={form.observaciones} onChange={e => set("observaciones", e.target.value)} rows={4}
+                  className="w-full border rounded px-3 py-2 text-sm" />
+              )
             )}
           </div>
         </div>

@@ -1,6 +1,7 @@
 import { apiError, dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { getExtractoAbierto, getValorEnCaja } from "@/lib/finanzas-server"
+import { generarAsientoExtraccionBancaria } from "@/lib/contabilidad-asiento-factory"
 import { NextResponse } from "next/server"
 
 // POST /api/extracciones/[id]/publicar
@@ -42,6 +43,22 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     .select("valor_id, valor_nombre, importe")
     .eq("extraccion_id", id)
 
+  const fechaOp = ext.fecha_operacion || new Date().toISOString().split("T")[0]
+
+  // 1. Asiento contable PRIMERO (bloqueante).
+  const asientoRes = await generarAsientoExtraccionBancaria(supabase, {
+    id: ext.id,
+    numero: ext.numero,
+    fecha: fechaOp,
+    cuenta_bancaria_id: ext.cuenta_bancaria_id,
+    cuenta_bancaria_nombre: ext.cuenta_bancaria_nombre,
+    caja_ingreso_id: ext.caja_ingreso_id,
+    caja_ingreso_nombre: ext.caja_ingreso_nombre,
+    sucursal: ext.sucursal,
+  })
+  if (!asientoRes.ok) return apiError(`No se generó el asiento: ${asientoRes.error}`, 409)
+
+  // 2. Movimientos de caja (ingresos)
   for (const valor of vals ?? []) {
     const { data: vc } = await supabase
       .from("caja_valores")
@@ -65,6 +82,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     if (e1) return dbError(e1)
   }
 
+  // 3. Movimiento bancario (egreso)
   const { error: e2 } = await supabase.from("movimientos_banco").insert({
     cuenta_bancaria_id: ext.cuenta_bancaria_id,
     cuenta_bancaria_nombre: ext.cuenta_bancaria_nombre,
@@ -72,6 +90,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     importe: ext.importe,
     moneda: monedaCuenta,
     tipo_operacion: "Extracción",
+    numero_operacion: ext.numero_operacion,
+    fecha_operacion: fechaOp,
     concepto: `Extracción hacia ${ext.caja_ingreso_nombre}`,
     documento_origen_tipo: "extraccion",
     documento_origen_id: ext.id,
@@ -80,8 +100,9 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   })
   if (e2) return dbError(e2)
 
+  // 4. Cambiar estado
   const { error: eUpd } = await supabase.from("extracciones").update({ estado: "publicado" }).eq("id", id)
   if (eUpd) return dbError(eUpd)
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, asiento_id: asientoRes.asiento_id })
 }

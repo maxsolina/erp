@@ -20,6 +20,150 @@ export function useMonedas(): MonedaItem[] {
   return monedas
 }
 
+// Hook: retorna el Set de caja_ids donde el usuario logueado tiene visibilidad
+// GENERAL (pestaña Usuarios, NOT "Recibe Transferencias").
+//   - Si la caja tiene usuarios asignados (sin la marca para_transferencias)
+//     → visible solo para esos.
+//   - Si NO tiene ningún usuario asignado en la pestaña Usuarios → invisible.
+//   - La pestaña "Recibe Transferencias" SOLO habilita destino de transfer,
+//     no da visibilidad general. Para eso existe `useCajasIdsRecibeTransfer`.
+//   - Mientras carga retorna `null`.
+export function useCajasIdsPermitidasParaUsuario(
+  currentUser: { id?: number; username?: string; nombre?: string } | null | undefined,
+): Set<string> | null {
+  const [allowed, setAllowed] = useState<Set<string> | null>(null)
+
+  useEffect(() => {
+    if (!currentUser) { setAllowed(new Set()); return }
+    import("@/lib/supabase/client").then(({ createClient }) => {
+      const supabase = createClient()
+      // Excluimos las filas que SOLO son "Recibe Transferencias" — esas habilitan
+      // solo el destino de transferencia, no visibilidad general.
+      supabase
+        .from("caja_usuarios")
+        .select("caja_id, usuario_nombre")
+        .or("para_transferencias.is.null,para_transferencias.eq.false")
+        .then(({ data }) => {
+          const target1 = (currentUser.username || "").toLowerCase().trim()
+          const target2 = (currentUser.nombre || "").toLowerCase().trim()
+          const set = new Set<string>()
+          for (const r of (data ?? []) as { caja_id: string; usuario_nombre: string }[]) {
+            const name = (r.usuario_nombre || "").toLowerCase().trim()
+            if (name && (name === target1 || name === target2)) set.add(r.caja_id)
+          }
+          setAllowed(set)
+        })
+    })
+  }, [currentUser?.id, currentUser?.username, currentUser?.nombre])
+
+  return allowed
+}
+
+// Wrapper que filtra una lista de cajas usando el hook de arriba.
+export function useCajasPermitidasParaUsuario<T extends { id: string }>(
+  cajas: T[],
+  currentUser: { id?: number; username?: string; nombre?: string } | null | undefined,
+): T[] {
+  const allowed = useCajasIdsPermitidasParaUsuario(currentUser)
+  if (allowed === null) return []
+  return cajas.filter(c => allowed.has(c.id))
+}
+
+// Hook: retorna el Set de caja_valor_ids visibles para el usuario actual.
+// Reglas:
+//   - caja_valor SIN banco_permitido_id (valor físico): visible si está en
+//     caja_valores_usuarios para este usuario.
+//   - caja_valor CON banco_permitido_id (puntero al banco): visible si el
+//     usuario tiene acceso al diario de ese banco (contabilidad_diarios_usuarios
+//     matchea por cuenta_bancaria_id). No se rige por caja_valores_usuarios.
+export function useValoresIdsPermitidasParaUsuario(
+  currentUser: { id?: number; username?: string; nombre?: string } | null | undefined,
+): Set<string> | null {
+  const [allowed, setAllowed] = useState<Set<string> | null>(null)
+
+  useEffect(() => {
+    if (!currentUser?.id) { setAllowed(new Set()); return }
+    import("@/lib/supabase/client").then(async ({ createClient }) => {
+      const supabase = createClient()
+
+      // 1) Caja_valores físicos asignados directamente al usuario.
+      const { data: cvUsr } = await supabase
+        .from("caja_valores_usuarios")
+        .select("caja_valor_id")
+        .eq("usuario_id", currentUser.id!)
+      const set = new Set<string>((cvUsr ?? []).map((r: any) => r.caja_valor_id).filter(Boolean))
+
+      // 2) Diarios bancarios asignados al usuario → cuentas bancarias →
+      //    caja_valores con banco_permitido_id apuntando a esas cuentas.
+      const { data: dUsr } = await supabase
+        .from("contabilidad_diarios_usuarios")
+        .select("diario_id")
+        .eq("usuario_id", currentUser.id!)
+      const diarioIds = (dUsr ?? []).map((r: any) => r.diario_id).filter(Boolean)
+      if (diarioIds.length > 0) {
+        const { data: diariosBancarios } = await supabase
+          .from("contabilidad_diarios")
+          .select("id, cuenta_bancaria_id")
+          .in("id", diarioIds)
+          .not("cuenta_bancaria_id", "is", null)
+        const cuentaBancariaIds = (diariosBancarios ?? []).map((d: any) => d.cuenta_bancaria_id).filter(Boolean)
+        if (cuentaBancariaIds.length > 0) {
+          // Banco permitidos (link caja → cuenta_bancaria) que el usuario tiene acceso
+          const { data: bancosPermitidos } = await supabase
+            .from("caja_bancos_permitidos")
+            .select("id, cuenta_bancaria_id")
+            .in("cuenta_bancaria_id", cuentaBancariaIds)
+          const bancoPermitidoIds = (bancosPermitidos ?? []).map((b: any) => b.id).filter(Boolean)
+          if (bancoPermitidoIds.length > 0) {
+            const { data: cvBancos } = await supabase
+              .from("caja_valores")
+              .select("id")
+              .in("banco_permitido_id", bancoPermitidoIds)
+            for (const cv of (cvBancos ?? []) as any[]) {
+              if (cv.id) set.add(cv.id)
+            }
+          }
+        }
+      }
+
+      setAllowed(set)
+    })
+  }, [currentUser?.id])
+
+  return allowed
+}
+
+// Hook: cajas donde el usuario puede RECIBIR transferencias
+// (caja_usuarios con para_transferencias=true matcheando username/nombre).
+export function useCajasIdsRecibeTransfer(
+  currentUser: { id?: number; username?: string; nombre?: string } | null | undefined,
+): Set<string> | null {
+  const [allowed, setAllowed] = useState<Set<string> | null>(null)
+
+  useEffect(() => {
+    if (!currentUser) { setAllowed(new Set()); return }
+    import("@/lib/supabase/client").then(({ createClient }) => {
+      const supabase = createClient()
+      supabase
+        .from("caja_usuarios")
+        .select("caja_id, usuario_nombre")
+        .eq("para_transferencias", true)
+        .then(({ data }) => {
+          const target1 = (currentUser.username || "").toLowerCase().trim()
+          const target2 = (currentUser.nombre || "").toLowerCase().trim()
+          const set = new Set<string>()
+          for (const r of (data ?? []) as { caja_id: string; usuario_nombre: string }[]) {
+            const name = (r.usuario_nombre || "").toLowerCase().trim()
+            if (name && (name === target1 || name === target2)) set.add(r.caja_id)
+          }
+          setAllowed(set)
+        })
+    })
+  }, [currentUser?.id, currentUser?.username, currentUser?.nombre])
+
+  return allowed
+}
+
 export interface Caja {
   id: string
   nombre: string
@@ -202,6 +346,7 @@ export interface ConciliacionTarjeta {
 export interface RegistroCaja {
   id: string
   numero: string
+  caja_id: string | null
   caja_nombre: string | null
   sucursal: string | null
   concepto_nombre: string | null
@@ -228,6 +373,7 @@ export interface RegistroBanco {
 export interface AjusteCaja {
   id: string
   numero: string
+  caja_id: string | null
   caja_nombre: string | null
   sucursal: string | null
   concepto_nombre: string | null
@@ -253,7 +399,9 @@ export interface TransferenciaCaja {
   id: string
   numero: string
   sucursal: string | null
+  caja_desde_id: string | null
   caja_desde_nombre: string | null
+  caja_hasta_id: string | null
   caja_hasta_nombre: string | null
   valor_nombre: string | null
   importe: number

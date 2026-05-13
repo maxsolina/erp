@@ -1,10 +1,14 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ContabilidadConfigList } from "@/components/contabilidad/config-list-shell"
-import { type TransferenciaCaja, formatCurrency, formatDate, estadoBadgeClass, estadoLabel } from "./_shared"
+import { useERP } from "@/contexts/erp-context"
+import { type TransferenciaCaja, formatCurrency, formatDate, estadoBadgeClass, estadoLabel, useCajasIdsPermitidasParaUsuario, useCajasIdsRecibeTransfer } from "./_shared"
 
 export default function TransferenciasCajaListado() {
+  const { currentUser } = useERP()
+  const cajasUsuario = useCajasIdsPermitidasParaUsuario(currentUser)
+  const cajasTransfer = useCajasIdsRecibeTransfer(currentUser)
   const [items, setItems] = useState<TransferenciaCaja[]>([])
   const [cargando, setCargando] = useState(true)
   const [search, setSearch] = useState("")
@@ -17,6 +21,16 @@ export default function TransferenciasCajaListado() {
       .finally(() => setCargando(false))
   }, [])
 
+  // Visible si el usuario tiene acceso a la caja origen (como Usuario)
+  // o a la destino (como Recibe Transferencias).
+  const itemsVisibles = useMemo(() => {
+    if (cajasUsuario === null || cajasTransfer === null) return []
+    return items.filter(t =>
+      (t.caja_desde_id && cajasUsuario.has(t.caja_desde_id))
+      || (t.caja_hasta_id && cajasTransfer.has(t.caja_hasta_id))
+    )
+  }, [items, cajasUsuario, cajasTransfer])
+
   return (
     <ContabilidadConfigList<TransferenciaCaja>
       title="Transferencias de Caja"
@@ -26,8 +40,8 @@ export default function TransferenciasCajaListado() {
       monolithLabel="Nueva Transferencia"
       newHref="/finanzas/transferencias-caja/nueva"
       editHref={r => `/finanzas/transferencias-caja/${r.id}/editar`}
-      data={items}
-      cargando={cargando}
+      data={itemsVisibles}
+      cargando={cargando || cajasUsuario === null || cajasTransfer === null}
       searchTerm={search}
       onSearchChange={setSearch}
       searchFilter={(r, q) =>

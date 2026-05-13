@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ContabilidadConfigList } from "@/components/contabilidad/config-list-shell"
-import { type ExtractoCaja, formatDate, estadoBadgeClass, estadoLabel } from "./_shared"
+import { useERP } from "@/contexts/erp-context"
+import { type ExtractoCaja, formatDate, estadoBadgeClass, estadoLabel, useCajasIdsPermitidasParaUsuario, useValoresIdsPermitidasParaUsuario } from "./_shared"
 
 interface SaldoEnriquecido {
   id: string
@@ -22,6 +23,9 @@ const formatMonto = (n: number) =>
   new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
 
 export default function ExtractosCajaListado() {
+  const { currentUser } = useERP()
+  const cajasPermitidas = useCajasIdsPermitidasParaUsuario(currentUser)
+  const valoresPermitidos = useValoresIdsPermitidasParaUsuario(currentUser)
   const [items, setItems] = useState<ExtractoConSaldos[]>([])
   const [cargando, setCargando] = useState(true)
   const [search, setSearch] = useState("")
@@ -34,6 +38,18 @@ export default function ExtractosCajaListado() {
       .finally(() => setCargando(false))
   }, [])
 
+  // Filtramos los extractos por las cajas a las que el usuario tiene acceso,
+  // y dentro de cada extracto filtramos sus saldos a los valores permitidos.
+  const itemsVisibles = useMemo(() => {
+    if (cajasPermitidas === null || valoresPermitidos === null) return []
+    return items
+      .filter(e => e.caja_id && cajasPermitidas.has(e.caja_id))
+      .map(e => ({
+        ...e,
+        saldos: (e.saldos ?? []).filter(s => valoresPermitidos.has(s.valor_id)),
+      }))
+  }, [items, cajasPermitidas, valoresPermitidos])
+
   return (
     <ContabilidadConfigList<ExtractoConSaldos>
       title="Extractos de Caja"
@@ -43,8 +59,8 @@ export default function ExtractosCajaListado() {
       monolithLabel="Nuevo Extracto"
       newHref="/finanzas/extractos-caja/nuevo"
       editHref={r => `/finanzas/extractos-caja/${r.id}/editar`}
-      data={items}
-      cargando={cargando}
+      data={itemsVisibles}
+      cargando={cargando || cajasPermitidas === null || valoresPermitidos === null}
       searchTerm={search}
       onSearchChange={setSearch}
       searchFilter={(r, q) =>

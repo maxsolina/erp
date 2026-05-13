@@ -2647,3 +2647,1280 @@ export async function generarAsientoAjusteCaja(
   return { ok: true, asiento_id: asiento.id }
 }
 
+// ─── Depósito Bancario ───────────────────────────────────────────────────────
+// Caja (efectivo) → Banco. Genera:
+//   DEBE  cuenta_banco           (importe total)
+//   HABER cuenta_caja_valor      (una línea por cada valor depositado)
+// Diario: el de la cuenta_bancaria destino.
+export async function generarAsientoDepositoBancario(
+  supabase: SupabaseClient,
+  deposito: {
+    id: string
+    numero: string
+    fecha: string
+    cuenta_bancaria_id: string
+    cuenta_bancaria_nombre: string
+    caja_egreso_id: string
+    caja_egreso_nombre: string
+    sucursal: string | null
+  }
+): Promise<ResultadoAsiento> {
+  const { data: diario } = await supabase
+    .from("contabilidad_diarios")
+    .select("id, cuenta_debito_predeterminada_id, cuenta_haber_predeterminada_id")
+    .eq("cuenta_bancaria_id", deposito.cuenta_bancaria_id)
+    .eq("activo", true)
+    .limit(1)
+    .maybeSingle()
+  if (!diario) return { ok: false, error: `No se encontró diario contable para la cuenta bancaria. Configurá uno en Contabilidad → Diarios.` }
+  const cuentaBancoId = diario.cuenta_debito_predeterminada_id ?? diario.cuenta_haber_predeterminada_id
+  if (!cuentaBancoId) return { ok: false, error: `El diario del banco no tiene cuenta_debito/cuenta_haber configurada.` }
+  const { data: cuentaBanco } = await supabase
+    .from("contabilidad_plan_cuentas")
+    .select("id, codigo, nombre")
+    .eq("id", cuentaBancoId)
+    .maybeSingle()
+  if (!cuentaBanco) return { ok: false, error: "Cuenta contable del banco no encontrada en el plan de cuentas." }
+
+  const { data: vals } = await supabase
+    .from("deposito_bancario_valores")
+    .select("valor_id, valor_nombre, importe")
+    .eq("deposito_id", deposito.id)
+  if (!vals || vals.length === 0) return { ok: false, error: "Depósito sin líneas de valor." }
+
+  const valorIds = Array.from(new Set(vals.map((v: any) => v.valor_id).filter(Boolean)))
+  if (valorIds.length === 0) return { ok: false, error: "Las líneas del depósito no tienen valor_id." }
+  const { data: cajaValores } = await supabase
+    .from("caja_valores")
+    .select("id, nombre, cuenta_haber:cuenta_haber_id(id, codigo, nombre), cuenta_debe:cuenta_contable_id(id, codigo, nombre)")
+    .in("id", valorIds)
+  const cvById = new Map<string, any>()
+  for (const cv of cajaValores ?? []) cvById.set(cv.id, cv)
+  for (const vid of valorIds) {
+    const cv = cvById.get(vid)
+    if (!cv) return { ok: false, error: `Valor de caja ${vid} no encontrado.` }
+    if (!cv.cuenta_haber && !cv.cuenta_debe) {
+      return { ok: false, error: `El valor "${cv.nombre}" no tiene cuenta contable configurada.` }
+    }
+  }
+
+  const fechaDate = deposito.fecha.split("T")[0]
+  const { data: periodo_id } = await supabase.rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate })
+
+  type Linea = {
+    cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
+    debe: number; haber: number; descripcion: string | null; orden: number
+  }
+  const lineas: Linea[] = []
+  let orden = 0
+
+  const total = (vals as any[]).reduce((s, v) => s + Number(v.importe ?? 0), 0)
+  const totalRound = Math.round(total * 100) / 100
+  if (totalRound <= 0) return { ok: false, error: "Importe total del depósito debe ser > 0." }
+  lineas.push({
+    cuenta_id: cuentaBanco.id, cuenta_codigo: cuentaBanco.codigo, cuenta_nombre: cuentaBanco.nombre,
+    debe: totalRound, haber: 0,
+    descripcion: `Depósito desde ${deposito.caja_egreso_nombre}`,
+    orden: orden++,
+  })
+
+  for (const v of vals as any[]) {
+    const cv = cvById.get(v.valor_id)
+    const importe = Math.round(Number(v.importe ?? 0) * 100) / 100
+    if (importe <= 0) continue
+    const cuentaHaber = cv.cuenta_haber ?? cv.cuenta_debe
+    lineas.push({
+      cuenta_id: cuentaHaber.id, cuenta_codigo: cuentaHaber.codigo, cuenta_nombre: cuentaHaber.nombre,
+      debe: 0, haber: importe,
+      descripcion: `${v.valor_nombre} — ${deposito.caja_egreso_nombre}`,
+      orden: orden++,
+    })
+  }
+
+  const totalDebe = lineas.reduce((s, l) => s + l.debe, 0)
+  const totalHaber = lineas.reduce((s, l) => s + l.haber, 0)
+  if (Math.abs(totalDebe - totalHaber) > 0.01) {
+    return { ok: false, error: `Asiento desbalanceado: debe=${totalDebe.toFixed(2)}, haber=${totalHaber.toFixed(2)}.` }
+  }
+
+  const { data: numero } = await supabase.rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario.id, p_fecha: fechaDate })
+
+  const { data: asiento, error: asientoErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null,
+      diario_id: diario.id,
+      periodo_id: periodo_id ?? null,
+      fecha: fechaDate,
+      sucursal_id: null,
+      concepto: `Depósito Bancario ${deposito.numero} — ${deposito.cuenta_bancaria_nombre}`,
+      referencia: deposito.numero,
+      comprobante_tipo: "deposito_bancario",
+      moneda_original: "ARS",
+      es_manual: false,
+      estado: "publicado",
+    })
+    .select("id")
+    .single()
+  if (asientoErr) return { ok: false, error: `Error al crear asiento: ${asientoErr.message}` }
+
+  const { error: linErr } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineas.map(l => ({ ...l, asiento_id: asiento.id })))
+  if (linErr) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
+    return { ok: false, error: `Error en líneas del asiento: ${linErr.message}` }
+  }
+
+  return { ok: true, asiento_id: asiento.id }
+}
+
+// ─── Extracción Bancaria ─────────────────────────────────────────────────────
+// Banco → Caja (efectivo). Genera:
+//   DEBE  cuenta_caja_valor      (una línea por cada valor que entra a caja)
+//   HABER cuenta_banco           (importe total)
+// Diario: el de la cuenta_bancaria origen.
+export async function generarAsientoExtraccionBancaria(
+  supabase: SupabaseClient,
+  extraccion: {
+    id: string
+    numero: string
+    fecha: string
+    cuenta_bancaria_id: string
+    cuenta_bancaria_nombre: string
+    caja_ingreso_id: string
+    caja_ingreso_nombre: string
+    sucursal: string | null
+  }
+): Promise<ResultadoAsiento> {
+  const { data: diario } = await supabase
+    .from("contabilidad_diarios")
+    .select("id, cuenta_debito_predeterminada_id, cuenta_haber_predeterminada_id")
+    .eq("cuenta_bancaria_id", extraccion.cuenta_bancaria_id)
+    .eq("activo", true)
+    .limit(1)
+    .maybeSingle()
+  if (!diario) return { ok: false, error: `No se encontró diario contable para la cuenta bancaria. Configurá uno en Contabilidad → Diarios.` }
+  const cuentaBancoId = diario.cuenta_haber_predeterminada_id ?? diario.cuenta_debito_predeterminada_id
+  if (!cuentaBancoId) return { ok: false, error: `El diario del banco no tiene cuenta_debito/cuenta_haber configurada.` }
+  const { data: cuentaBanco } = await supabase
+    .from("contabilidad_plan_cuentas")
+    .select("id, codigo, nombre")
+    .eq("id", cuentaBancoId)
+    .maybeSingle()
+  if (!cuentaBanco) return { ok: false, error: "Cuenta contable del banco no encontrada en el plan de cuentas." }
+
+  const { data: vals } = await supabase
+    .from("extraccion_valores")
+    .select("valor_id, valor_nombre, importe")
+    .eq("extraccion_id", extraccion.id)
+  if (!vals || vals.length === 0) return { ok: false, error: "Extracción sin líneas de valor." }
+
+  const valorIds = Array.from(new Set(vals.map((v: any) => v.valor_id).filter(Boolean)))
+  if (valorIds.length === 0) return { ok: false, error: "Las líneas de la extracción no tienen valor_id." }
+  const { data: cajaValores } = await supabase
+    .from("caja_valores")
+    .select("id, nombre, cuenta_debe:cuenta_contable_id(id, codigo, nombre), cuenta_haber:cuenta_haber_id(id, codigo, nombre)")
+    .in("id", valorIds)
+  const cvById = new Map<string, any>()
+  for (const cv of cajaValores ?? []) cvById.set(cv.id, cv)
+  for (const vid of valorIds) {
+    const cv = cvById.get(vid)
+    if (!cv) return { ok: false, error: `Valor de caja ${vid} no encontrado.` }
+    if (!cv.cuenta_debe && !cv.cuenta_haber) {
+      return { ok: false, error: `El valor "${cv.nombre}" no tiene cuenta contable configurada.` }
+    }
+  }
+
+  const fechaDate = extraccion.fecha.split("T")[0]
+  const { data: periodo_id } = await supabase.rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate })
+
+  type Linea = {
+    cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
+    debe: number; haber: number; descripcion: string | null; orden: number
+  }
+  const lineas: Linea[] = []
+  let orden = 0
+
+  for (const v of vals as any[]) {
+    const cv = cvById.get(v.valor_id)
+    const importe = Math.round(Number(v.importe ?? 0) * 100) / 100
+    if (importe <= 0) continue
+    const cuentaDebe = cv.cuenta_debe ?? cv.cuenta_haber
+    lineas.push({
+      cuenta_id: cuentaDebe.id, cuenta_codigo: cuentaDebe.codigo, cuenta_nombre: cuentaDebe.nombre,
+      debe: importe, haber: 0,
+      descripcion: `${v.valor_nombre} — ${extraccion.caja_ingreso_nombre}`,
+      orden: orden++,
+    })
+  }
+
+  const total = (vals as any[]).reduce((s, v) => s + Number(v.importe ?? 0), 0)
+  const totalRound = Math.round(total * 100) / 100
+  if (totalRound <= 0) return { ok: false, error: "Importe total de la extracción debe ser > 0." }
+  lineas.push({
+    cuenta_id: cuentaBanco.id, cuenta_codigo: cuentaBanco.codigo, cuenta_nombre: cuentaBanco.nombre,
+    debe: 0, haber: totalRound,
+    descripcion: `Extracción hacia ${extraccion.caja_ingreso_nombre}`,
+    orden: orden++,
+  })
+
+  const totalDebe = lineas.reduce((s, l) => s + l.debe, 0)
+  const totalHaber = lineas.reduce((s, l) => s + l.haber, 0)
+  if (Math.abs(totalDebe - totalHaber) > 0.01) {
+    return { ok: false, error: `Asiento desbalanceado: debe=${totalDebe.toFixed(2)}, haber=${totalHaber.toFixed(2)}.` }
+  }
+
+  const { data: numero } = await supabase.rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario.id, p_fecha: fechaDate })
+
+  const { data: asiento, error: asientoErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null,
+      diario_id: diario.id,
+      periodo_id: periodo_id ?? null,
+      fecha: fechaDate,
+      sucursal_id: null,
+      concepto: `Extracción Bancaria ${extraccion.numero} — ${extraccion.cuenta_bancaria_nombre}`,
+      referencia: extraccion.numero,
+      comprobante_tipo: "extraccion_bancaria",
+      moneda_original: "ARS",
+      es_manual: false,
+      estado: "publicado",
+    })
+    .select("id")
+    .single()
+  if (asientoErr) return { ok: false, error: `Error al crear asiento: ${asientoErr.message}` }
+
+  const { error: linErr } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineas.map(l => ({ ...l, asiento_id: asiento.id })))
+  if (linErr) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
+    return { ok: false, error: `Error en líneas del asiento: ${linErr.message}` }
+  }
+
+  return { ok: true, asiento_id: asiento.id }
+}
+
+// ─── Conversión de Moneda ────────────────────────────────────────────────────
+// Caja A (moneda X) → Caja B (moneda Y) dentro de la misma caja física.
+// Asiento:
+//   DEBE  cuenta_caja_valor_destino    (la caja destino aumenta)
+//   HABER cuenta_caja_valor_origen     (la caja origen disminuye)
+// Importe en ARS:
+//   - si moneda_origen = ARS  → importe_origen
+//   - si moneda_destino = ARS → importe_destino
+//   - si ninguna = ARS        → importe_origen * cotizacion (cotización contra ARS)
+// Diario: el de la caja para tipo efectivo, fallback General.
+export async function generarAsientoConversionMoneda(
+  supabase: SupabaseClient,
+  conv: {
+    id: string
+    numero: string
+    fecha: string
+    caja_id: string
+    sucursal: string | null
+    valor_origen_id: string
+    valor_origen_nombre: string
+    valor_destino_id: string
+    valor_destino_nombre: string
+    moneda_origen: string
+    moneda_destino: string
+    importe_origen: number
+    importe_destino: number
+    cotizacion: number
+  }
+): Promise<ResultadoAsiento> {
+  // Cuentas de origen y destino (caja_valores)
+  const { data: cajaValores } = await supabase
+    .from("caja_valores")
+    .select("id, nombre, cuenta_debe:cuenta_contable_id(id, codigo, nombre), cuenta_haber:cuenta_haber_id(id, codigo, nombre)")
+    .in("id", [conv.valor_origen_id, conv.valor_destino_id])
+  const cvById = new Map<string, any>()
+  for (const cv of cajaValores ?? []) cvById.set(cv.id, cv)
+  const cvOrigen = cvById.get(conv.valor_origen_id)
+  const cvDestino = cvById.get(conv.valor_destino_id)
+  if (!cvOrigen || !cvDestino) return { ok: false, error: "Valores de caja no encontrados." }
+  const cuentaOrigenHaber = cvOrigen.cuenta_haber ?? cvOrigen.cuenta_debe
+  const cuentaDestinoDebe = cvDestino.cuenta_debe ?? cvDestino.cuenta_haber
+  if (!cuentaOrigenHaber) return { ok: false, error: `El valor "${cvOrigen.nombre}" no tiene cuenta contable configurada.` }
+  if (!cuentaDestinoDebe) return { ok: false, error: `El valor "${cvDestino.nombre}" no tiene cuenta contable configurada.` }
+
+  // Diario: efectivo de la caja, fallback General.
+  let diario_id: string | null = null
+  const { data: d } = await supabase
+    .from("contabilidad_diarios")
+    .select("id")
+    .eq("caja_id", conv.caja_id)
+    .eq("tipo", "efectivo")
+    .eq("activo", true)
+    .limit(1)
+    .maybeSingle()
+  if (d) diario_id = d.id
+  if (!diario_id) {
+    const { data: gen } = await supabase
+      .from("contabilidad_diarios")
+      .select("id")
+      .eq("tipo", "general")
+      .eq("activo", true)
+      .limit(1)
+      .maybeSingle()
+    if (gen) diario_id = gen.id
+  }
+  if (!diario_id) return { ok: false, error: "No se encontró diario contable (ni para la caja ni General)." }
+
+  // Calcular importe en ARS de cada lado por separado.
+  //  - Si una moneda es ARS, su importe ya está en ARS.
+  //  - Si la moneda es extranjera, multiplicamos por la cotización (la cotización
+  //    es siempre ARS por unidad de moneda extranjera).
+  const cot = Number(conv.cotizacion)
+  if ((conv.moneda_origen !== "ARS" || conv.moneda_destino !== "ARS") && (!cot || cot <= 0)) {
+    return { ok: false, error: "Cotización inválida." }
+  }
+  const importeARSOrigen = conv.moneda_origen === "ARS"
+    ? Math.round(Number(conv.importe_origen) * 100) / 100
+    : Math.round(Number(conv.importe_origen) * cot * 100) / 100
+  const importeARSDestino = conv.moneda_destino === "ARS"
+    ? Math.round(Number(conv.importe_destino) * 100) / 100
+    : Math.round(Number(conv.importe_destino) * cot * 100) / 100
+  if (importeARSOrigen <= 0 || importeARSDestino <= 0) {
+    return { ok: false, error: "Importe en ARS debe ser > 0." }
+  }
+  // Diferencia por redondeo: si destino vale más que origen → ganancia.
+  // Si destino vale menos que origen → pérdida.
+  const diferenciaARS = Math.round((importeARSDestino - importeARSOrigen) * 100) / 100
+
+  // Si hay diferencia, buscar cuenta 62010201 "Diferencia de Cambio".
+  let cuentaDifCambio: { id: string; codigo: string; nombre: string } | null = null
+  if (Math.abs(diferenciaARS) > 0.001) {
+    const { data: cdc } = await supabase
+      .from("contabilidad_plan_cuentas")
+      .select("id, codigo, nombre")
+      .eq("codigo", "62010201")
+      .maybeSingle()
+    if (!cdc) return { ok: false, error: "Para registrar la diferencia por redondeo, falta la cuenta 62010201 (Diferencia de Cambio) en el plan de cuentas." }
+    cuentaDifCambio = cdc
+  }
+
+  const fechaDate = conv.fecha.split("T")[0]
+  const { data: periodo_id } = await supabase.rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate })
+
+  type Linea = {
+    cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
+    debe: number; haber: number; descripcion: string | null; orden: number
+  }
+  const lineas: Linea[] = [
+    {
+      cuenta_id: cuentaDestinoDebe.id, cuenta_codigo: cuentaDestinoDebe.codigo, cuenta_nombre: cuentaDestinoDebe.nombre,
+      debe: importeARSDestino, haber: 0,
+      descripcion: `Conversión: ingreso ${conv.valor_destino_nombre}`,
+      orden: 0,
+    },
+    {
+      cuenta_id: cuentaOrigenHaber.id, cuenta_codigo: cuentaOrigenHaber.codigo, cuenta_nombre: cuentaOrigenHaber.nombre,
+      debe: 0, haber: importeARSOrigen,
+      descripcion: `Conversión: egreso ${conv.valor_origen_nombre}`,
+      orden: 1,
+    },
+  ]
+  if (cuentaDifCambio && Math.abs(diferenciaARS) > 0.001) {
+    if (diferenciaARS > 0) {
+      // Destino vale más que origen → ganancia (HABER diferencia de cambio)
+      lineas.push({
+        cuenta_id: cuentaDifCambio.id, cuenta_codigo: cuentaDifCambio.codigo, cuenta_nombre: cuentaDifCambio.nombre,
+        debe: 0, haber: diferenciaARS,
+        descripcion: `Diferencia por redondeo conversión ${conv.numero}`,
+        orden: 2,
+      })
+    } else {
+      // Destino vale menos que origen → pérdida (DEBE diferencia de cambio)
+      lineas.push({
+        cuenta_id: cuentaDifCambio.id, cuenta_codigo: cuentaDifCambio.codigo, cuenta_nombre: cuentaDifCambio.nombre,
+        debe: Math.abs(diferenciaARS), haber: 0,
+        descripcion: `Diferencia por redondeo conversión ${conv.numero}`,
+        orden: 2,
+      })
+    }
+  }
+
+  const totalDebe = lineas.reduce((s, l) => s + l.debe, 0)
+  const totalHaber = lineas.reduce((s, l) => s + l.haber, 0)
+  if (Math.abs(totalDebe - totalHaber) > 0.01) {
+    return { ok: false, error: `Asiento desbalanceado: debe=${totalDebe.toFixed(2)}, haber=${totalHaber.toFixed(2)}.` }
+  }
+
+  const { data: numero } = await supabase.rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario_id, p_fecha: fechaDate })
+
+  const { data: asiento, error: asientoErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null,
+      diario_id,
+      periodo_id: periodo_id ?? null,
+      fecha: fechaDate,
+      sucursal_id: null,
+      concepto: `Conversión ${conv.numero} — ${conv.moneda_origen} → ${conv.moneda_destino}`,
+      referencia: conv.numero,
+      comprobante_tipo: "conversion_moneda",
+      moneda_original: "ARS",
+      es_manual: false,
+      estado: "publicado",
+    })
+    .select("id")
+    .single()
+  if (asientoErr) return { ok: false, error: `Error al crear asiento: ${asientoErr.message}` }
+
+  const { error: linErr } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineas.map(l => ({ ...l, asiento_id: asiento.id })))
+  if (linErr) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
+    return { ok: false, error: `Error en líneas del asiento: ${linErr.message}` }
+  }
+
+  return { ok: true, asiento_id: asiento.id }
+}
+
+// ─── Alta de Préstamo ────────────────────────────────────────────────────────
+// Al confirmar el préstamo se levanta TODA la deuda (capital + intereses
+// futuros del cronograma). Los intereses se contabilizan como "Intereses a
+// devengar" (activo transitorio) y se consumirán mes a mes a medida que se
+// paguen las cuotas.
+//
+//   DEBE  cuenta_caja_valor       (capital recibido)
+//   DEBE  cuenta_intereses_devengar (total intereses futuros, casillero futuro)
+//   HABER cuenta_prestamo          (capital + intereses totales = deuda total)
+//
+// Si moneda != ARS, todo se multiplica por la cotización para registrar en ARS.
+// Si es preexistente y sin caja, va a cuenta_preexistente (puente).
+// Si intereses_total = 0, se omite la línea de intereses a devengar.
+export async function generarAsientoAltaPrestamo(
+  supabase: SupabaseClient,
+  prestamo: {
+    id: string
+    numero: string
+    fecha: string
+    caja_id: string | null
+    cuenta_bancaria_acreditacion_id: string | null
+    cuenta_bancaria_acreditacion_nombre: string | null
+    moneda: string
+    cotizacion: number | null
+    importe: number // importe_acreditado o capital
+    intereses_total: number // suma de los intereses de TODAS las cuotas
+    cuenta_prestamo: string  // "CODIGO Nombre"
+    cuenta_preexistente: string | null
+    cuenta_intereses_devengar: string | null // "CODIGO Nombre" — requerida si hay intereses
+    es_preexistente: boolean
+    entidad_nombre: string
+  }
+): Promise<ResultadoAsiento> {
+  const moneda = prestamo.moneda || "ARS"
+  const cot = Number(prestamo.cotizacion ?? 0)
+  if (moneda !== "ARS" && cot <= 0) {
+    return { ok: false, error: `Falta la cotización para registrar el asiento en ${moneda}.` }
+  }
+  const aARS = (n: number) => moneda === "ARS" ? n : Math.round(n * cot * 100) / 100
+
+  // Cuenta pasivo (préstamo)
+  const codigoP = (prestamo.cuenta_prestamo || "").trim().split(/\s+/)[0]
+  if (!codigoP) return { ok: false, error: "Falta cuenta contable del préstamo (configurala en Tipos de Préstamo)." }
+  const { data: cuentaPrestamo } = await supabase
+    .from("contabilidad_plan_cuentas")
+    .select("id, codigo, nombre")
+    .eq("codigo", codigoP)
+    .maybeSingle()
+  if (!cuentaPrestamo) return { ok: false, error: `Cuenta contable "${codigoP}" del préstamo no encontrada en el plan.` }
+
+  // Cuenta del lado DEBE: caja_valor (efectivo de la caja) o cuenta_preexistente
+  let cuentaDebe: { id: string; codigo: string; nombre: string } | null = null
+  let valorNombre = prestamo.entidad_nombre
+  let diario_id: string | null = null
+
+  if (prestamo.cuenta_bancaria_acreditacion_id && !prestamo.es_preexistente) {
+    // Acreditación en cuenta bancaria propia
+    const { data: dBanco } = await supabase
+      .from("contabilidad_diarios")
+      .select("id, cuenta_debito_predeterminada_id, cuenta_haber_predeterminada_id")
+      .eq("cuenta_bancaria_id", prestamo.cuenta_bancaria_acreditacion_id)
+      .eq("activo", true).limit(1).maybeSingle()
+    const cuentaBancoId = dBanco?.cuenta_debito_predeterminada_id ?? dBanco?.cuenta_haber_predeterminada_id ?? null
+    if (!cuentaBancoId) return { ok: false, error: `Falta cuenta contable del banco "${prestamo.cuenta_bancaria_acreditacion_nombre}". Configurala en Contabilidad → Diarios.` }
+    const { data: cuentaBancoPC } = await supabase
+      .from("contabilidad_plan_cuentas")
+      .select("id, codigo, nombre")
+      .eq("id", cuentaBancoId)
+      .maybeSingle()
+    if (!cuentaBancoPC) return { ok: false, error: "Cuenta contable del banco no encontrada en el plan." }
+    cuentaDebe = cuentaBancoPC
+    valorNombre = prestamo.cuenta_bancaria_acreditacion_nombre || "Cuenta bancaria"
+    if (dBanco) diario_id = dBanco.id
+  } else if (prestamo.caja_id && !prestamo.es_preexistente) {
+    // Acreditación en caja efectivo
+    const { data: cv } = await supabase
+      .from("caja_valores")
+      .select("id, nombre, cuenta_debe:cuenta_contable_id(id, codigo, nombre), cuenta_haber:cuenta_haber_id(id, codigo, nombre)")
+      .eq("caja_id", prestamo.caja_id)
+      .eq("moneda", moneda)
+      .eq("tipo", "efectivo")
+      .limit(1)
+      .maybeSingle()
+    if (!cv) return { ok: false, error: `No hay valor de caja en ${moneda} efectivo en la caja del préstamo.` }
+    const c = (cv as any).cuenta_debe ?? (cv as any).cuenta_haber
+    if (!c) return { ok: false, error: `El valor "${cv.nombre}" no tiene cuenta contable configurada.` }
+    cuentaDebe = c
+    valorNombre = cv.nombre
+
+    const { data: d } = await supabase
+      .from("contabilidad_diarios")
+      .select("id").eq("caja_id", prestamo.caja_id).eq("tipo", "efectivo").eq("activo", true).limit(1).maybeSingle()
+    if (d) diario_id = d.id
+  } else {
+    // Preexistente: usar cuenta_preexistente (cuenta puente)
+    const codigoPre = (prestamo.cuenta_preexistente || "").trim().split(/\s+/)[0]
+    if (!codigoPre) return { ok: false, error: "Préstamo preexistente sin caja: falta cuenta_preexistente en el tipo de préstamo." }
+    const { data: cuentaPre } = await supabase
+      .from("contabilidad_plan_cuentas")
+      .select("id, codigo, nombre")
+      .eq("codigo", codigoPre)
+      .maybeSingle()
+    if (!cuentaPre) return { ok: false, error: `Cuenta puente "${codigoPre}" no encontrada en el plan.` }
+    cuentaDebe = cuentaPre
+  }
+
+  // Fallback diario
+  if (!diario_id) {
+    const { data: gen } = await supabase
+      .from("contabilidad_diarios")
+      .select("id").eq("tipo", "general").eq("activo", true).limit(1).maybeSingle()
+    if (gen) diario_id = gen.id
+  }
+  if (!diario_id) return { ok: false, error: "No se encontró diario contable (ni de la caja ni General)." }
+
+  const importeARS = aARS(Number(prestamo.importe))
+  if (importeARS <= 0) return { ok: false, error: "Importe del préstamo debe ser > 0." }
+  const intereses = Math.round(Number(prestamo.intereses_total || 0) * 100) / 100
+  const interesesARS = aARS(intereses)
+  const totalDeudaARS = Math.round((importeARS + interesesARS) * 100) / 100
+
+  // Cuenta de intereses a devengar (requerida si hay intereses)
+  let cuentaIntDev: { id: string; codigo: string; nombre: string } | null = null
+  if (intereses > 0) {
+    const codigoID = (prestamo.cuenta_intereses_devengar || "").trim().split(/\s+/)[0]
+    if (!codigoID) return { ok: false, error: "Falta cuenta 'Intereses a devengar' en el Tipo de Préstamo (necesaria para levantar la deuda total)." }
+    const { data: ci } = await supabase
+      .from("contabilidad_plan_cuentas")
+      .select("id, codigo, nombre")
+      .eq("codigo", codigoID)
+      .maybeSingle()
+    if (!ci) return { ok: false, error: `Cuenta "${codigoID}" (intereses a devengar) no encontrada en el plan.` }
+    cuentaIntDev = ci
+  }
+
+  const fechaDate = prestamo.fecha.split("T")[0]
+  const { data: periodo_id } = await supabase.rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate })
+
+  type LineaAP = {
+    cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
+    debe: number; haber: number; descripcion: string | null; orden: number
+    importe_moneda_original?: number | null
+  }
+  const lineasAP: LineaAP[] = []
+  let ordAP = 0
+  // DEBE Caja
+  lineasAP.push({
+    cuenta_id: cuentaDebe!.id, cuenta_codigo: cuentaDebe!.codigo, cuenta_nombre: cuentaDebe!.nombre,
+    debe: importeARS, haber: 0,
+    descripcion: `Alta préstamo ${prestamo.numero} — ${valorNombre}`,
+    orden: ordAP++,
+    importe_moneda_original: moneda !== "ARS" ? Number(prestamo.importe) : null,
+  })
+  // DEBE Intereses a devengar (si hay)
+  if (cuentaIntDev && interesesARS > 0) {
+    lineasAP.push({
+      cuenta_id: cuentaIntDev.id, cuenta_codigo: cuentaIntDev.codigo, cuenta_nombre: cuentaIntDev.nombre,
+      debe: interesesARS, haber: 0,
+      descripcion: `Intereses futuros préstamo ${prestamo.numero}`,
+      orden: ordAP++,
+      importe_moneda_original: moneda !== "ARS" ? intereses : null,
+    })
+  }
+  // HABER Préstamo (deuda total = capital + intereses)
+  lineasAP.push({
+    cuenta_id: cuentaPrestamo.id, cuenta_codigo: cuentaPrestamo.codigo, cuenta_nombre: cuentaPrestamo.nombre,
+    debe: 0, haber: totalDeudaARS,
+    descripcion: `Deuda préstamo ${prestamo.numero} — ${prestamo.entidad_nombre}`,
+    orden: ordAP++,
+    importe_moneda_original: moneda !== "ARS" ? Number(prestamo.importe) + intereses : null,
+  })
+
+  const { data: numero } = await supabase.rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario_id, p_fecha: fechaDate })
+
+  const { data: asientoAP, error: aErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null,
+      diario_id,
+      periodo_id: periodo_id ?? null,
+      fecha: fechaDate,
+      sucursal_id: null,
+      concepto: `Alta préstamo ${prestamo.numero} — ${prestamo.entidad_nombre}`,
+      referencia: prestamo.numero,
+      comprobante_tipo: "prestamo_alta",
+      moneda_original: moneda,
+      cotizacion_aplicada: moneda !== "ARS" ? cot : null,
+      es_manual: false,
+      estado: "publicado",
+    })
+    .select("id")
+    .single()
+  if (aErr) return { ok: false, error: `Error al crear asiento: ${aErr.message}` }
+
+  const { error: linAP } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineasAP.map(l => ({ ...l, asiento_id: asientoAP.id })))
+  if (linAP) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asientoAP.id)
+    return { ok: false, error: `Error en líneas del asiento: ${linAP.message}` }
+  }
+
+  return { ok: true, asiento_id: asientoAP.id }
+}
+
+// ─── Pago de Cuota de Préstamo ───────────────────────────────────────────────
+// Bajo el modelo de "Opción A" (deuda total al alta):
+//   DEBE  cuenta_prestamo            (TOTAL cuota — baja la deuda íntegra)
+//   HABER cuenta_caja_valor          (TOTAL cuota — sale plata)
+// Y reconocimiento del gasto del mes (consume el casillero "intereses a devengar"):
+//   DEBE  cuenta_intereses           (parte interés — pasa a ser gasto del período)
+//   HABER cuenta_intereses_devengar  (parte interés — sale del activo)
+export async function generarAsientoPagoCuotaPrestamo(
+  supabase: SupabaseClient,
+  pago: {
+    prestamo_id: string
+    prestamo_numero: string
+    numero_cuota: number
+    fecha: string
+    // Origen del pago: caja efectivo (valor_id) o cuenta bancaria (cuenta_bancaria_id).
+    caja_id: string | null
+    valor_id: string | null
+    valor_nombre: string
+    cuenta_bancaria_id: string | null
+    cuenta_bancaria_nombre: string | null
+    moneda: string
+    cotizacion: number | null
+    capital: number
+    interes: number
+    total: number
+    cuenta_prestamo: string                  // "CODIGO Nombre"
+    cuenta_intereses: string                 // "CODIGO Nombre" — cuenta de gasto
+    cuenta_intereses_devengar: string | null // "CODIGO Nombre" — activo transitorio
+    entidad_nombre: string
+  }
+): Promise<ResultadoAsiento> {
+  const moneda = pago.moneda || "ARS"
+  const cot = Number(pago.cotizacion ?? 0)
+  if (moneda !== "ARS" && cot <= 0) {
+    return { ok: false, error: `Falta la cotización para registrar el asiento en ${moneda}.` }
+  }
+  const aARS = (n: number) => moneda === "ARS" ? n : Math.round(n * cot * 100) / 100
+
+  // Cuentas
+  const codPres = (pago.cuenta_prestamo || "").trim().split(/\s+/)[0]
+  const codInt = (pago.cuenta_intereses || "").trim().split(/\s+/)[0]
+  const codIntDev = (pago.cuenta_intereses_devengar || "").trim().split(/\s+/)[0]
+  if (!codPres) return { ok: false, error: "Falta cuenta contable del préstamo en el tipo de préstamo." }
+  if (Number(pago.interes) > 0 && !codInt) return { ok: false, error: "Falta cuenta de intereses (gasto) en el tipo de préstamo." }
+  if (Number(pago.interes) > 0 && !codIntDev) return { ok: false, error: "Falta cuenta 'Intereses a devengar' en el tipo de préstamo." }
+
+  const codigos = [codPres, codInt, codIntDev].filter(Boolean)
+  const { data: ctas } = await supabase
+    .from("contabilidad_plan_cuentas")
+    .select("id, codigo, nombre")
+    .in("codigo", codigos)
+  const byCodigo = new Map<string, { id: string; codigo: string; nombre: string }>()
+  for (const c of ctas ?? []) byCodigo.set(c.codigo, c as any)
+  const cuentaPrestamoPC = byCodigo.get(codPres)
+  if (!cuentaPrestamoPC) return { ok: false, error: `Cuenta "${codPres}" del préstamo no encontrada en el plan.` }
+  const cuentaIntPC = codInt ? byCodigo.get(codInt) : null
+  if (codInt && !cuentaIntPC) return { ok: false, error: `Cuenta "${codInt}" (gasto intereses) no encontrada en el plan.` }
+  const cuentaIntDevPC = codIntDev ? byCodigo.get(codIntDev) : null
+  if (codIntDev && !cuentaIntDevPC) return { ok: false, error: `Cuenta "${codIntDev}" (intereses a devengar) no encontrada en el plan.` }
+
+  // Cuenta del HABER (origen del pago): caja_valor o banco
+  let cuentaCajaPC: { id: string; codigo: string; nombre: string } | null = null
+  let nombreOrigen = pago.valor_nombre
+  let diarioId: string | null = null
+
+  if (pago.cuenta_bancaria_id) {
+    // Pago desde cuenta bancaria
+    const { data: dB } = await supabase
+      .from("contabilidad_diarios")
+      .select("id, cuenta_debito_predeterminada_id, cuenta_haber_predeterminada_id")
+      .eq("cuenta_bancaria_id", pago.cuenta_bancaria_id)
+      .eq("activo", true).limit(1).maybeSingle()
+    const idCB = dB?.cuenta_haber_predeterminada_id ?? dB?.cuenta_debito_predeterminada_id ?? null
+    if (!idCB) return { ok: false, error: `Falta cuenta contable del banco "${pago.cuenta_bancaria_nombre}". Configurala en Contabilidad → Diarios.` }
+    const { data: ctaB } = await supabase
+      .from("contabilidad_plan_cuentas").select("id, codigo, nombre").eq("id", idCB).maybeSingle()
+    if (!ctaB) return { ok: false, error: "Cuenta contable del banco no encontrada en el plan." }
+    cuentaCajaPC = ctaB
+    nombreOrigen = pago.cuenta_bancaria_nombre || "Cuenta bancaria"
+    if (dB) diarioId = dB.id
+  } else if (pago.valor_id) {
+    // Pago desde caja efectivo
+    const { data: cv } = await supabase
+      .from("caja_valores")
+      .select("id, nombre, cuenta_haber:cuenta_haber_id(id, codigo, nombre), cuenta_debe:cuenta_contable_id(id, codigo, nombre)")
+      .eq("id", pago.valor_id)
+      .maybeSingle()
+    if (!cv) return { ok: false, error: "Valor de caja no encontrado." }
+    const c = (cv as any).cuenta_haber ?? (cv as any).cuenta_debe
+    if (!c) return { ok: false, error: `El valor "${cv.nombre}" no tiene cuenta contable configurada.` }
+    cuentaCajaPC = c
+    nombreOrigen = cv.nombre
+
+    if (pago.caja_id) {
+      const { data: d } = await supabase
+        .from("contabilidad_diarios")
+        .select("id").eq("caja_id", pago.caja_id).eq("tipo", "efectivo").eq("activo", true).limit(1).maybeSingle()
+      if (d) diarioId = d.id
+    }
+  } else {
+    return { ok: false, error: "Falta indicar el origen del pago (caja o cuenta bancaria)." }
+  }
+  // Fallback diario General
+  if (!diarioId) {
+    const { data: gen } = await supabase
+      .from("contabilidad_diarios")
+      .select("id").eq("tipo", "general").eq("activo", true).limit(1).maybeSingle()
+    if (gen) diarioId = gen.id
+  }
+  if (!diarioId) return { ok: false, error: "No se encontró diario contable (ni de la caja ni General)." }
+
+  const capitalARS = aARS(Number(pago.capital))
+  const interesARS = aARS(Number(pago.interes))
+  const totalARS = capitalARS + interesARS
+  if (totalARS <= 0) return { ok: false, error: "Importe total del pago debe ser > 0." }
+
+  const fechaDate = pago.fecha.split("T")[0]
+  const { data: periodo_id } = await supabase.rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate })
+
+  type LineaPCu = {
+    cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
+    debe: number; haber: number; descripcion: string | null; orden: number
+    importe_moneda_original?: number | null
+  }
+  const lineasPCu: LineaPCu[] = []
+  let ord = 0
+  // (1) DEBE Préstamo por TOTAL cuota (baja toda la deuda de esa cuota — incluye capital + intereses)
+  lineasPCu.push({
+    cuenta_id: cuentaPrestamoPC.id, cuenta_codigo: cuentaPrestamoPC.codigo, cuenta_nombre: cuentaPrestamoPC.nombre,
+    debe: totalARS, haber: 0,
+    descripcion: `Cuota ${pago.numero_cuota} préstamo ${pago.prestamo_numero} — cancela deuda`,
+    orden: ord++,
+    importe_moneda_original: moneda !== "ARS" ? Number(pago.total) : null,
+  })
+  // (2) HABER Caja/Banco por TOTAL cuota
+  if (!cuentaCajaPC) return { ok: false, error: "No se resolvió la cuenta del origen del pago." }
+  lineasPCu.push({
+    cuenta_id: cuentaCajaPC.id, cuenta_codigo: cuentaCajaPC.codigo, cuenta_nombre: cuentaCajaPC.nombre,
+    debe: 0, haber: totalARS,
+    descripcion: `Egreso ${nombreOrigen} — cuota ${pago.numero_cuota} préstamo ${pago.prestamo_numero}`,
+    orden: ord++,
+    importe_moneda_original: moneda !== "ARS" ? Number(pago.total) : null,
+  })
+  // (3) Reconocimiento del interés como gasto del mes (consume el casillero):
+  //     DEBE Intereses (gasto)   /   HABER Intereses a devengar (activo transitorio)
+  if (interesARS > 0 && cuentaIntPC && cuentaIntDevPC) {
+    lineasPCu.push({
+      cuenta_id: cuentaIntPC.id, cuenta_codigo: cuentaIntPC.codigo, cuenta_nombre: cuentaIntPC.nombre,
+      debe: interesARS, haber: 0,
+      descripcion: `Interés devengado cuota ${pago.numero_cuota} préstamo ${pago.prestamo_numero}`,
+      orden: ord++,
+      importe_moneda_original: moneda !== "ARS" ? Number(pago.interes) : null,
+    })
+    lineasPCu.push({
+      cuenta_id: cuentaIntDevPC.id, cuenta_codigo: cuentaIntDevPC.codigo, cuenta_nombre: cuentaIntDevPC.nombre,
+      debe: 0, haber: interesARS,
+      descripcion: `Consumo intereses a devengar cuota ${pago.numero_cuota} préstamo ${pago.prestamo_numero}`,
+      orden: ord++,
+      importe_moneda_original: moneda !== "ARS" ? Number(pago.interes) : null,
+    })
+  }
+
+  const { data: numero } = await supabase.rpc("contabilidad_generar_numero_asiento", { p_diario_id: diarioId, p_fecha: fechaDate })
+
+  const { data: asientoPCu, error: aErrPCu } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null,
+      diario_id: diarioId,
+      periodo_id: periodo_id ?? null,
+      fecha: fechaDate,
+      sucursal_id: null,
+      concepto: `Pago cuota ${pago.numero_cuota} préstamo ${pago.prestamo_numero} — ${pago.entidad_nombre}`,
+      referencia: pago.prestamo_numero,
+      comprobante_tipo: "prestamo_pago_cuota",
+      moneda_original: moneda,
+      cotizacion_aplicada: moneda !== "ARS" ? cot : null,
+      es_manual: false,
+      estado: "publicado",
+    })
+    .select("id")
+    .single()
+  if (aErrPCu) return { ok: false, error: `Error al crear asiento: ${aErrPCu.message}` }
+
+  const { error: linPCu } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineasPCu.map(l => ({ ...l, asiento_id: asientoPCu.id })))
+  if (linPCu) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asientoPCu.id)
+    return { ok: false, error: `Error en líneas del asiento: ${linPCu.message}` }
+  }
+
+  return { ok: true, asiento_id: asientoPCu.id }
+}
+
+// ─── Extensión de Cronograma de Préstamo Perpetuo ────────────────────────────
+// Cuando se agregan N cuotas más a un préstamo perpetuo, se "compromete" más
+// interés futuro → la deuda crece.
+//   DEBE  cuenta_intereses_devengar (suma intereses de las nuevas cuotas)
+//   HABER cuenta_prestamo          (deuda crece por el mismo monto)
+export async function generarAsientoExtensionCronograma(
+  supabase: SupabaseClient,
+  ext: {
+    prestamo_id: string
+    prestamo_numero: string
+    fecha: string
+    caja_id: string | null
+    moneda: string
+    cotizacion: number | null
+    intereses_adicionales: number
+    cuenta_prestamo: string                  // "CODIGO Nombre"
+    cuenta_intereses_devengar: string        // "CODIGO Nombre"
+    entidad_nombre: string
+  }
+): Promise<ResultadoAsiento> {
+  const moneda = ext.moneda || "ARS"
+  const cot = Number(ext.cotizacion ?? 0)
+  if (moneda !== "ARS" && cot <= 0) {
+    return { ok: false, error: `Falta la cotización para registrar el asiento en ${moneda}.` }
+  }
+  const aARS = (n: number) => moneda === "ARS" ? n : Math.round(n * cot * 100) / 100
+
+  const codPres = (ext.cuenta_prestamo || "").trim().split(/\s+/)[0]
+  const codIntDev = (ext.cuenta_intereses_devengar || "").trim().split(/\s+/)[0]
+  if (!codPres) return { ok: false, error: "Falta cuenta del préstamo en el tipo de préstamo." }
+  if (!codIntDev) return { ok: false, error: "Falta cuenta 'Intereses a devengar' en el tipo de préstamo." }
+
+  const { data: ctasExt } = await supabase
+    .from("contabilidad_plan_cuentas")
+    .select("id, codigo, nombre")
+    .in("codigo", [codPres, codIntDev])
+  const byCodigoExt = new Map<string, { id: string; codigo: string; nombre: string }>()
+  for (const c of ctasExt ?? []) byCodigoExt.set(c.codigo, c as any)
+  const cuentaPrestamoExt = byCodigoExt.get(codPres)
+  const cuentaIntDevExt = byCodigoExt.get(codIntDev)
+  if (!cuentaPrestamoExt) return { ok: false, error: `Cuenta "${codPres}" no encontrada en el plan.` }
+  if (!cuentaIntDevExt) return { ok: false, error: `Cuenta "${codIntDev}" no encontrada en el plan.` }
+
+  const interesesARSExt = aARS(Number(ext.intereses_adicionales))
+  if (interesesARSExt <= 0) return { ok: false, error: "Intereses adicionales debe ser > 0." }
+
+  // Diario: del préstamo (caja) o General
+  let diarioExtId: string | null = null
+  if (ext.caja_id) {
+    const { data: dx } = await supabase
+      .from("contabilidad_diarios").select("id")
+      .eq("caja_id", ext.caja_id).eq("tipo", "efectivo").eq("activo", true).limit(1).maybeSingle()
+    if (dx) diarioExtId = dx.id
+  }
+  if (!diarioExtId) {
+    const { data: gen } = await supabase
+      .from("contabilidad_diarios").select("id").eq("tipo", "general").eq("activo", true).limit(1).maybeSingle()
+    if (gen) diarioExtId = gen.id
+  }
+  if (!diarioExtId) return { ok: false, error: "No se encontró diario contable (ni de la caja ni General)." }
+
+  const fechaDateExt = ext.fecha.split("T")[0]
+  const { data: periodo_id_ext } = await supabase.rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDateExt })
+
+  type LineaExt = {
+    cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
+    debe: number; haber: number; descripcion: string | null; orden: number
+    importe_moneda_original?: number | null
+  }
+  const lineasExt: LineaExt[] = [
+    {
+      cuenta_id: cuentaIntDevExt.id, cuenta_codigo: cuentaIntDevExt.codigo, cuenta_nombre: cuentaIntDevExt.nombre,
+      debe: interesesARSExt, haber: 0,
+      descripcion: `Extensión cronograma préstamo ${ext.prestamo_numero} — intereses futuros`,
+      orden: 0,
+      importe_moneda_original: moneda !== "ARS" ? Number(ext.intereses_adicionales) : null,
+    },
+    {
+      cuenta_id: cuentaPrestamoExt.id, cuenta_codigo: cuentaPrestamoExt.codigo, cuenta_nombre: cuentaPrestamoExt.nombre,
+      debe: 0, haber: interesesARSExt,
+      descripcion: `Extensión cronograma préstamo ${ext.prestamo_numero} — deuda adicional`,
+      orden: 1,
+      importe_moneda_original: moneda !== "ARS" ? Number(ext.intereses_adicionales) : null,
+    },
+  ]
+
+  const { data: numeroExt } = await supabase.rpc("contabilidad_generar_numero_asiento", { p_diario_id: diarioExtId, p_fecha: fechaDateExt })
+
+  const { data: asientoExt, error: aErrExt } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numeroExt ?? null,
+      diario_id: diarioExtId,
+      periodo_id: periodo_id_ext ?? null,
+      fecha: fechaDateExt,
+      sucursal_id: null,
+      concepto: `Extensión cronograma préstamo ${ext.prestamo_numero} — ${ext.entidad_nombre}`,
+      referencia: ext.prestamo_numero,
+      comprobante_tipo: "prestamo_extension",
+      moneda_original: moneda,
+      cotizacion_aplicada: moneda !== "ARS" ? cot : null,
+      es_manual: false,
+      estado: "publicado",
+    })
+    .select("id")
+    .single()
+  if (aErrExt) return { ok: false, error: `Error al crear asiento: ${aErrExt.message}` }
+
+  const { error: linErrExt } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineasExt.map(l => ({ ...l, asiento_id: asientoExt.id })))
+  if (linErrExt) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asientoExt.id)
+    return { ok: false, error: `Error en líneas del asiento: ${linErrExt.message}` }
+  }
+
+  return { ok: true, asiento_id: asientoExt.id }
+}
+
+// ─── Pago de Capital de Préstamo ─────────────────────────────────────────────
+// Amortización extraordinaria de capital (fuera de cronograma).
+//   DEBE  cuenta_prestamo (pasivo baja)
+//   HABER cuenta_caja_valor (caja sale)
+// La cuenta_prestamo viene del tipo_prestamo (formato "CODIGO Nombre").
+// Diario: el de la caja (efectivo) usada para pagar; fallback General.
+export async function generarAsientoPagoCapitalPrestamo(
+  supabase: SupabaseClient,
+  pago: {
+    prestamo_id: string
+    prestamo_numero: string
+    fecha: string
+    // Origen del pago: caja efectivo (valor_id) o cuenta bancaria (cuenta_bancaria_id).
+    caja_id: string | null
+    valor_id: string | null
+    valor_nombre: string
+    cuenta_bancaria_id: string | null
+    cuenta_bancaria_nombre: string | null
+    moneda: string
+    cotizacion: number | null
+    importe: number
+    cuenta_prestamo: string // formato "CODIGO Nombre" o solo "CODIGO"
+    // Intereses futuros que dejan de aplicar (porque las cuotas pendientes se
+    // recalcularon con menos capital o pasaron a 0). Si > 0, se agrega:
+    //   DEBE Préstamo (extra)  /  HABER Intereses a devengar
+    diff_intereses_devengar: number
+    cuenta_intereses_devengar: string | null // requerido si diff_intereses_devengar > 0
+    concepto: string
+  }
+): Promise<ResultadoAsiento> {
+  const moneda = pago.moneda || "ARS"
+  const cot = Number(pago.cotizacion ?? 0)
+  if (moneda !== "ARS" && cot <= 0) {
+    return { ok: false, error: `Falta la cotización para registrar el asiento en ${moneda}.` }
+  }
+  const aARS = (n: number) => moneda === "ARS" ? n : Math.round(n * cot * 100) / 100
+
+  // Cuenta de pasivo (préstamo). El campo viene como "CODIGO Nombre".
+  const codigoPrestamo = (pago.cuenta_prestamo || "").trim().split(/\s+/)[0]
+  if (!codigoPrestamo) return { ok: false, error: "Falta cuenta contable del préstamo (configurala en Tipos de Préstamo)." }
+  const { data: cuentaPrestamo } = await supabase
+    .from("contabilidad_plan_cuentas")
+    .select("id, codigo, nombre")
+    .eq("codigo", codigoPrestamo)
+    .maybeSingle()
+  if (!cuentaPrestamo) return { ok: false, error: `Cuenta contable "${codigoPrestamo}" del préstamo no encontrada en el plan.` }
+
+  // Cuenta del HABER: caja_valor o banco
+  let cuentaCaja: { id: string; codigo: string; nombre: string } | null = null
+  let nombreOrigen = pago.valor_nombre
+  let diario_id: string | null = null
+
+  if (pago.cuenta_bancaria_id) {
+    // Pago desde cuenta bancaria
+    const { data: dB } = await supabase
+      .from("contabilidad_diarios")
+      .select("id, cuenta_debito_predeterminada_id, cuenta_haber_predeterminada_id")
+      .eq("cuenta_bancaria_id", pago.cuenta_bancaria_id)
+      .eq("activo", true).limit(1).maybeSingle()
+    const idCB = dB?.cuenta_haber_predeterminada_id ?? dB?.cuenta_debito_predeterminada_id ?? null
+    if (!idCB) return { ok: false, error: `Falta cuenta contable del banco "${pago.cuenta_bancaria_nombre}". Configurala en Contabilidad → Diarios.` }
+    const { data: ctaB } = await supabase
+      .from("contabilidad_plan_cuentas").select("id, codigo, nombre").eq("id", idCB).maybeSingle()
+    if (!ctaB) return { ok: false, error: "Cuenta contable del banco no encontrada en el plan." }
+    cuentaCaja = ctaB
+    nombreOrigen = pago.cuenta_bancaria_nombre || "Cuenta bancaria"
+    if (dB) diario_id = dB.id
+  } else if (pago.valor_id) {
+    // Pago desde caja efectivo
+    const { data: cv } = await supabase
+      .from("caja_valores")
+      .select("id, nombre, cuenta_haber:cuenta_haber_id(id, codigo, nombre), cuenta_debe:cuenta_contable_id(id, codigo, nombre)")
+      .eq("id", pago.valor_id)
+      .maybeSingle()
+    if (!cv) return { ok: false, error: "Valor de caja no encontrado." }
+    const c = (cv as any).cuenta_haber ?? (cv as any).cuenta_debe
+    if (!c) return { ok: false, error: `El valor "${cv.nombre}" no tiene cuenta contable configurada.` }
+    cuentaCaja = c
+    nombreOrigen = cv.nombre
+
+    if (pago.caja_id) {
+      const { data: d } = await supabase
+        .from("contabilidad_diarios")
+        .select("id").eq("caja_id", pago.caja_id).eq("tipo", "efectivo").eq("activo", true).limit(1).maybeSingle()
+      if (d) diario_id = d.id
+    }
+  } else {
+    return { ok: false, error: "Falta indicar el origen del pago (caja o cuenta bancaria)." }
+  }
+  if (!diario_id) {
+    const { data: gen } = await supabase
+      .from("contabilidad_diarios")
+      .select("id").eq("tipo", "general").eq("activo", true).limit(1).maybeSingle()
+    if (gen) diario_id = gen.id
+  }
+  if (!diario_id) return { ok: false, error: "No se encontró diario contable (ni de la caja ni General)." }
+
+  const importe = Math.round(Number(pago.importe) * 100) / 100
+  if (importe <= 0) return { ok: false, error: "Importe debe ser > 0." }
+
+  const fechaDate = pago.fecha.split("T")[0]
+  const { data: periodo_id } = await supabase.rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate })
+
+  if (!cuentaCaja) return { ok: false, error: "No se resolvió la cuenta del origen del pago." }
+  const importeARS = aARS(importe)
+  const diffInt = Math.round(Number(pago.diff_intereses_devengar || 0) * 100) / 100
+  const diffIntARS = aARS(diffInt)
+
+  // Si hay diferencia de intereses a devengar, necesitamos la cuenta
+  let cuentaIntDev: { id: string; codigo: string; nombre: string } | null = null
+  if (diffInt > 0.001) {
+    const codIntDev = (pago.cuenta_intereses_devengar || "").trim().split(/\s+/)[0]
+    if (!codIntDev) return { ok: false, error: "Falta cuenta 'Intereses a devengar' en el Tipo de Préstamo (necesaria para cancelar intereses futuros del casillero)." }
+    const { data: cid } = await supabase
+      .from("contabilidad_plan_cuentas")
+      .select("id, codigo, nombre")
+      .eq("codigo", codIntDev)
+      .maybeSingle()
+    if (!cid) return { ok: false, error: `Cuenta "${codIntDev}" (intereses a devengar) no encontrada en el plan.` }
+    cuentaIntDev = cid
+  }
+
+  type LineaPC = {
+    cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
+    debe: number; haber: number; descripcion: string | null; orden: number
+    importe_moneda_original?: number | null
+  }
+  // DEBE Préstamo por (capital + diff_intereses_devengar)
+  const totalDebePrestamoARS = Math.round((importeARS + diffIntARS) * 100) / 100
+  const lineasPC: LineaPC[] = [
+    {
+      cuenta_id: cuentaPrestamo.id, cuenta_codigo: cuentaPrestamo.codigo, cuenta_nombre: cuentaPrestamo.nombre,
+      debe: totalDebePrestamoARS, haber: 0,
+      descripcion: `Pago capital préstamo ${pago.prestamo_numero}${diffInt > 0 ? " (incluye cancelación intereses futuros)" : ""}`,
+      orden: 0,
+      importe_moneda_original: moneda !== "ARS" ? (importe + diffInt) : null,
+    },
+    {
+      cuenta_id: cuentaCaja.id, cuenta_codigo: cuentaCaja.codigo, cuenta_nombre: cuentaCaja.nombre,
+      debe: 0, haber: importeARS,
+      descripcion: `Egreso ${nombreOrigen} — capital préstamo ${pago.prestamo_numero}`,
+      orden: 1,
+      importe_moneda_original: moneda !== "ARS" ? importe : null,
+    },
+  ]
+  if (cuentaIntDev && diffIntARS > 0) {
+    lineasPC.push({
+      cuenta_id: cuentaIntDev.id, cuenta_codigo: cuentaIntDev.codigo, cuenta_nombre: cuentaIntDev.nombre,
+      debe: 0, haber: diffIntARS,
+      descripcion: `Cancelación intereses futuros préstamo ${pago.prestamo_numero}`,
+      orden: 2,
+      importe_moneda_original: moneda !== "ARS" ? diffInt : null,
+    })
+  }
+
+  const { data: numero } = await supabase.rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario_id, p_fecha: fechaDate })
+
+  const { data: asientoPC, error: aErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null,
+      diario_id,
+      periodo_id: periodo_id ?? null,
+      fecha: fechaDate,
+      sucursal_id: null,
+      concepto: `Pago capital préstamo ${pago.prestamo_numero} — ${pago.concepto}`,
+      referencia: pago.prestamo_numero,
+      comprobante_tipo: "prestamo_pago_capital",
+      moneda_original: moneda,
+      cotizacion_aplicada: moneda !== "ARS" ? cot : null,
+      es_manual: false,
+      estado: "publicado",
+    })
+    .select("id")
+    .single()
+  if (aErr) return { ok: false, error: `Error al crear asiento: ${aErr.message}` }
+
+  const { error: linErrPC } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineasPC.map(l => ({ ...l, asiento_id: asientoPC.id })))
+  if (linErrPC) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asientoPC.id)
+    return { ok: false, error: `Error en líneas del asiento: ${linErrPC.message}` }
+  }
+
+  return { ok: true, asiento_id: asientoPC.id }
+}
+
+// ─── Transferencia Bancaria ──────────────────────────────────────────────────
+// Cuenta Bancaria A → Cuenta Bancaria B (misma moneda).
+// Asiento:
+//   DEBE  cuenta_banco_destino
+//   HABER cuenta_banco_origen
+// Diario: el de la cuenta_bancaria origen.
+export async function generarAsientoTransferenciaBancaria(
+  supabase: SupabaseClient,
+  tr: {
+    id: string
+    numero: string
+    fecha: string
+    desde_cuenta_id: string
+    desde_cuenta_nombre: string
+    hasta_cuenta_id: string
+    hasta_cuenta_nombre: string
+    importe: number
+  }
+): Promise<ResultadoAsiento> {
+  // Resolver cuenta contable del banco con fallback: primero diario, sino caja_valor.
+  const resolverCuentaBanco = async (cuenta_bancaria_id: string, nombre: string): Promise<{ ok: true; diario_id: string | null; cuenta_id: string } | { ok: false; error: string }> => {
+    const { data: diario } = await supabase
+      .from("contabilidad_diarios")
+      .select("id, cuenta_debito_predeterminada_id, cuenta_haber_predeterminada_id")
+      .eq("cuenta_bancaria_id", cuenta_bancaria_id)
+      .eq("activo", true)
+      .limit(1)
+      .maybeSingle()
+    const idDeDiario = diario?.cuenta_haber_predeterminada_id ?? diario?.cuenta_debito_predeterminada_id ?? null
+    if (idDeDiario) return { ok: true, diario_id: diario.id, cuenta_id: idDeDiario }
+
+    // Fallback: caja_valor que tenga banco_permitido_id apuntando a esta cuenta.
+    const { data: cv } = await supabase
+      .from("caja_valores")
+      .select("cuenta_contable_id, cuenta_haber_id")
+      .eq("banco_permitido_id", cuenta_bancaria_id)
+      .not("cuenta_contable_id", "is", null)
+      .limit(1)
+      .maybeSingle()
+    const idDeCV = cv?.cuenta_haber_id ?? cv?.cuenta_contable_id ?? null
+    if (idDeCV) return { ok: true, diario_id: diario?.id ?? null, cuenta_id: idDeCV }
+
+    return { ok: false, error: `Falta la cuenta contable del banco "${nombre}". Configurala en Contabilidad → Diarios (cuenta débito / haber) o en el Valor de Caja asociado.` }
+  }
+
+  const origenRes = await resolverCuentaBanco(tr.desde_cuenta_id, tr.desde_cuenta_nombre)
+  if (!origenRes.ok) return origenRes
+  const destinoRes = await resolverCuentaBanco(tr.hasta_cuenta_id, tr.hasta_cuenta_nombre)
+  if (!destinoRes.ok) return destinoRes
+
+  const cuentaOrigenId = origenRes.cuenta_id
+  const cuentaDestinoId = destinoRes.cuenta_id
+
+  // Diario: usamos el del banco origen; si no, el del destino; si no, General.
+  let diarioId: string | null = origenRes.diario_id ?? destinoRes.diario_id ?? null
+  if (!diarioId) {
+    const { data: gen } = await supabase
+      .from("contabilidad_diarios")
+      .select("id")
+      .eq("tipo", "general")
+      .eq("activo", true)
+      .limit(1)
+      .maybeSingle()
+    if (gen) diarioId = gen.id
+  }
+  if (!diarioId) return { ok: false, error: "No se encontró diario contable (ni del banco origen, ni destino, ni General)." }
+
+  // Resolver cuentas del plan
+  const { data: ctasArr } = await supabase
+    .from("contabilidad_plan_cuentas")
+    .select("id, codigo, nombre")
+    .in("id", [cuentaOrigenId, cuentaDestinoId])
+  const ctaById = new Map<string, { id: string; codigo: string; nombre: string }>()
+  for (const c of ctasArr ?? []) ctaById.set(c.id, c as any)
+  const cuentaOrigen = ctaById.get(cuentaOrigenId)
+  const cuentaDestino = ctaById.get(cuentaDestinoId)
+  if (!cuentaOrigen || !cuentaDestino) return { ok: false, error: "Cuentas contables del banco no encontradas en el plan." }
+
+  const importe = Math.round(Number(tr.importe) * 100) / 100
+  if (importe <= 0) return { ok: false, error: "Importe debe ser > 0." }
+
+  const fechaDate = tr.fecha.split("T")[0]
+  const { data: periodo_id } = await supabase.rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate })
+
+  type LineaTB = {
+    cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
+    debe: number; haber: number; descripcion: string | null; orden: number
+  }
+  const lineasTB: LineaTB[] = [
+    {
+      cuenta_id: cuentaDestino.id, cuenta_codigo: cuentaDestino.codigo, cuenta_nombre: cuentaDestino.nombre,
+      debe: importe, haber: 0,
+      descripcion: `Transferencia desde ${tr.desde_cuenta_nombre}`,
+      orden: 0,
+    },
+    {
+      cuenta_id: cuentaOrigen.id, cuenta_codigo: cuentaOrigen.codigo, cuenta_nombre: cuentaOrigen.nombre,
+      debe: 0, haber: importe,
+      descripcion: `Transferencia a ${tr.hasta_cuenta_nombre}`,
+      orden: 1,
+    },
+  ]
+
+  const { data: numero } = await supabase.rpc("contabilidad_generar_numero_asiento", { p_diario_id: diarioId, p_fecha: fechaDate })
+
+  const { data: asientoTB, error: asientoErrTB } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null,
+      diario_id: diarioId,
+      periodo_id: periodo_id ?? null,
+      fecha: fechaDate,
+      sucursal_id: null,
+      concepto: `Transferencia Bancaria ${tr.numero} — ${tr.desde_cuenta_nombre} → ${tr.hasta_cuenta_nombre}`,
+      referencia: tr.numero,
+      comprobante_tipo: "transferencia_bancaria",
+      moneda_original: "ARS",
+      es_manual: false,
+      estado: "publicado",
+    })
+    .select("id")
+    .single()
+  if (asientoErrTB) return { ok: false, error: `Error al crear asiento: ${asientoErrTB.message}` }
+
+  const { error: linErrTB } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(lineasTB.map(l => ({ ...l, asiento_id: asientoTB.id })))
+  if (linErrTB) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asientoTB.id)
+    return { ok: false, error: `Error en líneas del asiento: ${linErrTB.message}` }
+  }
+
+  return { ok: true, asiento_id: asientoTB.id }
+}
+

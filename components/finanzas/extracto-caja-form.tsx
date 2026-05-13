@@ -14,7 +14,8 @@ import { useRouter } from "next/navigation"
 import {
   AlertCircle, ArrowLeft, CreditCard, Lock, Receipt, Save, X,
 } from "lucide-react"
-import { formatCurrency } from "./_shared"
+import { formatCurrency, useCajasPermitidasParaUsuario, useValoresIdsPermitidasParaUsuario } from "./_shared"
+import { useERP } from "@/contexts/erp-context"
 
 interface CajaDisp { id: string; nombre: string; sucursal: string }
 
@@ -71,10 +72,13 @@ const formatMonto = (m: number) =>
 export default function ExtractoCajaForm({ initialId }: { initialId?: string }) {
   const router = useRouter()
   const isEdit = initialId != null
+  const { currentUser } = useERP()
 
   // ── Modo nuevo ───────────────────────────────────────────────────────────
   const [form, setForm] = useState<Form>(empty())
-  const [cajas, setCajas] = useState<CajaDisp[]>([])
+  const [cajasRaw, setCajasRaw] = useState<CajaDisp[]>([])
+  const cajas = useCajasPermitidasParaUsuario(cajasRaw, currentUser)
+  const valoresPermitidos = useValoresIdsPermitidasParaUsuario(currentUser)
   const [cajasConAbierto, setCajasConAbierto] = useState<Set<string>>(new Set())
   const [ultimosSaldos, setUltimosSaldos] = useState<Saldo[] | null>(null)
   const [errorNuevo, setErrorNuevo] = useState("")
@@ -98,7 +102,7 @@ export default function ExtractoCajaForm({ initialId }: { initialId?: string }) 
       fetch("/api/cajas").then(r => r.json()),
       fetch("/api/extractos-caja?estado=abierto&sin_saldos=1").then(r => r.json()),
     ]).then(([c, a]) => {
-      if (Array.isArray(c)) setCajas(c)
+      if (Array.isArray(c)) setCajasRaw(c)
       if (Array.isArray(a)) setCajasConAbierto(new Set(a.map((e: any) => e.caja_id).filter(Boolean)))
     }).catch(console.error)
   }, [isEdit])
@@ -152,6 +156,18 @@ export default function ExtractoCajaForm({ initialId }: { initialId?: string }) 
 
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm(f => ({ ...f, [k]: v }))
 
+  // Filtramos los saldos y movimientos del extracto a los valores donde el
+  // usuario está autorizado en caja_valores_usuarios.
+  // Mientras valoresPermitidos === null (cargando), mostramos vacío.
+  const saldosVisibles = useMemo(
+    () => (extracto?.saldos ?? []).filter(s => valoresPermitidos?.has(s.valor_id) ?? false),
+    [extracto, valoresPermitidos],
+  )
+  const movsVisibles = useMemo(
+    () => (extracto?.movimientos ?? []).filter(m => valoresPermitidos?.has(m.valor_id) ?? false),
+    [extracto, valoresPermitidos],
+  )
+
   const abrir = async () => {
     if (!form.caja_id) return setError("Seleccionar caja")
     if (errorNuevo) return
@@ -178,7 +194,7 @@ export default function ExtractoCajaForm({ initialId }: { initialId?: string }) 
     setError(null)
     setCerrando(true)
     try {
-      const payload = { saldos: extracto.saldos.map(s => ({ id: s.id, saldo_cierre: saldosFisicos[s.id] ?? 0 })) }
+      const payload = { saldos: saldosVisibles.map(s => ({ id: s.id, saldo_cierre: saldosFisicos[s.id] ?? 0 })) }
       const res = await fetch(`/api/extractos-caja/${initialId}/cerrar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -331,7 +347,7 @@ export default function ExtractoCajaForm({ initialId }: { initialId?: string }) 
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-4">
           <p className="text-xs text-gray-500 uppercase mb-1">Valores</p>
-          <p className="font-medium text-gray-900">{extracto.saldos.length} valores</p>
+          <p className="font-medium text-gray-900">{saldosVisibles.length} valores</p>
         </div>
       </div>
 
@@ -339,7 +355,7 @@ export default function ExtractoCajaForm({ initialId }: { initialId?: string }) 
         <div className="flex border-b border-gray-200 px-4">
           {([
             { id: "saldos" as const, label: "Saldos" },
-            { id: "movimientos" as const, label: `Movimientos (${extracto.movimientos.length})` },
+            { id: "movimientos" as const, label: `Movimientos (${movsVisibles.length})` },
             { id: "cheques" as const, label: "Cheques" },
             { id: "cupones" as const, label: "Cupones" },
           ]).map(t => (
@@ -369,7 +385,7 @@ export default function ExtractoCajaForm({ initialId }: { initialId?: string }) 
                 </tr>
               </thead>
               <tbody>
-                {extracto.saldos.map(s => {
+                {saldosVisibles.map(s => {
                   const diff = !isAbierto ? Number(s.saldo_cierre_ingresado ?? 0) - (s.saldo_estimado ?? 0) : 0
                   return (
                     <tr key={s.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => setSaldoSel(s)}>
@@ -389,7 +405,7 @@ export default function ExtractoCajaForm({ initialId }: { initialId?: string }) 
                     </tr>
                   )
                 })}
-                {extracto.saldos.length === 0 && (
+                {saldosVisibles.length === 0 && (
                   <tr><td colSpan={7} className="py-8 text-center text-xs text-gray-400">Sin saldos cargados.</td></tr>
                 )}
               </tbody>
@@ -397,7 +413,7 @@ export default function ExtractoCajaForm({ initialId }: { initialId?: string }) 
           )}
 
           {tab === "movimientos" && (
-            extracto.movimientos.length === 0 ? (
+            movsVisibles.length === 0 ? (
               <div className="text-center py-8 text-gray-500">No hay movimientos registrados en este extracto</div>
             ) : (
               <table className="w-full">
@@ -412,7 +428,7 @@ export default function ExtractoCajaForm({ initialId }: { initialId?: string }) 
                   </tr>
                 </thead>
                 <tbody>
-                  {extracto.movimientos.map(m => {
+                  {movsVisibles.map(m => {
                     const cancelado = m.estado_movimiento === "cancelado"
                     return (
                       <tr key={m.id} className={`border-b border-gray-100 ${cancelado ? "opacity-50" : ""}`}>
@@ -479,7 +495,7 @@ export default function ExtractoCajaForm({ initialId }: { initialId?: string }) 
                   </tr>
                 </thead>
                 <tbody>
-                  {extracto.saldos.map(s => {
+                  {saldosVisibles.map(s => {
                     const estimado = s.saldo_estimado ?? Number(s.saldo_apertura)
                     const fisico = saldosFisicos[s.id] ?? 0
                     const diff = fisico - estimado
@@ -514,7 +530,7 @@ export default function ExtractoCajaForm({ initialId }: { initialId?: string }) 
 
       {/* Modal detalle de movimientos por valor (click en fila de Saldos) */}
       {saldoSel && (() => {
-        const movsValor = extracto.movimientos
+        const movsValor = movsVisibles
           .filter(m => m.valor_id === saldoSel.valor_id)
           .slice()
           .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())

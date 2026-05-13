@@ -717,6 +717,8 @@ export function TabBancosPermitidos({ cajaId, bancos, onActualizar, modoEdicion 
 }
 
 // ─── Tab: Usuarios ──────────────────────────────────────────────────────────
+type UsuarioDB = { id: number; username: string; nombre: string; email: string; is_active: boolean }
+
 export function TabUsuarios({ cajaId, usuarios, soloTransferencias, onActualizar, modoEdicion }: {
   cajaId: string
   usuarios: CajaUsuario[]
@@ -724,34 +726,59 @@ export function TabUsuarios({ cajaId, usuarios, soloTransferencias, onActualizar
   onActualizar: () => void
   modoEdicion: boolean
 }) {
-  const [creando, setCreando] = useState(false)
-  const [form, setForm] = useState<Partial<CajaUsuario>>({})
-  const [guardando, setGuardando] = useState(false)
+  const [usuariosDisp, setUsuariosDisp] = useState<UsuarioDB[]>([])
+  const [usuarioSel, setUsuarioSel] = useState<string | number | null>(null)
+  const [agregando, setAgregando] = useState(false)
+
+  // Trae todos los usuarios del sistema para el picker
+  useEffect(() => {
+    fetch("/api/usuarios")
+      .then(r => r.ok ? r.json() : [])
+      .then((data: any[]) => {
+        if (Array.isArray(data)) {
+          setUsuariosDisp(data.filter(u => u.is_active).map(u => ({
+            id: u.id, username: u.username, nombre: u.nombre, email: u.email, is_active: u.is_active,
+          })))
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   const filtrados = soloTransferencias
     ? usuarios.filter(u => u.para_transferencias)
     : usuarios
 
-  const guardar = async () => {
-    if (!form.usuario_nombre?.trim()) return
-    setGuardando(true)
+  // IDs/nombres ya asignados en la lista actual para evitar duplicados.
+  const nombresAsignados = new Set(filtrados.map(u => (u.usuario_nombre || "").toLowerCase().trim()))
+
+  const opciones = usuariosDisp
+    .filter(u => {
+      const nombre = (u.nombre || "").toLowerCase().trim()
+      const username = (u.username || "").toLowerCase().trim()
+      return !nombresAsignados.has(nombre) && !nombresAsignados.has(username)
+    })
+    .map(u => ({
+      value: u.id,
+      label: u.nombre || u.username,
+      hint: u.email,
+      searchExtra: u.username,
+    }))
+
+  const agregar = async (usuarioId: string | number) => {
+    if (agregando) return
+    const u = usuariosDisp.find(x => Number(x.id) === Number(usuarioId))
+    if (!u) return
+    setAgregando(true)
     const supabase = createClient()
     await supabase.from("caja_usuarios").insert({
       caja_id: cajaId,
-      usuario_nombre: form.usuario_nombre,
-      es_cobrador: form.es_cobrador || false,
-      es_vendedor: form.es_vendedor || false,
-      para_transferencias: soloTransferencias ? true : (form.para_transferencias || false),
+      usuario_nombre: u.nombre || u.username,  // guardamos el nombre (legible). La matching de visibilidad acepta ambos.
+      es_cobrador: false,
+      es_vendedor: false,
+      para_transferencias: soloTransferencias ? true : false,
     })
-    setCreando(false)
-    setForm({})
-    setGuardando(false)
-    onActualizar()
-  }
-
-  const toggleField = async (id: string, field: "es_cobrador" | "es_vendedor", value: boolean) => {
-    const supabase = createClient()
-    await supabase.from("caja_usuarios").update({ [field]: value }).eq("id", id)
+    setUsuarioSel(null)
+    setAgregando(false)
     onActualizar()
   }
 
@@ -763,43 +790,26 @@ export function TabUsuarios({ cajaId, usuarios, soloTransferencias, onActualizar
 
   return (
     <div>
-      {creando && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-4">
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Nombre del usuario</label>
-              <input value={form.usuario_nombre || ""} onChange={e => setForm(f => ({ ...f, usuario_nombre: e.target.value }))}
-                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-            </div>
-            {!soloTransferencias && (
-              <div className="flex items-end gap-4">
-                <label className="flex items-center gap-2 text-sm mb-1.5">
-                  <input type="checkbox" checked={form.es_cobrador || false}
-                    onChange={e => setForm(f => ({ ...f, es_cobrador: e.target.checked }))} className="rounded" />
-                  Cobrador
-                </label>
-                <label className="flex items-center gap-2 text-sm mb-1.5">
-                  <input type="checkbox" checked={form.es_vendedor || false}
-                    onChange={e => setForm(f => ({ ...f, es_vendedor: e.target.checked }))} className="rounded" />
-                  Vendedor
-                </label>
-              </div>
-            )}
-          </div>
-          <div className="flex gap-2 mt-3 justify-end">
-            <button onClick={() => { setCreando(false); setForm({}) }} className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">Cancelar</button>
-            <button onClick={guardar} disabled={guardando} className="px-3 py-1.5 text-sm bg-indigo-900 text-white rounded hover:bg-indigo-800 disabled:bg-gray-300">
-              {guardando ? "Guardando..." : "Guardar"}
-            </button>
+      {modoEdicion && (
+        <div className="flex items-end gap-3 mb-4">
+          <div className="flex-1">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Agregar usuario</label>
+            <SearchableSelect
+              value={usuarioSel}
+              onChange={v => { if (v != null) agregar(v) }}
+              options={opciones}
+              placeholder={opciones.length === 0 ? "Todos los usuarios ya están asignados" : "Buscar usuario por nombre o email…"}
+              emptyText="Sin resultados"
+              disabled={opciones.length === 0 || agregando}
+              allowClear
+            />
           </div>
         </div>
       )}
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
-            <th className="text-left py-2 px-3">Nombre</th>
-            {!soloTransferencias && <th className="text-center py-2 px-3">Cobrador</th>}
-            {!soloTransferencias && <th className="text-center py-2 px-3">Vendedor</th>}
+            <th className="text-left py-2 px-3">Usuario</th>
             <th className="py-2 px-3"></th>
           </tr>
         </thead>
@@ -807,19 +817,7 @@ export function TabUsuarios({ cajaId, usuarios, soloTransferencias, onActualizar
           {filtrados.map(u => (
             <tr key={u.id} className="border-b border-gray-100">
               <td className="py-2 px-3 font-medium">{u.usuario_nombre}</td>
-              {!soloTransferencias && (
-                <td className="py-2 px-3 text-center">
-                  <input type="checkbox" checked={u.es_cobrador}
-                    onChange={e => toggleField(u.id, "es_cobrador", e.target.checked)} className="rounded" />
-                </td>
-              )}
-              {!soloTransferencias && (
-                <td className="py-2 px-3 text-center">
-                  <input type="checkbox" checked={u.es_vendedor}
-                    onChange={e => toggleField(u.id, "es_vendedor", e.target.checked)} className="rounded" />
-                </td>
-              )}
-              <td className="py-2 px-3">
+              <td className="py-2 px-3 text-right">
                 <button onClick={() => eliminar(u.id)} className="p-1 text-gray-400 hover:text-red-600">
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -829,11 +827,6 @@ export function TabUsuarios({ cajaId, usuarios, soloTransferencias, onActualizar
         </tbody>
       </table>
       {filtrados.length === 0 && <p className="text-sm text-gray-500 text-center py-6">Sin usuarios asignados</p>}
-      {!creando && modoEdicion && (
-        <button onClick={() => setCreando(true)} className="mt-3 flex items-center gap-1 text-sm text-indigo-700 hover:text-indigo-900">
-          <Plus className="w-4 h-4" /> Agregar usuario
-        </button>
-      )}
     </div>
   )
 }

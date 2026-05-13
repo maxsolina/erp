@@ -160,18 +160,6 @@ export default function CajaForm({ initialId }: { initialId?: string }) {
               <span className="text-sm">Cierre de caja diario obligatorio</span>
             </label>
             <label className="flex items-center gap-3 p-3 rounded-md border border-gray-200 hover:bg-gray-50 cursor-pointer">
-              <input type="checkbox" checked={form.no_valida_cierre_sabados} onChange={e => set("no_valida_cierre_sabados", e.target.checked)} className="rounded w-4 h-4" />
-              <span className="text-sm">No valida cierre los Sábados</span>
-            </label>
-            <label className="flex items-center gap-3 p-3 rounded-md border border-gray-200 hover:bg-gray-50 cursor-pointer">
-              <input type="checkbox" checked={form.no_valida_cierre_domingos} onChange={e => set("no_valida_cierre_domingos", e.target.checked)} className="rounded w-4 h-4" />
-              <span className="text-sm">No valida cierre los Domingos</span>
-            </label>
-            <label className="flex items-center gap-3 p-3 rounded-md border border-gray-200 hover:bg-gray-50 cursor-pointer">
-              <input type="checkbox" checked={form.no_valida_cierre_feriados} onChange={e => set("no_valida_cierre_feriados", e.target.checked)} className="rounded w-4 h-4" />
-              <span className="text-sm">No valida cierre los Feriados</span>
-            </label>
-            <label className="flex items-center gap-3 p-3 rounded-md border border-gray-200 hover:bg-gray-50 cursor-pointer">
               <input type="checkbox" checked={form.activo} onChange={e => set("activo", e.target.checked)} className="rounded w-4 h-4" />
               <span className="text-sm">Activa</span>
             </label>
@@ -187,7 +175,7 @@ export default function CajaForm({ initialId }: { initialId?: string }) {
 // ─── Sub-tabs (Valores / Bancos / Usuarios) ─────────────────────────────────
 // Solo se renderizan en modo edición (cuando ya existe la caja).
 function CajaSubTabs({ cajaId }: { cajaId: string }) {
-  const [tab, setTab] = useState<"valores" | "bancos" | "usuarios">("valores")
+  const [tab, setTab] = useState<"valores" | "bancos" | "usuarios" | "transferencias">("valores")
   const [valores, setValores] = useState<CajaValor[]>([])
   const [bancos, setBancos] = useState<CajaBancoPermitido[]>([])
   const [usuarios, setUsuarios] = useState<CajaUsuario[]>([])
@@ -209,6 +197,9 @@ function CajaSubTabs({ cajaId }: { cajaId: string }) {
 
   useEffect(() => { recargar() }, [cajaId])
 
+  // Conteo de los usuarios habilitados para recibir transferencias
+  const usuariosTransferCount = usuarios.filter(u => (u as any).para_transferencias).length
+
   return (
     <div className="mt-6 bg-white rounded-lg border">
       <div className="flex border-b">
@@ -216,6 +207,7 @@ function CajaSubTabs({ cajaId }: { cajaId: string }) {
           { id: "valores", label: `Valores (${valores.length})` },
           { id: "bancos", label: `Bancos Permitidos (${bancos.length})` },
           { id: "usuarios", label: `Usuarios (${usuarios.length})` },
+          { id: "transferencias", label: `Recibe Transferencias (${usuariosTransferCount})` },
         ] as const).map(t => (
           <button key={t.id} type="button" onClick={() => setTab(t.id)}
             className={`px-4 py-2 text-sm border-b-2 ${tab === t.id ? "border-indigo-700 text-indigo-700 font-medium" : "border-transparent text-gray-500"}`}>
@@ -230,8 +222,10 @@ function CajaSubTabs({ cajaId }: { cajaId: string }) {
           <TabValores cajaId={cajaId} valores={valores} onActualizar={recargar} modoEdicion={true} />
         ) : tab === "bancos" ? (
           <TabBancosPermitidos cajaId={cajaId} bancos={bancos} onActualizar={recargar} modoEdicion={true} />
-        ) : (
+        ) : tab === "usuarios" ? (
           <TabUsuarios cajaId={cajaId} usuarios={usuarios} soloTransferencias={false} onActualizar={recargar} modoEdicion={true} />
+        ) : (
+          <TabUsuarios cajaId={cajaId} usuarios={usuarios} soloTransferencias={true} onActualizar={recargar} modoEdicion={true} />
         )}
       </div>
     </div>

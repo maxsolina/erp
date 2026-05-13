@@ -93,7 +93,6 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   }
   update.total_comprobantes = totalC
   update.total_valores = totalV
-  update.updated_at = new Date().toISOString()
 
   const { data, error } = await supabase.from("registros_banco").update(update).eq("id", id).select(SELECT_FULL).single()
   if (error) return dbError(error)

@@ -2,7 +2,7 @@ import { apiError, dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
-const SELECT_LIST = "id, numero, caja_nombre, sucursal, concepto_nombre, moneda, cotizacion, tipo_cotizacion, total_comprobantes, total_valores, fecha, estado"
+const SELECT_LIST = "id, numero, caja_id, caja_nombre, sucursal, concepto_nombre, moneda, cotizacion, tipo_cotizacion, total_comprobantes, total_valores, fecha, estado"
 const SELECT_FULL = "id, numero, caja_id, caja_nombre, sucursal, concepto_id, concepto_nombre, moneda, cotizacion, tipo_cotizacion, total_comprobantes, total_valores, fecha, observaciones, estado"
 
 interface Comprobante {

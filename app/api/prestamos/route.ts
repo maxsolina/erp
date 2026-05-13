@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
 const SELECT_LIST = "id, numero, tipo_nombre, entidad_nombre, nro_prestamo, moneda, capital, capital_pendiente, total, saldo, fecha, cantidad_cuotas, estado"
-const SELECT_FULL = "id, numero, tipo_id, tipo_nombre, entidad_id, entidad_nombre, nro_prestamo, moneda, capital, tasa_porcentaje, capital_pendiente, intereses_total, iva, percepcion_iva, percepcion_iibb, otros_gastos, total, saldo, fecha, sucursal, caja_id, caja_nombre, sistema_amortizacion, es_preexistente, cantidad_cuotas, periodicidad, fecha_primera_cuota, importe_refinanciado, importe_acreditado, tipo_garante, garante, forma_pago, tipo_tasa, distribucion_pago, periodo_gracia, observaciones, estado"
+const SELECT_FULL = "id, numero, tipo_id, tipo_nombre, entidad_id, entidad_nombre, nro_prestamo, moneda, capital, tasa_porcentaje, capital_pendiente, intereses_total, iva, percepcion_iva, percepcion_iibb, otros_gastos, total, saldo, fecha, sucursal, caja_id, caja_nombre, cuenta_bancaria_acreditacion_id, cuenta_bancaria_acreditacion_nombre, sistema_amortizacion, es_preexistente, cantidad_cuotas, periodicidad, fecha_primera_cuota, importe_refinanciado, importe_acreditado, tipo_garante, garante, forma_pago, tipo_tasa, distribucion_pago, periodo_gracia, observaciones, cotizacion, tipo_cotizacion, estado"
 
 // GET /api/prestamos
 export async function GET(req: Request) {
@@ -38,11 +38,18 @@ export async function POST(req: Request) {
   if (body.entidad_id) {
     const { data: e } = await supabase.from("cuentas_bancarias").select("banco_nombre, numero_cuenta").eq("id", body.entidad_id).maybeSingle()
     if (e) entidadNombre = `${e.banco_nombre} - ${e.numero_cuenta}`
+  } else if (body.entidad_nombre_manual && String(body.entidad_nombre_manual).trim() !== "") {
+    entidadNombre = String(body.entidad_nombre_manual).trim()
   }
   let cajaNombre: string | null = null
   if (body.caja_id) {
     const { data: c } = await supabase.from("cajas").select("nombre").eq("id", body.caja_id).maybeSingle()
     cajaNombre = c?.nombre ?? null
+  }
+  let cuentaBancariaAcrNombre: string | null = null
+  if (body.cuenta_bancaria_acreditacion_id) {
+    const { data: cb } = await supabase.from("cuentas_bancarias").select("banco_nombre, numero_cuenta").eq("id", body.cuenta_bancaria_acreditacion_id).maybeSingle()
+    if (cb) cuentaBancariaAcrNombre = `${cb.banco_nombre} - ${cb.numero_cuenta}`
   }
 
   const sucursal = body.sucursal ?? ""
@@ -69,6 +76,8 @@ export async function POST(req: Request) {
       sucursal,
       caja_id: body.caja_id || null,
       caja_nombre: cajaNombre ?? "",
+      cuenta_bancaria_acreditacion_id: body.cuenta_bancaria_acreditacion_id || null,
+      cuenta_bancaria_acreditacion_nombre: cuentaBancariaAcrNombre ?? "",
       sistema_amortizacion: body.sistema_amortizacion ?? "frances",
       es_preexistente: !!body.es_preexistente,
       cantidad_cuotas: body.cantidad_cuotas,
@@ -83,6 +92,8 @@ export async function POST(req: Request) {
       distribucion_pago: body.distribucion_pago ?? "Proporcional",
       periodo_gracia: body.periodo_gracia ?? 0,
       observaciones: body.observaciones ?? "",
+      cotizacion: body.cotizacion || null,
+      tipo_cotizacion: body.tipo_cotizacion || null,
       estado: "borrador",
     })
     .select(SELECT_FULL)
