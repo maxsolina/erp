@@ -2594,6 +2594,7 @@ const menuConfig = [
       { id: "plan-cuentas",  label: "Plan de Cuentas" },
       { id: "tipos-cuenta",  label: "Tipos de Cuentas" },
       { id: "diarios",       label: "Diarios" },
+      { id: "valores-caja",  label: "Valores de Caja" },
       { id: "monedas",           label: "Monedas", icon: Coins },
       { id: "tipos-cotizacion",   label: "Tipos de Cotizaciones" },
     ],
@@ -2692,7 +2693,14 @@ export default function ModuloContabilidad({
                   {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                 </button>
                 {expanded && itemsVisibles.map(item => (
-                  <button key={item.id} onClick={() => setActiveView(item.id)}
+                  <button key={item.id} onClick={() => {
+                    // Items migrados a App Router → navegamos a la URL real
+                    if (item.id === "valores-caja") {
+                      window.location.href = "/contabilidad/valores-caja"
+                      return
+                    }
+                    setActiveView(item.id)
+                  }}
                     className={`w-full text-left px-4 py-1.5 text-sm transition-colors ${
                       activeView === item.id
                         ? "bg-indigo-50 text-indigo-800 font-medium border-r-2 border-indigo-600"

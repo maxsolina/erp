@@ -48,6 +48,77 @@ export interface ValorCheckError {
   error: string
 }
 
+/**
+ * Calcula el saldo estimado actual de un caja_valor en un extracto abierto.
+ * Saldo = saldo_apertura + ingresos confirmados − egresos confirmados (excluye cancelados).
+ * Devuelve null si no hay registro de saldo (caja_valor no inicializado).
+ */
+export async function getSaldoCajaValor(
+  supabase: SupabaseClient,
+  extractoId: string,
+  valorId: string,
+): Promise<number | null> {
+  const { data: saldoRow } = await supabase
+    .from("extracto_saldos")
+    .select("saldo_apertura")
+    .eq("extracto_id", extractoId)
+    .eq("valor_id", valorId)
+    .maybeSingle()
+  const apertura = Number((saldoRow as any)?.saldo_apertura ?? 0)
+  const { data: movs } = await supabase
+    .from("movimientos_caja")
+    .select("tipo_movimiento, importe, estado_movimiento")
+    .eq("extracto_id", extractoId)
+    .eq("valor_id", valorId)
+  let ingresos = 0
+  let egresos = 0
+  for (const m of movs ?? []) {
+    if ((m as any).estado_movimiento === "cancelado") continue
+    const imp = Number((m as any).importe ?? 0)
+    if ((m as any).tipo_movimiento === "ingreso") ingresos += imp
+    else if ((m as any).tipo_movimiento === "egreso") egresos += imp
+  }
+  return Math.round((apertura + ingresos - egresos) * 100) / 100
+}
+
+/**
+ * Valida que un egreso en efectivo no deje el saldo del caja_valor en negativo.
+ * Solo aplica a caja_valores de tipo 'efectivo' — los tipos banco/cheques
+ * pueden quedar en negativo (descubierto bancario, etc.).
+ * Devuelve { ok: true } si el saldo alcanza, sino el error a mostrar.
+ */
+export async function validarSaldoSuficienteEfectivo(
+  supabase: SupabaseClient,
+  extractoId: string,
+  valorId: string,
+  importe: number,
+  valorNombre?: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  // Verificar tipo del valor
+  const { data: cv } = await supabase
+    .from("caja_valores")
+    .select("tipo, nombre, moneda")
+    .eq("id", valorId)
+    .maybeSingle()
+  if (!cv) return { ok: false, error: "Valor de caja no encontrado." }
+  // Solo validamos efectivo
+  if ((cv as any).tipo !== "efectivo") return { ok: true }
+
+  const saldo = await getSaldoCajaValor(supabase, extractoId, valorId)
+  if (saldo === null) return { ok: true } // sin saldo inicializado, no bloqueamos
+
+  const nuevo = Math.round((saldo - Number(importe)) * 100) / 100
+  if (nuevo < -0.01) {
+    const nombre = valorNombre || (cv as any).nombre || "el valor"
+    const moneda = (cv as any).moneda || ""
+    return {
+      ok: false,
+      error: `Saldo insuficiente en "${nombre}". Saldo actual: ${moneda} ${saldo.toLocaleString("es-AR", { minimumFractionDigits: 2 })}. Egreso solicitado: ${moneda} ${Number(importe).toLocaleString("es-AR", { minimumFractionDigits: 2 })}.`,
+    }
+  }
+  return { ok: true }
+}
+
 /** Verifica que una caja tenga un caja_valor activo en `moneda` + `tipo`. */
 export async function getValorEnCaja(
   supabase: SupabaseClient,
@@ -139,6 +210,13 @@ export function generarCuotasPrestamo(input: {
         capitalCuota = i === cantidad_cuotas ? capital : 0
         interesCuota = i === cantidad_cuotas ? capital * tasaMensual * cantidad_cuotas : 0
         totalCuota = capitalCuota + interesCuota
+        break
+      case "perpetuo":
+        // Sólo intereses; el capital NUNCA se devuelve.
+        // Cada cuota = capital × tasa mensual. Saldo de capital permanece.
+        interesCuota = capital * tasaMensual
+        capitalCuota = 0
+        totalCuota = interesCuota
         break
     }
 

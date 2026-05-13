@@ -2,7 +2,7 @@ import { apiError, dbError } from "@/lib/api-utils"
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
-const SELECT_FULL = "id, numero, tipo_id, tipo_nombre, entidad_id, entidad_nombre, nro_prestamo, moneda, capital, tasa_porcentaje, capital_pendiente, intereses_total, iva, percepcion_iva, percepcion_iibb, otros_gastos, total, saldo, fecha, sucursal, caja_id, caja_nombre, sistema_amortizacion, es_preexistente, cantidad_cuotas, periodicidad, fecha_primera_cuota, importe_refinanciado, importe_acreditado, tipo_garante, garante, forma_pago, tipo_tasa, distribucion_pago, periodo_gracia, observaciones, estado"
+const SELECT_FULL = "id, numero, tipo_id, tipo_nombre, entidad_id, entidad_nombre, nro_prestamo, moneda, capital, tasa_porcentaje, capital_pendiente, intereses_total, iva, percepcion_iva, percepcion_iibb, otros_gastos, total, saldo, fecha, sucursal, caja_id, caja_nombre, cuenta_bancaria_acreditacion_id, cuenta_bancaria_acreditacion_nombre, sistema_amortizacion, es_preexistente, cantidad_cuotas, periodicidad, fecha_primera_cuota, importe_refinanciado, importe_acreditado, tipo_garante, garante, forma_pago, tipo_tasa, distribucion_pago, periodo_gracia, observaciones, cotizacion, tipo_cotizacion, estado"
 
 // GET /api/prestamos/[id] — incluye cuotas y gastos.
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -45,9 +45,14 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     if (body.entidad_id) {
       const { data: e } = await supabase.from("cuentas_bancarias").select("banco_nombre, numero_cuenta").eq("id", body.entidad_id).maybeSingle()
       update.entidad_nombre = e ? `${e.banco_nombre} - ${e.numero_cuenta}` : ""
+    } else if (body.entidad_nombre_manual && String(body.entidad_nombre_manual).trim() !== "") {
+      update.entidad_nombre = String(body.entidad_nombre_manual).trim()
     } else {
       update.entidad_nombre = ""
     }
+  } else if (body.entidad_nombre_manual !== undefined) {
+    // Si solo cambió el nombre manual y entidad_id sigue null
+    update.entidad_nombre = String(body.entidad_nombre_manual).trim()
   }
   if (body.caja_id !== undefined) {
     update.caja_id = body.caja_id || null
@@ -56,6 +61,15 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
       update.caja_nombre = c?.nombre ?? ""
     } else {
       update.caja_nombre = ""
+    }
+  }
+  if (body.cuenta_bancaria_acreditacion_id !== undefined) {
+    update.cuenta_bancaria_acreditacion_id = body.cuenta_bancaria_acreditacion_id || null
+    if (body.cuenta_bancaria_acreditacion_id) {
+      const { data: cb } = await supabase.from("cuentas_bancarias").select("banco_nombre, numero_cuenta").eq("id", body.cuenta_bancaria_acreditacion_id).maybeSingle()
+      update.cuenta_bancaria_acreditacion_nombre = cb ? `${cb.banco_nombre} - ${cb.numero_cuenta}` : ""
+    } else {
+      update.cuenta_bancaria_acreditacion_nombre = ""
     }
   }
   for (const f of [
@@ -67,6 +81,8 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     if (body[f] !== undefined) update[f] = body[f]
   }
   if (body.fecha_primera_cuota !== undefined) update.fecha_primera_cuota = body.fecha_primera_cuota || null
+  if (body.cotizacion !== undefined) update.cotizacion = body.cotizacion || null
+  if (body.tipo_cotizacion !== undefined) update.tipo_cotizacion = body.tipo_cotizacion || null
   update.updated_at = new Date().toISOString()
 
   const { data, error } = await supabase.from("prestamos").update(update).eq("id", id).select(SELECT_FULL).single()

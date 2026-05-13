@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertCircle, ArrowLeft, Save, X, CheckCircle } from "lucide-react"
+import { AlertCircle, ArrowLeft, Save, X, CheckCircle, Ban } from "lucide-react"
 import { useERP } from "@/contexts/erp-context"
+import { useCajasPermitidasParaUsuario, useValoresIdsPermitidasParaUsuario } from "./_shared"
 
 interface CajaDisp { id: string; nombre: string; sucursal: string }
 interface ValorCaja { id: string; caja_id: string; nombre: string; tipo: string; moneda: string }
+interface TipoCotizacion { id: string; nombre: string }
 
 type Form = {
   caja_id: string
@@ -27,7 +29,7 @@ const empty = (): Form => ({
   valor_origen_id: "",
   valor_destino_id: "",
   importe_origen: 0,
-  tipo_cotizacion: "Divisa",
+  tipo_cotizacion: "",
   cotizacion: 0,
   observaciones: "",
 })
@@ -43,27 +45,33 @@ function calcularConversion(importeOrigen: number, cotizacion: number) {
 export default function ConversionMonedaForm({ initialId }: { initialId?: string }) {
   const router = useRouter()
   const isEdit = initialId != null
-  const { sucursales } = useERP()
+  const { currentUser } = useERP()
 
   const [form, setForm] = useState<Form>(empty())
-  const [cajas, setCajas] = useState<CajaDisp[]>([])
+  const [cajasRaw, setCajasRaw] = useState<CajaDisp[]>([])
+  const cajas = useCajasPermitidasParaUsuario(cajasRaw, currentUser)
   const [valores, setValores] = useState<ValorCaja[]>([])
+  const [tiposCotizacion, setTiposCotizacion] = useState<TipoCotizacion[]>([])
   const [estado, setEstado] = useState<string>("borrador")
   const [cargando, setCargando] = useState(isEdit)
   const [errorCarga, setErrorCarga] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
   const [publicando, setPublicando] = useState(false)
+  const [cancelando, setCancelando] = useState(false)
+  const [mostrarConfirmCancel, setMostrarConfirmCancel] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [okMsg, setOkMsg] = useState<string | null>(null)
 
-  // Cargar cajas activas + todos los valores (filtrarlos client-side).
+  // Cargar cajas activas + todos los valores + tipos de cotización.
   useEffect(() => {
     Promise.all([
       fetch("/api/cajas").then(r => r.json()),
       fetch("/api/caja-valores").then(r => r.json()),
-    ]).then(([c, v]) => {
-      if (Array.isArray(c)) setCajas(c)
+      fetch("/api/contabilidad/tipos-cotizacion?activo=true").then(r => r.json()).catch(() => []),
+    ]).then(([c, v, tc]) => {
+      if (Array.isArray(c)) setCajasRaw(c)
       if (Array.isArray(v)) setValores(v)
+      if (Array.isArray(tc)) setTiposCotizacion(tc.map((x: any) => ({ id: x.id, nombre: x.nombre })))
     }).catch(console.error)
   }, [])
 
@@ -94,16 +102,36 @@ export default function ConversionMonedaForm({ initialId }: { initialId?: string
 
   const esSoloLectura = isEdit && estado !== "borrador"
 
-  // Valores filtrados por caja + tipo efectivo.
+  const valoresPermitidos = useValoresIdsPermitidasParaUsuario(currentUser)
+  // Valores filtrados por caja + tipo efectivo + permiso del usuario.
   const valoresEfectivoCaja = useMemo(
-    () => valores.filter(v => v.caja_id === form.caja_id && v.tipo === "efectivo"),
-    [valores, form.caja_id],
+    () => valores.filter(v =>
+      v.caja_id === form.caja_id
+      && v.tipo === "efectivo"
+      && (valoresPermitidos?.has(v.id) ?? false)
+    ),
+    [valores, form.caja_id, valoresPermitidos],
   )
   const valOrigen = valores.find(v => v.id === form.valor_origen_id)
   const valoresDestinoFiltrados = valoresEfectivoCaja.filter(v => v.id !== form.valor_origen_id && v.moneda !== valOrigen?.moneda)
 
   const { importeDestino, diferencia } = calcularConversion(form.importe_origen, form.cotizacion)
   const valDestino = valores.find(v => v.id === form.valor_destino_id)
+
+  // Moneda cotizable: la NO-ARS entre origen y destino (preferimos destino si existe).
+  const monedaCotizable =
+    valDestino && valDestino.moneda !== "ARS" ? valDestino.moneda
+    : valOrigen && valOrigen.moneda !== "ARS" ? valOrigen.moneda
+    : ""
+
+  // Cuando se selecciona un tipo de cotización, traer la última tasa.
+  useEffect(() => {
+    if (!monedaCotizable || !form.tipo_cotizacion) return
+    fetch(`/api/contabilidad/cotizaciones?moneda_codigo=${encodeURIComponent(monedaCotizable)}&tipo=${encodeURIComponent(form.tipo_cotizacion)}&latest=true`)
+      .then(r => r.ok ? r.json() : null)
+      .then(cot => { if (cot?.tasa) setForm(f => ({ ...f, cotizacion: Number(cot.tasa) })) })
+      .catch(() => {})
+  }, [form.tipo_cotizacion, monedaCotizable])
 
   const guardar = async () => {
     if (esSoloLectura) return
@@ -155,6 +183,21 @@ export default function ConversionMonedaForm({ initialId }: { initialId?: string
     }
   }
 
+  const cancelarOperacion = async () => {
+    if (!isEdit || estado !== "publicado" || cancelando) return
+    setError(null)
+    setMostrarConfirmCancel(false)
+    setCancelando(true)
+    try {
+      const res = await fetch(`/api/conversiones-moneda/${initialId}/cancelar`, { method: "POST" })
+      if (!res.ok) { setError(`Error: ${await res.text()}`); setCancelando(false); return }
+      router.push("/finanzas/conversion-monedas")
+    } catch (e: any) {
+      setError(`Error de red: ${e?.message ?? e}`)
+      setCancelando(false)
+    }
+  }
+
   if (cargando) return <div className="p-12 text-center text-gray-500">Cargando…</div>
   if (errorCarga) return (
     <div className="p-12 text-center">
@@ -171,8 +214,12 @@ export default function ConversionMonedaForm({ initialId }: { initialId?: string
           <div>
             <h1 className="text-2xl font-bold text-amber-900">{isEdit ? "Conversión de Monedas" : "Nueva Conversión"}</h1>
             {isEdit && (
-              <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${estado === "borrador" ? "bg-gray-100 text-gray-700" : "bg-green-100 text-green-700"}`}>
-                {estado === "borrador" ? "Borrador" : "Publicado"}
+              <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                estado === "borrador" ? "bg-gray-100 text-gray-700"
+                : estado === "cancelado" ? "bg-red-100 text-red-700"
+                : "bg-green-100 text-green-700"
+              }`}>
+                {estado === "borrador" ? "Borrador" : estado === "cancelado" ? "Cancelado" : "Publicado"}
               </span>
             )}
           </div>
@@ -188,11 +235,54 @@ export default function ConversionMonedaForm({ initialId }: { initialId?: string
           )}
           {isEdit && estado === "borrador" && (
             <button onClick={publicar} disabled={publicando} className="px-4 py-2 text-sm bg-green-700 hover:bg-green-800 text-white rounded-lg disabled:opacity-50 flex items-center gap-1">
-              <CheckCircle className="w-4 h-4" /> {publicando ? "Publicando…" : "Publicar"}
+              <CheckCircle className="w-4 h-4" /> {publicando ? "Confirmando…" : "Confirmar"}
+            </button>
+          )}
+          {isEdit && estado === "publicado" && (
+            <button onClick={() => setMostrarConfirmCancel(true)} disabled={cancelando} className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-1">
+              <Ban className="w-4 h-4" /> Cancelar Operación
             </button>
           )}
         </div>
       </div>
+
+      {publicando && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg px-8 py-6 shadow-xl flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-indigo-700 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-sm font-medium text-gray-700">Confirmando conversión…</p>
+          </div>
+        </div>
+      )}
+
+      {cancelando && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg px-8 py-6 shadow-xl flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-sm font-medium text-gray-700">Cancelando conversión…</p>
+          </div>
+        </div>
+      )}
+
+      {mostrarConfirmCancel && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 shadow-xl max-w-md">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Cancelar conversión</h3>
+            <p className="text-sm text-gray-600 mb-5">
+              Se van a anular los movimientos de caja y se generará un asiento de reversa.
+              Esta acción no se puede deshacer.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setMostrarConfirmCancel(false)} className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+                No, volver
+              </button>
+              <button onClick={cancelarOperacion} className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center gap-1">
+                <Ban className="w-4 h-4" /> Sí, cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700 flex items-start gap-2">
@@ -205,35 +295,20 @@ export default function ConversionMonedaForm({ initialId }: { initialId?: string
 
       <fieldset disabled={esSoloLectura} className="space-y-5">
         <div className="bg-white rounded-lg border p-6 space-y-5">
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Caja *</label>
-              <select value={form.caja_id}
-                onChange={e => {
-                  const c = cajas.find(x => x.id === e.target.value)
-                  set("caja_id", e.target.value)
-                  if (c) set("sucursal", c.sucursal)
-                  set("valor_origen_id", "")
-                  set("valor_destino_id", "")
-                }}
-                className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                <option value="">Seleccionar…</option>
-                {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.sucursal})</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Sucursal</label>
-              <select value={form.sucursal} onChange={e => set("sucursal", e.target.value)}
-                className="w-full border rounded px-3 py-2 text-sm">
-                <option value="">—</option>
-                {sucursales.map(s => <option key={s.id ?? s.nombre} value={s.nombre}>{s.nombre}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Fecha</label>
-              <input type="date" value={form.fecha} onChange={e => set("fecha", e.target.value)}
-                className="w-full border rounded px-3 py-2 text-sm" />
-            </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Caja *</label>
+            <select value={form.caja_id}
+              onChange={e => {
+                const c = cajas.find(x => x.id === e.target.value)
+                set("caja_id", e.target.value)
+                if (c) set("sucursal", c.sucursal)
+                set("valor_origen_id", "")
+                set("valor_destino_id", "")
+              }}
+              className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="">Seleccionar…</option>
+              {cajas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.sucursal})</option>)}
+            </select>
           </div>
         </div>
 
@@ -266,13 +341,22 @@ export default function ConversionMonedaForm({ initialId }: { initialId?: string
                 className="w-full border rounded px-3 py-2 text-sm text-right font-mono" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Tipo Cotización</label>
-              <input value={form.tipo_cotizacion} onChange={e => set("tipo_cotizacion", e.target.value)}
-                className="w-full border rounded px-3 py-2 text-sm" />
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Tipo Cotización {monedaCotizable && <span className="text-gray-400">({monedaCotizable})</span>}
+              </label>
+              <select value={form.tipo_cotizacion} onChange={e => set("tipo_cotizacion", e.target.value)}
+                disabled={!monedaCotizable}
+                className="w-full border rounded px-3 py-2 text-sm disabled:bg-gray-50">
+                <option value="">Seleccionar…</option>
+                {tiposCotizacion.map(t => <option key={t.id} value={t.nombre}>{t.nombre}</option>)}
+              </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Cotización *</label>
-              <input type="number" step="0.0001" value={form.cotizacion} onChange={e => set("cotizacion", Number(e.target.value))}
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Cotización * {monedaCotizable && <span className="text-gray-400 font-normal">(1 {monedaCotizable} = $ ARS)</span>}
+              </label>
+              <input type="number" step="0.0001" value={form.cotizacion || ""} onChange={e => set("cotizacion", Number(e.target.value))}
+                placeholder="0,0000"
                 className="w-full border rounded px-3 py-2 text-sm text-right font-mono" />
             </div>
             <div>

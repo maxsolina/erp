@@ -72,7 +72,7 @@ export default function ReciboForm({
 }: { initialId?: string; prefillFacturaId?: number }) {
   const router = useRouter()
   const isEdit = initialId != null
-  const { sucursalActiva } = useERP()
+  const { sucursalActiva, currentUser } = useERP()
 
   // ─── Loaders ────────────────────────────────────────────────────────────
   const [clientes, setClientes] = useState<ClienteOpt[]>([])
@@ -203,15 +203,28 @@ export default function ReciboForm({
 
   // ─── Cargar valores de caja al cambiar caja ────────────────────────────
   useEffect(() => {
-    if (!reciboCajaId) {
+    if (!reciboCajaId || !currentUser?.id) {
       setValoresCaja([])
       return
     }
-    fetch(`/api/caja-valores?caja_id=${reciboCajaId}`)
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setValoresCaja(d) })
-      .catch(() => setValoresCaja([]))
-  }, [reciboCajaId])
+    // Filtramos por usuario asignado en caja_valores_usuarios. Si un valor
+    // no tiene usuarios asignados → invisible (regla global).
+    Promise.all([
+      fetch(`/api/caja-valores?caja_id=${reciboCajaId}`).then(r => r.json()).catch(() => []),
+      import("@/lib/supabase/client").then(({ createClient }) => {
+        const supabase = createClient()
+        return supabase
+          .from("caja_valores_usuarios")
+          .select("caja_valor_id")
+          .eq("usuario_id", currentUser.id!)
+          .then(({ data }) => (data ?? []).map((r: any) => r.caja_valor_id as string))
+      }),
+    ]).then(([valores, allowedIds]) => {
+      if (!Array.isArray(valores)) { setValoresCaja([]); return }
+      const set = new Set(allowedIds as string[])
+      setValoresCaja(valores.filter((v: any) => set.has(v.id)))
+    }).catch(() => setValoresCaja([]))
+  }, [reciboCajaId, currentUser?.id])
 
   // Auto-seleccionar la primera caja del usuario cuando es un recibo nuevo y
   // todavía no se eligió ninguna. `cajasFiltradas` ya restringe por sucursal

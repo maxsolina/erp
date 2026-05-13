@@ -11,6 +11,7 @@ import {
   PieChart,
   Settings,
   TrendingUp,
+  Wallet,
 } from "lucide-react"
 import { type SidebarConfig } from "./_shared"
 
@@ -55,6 +56,7 @@ export const contabilidadSidebarConfig: SidebarConfig = {
         { label: "Plan de Cuentas", href: "/contabilidad/plan-cuentas", icon: Layers },
         { label: "Tipos de Cuenta", href: "/contabilidad/tipos-cuenta", icon: Layers },
         { label: "Diarios", href: "/contabilidad/diarios", icon: BookOpen },
+        { label: "Valores de Caja", href: "/contabilidad/valores-caja", icon: Wallet },
         { label: "Períodos", href: "/contabilidad/periodos", icon: Calendar },
         { label: "Años Fiscales", href: "/contabilidad/anos-fiscales", icon: Calendar },
         { label: "Monedas", href: "/contabilidad/monedas", icon: Coins },

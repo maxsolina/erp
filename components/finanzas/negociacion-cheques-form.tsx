@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { AlertCircle, ArrowLeft, Save, X, ChevronRight, Plus, Trash2, Ban } from "lucide-react"
 import { useERP } from "@/contexts/erp-context"
-import { type CuentaBancaria, type ChequeTercero, formatCurrency } from "./_shared"
+import { type CuentaBancaria, type ChequeTercero, formatCurrency, useCajasPermitidasParaUsuario } from "./_shared"
 
 interface CajaDisp { id: string; nombre: string; sucursal: string }
 
@@ -76,10 +76,11 @@ const SIGUIENTE: Record<string, string> = {
 export default function NegociacionChequesForm({ initialId }: { initialId?: string }) {
   const router = useRouter()
   const isEdit = initialId != null
-  const { sucursales } = useERP()
+  const { sucursales, currentUser } = useERP()
 
   const [form, setForm] = useState<Form>(empty())
-  const [cajas, setCajas] = useState<CajaDisp[]>([])
+  const [cajasRaw, setCajasRaw] = useState<CajaDisp[]>([])
+  const cajas = useCajasPermitidasParaUsuario(cajasRaw, currentUser)
   const [cuentas, setCuentas] = useState<CuentaBancaria[]>([])
   const [chequesEnCartera, setChequesEnCartera] = useState<ChequeTercero[]>([])
   const [devueltos, setDevueltos] = useState<Devuelto[]>([])
@@ -97,7 +98,7 @@ export default function NegociacionChequesForm({ initialId }: { initialId?: stri
       fetch("/api/cajas").then(r => r.json()),
       fetch("/api/cuentas-bancarias").then(r => r.json()),
     ]).then(([c, cb]) => {
-      if (Array.isArray(c)) setCajas(c)
+      if (Array.isArray(c)) setCajasRaw(c)
       if (Array.isArray(cb)) setCuentas(cb)
     }).catch(console.error)
   }, [])

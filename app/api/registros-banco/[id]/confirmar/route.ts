@@ -71,7 +71,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
 
   const { error: eUpd } = await supabase
     .from("registros_banco")
-    .update({ estado: "confirmado", updated_at: new Date().toISOString() })
+    .update({ estado: "confirmado" })
     .eq("id", id)
   if (eUpd) return dbError(eUpd)
 

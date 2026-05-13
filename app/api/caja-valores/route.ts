@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   const supabase = await createClient()
   let query = supabase
     .from("caja_valores")
-    .select("id, caja_id, nombre, tipo, subtipo, moneda, banco_permitido_id, activo")
+    .select("id, caja_id, codigo, nombre, tipo, subtipo, moneda, banco_permitido_id, cuenta_contable_id, cuenta_haber_id, activo, cajas:caja_id(nombre, sucursal)")
     .order("nombre")
 
   if (cajaId) query = query.eq("caja_id", cajaId)

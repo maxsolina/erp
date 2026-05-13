@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { AlertCircle, ArrowLeft, Save, X, CheckCircle, Ban, Plus, Trash2 } from "lucide-react"
 import SearchableSelect from "@/components/ui/searchable-select"
-import { type ConceptoRegistroCaja, cuentasPermitidasParaConcepto, useMonedas } from "./_shared"
+import { type ConceptoRegistroCaja, cuentasPermitidasParaConcepto, useMonedas, useCajasPermitidasParaUsuario, useValoresIdsPermitidasParaUsuario } from "./_shared"
 import { useERP } from "@/contexts/erp-context"
 
 interface CajaDisp { id: string; nombre: string; sucursal: string }
@@ -67,7 +67,8 @@ export default function RegistroCajaForm({ initialId }: { initialId?: string }) 
   const monedas = useMonedas()
 
   const [form, setForm] = useState<Form>(empty())
-  const [cajas, setCajas] = useState<CajaDisp[]>([])
+  const [cajasRaw, setCajasRaw] = useState<CajaDisp[]>([])
+  const cajas = useCajasPermitidasParaUsuario(cajasRaw, currentUser)
   const [conceptos, setConceptos] = useState<ConceptoRegistroCaja[]>([])
   const [valores, setValores] = useState<ValorCaja[]>([])
   const [cuentasContables, setCuentasContables] = useState<CuentaContable[]>([])
@@ -93,7 +94,7 @@ export default function RegistroCajaForm({ initialId }: { initialId?: string }) 
       fetch("/api/contabilidad/plan-cuentas?activo=true").then(r => r.json()).catch(() => []),
       fetch("/api/contabilidad/tipos-cotizacion?activo=true").then(r => r.json()).catch(() => []),
     ]).then(([c, co, v, pc, tc]) => {
-      if (Array.isArray(c)) setCajas(c)
+      if (Array.isArray(c)) setCajasRaw(c)
       if (Array.isArray(co)) setConceptos(co.filter((x: ConceptoRegistroCaja) => x.visible_en_caja))
       if (Array.isArray(v)) setValores(v)
       if (Array.isArray(pc)) setCuentasContables(pc.map((x: any) => ({ id: x.id, codigo: x.codigo, nombre: x.nombre })))
@@ -182,7 +183,11 @@ export default function RegistroCajaForm({ initialId }: { initialId?: string }) 
   const conceptoSel = conceptos.find(c => c.id === form.concepto_id)
   const cajaSel = cajas.find(c => c.id === form.caja_id)
   const requiereObs = conceptoSel?.requiere_observacion
-  const valoresDisp = useMemo(() => valores.filter(v => v.caja_id === form.caja_id), [valores, form.caja_id])
+  const valoresPermitidos = useValoresIdsPermitidasParaUsuario(currentUser)
+  const valoresDisp = useMemo(
+    () => valores.filter(v => v.caja_id === form.caja_id && (valoresPermitidos?.has(v.id) ?? false)),
+    [valores, form.caja_id, valoresPermitidos],
+  )
 
   // Cuentas contables permitidas según el concepto. Si no hay concepto seleccionado
   // o el concepto no tiene restricciones, mostramos todas.

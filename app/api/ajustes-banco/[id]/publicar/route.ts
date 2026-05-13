@@ -35,6 +35,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   // ── 2. Movimiento bancario ───────────────────────────────────────────────
   const esEntrada = Number(aj.importe) > 0
   const importeAbs = Math.abs(Number(aj.importe))
+  const fechaOp = aj.fecha || new Date().toISOString().split("T")[0]
   const { error: emov } = await supabase.from("movimientos_banco").insert({
     cuenta_bancaria_id: aj.cuenta_bancaria_id,
     cuenta_bancaria_nombre: aj.cuenta_bancaria_nombre,
@@ -42,6 +43,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     importe: importeAbs,
     moneda: "ARS",
     tipo_operacion: "Ajuste de Banco",
+    fecha_operacion: fechaOp,
     concepto: aj.concepto_nombre,
     documento_origen_tipo: "ajuste_banco",
     documento_origen_id: aj.id,
