@@ -23,6 +23,8 @@ export default function MonedasListado() {
       moduleName="contabilidad_monedas"
       monolithView="monedas"
       monolithLabel="Nueva Moneda"
+      newHref="/contabilidad/monedas/nueva"
+      editHref={r => `/contabilidad/monedas/${r.id}/editar`}
       data={items}
       cargando={cargando}
       searchTerm={search}

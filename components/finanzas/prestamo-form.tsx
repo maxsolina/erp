@@ -536,7 +536,7 @@ export default function PrestamoForm({ initialId }: { initialId?: string }) {
               <CalendarPlus className="w-4 h-4" /> Extender cronograma
             </button>
           )}
-          {isEdit && (estado === "borrador" || estado === "pendiente") && (
+          {isEdit && estado === "pendiente" && (
             <button onClick={() => setMostrarConfirmCancel(true)} disabled={!!accion}
               className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-1">
               <Ban className="w-4 h-4" /> Cancelar Préstamo
@@ -648,9 +648,7 @@ export default function PrestamoForm({ initialId }: { initialId?: string }) {
           <div className="bg-white rounded-lg p-6 shadow-xl max-w-md w-full">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Cancelar préstamo</h3>
             <p className="text-sm text-gray-600 mb-5">
-              {estado === "borrador"
-                ? "Se va a marcar el préstamo como cancelado y se eliminarán las cuotas. Esta acción no se puede deshacer."
-                : "Sólo se puede cancelar si todavía no se pagó ninguna cuota (se asume que fue un error de carga). Se va a anular el movimiento de caja del alta, se generará un asiento de reversa y se eliminarán las cuotas. Si ya hiciste algún pago, primero usá \"Devolver capital\" para cerrar el préstamo. Esta acción no se puede deshacer."}
+              Sólo se puede cancelar si todavía no se pagó ninguna cuota (se asume que fue un error de carga). Se va a anular el movimiento de caja del alta, se generará un asiento de reversa y se eliminarán las cuotas. Si ya hiciste algún pago, primero usá &quot;Devolver capital&quot; para cerrar el préstamo. Esta acción no se puede deshacer.
             </p>
             <div className="flex justify-end gap-3">
               <button onClick={() => setMostrarConfirmCancel(false)} disabled={accion === "Cancelando"}

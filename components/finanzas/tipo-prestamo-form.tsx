@@ -3,16 +3,18 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { AlertCircle, ArrowLeft, Save, X } from "lucide-react"
+import SearchableSelect from "@/components/ui/searchable-select"
 
-const CUENTAS: { key: keyof Form; label: string; placeholder?: string }[] = [
-  { key: "cuenta_prestamo", label: "Cuenta Préstamo", placeholder: "ej: 21010705 Préstamo SGR" },
-  { key: "cuenta_intereses", label: "Cuenta de Intereses", placeholder: "ej: 62010103 Intereses Préstamos Bancarios Recibidos" },
-  { key: "cuenta_intereses_devengar", label: "Cuenta de Intereses a Devengar", placeholder: "ej: 11040403 Intereses Bancarios a Devengar" },
-  { key: "cuenta_iva_devengar", label: "Cuenta de IVA a Devengar", placeholder: "ej: 11040101 I.V.A. Crédito Fiscal" },
-  { key: "cuenta_percepciones_devengar", label: "Cuenta de Percepciones a Devengar", placeholder: "ej: 11040102 I.V.A. Percepciones" },
-  { key: "cuenta_refinanciacion", label: "Cuenta para Saldos Cancelados / Refinanciación", placeholder: "ej: 99999998 Cuenta Puente para Movimientos Bancarios" },
-  { key: "cuenta_preexistente", label: "Cuenta para Préstamos Preexistentes", placeholder: "ej: 21010704 Préstamos Bancarios" },
-  { key: "concepto_liquidacion", label: "Concepto por Defecto en Liquidación" },
+interface CuentaContable { id: string; codigo: string; nombre: string }
+
+const CUENTAS_KEYS: { key: Exclude<keyof Form, "nombre" | "activo" | "concepto_liquidacion">; label: string }[] = [
+  { key: "cuenta_prestamo", label: "Cuenta Préstamo" },
+  { key: "cuenta_intereses", label: "Cuenta de Intereses" },
+  { key: "cuenta_intereses_devengar", label: "Cuenta de Intereses a Devengar" },
+  { key: "cuenta_iva_devengar", label: "Cuenta de IVA a Devengar" },
+  { key: "cuenta_percepciones_devengar", label: "Cuenta de Percepciones a Devengar" },
+  { key: "cuenta_refinanciacion", label: "Cuenta para Saldos Cancelados / Refinanciación" },
+  { key: "cuenta_preexistente", label: "Cuenta para Préstamos Preexistentes" },
 ]
 
 type Form = {
@@ -46,10 +48,18 @@ export default function TipoPrestamoForm({ initialId }: { initialId?: string }) 
   const isEdit = initialId != null
 
   const [form, setForm] = useState<Form>(empty)
+  const [cuentas, setCuentas] = useState<CuentaContable[]>([])
   const [cargando, setCargando] = useState(isEdit)
   const [errorCarga, setErrorCarga] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch("/api/contabilidad/plan-cuentas?activo=true")
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { if (Array.isArray(d)) setCuentas(d.map((c: any) => ({ id: c.id, codigo: c.codigo, nombre: c.nombre }))) })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!isEdit || !initialId) return
@@ -150,17 +160,45 @@ export default function TipoPrestamoForm({ initialId }: { initialId?: string }) 
         <div>
           <p className="text-xs font-semibold text-gray-500 uppercase mb-3">Cuentas Contables</p>
           <div className="grid grid-cols-2 gap-4">
-            {CUENTAS.map(c => (
-              <div key={c.key}>
-                <label className="block text-xs font-medium text-gray-600 mb-1">{c.label}</label>
-                <input
-                  value={form[c.key] as string}
-                  onChange={e => set(c.key, e.target.value as Form[typeof c.key])}
-                  placeholder={c.placeholder}
-                  className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-            ))}
+            {CUENTAS_KEYS.map(c => {
+              // El valor guardado tiene formato "CODIGO Nombre" — extraemos el código para el select.
+              const stored = (form[c.key] as string) ?? ""
+              const codigo = stored.trim().split(/\s+/)[0] || null
+              return (
+                <div key={c.key}>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{c.label}</label>
+                  <SearchableSelect
+                    value={codigo}
+                    onChange={v => {
+                      if (v == null) {
+                        set(c.key, "" as Form[typeof c.key])
+                        return
+                      }
+                      const ct = cuentas.find(x => x.codigo === String(v))
+                      const guardar = ct ? `${ct.codigo} ${ct.nombre}` : String(v)
+                      set(c.key, guardar as Form[typeof c.key])
+                    }}
+                    options={cuentas.map(ct => ({
+                      value: ct.codigo,
+                      label: `${ct.codigo} - ${ct.nombre}`,
+                      searchExtra: ct.nombre,
+                    }))}
+                    placeholder="Elegir cuenta…"
+                    emptyText="Sin resultados"
+                    allowClear
+                  />
+                </div>
+              )
+            })}
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Concepto por Defecto en Liquidación</label>
+              <input
+                value={form.concepto_liquidacion}
+                onChange={e => set("concepto_liquidacion", e.target.value)}
+                className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="Texto libre (ej: Préstamo Bancario)"
+              />
+            </div>
           </div>
         </div>
 

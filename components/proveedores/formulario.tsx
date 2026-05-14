@@ -676,11 +676,11 @@ export default function ProveedorFormulario({
         const updated = await guardarProveedor(payload, inicial.id)
         result = { ...updated, nombre: updated.nombre ?? updated.razon_social ?? "" }
       } else {
-        // TODO: el código se autogenera en cliente (igual que en modulo-compras-v2.tsx).
-        // Idealmente lo asigna el backend; por ahora se mantiene la lógica original.
-        const base = totalProveedoresParaCodigo ?? 0
-        const codigoAuto = `PROV-${String(base + 1).padStart(3, "0")}`
-        const created = await guardarProveedor({ ...payload, codigo: codigoAuto, saldo: 0 })
+        // El código se autogenera en el backend (POST /api/compras/proveedores).
+        // Si el cliente manda codigo vacío, el backend busca el último PROV-XXX
+        // y genera el siguiente, con retries si hay colisión (race condition o
+        // huecos en la numeración).
+        const created = await guardarProveedor({ ...payload, codigo: "", saldo: 0 })
         result = { ...created, nombre: created.nombre ?? created.razon_social ?? "" }
       }
       setProvGuardadoOk(true)

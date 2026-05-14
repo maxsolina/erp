@@ -165,6 +165,37 @@ El panel arranca colapsado, lee de `/api/seguimiento?tipo=X&id=Y`, y muestra la 
 
 **Por qué importa:** estos eventos alimentan informes de productividad ("comprobantes creados por usuario por día") y la auditoría de quién hizo qué. Si un endpoint nuevo no llama a `registrarEvento`, esos datos se pierden.
 
+## Catálogo de permisos — sync rule
+
+Cuando se crea un **módulo nuevo** o se agrega un **item nuevo al sidebar** de un módulo, hay que sumarlo al catálogo de permisos (`catalogo_permisos`) en el mismo PR. Si no, el item es visible para todos los usuarios sin posibilidad de bloquearlo desde el form de Usuarios.
+
+**Cómo funciona el sistema:**
+
+- Tabla `catalogo_permisos` (script `086_modulo_usuarios.sql`): lista canónica de todas las vistas/sub-vistas del sistema. Campos: `id`, `modulo`, `tipo` (`view` | `permission`), `label`, `descripcion`, `orden`, `parent_id` (null para módulos top-level, el id del padre para sub-vistas).
+- Tabla `usuario_permisos`: por usuario, qué vistas tiene apagadas (`vistas[id] === false`). Si no aparece en la tabla, se asume visible.
+- Función `canSee(modulo, subvista?)` en `contexts/erp-context.tsx`: chequea si el módulo padre está habilitado para guards de páginas. **Ignora sub-vistas** para no romper navegación.
+- Función `canSeeItem(modulo, subvista?)`: chequea sub-vistas para filtrar items del sidebar visualmente.
+- Filtrado del topbar en `app/(dashboard)/layout.tsx`: usa el mapa `TOPBAR_TO_VISTA` → cada módulo del topbar mapea a una clave del catálogo. `null` = siempre visible.
+
+**Al crear un item nuevo del sidebar (`permKey`):**
+
+1. Agregar fila en `catalogo_permisos` con `id = "<modulo>.<permKey>"`, `parent_id = "<modulo>"`. Ejemplo:
+   ```sql
+   INSERT INTO catalogo_permisos (id, modulo, tipo, label, descripcion, orden, parent_id) VALUES
+     ('finanzas.movimientos_bancarios', 'finanzas', 'view', 'Movimientos Bancarios',
+      'Libro mayor por cuenta bancaria', 35, 'finanzas')
+   ON CONFLICT (id) DO NOTHING;
+   ```
+2. El `permKey` en `components/sidebars/<modulo>-config.ts` debe coincidir con la parte después del punto. Ejemplo: `{ label: "Movimientos Bancarios", href: "...", permKey: "movimientos_bancarios" }`.
+
+**Al crear un módulo nuevo del topbar:**
+
+1. Agregar fila en `catalogo_permisos` con `parent_id = NULL`.
+2. Mapear en `TOPBAR_TO_VISTA` en `app/(dashboard)/layout.tsx` → del id del topbar a la clave del catálogo.
+3. Las sub-vistas se cargan por separado con `parent_id` apuntando al nuevo módulo.
+
+**Si te olvidás:** el item aparece para todos los usuarios y el admin no tiene forma de ocultarlo desde Configuración → Usuarios → Permisos.
+
 ## Business circuits
 
 `app/circuitos/` documents the document-transition flows (e.g., confirming a sale order → reserves stock + generates GL entry). When adding a new document type, register its circuit there.
