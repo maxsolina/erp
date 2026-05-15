@@ -116,30 +116,62 @@ export async function POST(req: Request) {
     .single()
   if (recErr) return dbError(recErr)
 
-  // 3. Insertar pagos
+  // 3. Insertar pagos. Si un pago es_cheque y no tiene cheque_id, primero
+  //    crea la fila en cheques_terceros (estado=en_cartera) y vincula el id.
   if (Array.isArray(pagos) && pagos.length > 0) {
-    const pagosInsert = pagos.map((p: any) => ({
-      recibo_id: rec.id,
-      valor_id: p.valor_id ?? null,
-      valor_nombre: p.valor_nombre ?? null,
-      tipo_valor: p.tipo_valor ?? null,
-      importe_comprobante: Number(p.importe_comprobante ?? p.importe ?? 0),
-      moneda_comprobante: p.moneda_comprobante ?? p.moneda ?? "ARS",
-      importe: Number(p.importe ?? 0),
-      moneda: p.moneda ?? "ARS",
-      // Cotización por pago — usada por el asiento contable para convertir
-      // moneda extranjera a ARS. Si no viene en el pago, fallback a la del recibo.
-      cotizacion: p.cotizacion != null ? Number(p.cotizacion) : (cotizacion != null ? Number(cotizacion) : null),
-      es_tarjeta: !!p.es_tarjeta,
-      tarjeta_nombre: p.tarjeta_nombre ?? null,
-      cantidad_cuotas: Number(p.cantidad_cuotas ?? 1),
-      numero_cupon: p.numero_cupon ?? null,
-      recargo_porcentaje: Number(p.recargo_porcentaje ?? 0),
-      recargo_importe: Number(p.recargo_importe ?? 0),
-      es_cheque: !!p.es_cheque,
-      cheque_id: p.cheque_id ?? null,
-      cupon_tarjeta_id: p.cupon_tarjeta_id ?? null,
-    }))
+    const pagosInsert: any[] = []
+    for (const p of pagos as any[]) {
+      let chequeId: string | null = p.cheque_id ?? null
+      if (p.es_cheque && !chequeId && p.cheque_numero && p.cheque_banco && p.cheque_fecha_vencimiento) {
+        const { data: chk, error: chkErr } = await supabase
+          .from("cheques_terceros")
+          .insert({
+            numero_cheque: String(p.cheque_numero).trim(),
+            banco_nombre: String(p.cheque_banco).trim(),
+            fecha_vencimiento: p.cheque_fecha_vencimiento,
+            es_endosable: p.cheque_es_endosable ?? true,
+            es_propio: false,
+            importe: Number(p.importe ?? 0),
+            moneda: p.moneda ?? "ARS",
+            caja_id: caja_id ?? null,
+            caja_nombre: caja_nombre ?? null,
+            origen_tipo: "recibo",
+            origen_id: rec.id,
+            origen_nombre: rec.numero ?? null,
+            fecha_ingreso: rec.fecha ?? new Date().toISOString().split("T")[0],
+            estado: "en_cartera",
+          })
+          .select("id")
+          .single()
+        if (chkErr) {
+          return NextResponse.json(
+            { error: `Recibo creado (id:${rec.id}) pero error al crear cheque: ${chkErr.message}` },
+            { status: 207 }
+          )
+        }
+        chequeId = (chk as { id: string }).id
+      }
+      pagosInsert.push({
+        recibo_id: rec.id,
+        valor_id: p.valor_id ?? null,
+        valor_nombre: p.valor_nombre ?? null,
+        tipo_valor: p.tipo_valor ?? null,
+        importe_comprobante: Number(p.importe_comprobante ?? p.importe ?? 0),
+        moneda_comprobante: p.moneda_comprobante ?? p.moneda ?? "ARS",
+        importe: Number(p.importe ?? 0),
+        moneda: p.moneda ?? "ARS",
+        cotizacion: p.cotizacion != null ? Number(p.cotizacion) : (cotizacion != null ? Number(cotizacion) : null),
+        es_tarjeta: !!p.es_tarjeta,
+        tarjeta_nombre: p.tarjeta_nombre ?? null,
+        cantidad_cuotas: Number(p.cantidad_cuotas ?? 1),
+        numero_cupon: p.numero_cupon ?? null,
+        recargo_porcentaje: Number(p.recargo_porcentaje ?? 0),
+        recargo_importe: Number(p.recargo_importe ?? 0),
+        es_cheque: !!p.es_cheque,
+        cheque_id: chequeId,
+        cupon_tarjeta_id: p.cupon_tarjeta_id ?? null,
+      })
+    }
     const { error: pagosErr } = await supabase.from("recibo_pagos").insert(pagosInsert)
     if (pagosErr) {
       return NextResponse.json(

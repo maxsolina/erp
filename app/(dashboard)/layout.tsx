@@ -19,8 +19,7 @@ const TOPBAR_TO_VISTA: Record<string, string | null> = {
   contabilidad: "contabilidad",
   deposito: "stock",
   informes: "reportes",
-  // Mensajes: visible para todos los usuarios autenticados (no necesita permiso especial).
-  mensajes: null,
+  mensajes: "mensajes",
   config: "configuracion",
 }
 

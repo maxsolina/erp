@@ -35,9 +35,33 @@ export async function GET(
     .select("*")
     .eq("recibo_id", id)
 
+  // Hidratar datos del cheque para los pagos que tienen cheque_id
+  const chequeIds = (pagos ?? []).map((p: any) => p.cheque_id).filter(Boolean)
+  let pagosConCheque = pagos ?? []
+  if (chequeIds.length > 0) {
+    const { data: cheques } = await supabase
+      .from("cheques_terceros")
+      .select("id, numero_cheque, banco_nombre, fecha_vencimiento, es_endosable, estado")
+      .in("id", chequeIds)
+    const byId = new Map((cheques ?? []).map((c: any) => [c.id, c]))
+    pagosConCheque = pagosConCheque.map((p: any) => {
+      if (!p.cheque_id) return p
+      const c = byId.get(p.cheque_id)
+      if (!c) return p
+      return {
+        ...p,
+        cheque_numero: (c as any).numero_cheque,
+        cheque_banco: (c as any).banco_nombre,
+        cheque_fecha_vencimiento: (c as any).fecha_vencimiento,
+        cheque_es_endosable: (c as any).es_endosable,
+        cheque_estado: (c as any).estado,
+      }
+    })
+  }
+
   return NextResponse.json({
     ...rec,
-    pagos: pagos ?? [],
+    pagos: pagosConCheque,
     imputaciones: imputaciones ?? [],
   })
 }
@@ -118,28 +142,63 @@ export async function PUT(
     .eq("id", id)
   if (updErr) return dbError(updErr)
 
-  // Reemplazar pagos
+  // Reemplazar pagos. Como el recibo está en borrador, los cheques creados por
+  // este recibo siguen en estado en_cartera — los borramos para recrearlos según
+  // los pagos nuevos.
   await supabase.from("recibo_pagos").delete().eq("recibo_id", id)
+  await supabase.from("cheques_terceros")
+    .delete()
+    .eq("origen_tipo", "recibo")
+    .eq("origen_id", id)
+    .eq("estado", "en_cartera")
   if (Array.isArray(pagos) && pagos.length > 0) {
-    const pagosInsert = pagos.map((p: any) => ({
-      recibo_id: id,
-      valor_id: p.valor_id ?? null,
-      valor_nombre: p.valor_nombre ?? null,
-      tipo_valor: p.tipo_valor ?? null,
-      importe_comprobante: Number(p.importe_comprobante ?? p.importe ?? 0),
-      moneda_comprobante: p.moneda_comprobante ?? p.moneda ?? "ARS",
-      importe: Number(p.importe ?? 0),
-      moneda: p.moneda ?? "ARS",
-      es_tarjeta: !!p.es_tarjeta,
-      tarjeta_nombre: p.tarjeta_nombre ?? null,
-      cantidad_cuotas: Number(p.cantidad_cuotas ?? 1),
-      numero_cupon: p.numero_cupon ?? null,
-      recargo_porcentaje: Number(p.recargo_porcentaje ?? 0),
-      recargo_importe: Number(p.recargo_importe ?? 0),
-      es_cheque: !!p.es_cheque,
-      cheque_id: p.cheque_id ?? null,
-      cupon_tarjeta_id: p.cupon_tarjeta_id ?? null,
-    }))
+    const pagosInsert: any[] = []
+    for (const p of pagos as any[]) {
+      let chequeId: string | null = p.cheque_id ?? null
+      if (p.es_cheque && !chequeId && p.cheque_numero && p.cheque_banco && p.cheque_fecha_vencimiento) {
+        const { data: chk, error: chkErr } = await supabase
+          .from("cheques_terceros")
+          .insert({
+            numero_cheque: String(p.cheque_numero).trim(),
+            banco_nombre: String(p.cheque_banco).trim(),
+            fecha_vencimiento: p.cheque_fecha_vencimiento,
+            es_endosable: p.cheque_es_endosable ?? true,
+            es_propio: false,
+            importe: Number(p.importe ?? 0),
+            moneda: p.moneda ?? "ARS",
+            caja_id: caja_id ?? null,
+            caja_nombre: caja_nombre ?? null,
+            origen_tipo: "recibo",
+            origen_id: id,
+            origen_nombre: null,
+            fecha_ingreso: new Date().toISOString().split("T")[0],
+            estado: "en_cartera",
+          })
+          .select("id")
+          .single()
+        if (chkErr) return dbError(chkErr)
+        chequeId = (chk as { id: string }).id
+      }
+      pagosInsert.push({
+        recibo_id: id,
+        valor_id: p.valor_id ?? null,
+        valor_nombre: p.valor_nombre ?? null,
+        tipo_valor: p.tipo_valor ?? null,
+        importe_comprobante: Number(p.importe_comprobante ?? p.importe ?? 0),
+        moneda_comprobante: p.moneda_comprobante ?? p.moneda ?? "ARS",
+        importe: Number(p.importe ?? 0),
+        moneda: p.moneda ?? "ARS",
+        es_tarjeta: !!p.es_tarjeta,
+        tarjeta_nombre: p.tarjeta_nombre ?? null,
+        cantidad_cuotas: Number(p.cantidad_cuotas ?? 1),
+        numero_cupon: p.numero_cupon ?? null,
+        recargo_porcentaje: Number(p.recargo_porcentaje ?? 0),
+        recargo_importe: Number(p.recargo_importe ?? 0),
+        es_cheque: !!p.es_cheque,
+        cheque_id: chequeId,
+        cupon_tarjeta_id: p.cupon_tarjeta_id ?? null,
+      })
+    }
     const { error: pagosErr } = await supabase.from("recibo_pagos").insert(pagosInsert)
     if (pagosErr) return dbError(pagosErr)
   }

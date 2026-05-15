@@ -355,6 +355,7 @@ interface ERPContextType {
   permisos: Record<string, Record<string, string | boolean>>
   /** ¿Puede ver este módulo? (y opcionalmente una sub-vista). Los superusuarios ven todo. */
   canSee: (modulo: string, subvista?: string) => boolean
+  canSeeItem: (modulo: string, subvista?: string) => boolean
   /** Recarga los permisos desde /api/usuarios/me — útil después de un guardado. */
   reloadPermisos: () => Promise<void>
 
@@ -504,6 +505,12 @@ export function ERPProvider({ children }: { children: ReactNode }) {
   const [isSuperuser, setIsSuperuser] = useState(cachedPerms.isSuperuser)
   const [vistas, setVistas] = useState<Record<string, boolean>>(cachedPerms.vistas)
   const [permisos, setPermisos] = useState<Record<string, Record<string, string | boolean>>>(cachedPerms.permisos)
+  // Flag: true cuando los permisos vienen de un fetch real al servidor (no de la caché).
+  // Mientras `permisosListos=false`, `canSee()` retorna `true` (modo permisivo) para
+  // evitar redirects prematuros en páginas con guard `if (!canSee()) router.replace("/")`.
+  // Si el usuario tenía caché vieja sin permiso de Finanzas y se le acaba de habilitar,
+  // sin esto el topbar muestra Finanzas pero al click el guard de la página redirige a Home.
+  const [permisosListos, setPermisosListos] = useState(false)
   // Si la consulta a /api/usuarios/me devuelve 404 (perfil ERP no cargado todavía),
   // marcamos al usuario como "sin perfil" y le permitimos ver todo (compatibilidad
   // con admin/solinamax/juanperez del array hardcodeado, hasta que se migren a DB).
@@ -527,6 +534,7 @@ export function ERPProvider({ children }: { children: ReactNode }) {
         if (meRes.status === 404) {
           // Perfil ERP no encontrado → modo permisivo (compatibilidad con admin/solinamax/juanperez)
           setSinPerfilDB(true)
+          setPermisosListos(true)
           return
         }
         if (!meRes.ok) return
@@ -549,6 +557,7 @@ export function ERPProvider({ children }: { children: ReactNode }) {
         setIsSuperuser(!!me.is_superuser)
         setVistas(me.vistas ?? {})
         setPermisos(me.permisos ?? {})
+        setPermisosListos(true)
         writeCachedPerms({
           isSuperuser: !!me.is_superuser,
           vistas: me.vistas ?? {},
@@ -566,14 +575,36 @@ export function ERPProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const canSee = useCallback((modulo: string, subvista?: string): boolean => {
+  // canSee — usado por los guards de páginas. Si el módulo padre está habilitado,
+  // permite acceso a TODAS las páginas del módulo (ignora sub-vistas).
+  // Esto evita que un `vistas["modulo.subvista"] = false` accidental rompa el acceso.
+  const canSee = useCallback((modulo: string, _subvista?: string): boolean => {
+    if (!permisosListos && !isSuperuser && !sinPerfilDB) return true
     if (isSuperuser || sinPerfilDB) return true
     if (!modulo) return false
-    if (!vistas[modulo]) return false           // módulo apagado → todo OFF
-    if (!subvista) return true                  // pregunta solo por el módulo → ON
+    const moduloOn = !!vistas[modulo] || Object.keys(vistas).some(k => k.startsWith(`${modulo}.`) && vistas[k] === true)
+    if (!moduloOn) {
+      if (typeof window !== "undefined") {
+        console.warn(`[canSee] Bloqueado: módulo "${modulo}" está apagado.`)
+      }
+      return false
+    }
+    return true
+  }, [isSuperuser, sinPerfilDB, vistas, permisosListos])
+
+  // canSeeItem — usado por el sidebar para filtrar items. Sí respeta sub-vistas:
+  // si `vistas["modulo.subvista"] = false` se oculta el item, pero la página
+  // sigue siendo accesible si el usuario va directo a la URL (eso lo decide `canSee`).
+  const canSeeItem = useCallback((modulo: string, subvista?: string): boolean => {
+    if (!permisosListos && !isSuperuser && !sinPerfilDB) return true
+    if (isSuperuser || sinPerfilDB) return true
+    if (!modulo) return false
+    const moduloOn = !!vistas[modulo] || Object.keys(vistas).some(k => k.startsWith(`${modulo}.`) && vistas[k] === true)
+    if (!moduloOn) return false
+    if (!subvista) return true
     const fullKey = `${modulo}.${subvista}`
-    return vistas[fullKey] !== false            // sub-vista visible salvo que esté explícitamente apagada
-  }, [isSuperuser, sinPerfilDB, vistas])
+    return vistas[fullKey] !== false
+  }, [isSuperuser, sinPerfilDB, vistas, permisosListos])
 
   const reloadPermisos = async (): Promise<void> => {
     try {
@@ -584,6 +615,7 @@ export function ERPProvider({ children }: { children: ReactNode }) {
         setIsSuperuser(false)
         setVistas({})
         setPermisos({})
+        setPermisosListos(true)
         writeCachedPerms({ isSuperuser: false, vistas: {}, permisos: {}, sinPerfilDB: true })
         return
       }
@@ -593,6 +625,7 @@ export function ERPProvider({ children }: { children: ReactNode }) {
       setIsSuperuser(!!me.is_superuser)
       setVistas(me.vistas ?? {})
       setPermisos(me.permisos ?? {})
+      setPermisosListos(true)
       writeCachedPerms({
         isSuperuser: !!me.is_superuser,
         vistas: me.vistas ?? {},
@@ -613,6 +646,7 @@ export function ERPProvider({ children }: { children: ReactNode }) {
       setVistas({})
       setPermisos({})
       setSinPerfilDB(false)
+      setPermisosListos(false)
       clearCachedPerms()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -810,6 +844,7 @@ export function ERPProvider({ children }: { children: ReactNode }) {
             setIsSuperuser(!!me.is_superuser)
             setVistas(me.vistas ?? {})
             setPermisos(me.permisos ?? {})
+            setPermisosListos(true)
             writeCachedPerms({
               isSuperuser: !!me.is_superuser,
               vistas: me.vistas ?? {},
@@ -822,6 +857,7 @@ export function ERPProvider({ children }: { children: ReactNode }) {
             setIsSuperuser(false)
             setVistas({})
             setPermisos({})
+            setPermisosListos(true)
             writeCachedPerms({ isSuperuser: false, vistas: {}, permisos: {}, sinPerfilDB: true })
           }
         } catch {
@@ -1251,6 +1287,7 @@ export function ERPProvider({ children }: { children: ReactNode }) {
     vistas,
     permisos,
     canSee,
+    canSeeItem,
     reloadPermisos,
 
       // Datos maestros

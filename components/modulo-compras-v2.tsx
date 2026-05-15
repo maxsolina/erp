@@ -2515,8 +2515,8 @@ export default function ModuloCompras({
           setSelectedProveedor(prev => prev ? { ...prev, ...updatedConNombre } : null)
           setEditandoProveedor(false)
         } else {
-          const codigoAuto = `PROV-${String(proveedores.length + 1).padStart(3, "0")}`
-          const created = await guardarProveedor({ ...payload, codigo: codigoAuto, saldo: 0 })
+          // Código autogenerado en backend (con retries por colisión).
+          const created = await guardarProveedor({ ...payload, codigo: "", saldo: 0 })
           setProveedores(prev => [{ ...created, nombre: created.nombre ?? created.razon_social ?? "" }, ...prev])
           setCreandoProveedor(false)
           setNuevoProveedor(proveedorFormVacio)

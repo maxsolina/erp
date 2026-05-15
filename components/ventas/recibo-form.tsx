@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   AlertCircle,
@@ -38,6 +38,12 @@ interface Pago {
   recargo_importe: number
   es_cheque: boolean
   cheque_id: string | null
+  // Datos del cheque (solo cuando es_cheque=true): se usan para crear la fila
+  // en cheques_terceros al confirmar el recibo.
+  cheque_numero: string | null
+  cheque_banco: string | null
+  cheque_fecha_vencimiento: string | null
+  cheque_es_endosable: boolean
 }
 
 interface Imputacion {
@@ -191,6 +197,10 @@ export default function ReciboForm({
           recargo_importe: Number(p.recargo_importe ?? 0),
           es_cheque: !!p.es_cheque,
           cheque_id: p.cheque_id ?? null,
+          cheque_numero: p.cheque_numero ?? null,
+          cheque_banco: p.cheque_banco ?? null,
+          cheque_fecha_vencimiento: p.cheque_fecha_vencimiento ?? null,
+          cheque_es_endosable: p.cheque_es_endosable ?? true,
         })))
         setCargandoRec(false)
       })
@@ -345,6 +355,10 @@ export default function ReciboForm({
         recargo_importe: 0,
         es_cheque: false,
         cheque_id: null,
+        cheque_numero: null,
+        cheque_banco: null,
+        cheque_fecha_vencimiento: null,
+        cheque_es_endosable: true,
       }
     })
     setPagos(nuevosPagos)
@@ -475,6 +489,14 @@ export default function ReciboForm({
     if (!reciboClienteId) return "Debe seleccionar un cliente"
     if (!reciboCajaId) return "Debe seleccionar una caja"
     if (pagos.length === 0) return "Debe agregar al menos un medio de pago"
+    // Validar datos del cheque si hay pagos con cheque sin cheque_id (cheques nuevos)
+    for (const p of pagos) {
+      if (p.es_cheque && !p.cheque_id) {
+        if (!p.cheque_numero?.trim()) return `Cargá el N° de cheque para "${p.valor_nombre}"`
+        if (!p.cheque_banco?.trim()) return `Cargá el banco del cheque para "${p.valor_nombre}"`
+        if (!p.cheque_fecha_vencimiento) return `Cargá la fecha de vencimiento del cheque para "${p.valor_nombre}"`
+      }
+    }
     return null
   }
 
@@ -515,6 +537,12 @@ export default function ReciboForm({
       recargo_importe: p.recargo_importe,
       es_cheque: p.es_cheque,
       cheque_id: p.cheque_id,
+      // Datos del cheque (solo se usan si es_cheque=true y cheque_id=null —
+      // el endpoint crea la fila en cheques_terceros al confirmar).
+      cheque_numero: p.cheque_numero,
+      cheque_banco: p.cheque_banco,
+      cheque_fecha_vencimiento: p.cheque_fecha_vencimiento,
+      cheque_es_endosable: p.cheque_es_endosable,
     })),
     imputaciones: imputaciones
       .filter(i => i.asignacion > 0)
@@ -698,6 +726,10 @@ export default function ReciboForm({
       recargo_importe: 0,
       es_cheque: valor.subtipo === "cheque",
       cheque_id: null,
+      cheque_numero: null,
+      cheque_banco: null,
+      cheque_fecha_vencimiento: null,
+      cheque_es_endosable: true,
     }
     setPagos(prev => [...prev, nuevo])
 
@@ -711,6 +743,8 @@ export default function ReciboForm({
   }
 
   const quitarPago = (id: string) => setPagos(prev => prev.filter(p => p.id !== id))
+  const actualizarChequePago = (id: string, patch: Partial<Pago>) =>
+    setPagos(prev => prev.map(p => p.id === id ? { ...p, ...patch } : p))
   const cambiarAsignacion = (id: string, val: number) =>
     setImputaciones(prev => prev.map(i => i.id === id ? { ...i, asignacion: Math.max(0, Math.min(val, i.saldo_actual)) } : i))
 
@@ -1071,8 +1105,12 @@ export default function ReciboForm({
                   </thead>
                   <tbody>
                     {pagos.map(p => (
-                      <tr key={p.id} className="border-b">
-                        <td className="py-1.5 px-3">{p.valor_nombre}</td>
+                      <React.Fragment key={p.id}>
+                      <tr className="border-b">
+                        <td className="py-1.5 px-3">
+                          {p.valor_nombre}
+                          {p.es_cheque && <span className="ml-2 text-xs text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">Cheque</span>}
+                        </td>
                         <td className="text-right px-3 font-medium">
                           {formatCurrency(p.importe, p.moneda)}
                         </td>
@@ -1088,6 +1126,50 @@ export default function ReciboForm({
                           </td>
                         )}
                       </tr>
+                      {p.es_cheque && (
+                        <tr className="border-b bg-amber-50/40">
+                          <td colSpan={esBorrador ? 5 : 4} className="px-3 py-2">
+                            {esBorrador ? (
+                              <div className="grid grid-cols-4 gap-3">
+                                <div>
+                                  <label className="block text-[10px] font-medium text-gray-600 uppercase tracking-wide mb-0.5">N° Cheque *</label>
+                                  <input value={p.cheque_numero ?? ""}
+                                    onChange={e => actualizarChequePago(p.id, { cheque_numero: e.target.value })}
+                                    className="w-full border rounded px-2 py-1 text-sm font-mono" placeholder="00000000" />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-medium text-gray-600 uppercase tracking-wide mb-0.5">Banco *</label>
+                                  <input value={p.cheque_banco ?? ""}
+                                    onChange={e => actualizarChequePago(p.id, { cheque_banco: e.target.value })}
+                                    className="w-full border rounded px-2 py-1 text-sm" placeholder="Galicia, Nación, etc." />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-medium text-gray-600 uppercase tracking-wide mb-0.5">Fecha vencimiento *</label>
+                                  <input type="date" value={p.cheque_fecha_vencimiento ?? ""}
+                                    onChange={e => actualizarChequePago(p.id, { cheque_fecha_vencimiento: e.target.value })}
+                                    className="w-full border rounded px-2 py-1 text-sm" />
+                                </div>
+                                <div className="flex items-end">
+                                  <label className="flex items-center gap-2 cursor-pointer pb-1">
+                                    <input type="checkbox" checked={p.cheque_es_endosable}
+                                      onChange={e => actualizarChequePago(p.id, { cheque_es_endosable: e.target.checked })}
+                                      className="w-4 h-4" />
+                                    <span className="text-xs">Endosable</span>
+                                  </label>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-xs text-gray-700 flex gap-4 flex-wrap">
+                                <span><b>N°</b> <span className="font-mono">{p.cheque_numero || "—"}</span></span>
+                                <span><b>Banco</b> {p.cheque_banco || "—"}</span>
+                                <span><b>Vence</b> {p.cheque_fecha_vencimiento || "—"}</span>
+                                <span><b>{p.cheque_es_endosable ? "Endosable" : "No endosable"}</b></span>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>

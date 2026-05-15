@@ -65,7 +65,7 @@ export function ModuleSidebar({
 }) {
   const pathname = usePathname() ?? ""
   const searchParams = useSearchParams()
-  const { canSee, sucursalActiva } = useERP()
+  const { canSeeItem, sucursalActiva } = useERP()
 
   const currentView = searchParams?.get("view") ?? ""
   const currentModule = searchParams?.get("module") ?? ""
@@ -116,7 +116,7 @@ export function ModuleSidebar({
   }
 
   const itemAllowed = (item: SidebarItem) =>
-    item.permKey ? canSee(config.permModule, item.permKey) : true
+    item.permKey ? canSeeItem(config.permModule, item.permKey) : true
 
   return (
     <div className="flex flex-1 overflow-hidden bg-gray-50 relative">
