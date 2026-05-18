@@ -630,7 +630,13 @@ export function TabBancosPermitidos({ cajaId, bancos, onActualizar, modoEdicion 
     const { error } = await supabase.from("caja_bancos_permitidos").delete().eq("id", id)
     if (error) {
       if (error.code === "23503") {
-        setErrorEliminar("No se puede eliminar este banco: tiene movimientos registrados. Desactivá el valor desde el tab 'Valores Permitidos'.")
+        // Sigue habiendo FKs RESTRICT en alguna tabla que no relajamos en script 130.
+        // El banco no puede borrarse físicamente. Como workaround, desactivá el valor.
+        setErrorEliminar(
+          "No se puede eliminar este banco — alguna referencia interna lo bloquea. " +
+          "Como alternativa: andá al tab 'Valores Permitidos' y destildá 'Activo' para que deje de aparecer en el dropdown sin perder los movimientos. " +
+          "Si querés borrarlo definitivamente, asegurate de correr el script 130_caja_valores_fk_set_null.sql en Supabase."
+        )
       } else {
         setErrorEliminar(error.message)
       }

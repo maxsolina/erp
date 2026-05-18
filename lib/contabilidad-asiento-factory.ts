@@ -11,6 +11,189 @@ export type ResultadoAsiento =
   | { ok: true; asiento_id: string }
   | { ok: false; error: string }
 
+// ─── Caché en memoria para configuración contable estática ─────────────────────
+// El mapeo de cuentas, el plan de cuentas y los diarios cambian rara vez (cuando un
+// admin edita la configuración). Cacheamos los lookups más usados durante
+// CONFIG_CACHE_TTL_MS para evitar pegarle a la DB en cada confirmación.
+// Si admin edita la config, el cache se vence solo en ~30s.
+const CONFIG_CACHE_TTL_MS = 30_000
+interface CacheEntry<T> { value: T; expira: number }
+const configCache = new Map<string, CacheEntry<any>>()
+
+function cacheGet<T>(key: string): T | undefined {
+  const entry = configCache.get(key)
+  if (!entry) return undefined
+  if (Date.now() > entry.expira) {
+    configCache.delete(key)
+    return undefined
+  }
+  return entry.value as T
+}
+function cacheSet<T>(key: string, value: T): void {
+  configCache.set(key, { value, expira: Date.now() + CONFIG_CACHE_TTL_MS })
+}
+
+// Carga (con cache) las cuentas del plan que coincidan con `codigos`.
+// Devuelve un mapa {codigo → {id, codigo, nombre}}.
+async function obtenerCuentasPorCodigos(
+  supabase: SupabaseClient,
+  codigos: string[],
+): Promise<Record<string, { id: string; codigo: string; nombre: string }>> {
+  const sorted = [...codigos].sort()
+  const key = `cuentas:${sorted.join(",")}`
+  const cached = cacheGet<Record<string, { id: string; codigo: string; nombre: string }>>(key)
+  if (cached) return cached
+  const { data } = await supabase
+    .from("contabilidad_plan_cuentas")
+    .select("id, codigo, nombre")
+    .in("codigo", sorted)
+  const map = Object.fromEntries((data ?? []).map((c: any) => [c.codigo, c]))
+  cacheSet(key, map)
+  return map
+}
+
+// Carga (con cache) el ID de una sucursal por nombre. Devuelve null si no existe.
+async function obtenerSucursalIdPorNombre(
+  supabase: SupabaseClient,
+  nombre: string | null,
+): Promise<number | null> {
+  if (!nombre) return null
+  const key = `sucursal:${nombre}`
+  const cached = cacheGet<number | null>(key)
+  if (cached !== undefined) return cached
+  const { data } = await supabase.from("sucursales").select("id").eq("nombre", nombre).maybeSingle()
+  const id = data?.id ?? null
+  cacheSet(key, id)
+  return id
+}
+
+// Inserta asiento + líneas en UN solo round-trip usando la función SQL del
+// script 126. Si la función no existe (DB vieja), hace fallback al camino de
+// 3 queries.  Devuelve el UUID del asiento creado, o tira error.
+interface AsientoCompletoArgs {
+  diario_id: string
+  periodo_id: string | null
+  fecha: string
+  sucursal_id: number | null
+  concepto: string
+  referencia: string | null
+  comprobante_tipo: string
+  comprobante_id?: string | null
+  moneda_original?: string | null
+  cotizacion_aplicada?: number | null
+  tipo_cotizacion?: string | null
+  es_manual?: boolean
+  estado?: string
+  lineas: Array<{
+    cuenta_id: string
+    cuenta_codigo: string
+    cuenta_nombre: string
+    debe: number
+    haber: number
+    descripcion: string | null
+    orden: number
+    importe_moneda_original?: number | null
+  }>
+}
+
+// Flag para no reintentar la RPC si ya falló por inexistente — evita reintento
+// en cada confirmación. Se resetea al reiniciar el proceso.
+let rpcCrearAsientoNoDisponible = false
+
+async function crearAsientoCompleto(
+  supabase: SupabaseClient,
+  args: AsientoCompletoArgs,
+): Promise<{ ok: true; asiento_id: string } | { ok: false; error: string }> {
+  // Camino rápido: 1 RPC que mete header + líneas en una transacción.
+  if (!rpcCrearAsientoNoDisponible) {
+    const { data, error } = await supabase.rpc("contabilidad_crear_asiento_completo", {
+      p_diario_id:           args.diario_id,
+      p_periodo_id:          args.periodo_id,
+      p_fecha:               args.fecha,
+      p_sucursal_id:         args.sucursal_id,
+      p_concepto:            args.concepto,
+      p_referencia:          args.referencia,
+      p_comprobante_tipo:    args.comprobante_tipo,
+      p_comprobante_id:      args.comprobante_id ?? null,
+      p_moneda_original:     args.moneda_original ?? "ARS",
+      p_cotizacion_aplicada: args.cotizacion_aplicada ?? null,
+      p_tipo_cotizacion:     args.tipo_cotizacion ?? null,
+      p_es_manual:           args.es_manual ?? false,
+      p_estado:              args.estado ?? "publicado",
+      p_lineas:              args.lineas,
+    })
+    if (!error && data) return { ok: true, asiento_id: data as string }
+    // Si la función no existe en la DB (script 126 sin correr), caer al fallback.
+    // Códigos de PostgREST/Postgres para función inexistente: 42883, PGRST202.
+    const errStr = (error?.code || "") + " " + (error?.message || "")
+    if (/42883|PGRST202|does not exist|Could not find the function/i.test(errStr)) {
+      rpcCrearAsientoNoDisponible = true
+      console.warn("[asiento-factory] RPC contabilidad_crear_asiento_completo no disponible — usando fallback (3 queries). Corra el script 126.")
+    } else if (error) {
+      return { ok: false, error: `Error al crear asiento (RPC): ${error.message}` }
+    }
+  }
+
+  // Fallback: el camino tradicional de 3 queries secuenciales.
+  const { data: numero } = await supabase.rpc("contabilidad_generar_numero_asiento", {
+    p_diario_id: args.diario_id,
+    p_fecha: args.fecha,
+  })
+  const { data: asiento, error: asientoErr } = await supabase
+    .from("contabilidad_asientos")
+    .insert({
+      numero: numero ?? null,
+      diario_id: args.diario_id,
+      periodo_id: args.periodo_id,
+      fecha: args.fecha,
+      sucursal_id: args.sucursal_id,
+      concepto: args.concepto,
+      referencia: args.referencia,
+      comprobante_tipo: args.comprobante_tipo,
+      comprobante_id: args.comprobante_id ?? null,
+      moneda_original: args.moneda_original ?? "ARS",
+      cotizacion_aplicada: args.cotizacion_aplicada,
+      tipo_cotizacion: args.tipo_cotizacion,
+      es_manual: args.es_manual ?? false,
+      estado: args.estado ?? "publicado",
+    })
+    .select("id")
+    .single()
+  if (asientoErr || !asiento) {
+    return { ok: false, error: `Error al crear asiento: ${asientoErr?.message}` }
+  }
+  const { error: lineasErr } = await supabase
+    .from("contabilidad_asientos_lineas")
+    .insert(args.lineas.map(l => ({ ...l, asiento_id: asiento.id })))
+  if (lineasErr) {
+    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
+    return { ok: false, error: `Error en líneas del asiento: ${lineasErr.message}` }
+  }
+  return { ok: true, asiento_id: asiento.id }
+}
+
+// Carga (con cache) el mapeo de cuentas para un tipo de comprobante.
+async function obtenerMapeoCuentas(
+  supabase: SupabaseClient,
+  tipoOrigen: string,
+): Promise<any[]> {
+  const key = `mapeo:${tipoOrigen}`
+  const cached = cacheGet<any[]>(key)
+  if (cached) return cached
+  const { data } = await supabase
+    .from("contabilidad_mapeo_cuentas")
+    .select(`
+      subtipo, diario_id,
+      cuenta_debe:cuenta_debe_id(id, codigo, nombre),
+      cuenta_haber:cuenta_haber_id(id, codigo, nombre)
+    `)
+    .eq("tipo_origen", tipoOrigen)
+    .eq("activo", true)
+  const arr = data ?? []
+  cacheSet(key, arr)
+  return arr
+}
+
 // ─── Factura de Venta ────────────────────────────────────────────────────────
 // Si la factura es en moneda extranjera (USD), `cotizacion` debe venir con el
 // TC aplicado para convertir subtotal/impuestos/total a ARS. Las columnas
@@ -520,6 +703,15 @@ export async function generarAsientoFacturaCompra(
   }
 ): Promise<ResultadoAsiento> {
 
+  // GUARD CRÍTICO: si la moneda es extranjera, la cotización es OBLIGATORIA.
+  // El fallback silencioso a 1 antes generaba asientos en USD/EUR en vez de ARS.
+  if (factura.moneda && factura.moneda !== "ARS" && (!factura.cotizacion || factura.cotizacion <= 0)) {
+    return {
+      ok: false,
+      error: `Factura Compra ${factura.numero}: moneda ${factura.moneda} sin cotización válida — el asiento se generaría en moneda extranjera. Cargá la cotización del día antes de confirmar.`,
+    }
+  }
+
   // Tasa de conversión: si la factura es en moneda extranjera, multiplicar por cotizacion
   const tc = (factura.moneda && factura.moneda !== "ARS" && (factura.cotizacion ?? 0) > 0)
     ? Number(factura.cotizacion)
@@ -753,6 +945,131 @@ export async function generarAsientoFacturaCompra(
   }
 
   return { ok: true, asiento_id: asiento.id }
+}
+
+// ─── Nota de Crédito / Débito de Compra ──────────────────────────────────────
+// Genera el asiento al confirmar una NC o ND de compra. Reusa el mapeo de
+// factura_compra pero INVIERTE débito/crédito en el caso de NC (porque la NC
+// reduce la deuda con el proveedor, opuesto al alta de la factura).
+//
+// NC compra:
+//   DEBE   2101xxxx  Acreedores              [total — la deuda al proveedor baja]
+//   HABER  cuenta_pagar (o "Compras")        [contra-cuenta — devolución / bonificación]
+//
+// ND compra (cargo adicional):
+//   DEBE   cuenta_pagar (o "Compras")        [contra-cuenta — gasto adicional]
+//   HABER  2101xxxx  Acreedores              [total — la deuda al proveedor sube]
+//
+// Sin desglose de IVA: para simplicidad asume el total como un solo importe
+// contra "Compras". El usuario puede refinar cuentas si configura una mapeo
+// específica para nota_credito_compra / nota_debito_compra en el futuro.
+export async function generarAsientoNotaCompra(
+  supabase: SupabaseClient,
+  nota: {
+    id: number | string
+    numero: string
+    fecha: string
+    proveedor_id?: string | number | null
+    proveedor_nombre?: string | null
+    sucursal?: string | null
+    total: number
+    moneda?: string
+    cotizacion?: number | null
+    es_credito: boolean  // true = NC (baja deuda), false = ND (sube deuda)
+  },
+): Promise<ResultadoAsiento> {
+  // Guard cross-currency
+  if (nota.moneda && nota.moneda !== "ARS" && (!nota.cotizacion || nota.cotizacion <= 0)) {
+    return {
+      ok: false,
+      error: `${nota.es_credito ? "Nota de Crédito" : "Nota de Débito"} ${nota.numero}: moneda ${nota.moneda} sin cotización válida.`,
+    }
+  }
+  const tc = (nota.moneda && nota.moneda !== "ARS" && (nota.cotizacion ?? 0) > 0) ? Number(nota.cotizacion) : 1
+  const totalARS = Math.round(nota.total * tc * 100) / 100
+
+  const fechaDate = nota.fecha.split("T")[0]
+  const comprobanteTipo = nota.es_credito ? "nota_credito_compra" : "nota_debito_compra"
+
+  // Lecturas paralelas (idempotencia + mapeo de factura_compra reused + periodo + sucursal)
+  const [existenteRes, mapeoFc, byCode, periodoRes, sucursal_id] = await Promise.all([
+    supabase.from("contabilidad_asientos").select("id")
+      .eq("comprobante_tipo", comprobanteTipo)
+      .eq("referencia", nota.numero)
+      .eq("estado", "publicado")
+      .maybeSingle(),
+    obtenerMapeoCuentas(supabase, "factura_compra"),
+    obtenerCuentasPorCodigos(supabase, ["21010101", "21010102"]),
+    supabase.rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate }),
+    obtenerSucursalIdPorNombre(supabase, nota.sucursal ?? null),
+  ])
+
+  if (existenteRes.data?.id) return { ok: true, asiento_id: existenteRes.data.id }
+
+  const pm = Object.fromEntries(mapeoFc.map((r: any) => [r.subtipo, r]))
+  const diario_id: string | undefined = pm["acreedores"]?.diario_id ?? pm["compras"]?.diario_id
+  if (!diario_id) return { ok: false, error: "Sin diario configurado para factura_compra (se usa el mismo para NC/ND)." }
+
+  // Acreedores — buscar primero categoria_proveedor.cuenta_pagar
+  let cAcreedores: { id: string; codigo: string; nombre: string } | null = pm["acreedores"]?.cuenta_haber ?? null
+  if (nota.proveedor_id) {
+    const { data: prov } = await supabase
+      .from("proveedores").select("categoria_proveedor").eq("id", nota.proveedor_id).maybeSingle()
+    if (prov?.categoria_proveedor) {
+      const { data: cat } = await supabase
+        .from("categorias_proveedor")
+        .select("cuenta_pagar_id, cuenta_pagar_codigo, cuenta_pagar_nombre")
+        .eq("nombre", prov.categoria_proveedor)
+        .maybeSingle()
+      if (cat?.cuenta_pagar_id) {
+        cAcreedores = {
+          id: cat.cuenta_pagar_id,
+          codigo: cat.cuenta_pagar_codigo ?? "",
+          nombre: cat.cuenta_pagar_nombre ?? "Acreedores",
+        }
+      }
+    }
+  }
+  // Fallback por código según moneda
+  if (!cAcreedores) {
+    const codigoFallback = nota.moneda === "USD" || nota.moneda === "EUR" ? "21010102" : "21010101"
+    cAcreedores = byCode[codigoFallback] ?? null
+  }
+  if (!cAcreedores) return { ok: false, error: "Cuenta Acreedores no configurada." }
+
+  const cCompras = pm["compras"]?.cuenta_debe as { id: string; codigo: string; nombre: string } | null
+  if (!cCompras) return { ok: false, error: "Cuenta Compras no configurada en mapeo factura_compra." }
+
+  type Linea = {
+    cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string
+    debe: number; haber: number; descripcion: string | null; orden: number
+  }
+  const lineas: Linea[] = nota.es_credito
+    ? [
+        { cuenta_id: cAcreedores.id, cuenta_codigo: cAcreedores.codigo, cuenta_nombre: cAcreedores.nombre,
+          debe: totalARS, haber: 0, descripcion: nota.proveedor_nombre ?? null, orden: 0 },
+        { cuenta_id: cCompras.id, cuenta_codigo: cCompras.codigo, cuenta_nombre: cCompras.nombre,
+          debe: 0, haber: totalARS, descripcion: nota.numero, orden: 1 },
+      ]
+    : [
+        { cuenta_id: cCompras.id, cuenta_codigo: cCompras.codigo, cuenta_nombre: cCompras.nombre,
+          debe: totalARS, haber: 0, descripcion: nota.numero, orden: 0 },
+        { cuenta_id: cAcreedores.id, cuenta_codigo: cAcreedores.codigo, cuenta_nombre: cAcreedores.nombre,
+          debe: 0, haber: totalARS, descripcion: nota.proveedor_nombre ?? null, orden: 1 },
+      ]
+
+  return crearAsientoCompleto(supabase, {
+    diario_id,
+    periodo_id: (periodoRes.data as string | null) ?? null,
+    fecha: fechaDate,
+    sucursal_id,
+    concepto: `${nota.es_credito ? "Nota de Crédito" : "Nota de Débito"} de Compra ${nota.numero}`,
+    referencia: nota.numero,
+    comprobante_tipo: comprobanteTipo,
+    moneda_original: nota.moneda ?? "ARS",
+    cotizacion_aplicada: tc !== 1 ? tc : null,
+    lineas,
+  })
 }
 
 // ─── Orden de Pago a Proveedor ───────────────────────────────────────────────
@@ -1218,62 +1535,65 @@ export async function generarAsientoFacturaCircuito(
     cotizacion?: number | null
   }
 ): Promise<ResultadoAsiento> {
+  // GUARD CRÍTICO: si la moneda es extranjera, la cotización es OBLIGATORIA.
+  // El fallback silencioso a 1 antes generaba asientos en USD/EUR en vez de ARS,
+  // descuadrando la contabilidad. Mejor fallar fuerte y obligar a corregir el origen.
+  if (factura.moneda && factura.moneda !== "ARS" && (!factura.cotizacion || factura.cotizacion <= 0)) {
+    return {
+      ok: false,
+      error: `Factura Compra Circuito ${factura.numero}: moneda ${factura.moneda} sin cotización válida — el asiento se generaría en moneda extranjera. Corregí la cotización del documento de origen.`,
+    }
+  }
+
   // Tasa de conversión
   const tc = (factura.moneda && factura.moneda !== "ARS" && (factura.cotizacion ?? 0) > 0)
     ? Number(factura.cotizacion)
     : 1
   const conv = (v: number) => Math.round(v * tc * 100) / 100
 
-  // Idempotencia
-  const { data: existente } = await supabase
-    .from("contabilidad_asientos")
-    .select("id")
-    .eq("comprobante_tipo", "factura_compra")
-    .eq("referencia", factura.numero)
-    .eq("estado", "publicado")
-    .maybeSingle()
-  if (existente?.id) return { ok: true, asiento_id: existente.id }
+  // ─── Lecturas independientes EN PARALELO + CACHE ─────────────────────────
+  //   - Idempotencia y periodo: por-asiento, sin cache
+  //   - Mapeo de cuentas: cacheado 30s (rara vez cambia)
+  //   - Plan de cuentas por código: cacheado 30s (no cambia)
+  //   - Sucursal por nombre: cacheada 30s (rara vez cambia)
+  const fechaDate = factura.fecha.split("T")[0]
+  const cProvCod = factura.moneda === "USD" || factura.moneda === "EUR" ? "21010102" : "21010101"
+  const codigos = ["11050301", "11040101", cProvCod]
 
-  // 1. Obtener diario CMP del mapeo (reutilizamos el mapeo de factura_compra)
-  const { data: mapeo } = await supabase
-    .from("contabilidad_mapeo_cuentas")
-    .select("subtipo, diario_id")
-    .eq("tipo_origen", "factura_compra")
-    .eq("activo", true)
-  const pm = Object.fromEntries((mapeo ?? []).map((r: any) => [r.subtipo, r]))
+  const [existenteRes, mapeo, byCode, periodoRes, sucursal_id] = await Promise.all([
+    supabase
+      .from("contabilidad_asientos")
+      .select("id")
+      .eq("comprobante_tipo", "factura_compra")
+      .eq("referencia", factura.numero)
+      .eq("estado", "publicado")
+      .maybeSingle(),
+    obtenerMapeoCuentas(supabase, "factura_compra"),
+    obtenerCuentasPorCodigos(supabase, codigos),
+    supabase.rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate }),
+    obtenerSucursalIdPorNombre(supabase, factura.sucursal ?? null),
+  ])
+
+  // Idempotencia — si ya existe, devolver inmediatamente
+  if (existenteRes.data?.id) return { ok: true, asiento_id: existenteRes.data.id }
+
+  // 1. Diario
+  const pm = Object.fromEntries(mapeo.map((r: any) => [r.subtipo, r]))
   const diario_id: string | undefined = pm["acreedores"]?.diario_id ?? pm["compras"]?.diario_id
   if (!diario_id) return { ok: false, error: "Sin diario configurado para factura_compra." }
 
-  // 2. Buscar cuentas por código (verificar existencia)
-  const codigos = ["11050301", "11040101", factura.moneda === "USD" || factura.moneda === "EUR" ? "21010102" : "21010101"]
-  const { data: cuentas, error: cErr } = await supabase
-    .from("contabilidad_plan_cuentas")
-    .select("id, codigo, nombre")
-    .in("codigo", codigos)
-  if (cErr) return { ok: false, error: `Error al buscar cuentas: ${cErr.message}` }
-
-  const byCode = Object.fromEntries((cuentas ?? []).map((c: any) => [c.codigo, c]))
+  // 2. Cuentas
   const cPtTransito = byCode["11050301"]
   const cIvaCF      = byCode["11040101"]
-  const cProvCod    = factura.moneda === "USD" || factura.moneda === "EUR" ? "21010102" : "21010101"
   const cProv       = byCode[cProvCod]
 
   if (!cPtTransito) return { ok: false, error: "Cuenta 11050301 (PT en Tránsito) no encontrada en el plan de cuentas." }
   if (!cProv)       return { ok: false, error: `Cuenta ${cProvCod} (Proveedores) no encontrada en el plan de cuentas.` }
 
-  // 3. Período contable
-  const { data: periodo_id } = await supabase
-    .rpc("contabilidad_periodo_para_fecha", { p_fecha: factura.fecha.split("T")[0] })
+  // 3. Período (sucursal ya obtenida arriba)
+  const periodo_id = periodoRes.data
 
-  // 4. Sucursal
-  let sucursal_id: number | null = null
-  if (factura.sucursal) {
-    const { data: suc } = await supabase.from("sucursales").select("id").eq("nombre", factura.sucursal).maybeSingle()
-    sucursal_id = suc?.id ?? null
-  }
-
-  // 5. Construir líneas
-  const fechaDate = factura.fecha.split("T")[0]
+  // 5. Construir líneas (fechaDate ya declarado arriba)
   type Linea = { cuenta_id: string; cuenta_codigo: string; cuenta_nombre: string; debe: number; haber: number; descripcion: string | null; orden: number }
   const lineas: Linea[] = []
 
@@ -1301,33 +1621,19 @@ export async function generarAsientoFacturaCircuito(
     return { ok: false, error: `Partida doble inválida: DEBE=${sumaDebe.toFixed(2)} HABER=${sumaHaber.toFixed(2)}` }
   }
 
-  // 7. Número correlativo
-  const { data: numero } = await supabase.rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario_id, p_fecha: fechaDate })
-
-  // 8. Insertar asiento
-  const { data: asiento, error: asientoErr } = await supabase
-    .from("contabilidad_asientos")
-    .insert({
-      numero: numero ?? null, diario_id, periodo_id: periodo_id ?? null, fecha: fechaDate,
-      sucursal_id, concepto: `Factura Compra Circuito ${factura.numero}`,
-      referencia: factura.numero, comprobante_tipo: "factura_compra",
-      moneda_original: factura.moneda ?? "ARS",
-      cotizacion_aplicada: tc !== 1 ? tc : null,
-      es_manual: false, estado: "publicado",
-    })
-    .select("id").single()
-  if (asientoErr) return { ok: false, error: `Error al crear asiento: ${asientoErr.message}` }
-
-  // 9. Insertar líneas
-  const { error: lineasErr } = await supabase
-    .from("contabilidad_asientos_lineas")
-    .insert(lineas.map(l => ({ ...l, asiento_id: asiento.id })))
-  if (lineasErr) {
-    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
-    return { ok: false, error: `Error en líneas del asiento: ${lineasErr.message}` }
-  }
-
-  return { ok: true, asiento_id: asiento.id }
+  // 7. Crear asiento + líneas en UNA sola llamada (RPC consolidada, con fallback)
+  return crearAsientoCompleto(supabase, {
+    diario_id,
+    periodo_id: (periodo_id as string | null) ?? null,
+    fecha: fechaDate,
+    sucursal_id,
+    concepto: `Factura Compra Circuito ${factura.numero}`,
+    referencia: factura.numero,
+    comprobante_tipo: "factura_compra",
+    moneda_original: factura.moneda ?? "ARS",
+    cotizacion_aplicada: tc !== 1 ? tc : null,
+    lineas,
+  })
 }
 
 // ─── Recepción Circuito (Productos Terminados / PT en Tránsito) ───────────────
@@ -1352,29 +1658,32 @@ export async function generarAsientoRecepcionCircuito(
     total_moneda_original?: number   // total en moneda original antes de convertir
   }
 ): Promise<ResultadoAsiento> {
-  // Idempotencia
-  const { data: existente } = await supabase
-    .from("contabilidad_asientos")
-    .select("id")
-    .eq("comprobante_tipo", "recepcion_circuito")
-    .eq("referencia", recepcion.numero)
-    .eq("estado", "publicado")
-    .maybeSingle()
-  if (existente?.id) return { ok: true, asiento_id: existente.id }
-
   if (recepcion.total <= 0) return { ok: false, error: "El total de la recepción debe ser mayor a 0." }
 
-  // 1. Buscar diario STK desde mapeo (si no existe, retornar error descriptivo)
-  const { data: mapeoStk } = await supabase
-    .from("contabilidad_mapeo_cuentas")
-    .select("diario_id")
-    .eq("tipo_origen", "recepcion_circuito")
-    .eq("activo", true)
-    .limit(1)
-    .maybeSingle()
+  const fechaDate = recepcion.fecha.split("T")[0]
 
-  // Fallback: buscar diario por código "STK"
-  let diario_id: string | undefined = mapeoStk?.diario_id
+  // ─── Lecturas independientes EN PARALELO + CACHE ──────────────────────────
+  // Idempotencia y periodo siguen contra DB. Mapeo, cuentas y sucursal usan
+  // cache en memoria (TTL 30s) — saltan a la DB sólo en el primer hit.
+  const [existenteRes, mapeoStk, byCode, periodoRes, sucursal_id] = await Promise.all([
+    supabase
+      .from("contabilidad_asientos")
+      .select("id")
+      .eq("comprobante_tipo", "recepcion_circuito")
+      .eq("referencia", recepcion.numero)
+      .eq("estado", "publicado")
+      .maybeSingle(),
+    obtenerMapeoCuentas(supabase, "recepcion_circuito"),
+    obtenerCuentasPorCodigos(supabase, ["11050101", "11050102", "11050301"]),
+    supabase.rpc("contabilidad_periodo_para_fecha", { p_fecha: fechaDate }),
+    obtenerSucursalIdPorNombre(supabase, recepcion.sucursal ?? null),
+  ])
+
+  // Idempotencia — si ya existe, devolver inmediatamente
+  if (existenteRes.data?.id) return { ok: true, asiento_id: existenteRes.data.id }
+
+  // 1. Diario STK con fallback
+  let diario_id: string | undefined = mapeoStk[0]?.diario_id
   if (!diario_id) {
     const { data: diarioStk } = await supabase
       .from("contabilidad_diarios")
@@ -1385,32 +1694,17 @@ export async function generarAsientoRecepcionCircuito(
   }
   if (!diario_id) return { ok: false, error: "Sin diario STK (Stock) configurado. Verifique los diarios contables." }
 
-  // 2. Buscar cuentas por código
-  const { data: cuentas } = await supabase
-    .from("contabilidad_plan_cuentas")
-    .select("id, codigo, nombre")
-    .in("codigo", ["11050101", "11050102", "11050301"])
-  const byCode = Object.fromEntries((cuentas ?? []).map((c: any) => [c.codigo, c]))
-
+  // 2. Cuentas
   const cPtTransito = byCode["11050301"]
   const cPT         = byCode["11050101"] ?? byCode["11050102"]  // fallback Mercadería de Reventa
 
   if (!cPtTransito) return { ok: false, error: "Cuenta 11050301 (PT en Tránsito) no encontrada en el plan de cuentas." }
   if (!cPT)         return { ok: false, error: "Cuentas 11050101 / 11050102 (Productos Terminados) no encontradas en el plan de cuentas." }
 
-  // 3. Período contable
-  const { data: periodo_id } = await supabase
-    .rpc("contabilidad_periodo_para_fecha", { p_fecha: recepcion.fecha.split("T")[0] })
-
-  // 4. Sucursal
-  let sucursal_id: number | null = null
-  if (recepcion.sucursal) {
-    const { data: suc } = await supabase.from("sucursales").select("id").eq("nombre", recepcion.sucursal).maybeSingle()
-    sucursal_id = suc?.id ?? null
-  }
+  // 3. Período (sucursal ya obtenida arriba)
+  const periodo_id = periodoRes.data
 
   // 5. Construir líneas (importes en ARS, importes originales si hay conversión)
-  const fechaDate = recepcion.fecha.split("T")[0]
   const lineas = [
     {
       cuenta_id: cPT.id, cuenta_codigo: cPT.codigo, cuenta_nombre: cPT.nombre,
@@ -1430,34 +1724,20 @@ export async function generarAsientoRecepcionCircuito(
     },
   ]
 
-  // 6. Número correlativo
-  const { data: numero } = await supabase.rpc("contabilidad_generar_numero_asiento", { p_diario_id: diario_id, p_fecha: fechaDate })
-
-  // 7. Insertar asiento
-  const { data: asiento, error: asientoErr } = await supabase
-    .from("contabilidad_asientos")
-    .insert({
-      numero: numero ?? null, diario_id, periodo_id: periodo_id ?? null, fecha: fechaDate,
-      sucursal_id, concepto: `Según Recepción ${recepcion.numero} de ${recepcion.proveedor_nombre ?? ""}`,
-      referencia: recepcion.numero, comprobante_tipo: "recepcion_circuito",
-      moneda_original: recepcion.moneda ?? "ARS",
-      cotizacion_aplicada: recepcion.tipo_cambio && recepcion.tipo_cambio !== 1 ? recepcion.tipo_cambio : null,
-      tipo_cotizacion: recepcion.tipo_cotizacion ?? null,
-      es_manual: false, estado: "publicado",
-    })
-    .select("id").single()
-  if (asientoErr) return { ok: false, error: `Error al crear asiento: ${asientoErr.message}` }
-
-  // 8. Insertar líneas
-  const { error: lineasErr } = await supabase
-    .from("contabilidad_asientos_lineas")
-    .insert(lineas.map(l => ({ ...l, asiento_id: asiento.id })))
-  if (lineasErr) {
-    await supabase.from("contabilidad_asientos").delete().eq("id", asiento.id)
-    return { ok: false, error: `Error en líneas del asiento: ${lineasErr.message}` }
-  }
-
-  return { ok: true, asiento_id: asiento.id }
+  // 6. Crear asiento + líneas en UNA sola llamada (RPC consolidada, con fallback)
+  return crearAsientoCompleto(supabase, {
+    diario_id,
+    periodo_id: (periodo_id as string | null) ?? null,
+    fecha: fechaDate,
+    sucursal_id,
+    concepto: `Según Recepción ${recepcion.numero} de ${recepcion.proveedor_nombre ?? ""}`,
+    referencia: recepcion.numero,
+    comprobante_tipo: "recepcion_circuito",
+    moneda_original: recepcion.moneda ?? "ARS",
+    cotizacion_aplicada: recepcion.tipo_cambio && recepcion.tipo_cambio !== 1 ? recepcion.tipo_cambio : null,
+    tipo_cotizacion: recepcion.tipo_cotizacion ?? null,
+    lineas,
+  })
 }
 
 // ─── Reversa genérica de asiento ─────────────────────────────────────────────

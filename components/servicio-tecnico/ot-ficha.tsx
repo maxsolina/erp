@@ -450,14 +450,6 @@ export default function OtFicha({ otId }: { otId: string }) {
         </div>
       </div>
 
-      {/* Lista de Precios — selector que afecta la valuación de repuestos */}
-      {ot.estado !== "entregado" && ot.estado !== "cancelada" && (
-        <ListaPreciosSelector
-          ot={ot}
-          onCambio={recargar}
-        />
-      )}
-
       {/* Info dos columnas */}
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div className="bg-white rounded-lg shadow-sm p-4 space-y-2">
@@ -479,6 +471,12 @@ export default function OtFicha({ otId }: { otId: string }) {
               </div>
             ) : null,
           )}
+          {/* Lista de Precios — fila inline editable (solo en estados activos) */}
+          <ListaPreciosRow
+            ot={ot}
+            onCambio={recargar}
+            readOnly={ot.estado === "entregado" || ot.estado === "cancelada"}
+          />
         </div>
         <div className="bg-white rounded-lg shadow-sm p-4 space-y-2">
           {[
@@ -509,7 +507,7 @@ export default function OtFicha({ otId }: { otId: string }) {
             { key: "equipo", label: "Equipo" },
             { key: "repuestos", label: "Repuestos y Servicios" },
             { key: "control", label: "Control" },
-            { key: "descripcion", label: "Descripción" },
+            { key: "observaciones", label: "Observaciones" },
             { key: "historial", label: "Etapas / Historial" },
             { key: "faltantes", label: "Repuestos Faltantes" },
           ].map(tab => (
@@ -846,9 +844,26 @@ export default function OtFicha({ otId }: { otId: string }) {
               )}
             </div>
           )}
-          {activeTab === "descripcion" && (
-            <div className="text-sm text-gray-700 whitespace-pre-wrap">
-              {ot.descripcion || "Sin descripción"}
+          {activeTab === "observaciones" && (
+            <div className="space-y-4">
+              <div>
+                <div className="text-sm font-medium text-gray-700 mb-1">
+                  Observaciones para la OT
+                  <span className="ml-2 text-xs text-gray-400 font-normal">(visibles en la OT impresa / cliente)</span>
+                </div>
+                <div className="text-sm text-gray-700 whitespace-pre-wrap border border-gray-200 rounded-md px-3 py-2 bg-gray-50 min-h-[60px]">
+                  {ot.descripcion || <span className="text-gray-400 italic">Sin observaciones</span>}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm font-medium text-gray-700 mb-1">
+                  Observaciones internas
+                  <span className="ml-2 text-xs text-gray-400 font-normal">(solo visibles para técnicos, no aparecen en la OT)</span>
+                </div>
+                <div className="text-sm text-gray-700 whitespace-pre-wrap border border-gray-200 rounded-md px-3 py-2 bg-amber-50/30 min-h-[60px]">
+                  {ot.observaciones_internas || <span className="text-gray-400 italic">Sin observaciones internas</span>}
+                </div>
+              </div>
             </div>
           )}
           {activeTab === "historial" && (
@@ -906,10 +921,11 @@ export default function OtFicha({ otId }: { otId: string }) {
   )
 }
 
-// ─── Selector de Lista de Precios ──────────────────────────────────────────
-// Aparece arriba del grid de info de la OT. Lista solo las listas con
-// `visible_en_ot=true`. Al cambiar, hace PATCH a la OT con el nuevo
-// `lista_precios_id` y recarga la ficha.
+// ─── Fila de Lista de Precios ──────────────────────────────────────────────
+// Aparece como una fila más dentro del card de info izquierdo. Lista solo
+// las listas con `visible_en_ot=true`. Al cambiar, hace PATCH a la OT con
+// el nuevo `lista_precios_id` y recarga la ficha. En OTs entregadas o
+// canceladas se muestra como solo lectura (sin select).
 
 interface ListaPreciosOpt {
   id: number
@@ -918,12 +934,14 @@ interface ListaPreciosOpt {
   visible_en_ot?: boolean
 }
 
-function ListaPreciosSelector({
+function ListaPreciosRow({
   ot,
   onCambio,
+  readOnly,
 }: {
   ot: TallerOrdenDetalle
   onCambio: () => Promise<void>
+  readOnly?: boolean
 }) {
   const [listas, setListas] = useState<ListaPreciosOpt[]>([])
   const [cargando, setCargando] = useState(true)
@@ -966,25 +984,38 @@ function ListaPreciosSelector({
   // tildando el flag en la lista correspondiente.
   if (!cargando && listas.length === 0) return null
 
+  // Modo solo lectura (OT entregada/cancelada): texto plano con el nombre.
+  if (readOnly) {
+    const listaSel = listas.find(l => l.id === listaActual)
+    if (!listaSel) return null
+    return (
+      <div className="flex justify-between text-sm">
+        <span className="text-gray-500">Lista de Precios</span>
+        <span className="text-gray-900 font-medium">
+          {listaSel.nombre}
+          {listaSel.moneda_base && listaSel.moneda_base !== "ARS" ? ` (${listaSel.moneda_base})` : ""}
+        </span>
+      </div>
+    )
+  }
+
+  // Modo editable: select inline alineado a la derecha como las demás filas.
   return (
-    <div className="bg-white rounded-lg shadow-sm p-4 mb-4 flex items-center gap-3">
-      <span className="text-sm font-medium text-gray-700 whitespace-nowrap">Lista de Precios:</span>
+    <div className="flex justify-between items-center text-sm">
+      <span className="text-gray-500">Lista de Precios</span>
       <select
         value={listaActual ?? ""}
         onChange={e => cambiarLista(e.target.value ? Number(e.target.value) : null)}
         disabled={cargando || guardando}
-        className="flex-1 border border-gray-300 rounded-md px-3 py-1.5 text-sm disabled:bg-gray-50"
+        className="text-sm font-medium text-gray-900 bg-transparent border border-gray-200 rounded px-2 py-0.5 max-w-[60%] truncate disabled:bg-gray-50 hover:border-gray-400 focus:border-indigo-500 focus:outline-none"
       >
-        <option value="">— Sin lista (precio del producto) —</option>
+        <option value="">— Sin lista —</option>
         {listas.map(l => (
           <option key={l.id} value={l.id}>
             {l.nombre}{l.moneda_base && l.moneda_base !== "ARS" ? ` (${l.moneda_base})` : ""}
           </option>
         ))}
       </select>
-      <span className="text-xs text-gray-500 italic whitespace-nowrap">
-        Define el precio de los repuestos al cargarse en la OT
-      </span>
     </div>
   )
 }

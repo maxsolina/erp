@@ -52,6 +52,8 @@ export default function OtFormulario({ onCancelar, onCreada }: Props) {
   // Preview de repuestos sugeridos (live, según equipo+fallas+lista_precios)
   const [previewRepuestos, setPreviewRepuestos] = useState<RepuestoSugeridoPreview[]>([])
   const [previewTotal, setPreviewTotal] = useState(0)
+  // Tab activo en la card inferior: presupuesto (repuestos sugeridos) vs observaciones
+  const [tabBottom, setTabBottom] = useState<"presupuesto" | "observaciones">("presupuesto")
   const [previewLoading, setPreviewLoading] = useState(false)
 
   useEffect(() => {
@@ -203,20 +205,148 @@ export default function OtFormulario({ onCancelar, onCreada }: Props) {
           </button>
         </div>
       </div>
-      <div className="bg-white rounded-lg shadow-sm p-6">
-        <div className="grid grid-cols-2 gap-6">
-          {/* Col izquierda */}
-          <div className="space-y-4">
+      {/* Dos cards lado a lado: Datos del Cliente + Datos de la OT */}
+      <div className="grid grid-cols-2 gap-6">
+
+        {/* ─── Card: Datos del Cliente ─── */}
+        <div className="bg-white rounded-lg shadow-sm p-6 space-y-4">
+          <h2 className="text-base font-semibold text-amber-900 border-b pb-2 mb-1">
+            Datos del Cliente
+          </h2>
+
+          {/* Cliente full-width (el dropdown necesita espacio para la búsqueda) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
+            <SearchableSelect
+              value={(formOT.cliente_id as string | number | undefined) ?? ""}
+              onChange={v => {
+                const id = v == null ? "" : String(v)
+                const cli = clientes.find(c => String(c.id) === id)
+                setFormOT(prev => ({
+                  ...prev,
+                  cliente_id: id,
+                  cliente_nombre: cli?.nombre ?? null,
+                  celular_contacto:
+                    (prev.celular_contacto as string)?.trim()
+                      ? prev.celular_contacto
+                      : cli?.telefono ?? "",
+                  categoria_cliente: cli?.categoria ?? null,
+                }))
+              }}
+              options={clientes.map(c => ({
+                value: String(c.id),
+                label: c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre,
+                hint: c.telefono ? `Tel: ${c.telefono}` : undefined,
+                searchExtra: `${c.codigo ?? ""} ${c.telefono ?? ""}`,
+              }))}
+              placeholder="Buscar cliente por nombre, código o teléfono…"
+              required
+            />
+          </div>
+
+          {/* Lista de Precios (debajo de Cliente porque depende del cliente) */}
+          {listasPrecios.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Precios</label>
+              <select
+                value={(formOT.lista_precios_id as number | undefined) ?? ""}
+                onChange={e => setField("lista_precios_id", e.target.value ? Number(e.target.value) : null)}
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="">— Sin lista (precio del producto) —</option>
+                {listasPrecios.map(l => (
+                  <option key={l.id} value={l.id}>
+                    {l.nombre}{l.moneda_base && l.moneda_base !== "ARS" ? ` (${l.moneda_base})` : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Define los precios de los repuestos que se cargarán automáticamente.
+              </p>
+            </div>
+          )}
+
+          {/* Celular + Código de Desbloqueo en 2 cols */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Celular de Contacto *</label>
+              <input
+                value={(formOT.celular_contacto as string) ?? ""}
+                onChange={e => setField("celular_contacto", e.target.value)}
+                placeholder="Se completa al elegir cliente"
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Código de Desbloqueo</label>
+              <input
+                value={(formOT.codigo_desbloqueo as string) ?? ""}
+                onChange={e => setField("codigo_desbloqueo", e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+
+          {/* IMEI + Serial en 2 cols (cuando aplican). Si solo uno aplica, va full-width. */}
+          {(mostrarIMEI || mostrarSerial) && (
+            <div className={mostrarIMEI && mostrarSerial ? "grid grid-cols-2 gap-4" : ""}>
+              {mostrarIMEI && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">IMEI</label>
+                  <input
+                    value={(formOT.imei as string) ?? ""}
+                    onChange={e => setField("imei", e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              )}
+              {mostrarSerial && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Serial Number</label>
+                  <input
+                    value={(formOT.serial_number as string) ?? ""}
+                    onChange={e => setField("serial_number", e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            {[
+              { key: "ingresa_apagado", label: "Ingresa Apagado" },
+              { key: "ingresa_mojado", label: "Ingresa Mojado" },
+              { key: "deja_cargador", label: "Deja Cargador" },
+              { key: "requerido_mkt", label: "Requerido por MKT" },
+            ].map(cb => (
+              <label key={cb.key} className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={!!formOT[cb.key]}
+                  onChange={e => setField(cb.key, e.target.checked)}
+                  className="rounded"
+                />
+                {cb.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* ─── Card: Datos de la OT ─── */}
+        <div className="bg-white rounded-lg shadow-sm p-6 space-y-4">
+          <h2 className="text-base font-semibold text-amber-900 border-b pb-2 mb-1">
+            Datos de la OT
+          </h2>
+
+          {/* Área + Tipo OT en 2 cols */}
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Área de Reparación *</label>
               <select
                 value={areaId ?? ""}
                 onChange={e => {
                   const newArea = e.target.value
-                  // Al cambiar área, los selects de tipo/equipo/falla quedan
-                  // filtrados por la nueva área — limpiamos esos 3 para que
-                  // el operador vuelva a elegirlos dentro del nuevo set, pero
-                  // NO tocamos cliente, celular, IMEI, descripción, etc.
                   setFormOT(prev => ({
                     ...prev,
                     area_id: newArea,
@@ -230,9 +360,7 @@ export default function OtFormulario({ onCancelar, onCreada }: Props) {
               >
                 <option value="">Seleccionar...</option>
                 {areas.filter(a => a.activo).map(a => (
-                  <option key={a.id} value={a.id}>
-                    {a.nombre}
-                  </option>
+                  <option key={a.id} value={a.id}>{a.nombre}</option>
                 ))}
               </select>
             </div>
@@ -245,36 +373,38 @@ export default function OtFormulario({ onCancelar, onCreada }: Props) {
               >
                 <option value="">Seleccionar...</option>
                 {tiposFiltrados.map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.nombre}
-                  </option>
+                  <option key={t.id} value={t.id}>{t.nombre}</option>
                 ))}
               </select>
             </div>
+          </div>
 
-            {tipoOTSeleccionado?.es_garantia_compra && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Factura de Origen</label>
-                <input
-                  placeholder="Buscar factura X-XXXXXX"
-                  value={(formOT.factura_origen_id as string) ?? ""}
-                  onChange={e => setField("factura_origen_id", e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-            )}
-            {tipoOTSeleccionado?.es_garantia_reparacion && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">OT de Origen</label>
-                <input
-                  placeholder="Buscar OT por número"
-                  value={(formOT.ot_origen_id as string) ?? ""}
-                  onChange={e => setField("ot_origen_id", e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-            )}
+          {/* Factura/OT de Origen — full-width condicional */}
+          {tipoOTSeleccionado?.es_garantia_compra && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Factura de Origen</label>
+              <input
+                placeholder="Buscar factura X-XXXXXX"
+                value={(formOT.factura_origen_id as string) ?? ""}
+                onChange={e => setField("factura_origen_id", e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+          )}
+          {tipoOTSeleccionado?.es_garantia_reparacion && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">OT de Origen</label>
+              <input
+                placeholder="Buscar OT por número"
+                value={(formOT.ot_origen_id as string) ?? ""}
+                onChange={e => setField("ot_origen_id", e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+          )}
 
+          {/* Equipo + Falla Principal en 2 cols */}
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Equipo *</label>
               <select
@@ -303,242 +433,170 @@ export default function OtFormulario({ onCancelar, onCreada }: Props) {
               >
                 <option value="">Seleccionar...</option>
                 {fallasFiltradas.map(f => (
-                  <option key={f.id} value={f.id}>
-                    {f.nombre}
-                  </option>
+                  <option key={f.id} value={f.id}>{f.nombre}</option>
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Fallas Secundarias <span className="text-gray-400 font-normal">(opcional)</span>
-              </label>
-              <FallasSecundariasSelector
-                fallasOpciones={fallasFiltradas.filter(f => f.id !== fallaId)}
-                selected={(formOT.fallas_secundarias as string[]) ?? []}
-                onChange={ids => setField("fallas_secundarias", ids)}
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Las fallas secundarias se usan para sugerir repuestos extra y calcular el tiempo teórico.
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Categoría de Reparación</label>
-              <input
-                value={categoriaNombre}
-                readOnly
-                className="w-full border rounded-lg px-3 py-2 text-sm bg-gray-50"
-              />
-            </div>
-            {listasPrecios.length > 0 && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Lista de Precios</label>
-                <select
-                  value={(formOT.lista_precios_id as number | undefined) ?? ""}
-                  onChange={e => setField("lista_precios_id", e.target.value ? Number(e.target.value) : null)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                >
-                  <option value="">— Sin lista (precio del producto) —</option>
-                  {listasPrecios.map(l => (
-                    <option key={l.id} value={l.id}>
-                      {l.nombre}{l.moneda_base && l.moneda_base !== "ARS" ? ` (${l.moneda_base})` : ""}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  Define los precios de los repuestos que se cargarán automáticamente.
-                </p>
-              </div>
-            )}
           </div>
 
-          {/* Col derecha */}
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
-              <SearchableSelect
-                value={(formOT.cliente_id as string | number | undefined) ?? ""}
-                onChange={v => {
-                  const id = v == null ? "" : String(v)
-                  const cli = clientes.find(c => String(c.id) === id)
-                  setFormOT(prev => ({
-                    ...prev,
-                    cliente_id: id,
-                    cliente_nombre: cli?.nombre ?? null,
-                    // Auto-completa el celular con el teléfono del cliente la
-                    // primera vez que se elige (o si está vacío). Si el operador
-                    // ya escribió un número distinto, no lo pisa.
-                    celular_contacto:
-                      (prev.celular_contacto as string)?.trim()
-                        ? prev.celular_contacto
-                        : cli?.telefono ?? "",
-                    // Si el cliente tiene categoría (publico/corporativo), se pasa
-                    // al backend para auditoría
-                    categoria_cliente: cli?.categoria ?? null,
-                  }))
-                }}
-                options={clientes.map(c => ({
-                  value: String(c.id),
-                  label: c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre,
-                  hint: c.telefono ? `Tel: ${c.telefono}` : undefined,
-                  searchExtra: `${c.codigo ?? ""} ${c.telefono ?? ""}`,
-                }))}
-                placeholder="Buscar cliente por nombre, código o teléfono…"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Celular de Contacto *</label>
-              <input
-                value={(formOT.celular_contacto as string) ?? ""}
-                onChange={e => setField("celular_contacto", e.target.value)}
-                placeholder="Se completa al elegir cliente"
-                className="w-full border rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
-
-            {mostrarIMEI && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">IMEI</label>
-                <input
-                  value={(formOT.imei as string) ?? ""}
-                  onChange={e => setField("imei", e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-            )}
-            {mostrarSerial && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Serial Number</label>
-                <input
-                  value={(formOT.serial_number as string) ?? ""}
-                  onChange={e => setField("serial_number", e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-            )}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Código de Desbloqueo</label>
-              <input
-                value={(formOT.codigo_desbloqueo as string) ?? ""}
-                onChange={e => setField("codigo_desbloqueo", e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { key: "ingresa_apagado", label: "Ingresa Apagado" },
-                { key: "ingresa_mojado", label: "Ingresa Mojado" },
-                { key: "deja_cargador", label: "Deja Cargador" },
-                { key: "requerido_mkt", label: "Requerido por MKT" },
-              ].map(cb => (
-                <label key={cb.key} className="flex items-center gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={!!formOT[cb.key]}
-                    onChange={e => setField(cb.key, e.target.checked)}
-                    className="rounded"
-                  />
-                  {cb.label}
-                </label>
-              ))}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Presupuesto Estimado</label>
-              <input
-                type="number"
-                value={(formOT.presupuesto_estimado as string) ?? ""}
-                onChange={e => setField("presupuesto_estimado", e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Descripción / Observaciones</label>
-              <textarea
-                rows={3}
-                value={(formOT.descripcion as string) ?? ""}
-                onChange={e => setField("descripcion", e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
+          {/* Fallas Secundarias — full-width (multi-select necesita espacio) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Fallas Secundarias <span className="text-gray-400 font-normal">(opcional)</span>
+            </label>
+            <FallasSecundariasSelector
+              fallasOpciones={fallasFiltradas.filter(f => f.id !== fallaId)}
+              selected={(formOT.fallas_secundarias as string[]) ?? []}
+              onChange={ids => setField("fallas_secundarias", ids)}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Las fallas secundarias se usan para sugerir repuestos extra y calcular el tiempo teórico.
+            </p>
           </div>
+
+          {/* Categoría de Reparación — oculta al operador.
+              El valor se setea automáticamente al elegir la Falla Principal
+              (ver el onChange del select de falla más arriba) y se envía al
+              backend en el payload. Sirve para derivar la OT al técnico
+              correcto pero el operador no necesita verlo. */}
+        </div>
+      </div>
+
+      {/* Card inferior con tabs: Presupuesto + Observaciones */}
+      <div className="bg-white rounded-lg shadow-sm mt-6 overflow-hidden">
+        {/* Tab bar */}
+        <div className="border-b flex">
+          <button
+            type="button"
+            onClick={() => setTabBottom("presupuesto")}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              tabBottom === "presupuesto"
+                ? "border-amber-900 text-amber-900"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Presupuesto
+          </button>
+          <button
+            type="button"
+            onClick={() => setTabBottom("observaciones")}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              tabBottom === "observaciones"
+                ? "border-amber-900 text-amber-900"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Observaciones
+          </button>
         </div>
 
-        {/* Preview de repuestos sugeridos — antes de confirmar la OT */}
-        {(formOT.equipo_id && formOT.falla_principal_id) && (
-          <div className="mt-6 border-t border-gray-200 pt-5">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-700">
-                Repuestos sugeridos
-                {previewLoading && <span className="ml-2 text-xs text-gray-400 italic">cargando…</span>}
-              </h3>
-              {previewRepuestos.length > 0 && (
-                <span className="text-sm">
-                  Total estimado: <strong className="text-gray-900">${previewTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</strong>
-                </span>
+        <div className="p-6">
+          {tabBottom === "presupuesto" && (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700">
+                  Repuestos sugeridos
+                  {previewLoading && <span className="ml-2 text-xs text-gray-400 italic font-normal">cargando…</span>}
+                </h3>
+                {previewRepuestos.length > 0 && (
+                  <span className="text-sm">
+                    Total estimado: <strong className="text-gray-900">${previewTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</strong>
+                  </span>
+                )}
+              </div>
+
+              {!(formOT.equipo_id && formOT.falla_principal_id) ? (
+                <p className="text-sm text-gray-400 py-6 text-center">
+                  Seleccioná Equipo + Falla Principal arriba para ver los repuestos sugeridos.
+                </p>
+              ) : !previewLoading && previewRepuestos.length === 0 ? (
+                <div className="bg-gray-50 border border-gray-200 rounded p-3 text-xs text-gray-600">
+                  No hay repuestos sugeridos para esta combinación de equipo + falla(s). Si esperabas alguno, cargá la combinación en{" "}
+                  <strong>Configuración → Fallas por Equipos</strong> con sus repuestos. Igual podés crear la OT y agregar repuestos a mano después.
+                </div>
+              ) : previewRepuestos.length > 0 && (
+                <>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-2 px-2 text-xs font-semibold text-gray-600 uppercase">Producto</th>
+                        <th className="text-center py-2 px-2 text-xs font-semibold text-gray-600 uppercase w-20">Cant.</th>
+                        <th className="text-center py-2 px-2 text-xs font-semibold text-gray-600 uppercase w-20">Stock</th>
+                        <th className="text-right py-2 px-2 text-xs font-semibold text-gray-600 uppercase w-32">Precio Unit.</th>
+                        <th className="text-right py-2 px-2 text-xs font-semibold text-gray-600 uppercase w-32">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewRepuestos.map(r => (
+                        <tr key={r.producto_id} className={`border-b border-gray-100 ${!r.stock_suficiente ? "bg-red-50" : ""}`}>
+                          <td className="py-2 px-2">
+                            {r.producto_nombre}
+                            {r.precio_origen === "ninguno" && (
+                              <span className="ml-2 text-xs text-amber-700 italic">(sin precio definido)</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-2 text-center">{r.cantidad_sugerida}</td>
+                          <td className="py-2 px-2 text-center">
+                            {r.tipo !== "almacenable" ? (
+                              <span className="text-gray-400 text-xs italic">({r.tipo})</span>
+                            ) : (
+                              <span className={!r.stock_suficiente ? "text-red-600 font-semibold" : "text-gray-700"}>
+                                {r.stock_real}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2 px-2 text-right">
+                            ${Number(r.precio_unitario).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                            <div className="text-[10px] text-gray-400 italic">
+                              {r.precio_origen === "lista" ? "lista" : r.precio_origen === "costo_contable" ? "costo contable" : r.precio_origen === "costo_manual" ? "costo manual" : "—"}
+                            </div>
+                          </td>
+                          <td className="py-2 px-2 text-right font-medium">
+                            ${Number(r.subtotal).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="text-xs text-gray-500 italic mt-2">
+                    Estos repuestos se van a auto-cargar en la OT al crearla. Después podés ajustarlos en la pestaña "Repuestos y Servicios".
+                  </p>
+                </>
               )}
             </div>
+          )}
 
-            {!previewLoading && previewRepuestos.length === 0 && (
-              <div className="bg-gray-50 border border-gray-200 rounded p-3 text-xs text-gray-600">
-                No hay repuestos sugeridos para esta combinación de equipo + falla(s). Si esperabas alguno, cargá la combinación en{" "}
-                <strong>Configuración → Fallas por Equipos</strong> con sus repuestos. Igual podés crear la OT y agregar repuestos a mano después.
+          {tabBottom === "observaciones" && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Observaciones para la OT
+                  <span className="ml-2 text-xs text-gray-400 font-normal">(visibles en la OT impresa / cliente)</span>
+                </label>
+                <textarea
+                  rows={4}
+                  value={(formOT.descripcion as string) ?? ""}
+                  onChange={e => setField("descripcion", e.target.value)}
+                  placeholder="Ej: equipo ingresa con detalles estéticos en la parte trasera"
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                />
               </div>
-            )}
-
-            {previewRepuestos.length > 0 && (
-              <>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-200">
-                      <th className="text-left py-2 px-2 text-xs font-semibold text-gray-600 uppercase">Producto</th>
-                      <th className="text-center py-2 px-2 text-xs font-semibold text-gray-600 uppercase w-20">Cant.</th>
-                      <th className="text-center py-2 px-2 text-xs font-semibold text-gray-600 uppercase w-20">Stock</th>
-                      <th className="text-right py-2 px-2 text-xs font-semibold text-gray-600 uppercase w-32">Precio Unit.</th>
-                      <th className="text-right py-2 px-2 text-xs font-semibold text-gray-600 uppercase w-32">Subtotal</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {previewRepuestos.map(r => (
-                      <tr key={r.producto_id} className={`border-b border-gray-100 ${!r.stock_suficiente ? "bg-red-50" : ""}`}>
-                        <td className="py-2 px-2">
-                          {r.producto_nombre}
-                          {r.precio_origen === "ninguno" && (
-                            <span className="ml-2 text-xs text-amber-700 italic">(sin precio definido)</span>
-                          )}
-                        </td>
-                        <td className="py-2 px-2 text-center">{r.cantidad_sugerida}</td>
-                        <td className="py-2 px-2 text-center">
-                          {r.tipo !== "almacenable" ? (
-                            <span className="text-gray-400 text-xs italic">({r.tipo})</span>
-                          ) : (
-                            <span className={!r.stock_suficiente ? "text-red-600 font-semibold" : "text-gray-700"}>
-                              {r.stock_real}
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2 px-2 text-right">
-                          ${Number(r.precio_unitario).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                          <div className="text-[10px] text-gray-400 italic">
-                            {r.precio_origen === "lista" ? "lista" : r.precio_origen === "costo_contable" ? "costo contable" : r.precio_origen === "costo_manual" ? "costo manual" : "—"}
-                          </div>
-                        </td>
-                        <td className="py-2 px-2 text-right font-medium">
-                          ${Number(r.subtotal).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <p className="text-xs text-gray-500 italic mt-2">
-                  Estos repuestos se van a auto-cargar en la OT al crearla. Después podés ajustarlos en la pestaña "Repuestos y Servicios".
-                </p>
-              </>
-            )}
-          </div>
-        )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Observaciones internas
+                  <span className="ml-2 text-xs text-gray-400 font-normal">(solo visibles para técnicos, no aparecen en la OT)</span>
+                </label>
+                <textarea
+                  rows={4}
+                  value={(formOT.observaciones_internas as string) ?? ""}
+                  onChange={e => setField("observaciones_internas", e.target.value)}
+                  placeholder="Ej: cliente reclamón, llamarlo antes de tocar nada"
+                  className="w-full border rounded-lg px-3 py-2 text-sm bg-amber-50/30"
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {stockWarning && (

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertCircle, ArrowLeft, Plus, Save, Trash2, X } from "lucide-react"
+import { AlertCircle, ArrowLeft, Check, Plus, Save, Trash2, X } from "lucide-react"
 import { useERP } from "@/contexts/erp-context"
 import { formatCurrency } from "@/lib/format"
 import { fetchProductos } from "@/lib/productos-actions"
@@ -106,6 +106,47 @@ export default function OcForm({ initialId }: { initialId?: number }) {
   // Submit state
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Auto-fill de cotización: cuando el usuario cambia moneda o tipo levantamos
+  // la última cotización guardada en contabilidad_cotizaciones. El campo queda
+  // editable por si quiere overridear. Si no hay cotización cargada en el
+  // sistema, el campo queda vacío y el form ya pide al usuario que la cargue
+  // antes de confirmar.
+  //
+  // ⚠️ Se salta el primer render: en modo edición, el form viene de cargar
+  // el cotizacion_dia que ya tenía la OC en la DB y no queremos pisarlo.
+  const [cotizacionAutoOrigen, setCotizacionAutoOrigen] = useState<string | null>(null)
+  const interaccionUsuario = useRef(false)
+  useEffect(() => {
+    // Saltar el primer fire del effect (corresponde al mount inicial).
+    if (!interaccionUsuario.current) {
+      interaccionUsuario.current = true
+      return
+    }
+    if (moneda === "ARS") { setCotizacionDia(null); setCotizacionAutoOrigen(null); return }
+    const params = new URLSearchParams({
+      moneda_codigo: moneda,
+      tipo: tipoCotizacion,
+      latest: "true",
+    })
+    let activo = true
+    fetch(`/api/contabilidad/cotizaciones?${params.toString()}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((data: any) => {
+        if (!activo) return
+        if (data?.tasa) {
+          setCotizacionDia(Number(data.tasa))
+          setCotizacionAutoOrigen(
+            `${data.tipo} del ${String(data.fecha).slice(0, 10)} (cargado de Contabilidad → Cotizaciones)`,
+          )
+        } else {
+          setCotizacionDia(null)
+          setCotizacionAutoOrigen("Sin cotización en el sistema — cargá una en Contabilidad → Cotizaciones")
+        }
+      })
+      .catch(() => {})
+    return () => { activo = false }
+  }, [moneda, tipoCotizacion])
 
   // ─── Loaders ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -289,13 +330,18 @@ export default function OcForm({ initialId }: { initialId?: number }) {
   }
 
   // ─── Submit ─────────────────────────────────────────────────────────────
-  const validar = (): string | null => {
+  const validar = (paraConfirmar = false): string | null => {
     if (!proveedorId || !proveedorNombre) return "Debe seleccionar un proveedor"
     if (!depositoDestinoNombre) return "Debe seleccionar un Depósito Destino"
     if (!ubicacionDestinoNombre) return "Debe seleccionar una Ubicación Destino"
     if (lineasValidas.length === 0) return "Debe agregar al menos una línea de producto"
     const sinProducto = lineas.findIndex(l => !l.producto_id || !l.producto_nombre.trim())
     if (sinProducto !== -1) return `La línea ${sinProducto + 1} no tiene un producto seleccionado`
+    // Para CONFIRMAR (no para guardar borrador), si la moneda no es ARS la cotización es OBLIGATORIA.
+    // Sin esto el asiento contable se generaría en moneda extranjera en vez de pesos.
+    if (paraConfirmar && moneda !== "ARS" && (!cotizacionDia || cotizacionDia <= 0)) {
+      return `La OC está en ${moneda} — completá la "Cotización del Día" antes de confirmar.`
+    }
     return null
   }
 
@@ -334,6 +380,61 @@ export default function OcForm({ initialId }: { initialId?: number }) {
     try {
       const created = await guardarOrdenCompra(payload, isEdit ? initialId : undefined)
       router.push(`/compras/oc/${created.id ?? initialId}`)
+    } catch (e: any) {
+      setError(`Error al guardar: ${e?.message ?? e}`)
+      setGuardando(false)
+    }
+  }
+
+  // Guarda como borrador y NAVEGA INMEDIATAMENTE a la ficha. La ficha
+  // detecta `?confirmar=1` y dispara la confirmación con optimistic UI ahí.
+  // Total perceived wait: ~150-200ms del save, después instant.
+  const confirmar = async () => {
+    const err = validar(true)  // validación estricta — exige cotización si moneda != ARS
+    if (err) { setError(err); return }
+    if (guardando) return
+    setError(null)
+    setGuardando(true)
+
+    const payload: Record<string, any> = {
+      fecha: fecha || new Date().toISOString(),
+      fecha_entrega_estimada: fechaEntregaEstimada || null,
+      proveedor_id: proveedorId,
+      proveedor_nombre: proveedorNombre,
+      moneda,
+      tipo_cotizacion: tipoCotizacion,
+      cotizacion_dia: cotizacionDia,
+      sucursal: sucursalNombre,
+      sucursal_id: sucursalId,
+      deposito_destino: depositoDestinoNombre,
+      deposito_destino_id: depositoDestinoId,
+      ubicacion: ubicacionDestinoNombre,
+      ubicacion_destino: ubicacionDestinoNombre,
+      ubicacion_destino_id: ubicacionDestinoId,
+      termino_pago: terminoPago,
+      metodo_compra: metodoCompra,
+      observaciones: observaciones || null,
+      items: lineas,
+      lineas,
+      subtotal: totalOC,
+      total: totalOC,
+    }
+    if (!isEdit) payload.estado = "borrador"
+
+    try {
+      // 1. Persistir la OC (POST si es nueva, PUT si está en edición)
+      const saved = await guardarOrdenCompra(payload, isEdit ? initialId : undefined)
+      const ocId = saved.id ?? initialId
+      if (!ocId) {
+        setError("No se obtuvo el ID de la OC tras guardar")
+        setGuardando(false)
+        return
+      }
+
+      // 2. Navegar al ficha CON flag para que dispare el /confirmar en background.
+      //    La ficha muestra la OC como "confirmada" al instante (optimistic UI)
+      //    mientras el server genera FC + Recepción + asiento.
+      router.push(`/compras/oc/${ocId}?confirmar=1`)
     } catch (e: any) {
       setError(`Error al guardar: ${e?.message ?? e}`)
       setGuardando(false)
@@ -396,7 +497,16 @@ export default function OcForm({ initialId }: { initialId?: number }) {
             className="px-4 py-2 text-sm bg-indigo-900 hover:bg-indigo-800 text-white rounded-lg disabled:opacity-50 flex items-center gap-1"
           >
             <Save className="w-4 h-4" />
-            {guardando ? "Guardando…" : "Guardar"}
+            {guardando ? "Guardando…" : isEdit ? "Guardar cambios" : "Guardar borrador"}
+          </button>
+          <button
+            onClick={confirmar}
+            disabled={guardando}
+            title="Guarda la OC y la confirma: genera Factura de Compra (pendiente) + Recepción + asiento contable"
+            className="px-4 py-2 text-sm bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg disabled:opacity-50 flex items-center gap-1"
+          >
+            <Check className="w-4 h-4" />
+            {guardando ? "Procesando…" : "Confirmar"}
           </button>
         </div>
       </div>
@@ -604,13 +714,35 @@ export default function OcForm({ initialId }: { initialId?: number }) {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">Cotización del Día</label>
+                  <label className="block text-xs text-gray-500 uppercase tracking-wide mb-1">
+                    Cotización del Día <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="number"
                     value={cotizacionDia ?? ""}
-                    onChange={e => setCotizacionDia(e.target.value ? Number(e.target.value) : null)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                    onChange={e => {
+                      setCotizacionDia(e.target.value ? Number(e.target.value) : null)
+                      setCotizacionAutoOrigen(null) // si edita manualmente, dejar de mostrar el origen auto
+                    }}
+                    placeholder={`1 ${moneda} = ? ARS`}
+                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 ${
+                      cotizacionDia && cotizacionDia > 0
+                        ? "border-gray-300"
+                        : "border-amber-400 bg-amber-50"
+                    }`}
                   />
+                  {cotizacionDia && cotizacionDia > 0 && cotizacionAutoOrigen && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Tomada automáticamente: {cotizacionAutoOrigen}
+                    </p>
+                  )}
+                  {(!cotizacionDia || cotizacionDia <= 0) && (
+                    <p className="text-xs text-amber-700 mt-1">
+                      {cotizacionAutoOrigen
+                        ? cotizacionAutoOrigen
+                        : `Obligatoria para confirmar — sin esto el asiento contable saldría en ${moneda} en vez de ARS.`}
+                    </p>
+                  )}
                 </div>
               </>
             )}

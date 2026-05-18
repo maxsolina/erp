@@ -180,7 +180,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     "equipo_id", "falla_principal_id", "categoria_reparacion_id", "tecnico_id",
     "imei", "serial_number", "codigo_desbloqueo", "ingresa_apagado", "ingresa_mojado",
     "deja_cargador", "requerido_mkt", "presupuesto_estimado", "descripcion",
-    "lista_precios_id",
+    "observaciones_internas", "lista_precios_id",
   ])
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const [k, v] of Object.entries(body)) {

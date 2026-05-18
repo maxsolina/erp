@@ -79,6 +79,7 @@ export async function POST(request: Request) {
       requerido_mkt: body.requerido_mkt ?? false,
       presupuesto_estimado: body.presupuesto_estimado ?? null,
       descripcion: body.descripcion ?? null,
+      observaciones_internas: body.observaciones_internas ?? null,
       tiempo_reparacion_teorico: tiempoData ?? 0,
       lista_precios_id: body.lista_precios_id ? Number(body.lista_precios_id) : null,
       estado: "borrador",
