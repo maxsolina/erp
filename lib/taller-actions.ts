@@ -354,6 +354,7 @@ export interface TallerOrdenTrabajo {
   retrabajo: boolean
   presupuesto_estimado?: number
   descripcion?: string
+  observaciones_internas?: string
   dias_garantia_reparacion?: number
   tiempo_reparacion_teorico?: number
   tiempo_reparacion_real?: number

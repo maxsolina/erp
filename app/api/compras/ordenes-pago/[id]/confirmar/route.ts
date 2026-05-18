@@ -24,64 +24,86 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (!op.importe || op.importe <= 0) return NextResponse.json({ error: "El importe debe ser mayor a 0" }, { status: 400 })
   if (!op.caja_id) return NextResponse.json({ error: "Debe seleccionar una caja" }, { status: 400 })
 
-  // 2. Verificar medios de pago
-  const { data: medios } = await supabase
-    .from("compras_op_medios_pago")
-    .select("*")
-    .eq("op_id", id)
+  // 2-3. Medios + comprobantes + extracto de caja EN PARALELO (todos
+  // independientes entre sí, sólo necesitan op.id / op.caja_id).
+  const [mediosRes, compRes, extractoRes] = await Promise.all([
+    supabase.from("compras_op_medios_pago").select("*").eq("op_id", id),
+    supabase.from("compras_op_comprobantes").select("*").eq("op_id", id),
+    supabase.from("extractos_caja").select("id").eq("caja_id", op.caja_id).eq("estado", "abierto").single(),
+  ])
+  const medios = mediosRes.data
+  const comprobantes = compRes.data
 
   if (!medios || medios.length === 0) {
     return NextResponse.json({ error: "Debe agregar al menos un medio de pago" }, { status: 400 })
   }
 
-  // 3. Obtener comprobantes vinculados
-  const { data: comprobantes } = await supabase
-    .from("compras_op_comprobantes")
-    .select("*")
-    .eq("op_id", id)
-
-  // 4. Validar que importes asignados no superen saldos
+  // 4. Validar que importes asignados no superen saldos.
+  //
+  // Convención (alineada con el form y con el endpoint /cancelar):
+  // `comp.importe` está GUARDADO en la moneda del comprobante (moneda_comp),
+  // NO en la moneda de la OP. Comparación directa contra saldo_original
+  // (que también está en moneda del comprobante).
   const debitos = (comprobantes ?? []).filter(c => c.tipo === "debito")
   const opMoneda = op.moneda ?? "ARS"
   for (const comp of debitos) {
     const facMoneda = comp.moneda_comp ?? "ARS"
-    if (facMoneda !== opMoneda) {
-      // Cross-currency: convertir importe de la OP a la moneda de la factura
-      const cotiz = Number(comp.cotizacion ?? op.cotizacion ?? 0)
-      if (cotiz > 0) {
-        const importeEnMonedaFac = comp.importe / cotiz
-        if (importeEnMonedaFac > comp.saldo_original + 0.01) {
-          return NextResponse.json({
-            error: `El importe asignado a ${comp.referencia} (${comp.importe} ${opMoneda} ≈ ${importeEnMonedaFac.toFixed(2)} ${facMoneda}) supera su saldo (${comp.saldo_original} ${facMoneda})`
-          }, { status: 400 })
-        }
-      }
-      // Sin cotización disponible: no se puede validar, se permite continuar
-    } else {
-      // Misma moneda: comparación directa
-      if (comp.importe > comp.saldo_original + 0.01) {
-        return NextResponse.json({
-          error: `El importe asignado a ${comp.referencia} (${comp.importe}) supera su saldo (${comp.saldo_original})`
-        }, { status: 400 })
-      }
+    if (comp.importe > comp.saldo_original + 0.01) {
+      return NextResponse.json({
+        error: `El importe asignado a ${comp.referencia} (${comp.importe} ${facMoneda}) supera su saldo (${comp.saldo_original} ${facMoneda})`
+      }, { status: 400 })
     }
   }
 
   // 4b. Validar conciliación completa si la OP tiene medios en ARS
+  //
+  // OJO: en OPs mixtas (ej: 5.000 ARS + 300 USD pagando una factura de 600 USD)
+  // hay que convertir TODO a una moneda común antes de sumar. Sumar plano
+  // 5000 + 300 - 600 = 4700 mezcla unidades y da basura.
+  // Convertimos a ARS usando la cotización guardada en cada medio/comprobante
+  // (o, si falla, la cotización de la cabecera de la OP).
   const tieneARS = (medios ?? []).some((m: Record<string, unknown>) => !m.moneda || m.moneda === "ARS")
   if (tieneARS) {
-    const totalMediosComp = (medios ?? []).reduce((s: number, m: Record<string, unknown>) =>
-      s + Number(m.importe_comp ?? m.importe ?? 0), 0)
-    const totalDebitos = (comprobantes ?? [])
+    const opCotiz = Number(op.cotizacion ?? 0)
+    const aARS = (importe: number, moneda: string | undefined, cotPropia?: number): number => {
+      if (!moneda || moneda === "ARS") return importe
+      const cot = Number(cotPropia ?? 0) > 0 ? Number(cotPropia) : opCotiz
+      return cot > 0 ? importe * cot : importe
+    }
+
+    const totalMediosARS = (medios ?? []).reduce((s: number, m: Record<string, unknown>) => {
+      const importe = Number(m.importe ?? m.importe_comp ?? 0)
+      return s + aARS(importe, m.moneda as string, Number(m.cotizacion))
+    }, 0)
+
+    // c.importe viene en la moneda de la factura (no en la moneda de la OP).
+    // Ej: si pagás una factura USD con OP mixta, el form manda importe=600 USD,
+    // moneda_comp="USD". Convertimos a ARS para comparar.
+    const totalDebitosARS = (comprobantes ?? [])
       .filter((c: Record<string, unknown>) => c.tipo === "debito")
-      .reduce((s: number, c: Record<string, unknown>) => s + Number(c.importe ?? 0), 0)
-    const totalCreditos = (comprobantes ?? [])
+      .reduce((s: number, c: Record<string, unknown>) => {
+        const importe = Number(c.importe ?? 0)
+        return s + aARS(importe, c.moneda_comp as string, Number(c.cotizacion))
+      }, 0)
+    const totalCreditosARS = (comprobantes ?? [])
       .filter((c: Record<string, unknown>) => c.tipo === "credito")
-      .reduce((s: number, c: Record<string, unknown>) => s + Number(c.importe ?? 0), 0)
-    const noConciliado = totalMediosComp - totalDebitos + totalCreditos
-    if (noConciliado > 0.01) {
+      .reduce((s: number, c: Record<string, unknown>) => {
+        const importe = Number(c.importe ?? 0)
+        return s + aARS(importe, c.moneda_comp as string, Number(c.cotizacion))
+      }, 0)
+
+    const noConciliadoARS = totalMediosARS - totalDebitosARS + totalCreditosARS
+
+    // Tolerancia: si hay cualquier mezcla de monedas, los redondeos a 2 decimales
+    // en USD se amplifican al convertir × cotización. Ej: 303,5714... USD → 303,57
+    // → ×1400 = 424.998 ARS pierde 2 ARS contra los 425.000 ARS originales.
+    // Usamos $10 ARS de tolerancia para cross-currency, $0,01 para misma moneda.
+    const hayCrossCurrency = (medios ?? []).some(m => (m.moneda ?? opMoneda) !== opMoneda) ||
+      (comprobantes ?? []).some(c => (c.moneda_comp ?? opMoneda) !== opMoneda)
+    const tolerancia = hayCrossCurrency ? 10 : 0.01
+    if (noConciliadoARS > tolerancia) {
       return NextResponse.json({
-        error: `Hay $${noConciliado.toFixed(2)} sin conciliar. La OP contiene medios en ARS y debe estar completamente conciliada antes de confirmar.`
+        error: `Hay $${noConciliadoARS.toFixed(2)} sin conciliar (equivalente en ARS, convertido por cotización). La OP contiene medios en ARS y debe estar completamente conciliada antes de confirmar.`
       }, { status: 400 })
     }
   }
@@ -102,14 +124,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
   if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
 
-  // 6. Registrar movimientos de egreso en caja
-  const { data: extracto } = await supabase
-    .from("extractos_caja")
-    .select("id")
-    .eq("caja_id", op.caja_id)
-    .eq("estado", "abierto")
-    .single()
-
+  // 6. Registrar movimientos de egreso en caja (ya tenemos extracto del paralelo anterior)
+  const extracto = extractoRes.data
   if (!extracto) {
     return NextResponse.json({
       error: `No hay extracto de caja abierto para la caja seleccionada. Abrí un extracto en Finanzas → Extractos de Caja.`
@@ -166,7 +182,11 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     }
   }
 
-  for (const medio of medios) {
+  // Inserts de movimientos_caja + emisiones bancarias EN PARALELO
+  // (antes era N×2 secuenciales — para una OP con 3 medios eran 6 round-trips,
+  // ahora son 2 olas de N en paralelo).
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const insertarMovimiento = async (medio: any) => {
     const movPayload: Record<string, unknown> = {
       extracto_id: extracto.id,
       valor_id: medio.forma_pago_id ?? null,
@@ -179,87 +199,85 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       documento_origen_numero: op.numero,
       estado_movimiento: "confirmado",
     }
-    // Solo enviar documento_origen_id si es UUID válido
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     if (isUUID.test(String(op.id))) movPayload.documento_origen_id = op.id
-
     const { error: movErr } = await supabase.from("movimientos_caja").insert(movPayload)
     if (movErr) {
-      // Si falla por schema cache, reintentar sin estado_movimiento
       if (movErr.message.includes("schema cache") || movErr.message.includes("Could not find")) {
         delete movPayload.estado_movimiento
         const retry = await supabase.from("movimientos_caja").insert(movPayload)
-        if (retry.error) return NextResponse.json({ error: "Error al registrar movimiento en caja: " + retry.error.message }, { status: 500 })
+        if (retry.error) throw new Error("Error al registrar movimiento en caja: " + retry.error.message)
       } else {
-        return NextResponse.json({ error: "Error al registrar movimiento en caja: " + movErr.message }, { status: 500 })
-      }
-    }
-
-    // Movimiento bancario (no-op si el medio de pago no es bancario)
-    if (medio.forma_pago_id) {
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-      await emitirMovimientoBancoSiAplica(supabase, {
-        caja_valor_id: medio.forma_pago_id,
-        tipo: "egreso",
-        importe: Number(medio.importe ?? medio.importe_comp),
-        moneda: medio.moneda ?? op.moneda ?? "ARS",
-        concepto: `OP ${op.numero} - ${op.proveedor_nombre ?? ""}`,
-        fecha_operacion: op.fecha,
-        documento_origen_tipo: "orden_pago",
-        documento_origen_id: isUUID.test(String(op.id)) ? op.id : null,
-        documento_origen_numero: op.numero,
-        tipo_operacion: "Pago a proveedor",
-      })
-    }
-  }
-
-  // 7. Actualizar saldo de facturas vinculadas
-  for (const comp of debitos) {
-    if (comp.factura_id) {
-      const { data: fac } = await supabase
-        .from("facturas_compra")
-        .select("saldo, total")
-        .eq("id", comp.factura_id)
-        .single()
-
-      if (fac) {
-        const facMonedaUpd = comp.moneda_comp ?? "ARS"
-        // Si la factura está en distinta moneda que la OP, convertir el importe
-        const importeEnMonedaFac =
-          facMonedaUpd !== opMoneda
-            ? comp.importe / Math.max(Number(comp.cotizacion ?? op.cotizacion ?? 1), 0.0001)
-            : comp.importe
-        const nuevoSaldo = Math.max(0, (fac.saldo ?? fac.total) - importeEnMonedaFac)
-        await supabase
-          .from("facturas_compra")
-          .update({
-            saldo: nuevoSaldo,
-            estado: nuevoSaldo <= 0.01 ? "pagada" : "pagada_parcial",
-          })
-          .eq("id", comp.factura_id)
+        throw new Error("Error al registrar movimiento en caja: " + movErr.message)
       }
     }
   }
 
-  // 8. Actualizar saldos en comprobantes (notas de crédito)
+  try {
+    await Promise.all([
+      ...medios.map(insertarMovimiento),
+      ...medios
+        .filter(m => m.forma_pago_id)
+        .map(m => emitirMovimientoBancoSiAplica(supabase, {
+          caja_valor_id: m.forma_pago_id,
+          tipo: "egreso",
+          importe: Number(m.importe ?? m.importe_comp),
+          moneda: m.moneda ?? op.moneda ?? "ARS",
+          concepto: `OP ${op.numero} - ${op.proveedor_nombre ?? ""}`,
+          fecha_operacion: op.fecha,
+          documento_origen_tipo: "orden_pago",
+          documento_origen_id: isUUID.test(String(op.id)) ? op.id : null,
+          documento_origen_numero: op.numero,
+          tipo_operacion: "Pago a proveedor",
+        })),
+    ])
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? "Error en movimientos" }, { status: 500 })
+  }
+
+  // 7-8. Actualizar saldos de facturas (débitos) + NCs (créditos) EN PARALELO.
+  // Cada uno requiere read (saldo actual) + write (nuevo saldo) = 2 round-trips.
+  // Antes era 2×N secuenciales — ahora son 2 olas de N en paralelo.
   const creditos = (comprobantes ?? []).filter(c => c.tipo === "credito")
-  for (const comp of creditos) {
-    if (comp.factura_id) {
-      const { data: nc } = await supabase
-        .from("notas_credito_compra")
-        .select("saldo_disponible, total")
-        .eq("id", comp.factura_id)
-        .single()
 
-      if (nc) {
-        const nuevoSaldo = Math.max(0, (nc.saldo_disponible ?? nc.total) - comp.importe)
-        await supabase
-          .from("notas_credito_compra")
-          .update({ saldo_disponible: nuevoSaldo, estado: nuevoSaldo <= 0 ? "aplicada" : "confirmada" })
-          .eq("id", comp.factura_id)
-      }
-    }
+  const actualizarFactura = async (comp: any) => {
+    if (!comp.factura_id) return
+    const { data: fac } = await supabase
+      .from("facturas_compra")
+      .select("saldo, total")
+      .eq("id", comp.factura_id)
+      .single()
+    if (!fac) return
+    // comp.importe ya viene en moneda del comprobante (ver convención
+    // documentada en paso 4). No re-convertir. Descuento directo.
+    const nuevoSaldo = Math.max(0, (fac.saldo ?? fac.total) - Number(comp.importe ?? 0))
+    await supabase
+      .from("facturas_compra")
+      .update({
+        saldo: nuevoSaldo,
+        estado: nuevoSaldo <= 0.01 ? "pagada" : "pagada_parcial",
+      })
+      .eq("id", comp.factura_id)
   }
+
+  const actualizarNC = async (comp: any) => {
+    if (!comp.factura_id) return
+    const { data: nc } = await supabase
+      .from("notas_credito_compra")
+      .select("saldo_disponible, total")
+      .eq("id", comp.factura_id)
+      .single()
+    if (!nc) return
+    const nuevoSaldo = Math.max(0, (nc.saldo_disponible ?? nc.total) - comp.importe)
+    await supabase
+      .from("notas_credito_compra")
+      .update({ saldo_disponible: nuevoSaldo, estado: nuevoSaldo <= 0 ? "aplicada" : "confirmada" })
+      .eq("id", comp.factura_id)
+  }
+
+  await Promise.all([
+    ...debitos.map(actualizarFactura),
+    ...creditos.map(actualizarNC),
+  ])
 
   // 9. Generar asiento contable para la OP
   let asientoError: string | null = null

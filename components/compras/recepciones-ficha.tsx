@@ -136,17 +136,17 @@ export default function RecepcionFicha({ recId }: { recId: number }) {
         <div className="flex items-center gap-3">
           {canEdit && (
             <Link
-              href={`/?module=compras&view=recepciones&id=${rec.id}`}
+              href={`/?module=compras&view=recepciones&recepcion_numero=${encodeURIComponent(rec.numero)}`}
               className="flex items-center gap-2 px-4 py-2 bg-indigo-900 text-white rounded-lg text-sm font-medium hover:bg-indigo-800"
               title="La gestión de cantidades recibidas (con series, colores, etc.) está en el módulo Compras"
             >
               <Edit className="w-4 h-4" />
-              Recibir / Editar
+              Editar
             </Link>
           )}
           {rec.estado === "recibida" && (
             <Link
-              href={`/?module=compras&view=recepciones&id=${rec.id}`}
+              href={`/?module=compras&view=recepciones&recepcion_numero=${encodeURIComponent(rec.numero)}`}
               className="flex items-center gap-2 px-4 py-2 bg-white border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50"
             >
               <XCircle className="w-4 h-4" />

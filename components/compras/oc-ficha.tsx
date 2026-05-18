@@ -1,8 +1,8 @@
 "use client"
 
-import { Fragment, useEffect, useState } from "react"
+import { Fragment, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { CheckCircle, ChevronRight, FileText, Truck } from "lucide-react"
 import BotonVolver from "@/components/ui/boton-volver"
 import SeguimientoPanel from "@/components/seguimiento-panel"
@@ -34,14 +34,20 @@ type TabKey = "productos" | "recepciones" | "facturas" | "observaciones"
 
 export default function OcFicha({ ocId }: { ocId: number }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [oc, setOc] = useState<OrdenCompraDetalle | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [confirmando, setConfirmando] = useState(false)
   const [recepciones, setRecepciones] = useState<any[]>([])
   const [facturas, setFacturas] = useState<any[]>([])
   const [tab, setTab] = useState<TabKey>("productos")
+  const autoConfirmDisparado = useRef(false)
 
   useEffect(() => {
+    // Si venimos del form con ?confirmar=1, ya sabemos que la OC se va a
+    // confirmar inmediatamente — mostrarla como "confirmada" de entrada para
+    // que no se vea el flash "borrador → confirmada".
+    const recienConfirmando = searchParams?.get("confirmar") === "1"
     fetch(`/api/compras/ordenes-compra/${ocId}`)
       .then(async r => {
         if (!r.ok) {
@@ -49,14 +55,35 @@ export default function OcFicha({ ocId }: { ocId: number }) {
           setOc(null)
           return
         }
-        setOc(await r.json())
+        const data = await r.json()
+        if (recienConfirmando && data.estado === "borrador") {
+          data.estado = "confirmada"  // optimistic — el auto-confirm en el efecto siguiente persiste
+        }
+        setOc(data)
       })
       .catch(err => {
         console.error(err)
         setError("Error de red al cargar la OC")
         setOc(null)
       })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ocId])
+
+  // Auto-confirmar si venimos del form con ?confirmar=1 — el form solo
+  // guardó la OC en borrador y nos delegó la confirmación para mostrar
+  // optimistic UI inmediato acá.
+  // No chequeo oc.estado === "borrador" porque el fetch ya lo cambió
+  // optimistamente a "confirmada" para evitar el flash visual. El ref evita
+  // re-firing en re-renders.
+  useEffect(() => {
+    if (!oc || autoConfirmDisparado.current) return
+    if (searchParams?.get("confirmar") !== "1") return
+    autoConfirmDisparado.current = true
+    // Sacar el param de la URL para que un refresh no vuelva a disparar
+    router.replace(`/compras/oc/${ocId}`, { scroll: false })
+    confirmarOC(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oc, searchParams])
 
   useEffect(() => {
     if (!oc) return
@@ -79,70 +106,129 @@ export default function OcFicha({ ocId }: { ocId: number }) {
       .catch(() => {})
   }, [oc, ocId])
 
-  const confirmarOC = async () => {
+  // Si `skipDialog` es true (auto-trigger desde el form), no preguntamos confirmación.
+  const confirmarOC = async (skipDialog = false) => {
     if (!oc || confirmando) return
-    if (!confirm(`Confirmar la OC ${oc.numero}? Se generará la Recepción asociada.`)) return
+    if (!skipDialog && !confirm(`Confirmar la OC ${oc.numero}? Se generará la Recepción asociada.`)) return
     setConfirmando(true)
-    try {
-      const provRes = await fetch(`/api/compras/proveedores/${oc.proveedor_id}`)
-      const prov = provRes.ok ? await provRes.json() : null
-      const aplicaCircuito = prov?.aplica_circuito_compras === true
 
-      if (aplicaCircuito) {
-        const res = await fetch(`/api/compras/ordenes-compra/${oc.id}/confirmar`, { method: "POST" })
-        if (!res.ok) {
-          const json = await res.json().catch(() => ({}))
-          alert(`Error al confirmar OC: ${json.error ?? res.statusText}`)
-          setConfirmando(false)
+    // OPTIMISTIC UI: el estado pasa a "confirmada" YA en pantalla.
+    // El badge cambia, el botón Confirmar desaparece, los tabs se reordenan,
+    // y aparece un placeholder de Recepción "REC-•••••" sin esperar al server.
+    // Si el server falla, revertimos.
+    const ocAnterior = oc
+    const ocOptimista = { ...oc, estado: "confirmada" as any }
+    setOc(ocOptimista as OrdenCompraDetalle)
+
+    const recPlaceholder = {
+      id: -oc.id,  // ID negativo = placeholder; se reemplaza cuando vuelve el server
+      numero: "REC-•••••",
+      fecha: new Date().toISOString(),
+      estado: "esperando_recepcion",
+      proveedor_nombre: oc.proveedor_nombre,
+      documento_origen_id: oc.id,
+      documento_origen_tipo: "oc",
+      orden_compra_id: oc.id,
+      es_placeholder: true,
+    }
+    setRecepciones(prev => [recPlaceholder, ...prev])
+
+    try {
+      // El endpoint atómico ya valida proveedor/circuito; no hace falta
+      // la request previa a /api/compras/proveedores/[id].
+      const res = await fetch(`/api/compras/ordenes-compra/${oc.id}/confirmar`, { method: "POST" })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        // Si el endpoint atómico devuelve 400 porque el proveedor NO aplica circuito
+        // (es el único error de "no es circuito" — el resto son errores reales),
+        // caemos al flujo manual de creación de recepción.
+        if (res.status === 400 && /circuito/i.test(json?.error ?? "")) {
+          await confirmarManualSinCircuito()
           return
         }
-        window.location.reload()
+        // Error real → revertir
+        setOc(ocAnterior)
+        setRecepciones(prev => prev.filter(r => r.id !== -oc.id))
+        alert(`Error al confirmar OC: ${json.error ?? res.statusText}`)
+        setConfirmando(false)
         return
       }
 
-      const ahora = new Date().toISOString()
-      const esInmediato = (oc as any).metodo_compra === "inmediato"
-      const lineas = (oc as any).lineas ?? (oc as any).items ?? []
-      const recPayload = {
-        fecha: ahora,
-        orden_compra_id: oc.id,
-        orden_compra_numero: oc.numero,
-        proveedor_id: oc.proveedor_id,
-        proveedor_nombre: oc.proveedor_nombre,
-        estado: esInmediato ? "confirmada" : "borrador",
-        documento_origen_tipo: "oc",
-        documento_origen_id: oc.id,
-        documento_origen_ref: oc.numero,
-        sucursal: (oc as any).sucursal ?? "",
-        deposito_destino: (oc as any).deposito_destino ?? "",
-        deposito_destino_id: (oc as any).deposito_destino_id ?? null,
-        ubicacion: (oc as any).ubicacion ?? "",
-        fecha_esperada: (oc as any).fecha_entrega_esperada ?? null,
-        items: lineas.map((l: any) => ({
-          producto_id: l.producto_id,
-          producto_nombre: l.producto_nombre,
-          producto_sku: l.producto_sku ?? "",
-          cantidad_pedida: l.cantidad,
-          cantidad_recibida: esInmediato ? l.cantidad : 0,
-          precio_unitario: l.precio_unitario,
-          udm: l.udm ?? "un",
-          estado_linea: esInmediato ? "recibido" : "pendiente",
-          tiene_serie: l.tiene_serie ?? false,
-          requiere_color: l.requiere_color ?? false,
-          requiere_bateria: l.requiere_bateria ?? false,
-          requiere_outlet: l.requiere_outlet ?? false,
-          requiere_observaciones: l.requiere_observaciones ?? false,
-          nac: l.nac ?? false,
-        })),
-        total: esInmediato ? oc.total : 0,
+      // Éxito: reemplazar el placeholder con los datos reales que devolvió el server
+      const { oc: ocActualizada, factura, recepcion } = json
+      if (ocActualizada) setOc(prev => prev ? { ...prev, ...ocActualizada } as OrdenCompraDetalle : prev)
+      if (recepcion) {
+        setRecepciones(prev => prev.map(r => r.id === -oc.id ? recepcion : r))
+      } else {
+        setRecepciones(prev => prev.filter(r => r.id !== -oc.id))
       }
-      const ocEstadoNuevo = esInmediato ? "completa" : "confirmada"
-      await Promise.all([
+      if (factura) {
+        setFacturas(prev => [factura, ...prev])
+      }
+      setConfirmando(false)
+    } catch (e: any) {
+      // Error de red → revertir
+      setOc(ocAnterior)
+      setRecepciones(prev => prev.filter(r => r.id !== -oc.id))
+      alert(`Error al confirmar OC: ${e?.message ?? e}`)
+      setConfirmando(false)
+    }
+  }
+
+  // Flujo manual sin circuito de compras: crear recepción + actualizar OC en paralelo.
+  // Mantiene el mismo patrón de optimistic UI: el estado ya cambió, sólo persistimos.
+  const confirmarManualSinCircuito = async () => {
+    if (!oc) return
+    const ahora = new Date().toISOString()
+    const esInmediato = (oc as any).metodo_compra === "inmediato"
+    const lineas = (oc as any).lineas ?? (oc as any).items ?? []
+    const recPayload = {
+      fecha: ahora,
+      orden_compra_id: oc.id,
+      orden_compra_numero: oc.numero,
+      proveedor_id: oc.proveedor_id,
+      proveedor_nombre: oc.proveedor_nombre,
+      estado: esInmediato ? "confirmada" : "borrador",
+      documento_origen_tipo: "oc",
+      documento_origen_id: oc.id,
+      documento_origen_ref: oc.numero,
+      sucursal: (oc as any).sucursal ?? "",
+      deposito_destino: (oc as any).deposito_destino ?? "",
+      deposito_destino_id: (oc as any).deposito_destino_id ?? null,
+      ubicacion: (oc as any).ubicacion ?? "",
+      fecha_esperada: (oc as any).fecha_entrega_esperada ?? null,
+      items: lineas.map((l: any) => ({
+        producto_id: l.producto_id,
+        producto_nombre: l.producto_nombre,
+        producto_sku: l.producto_sku ?? "",
+        cantidad_pedida: l.cantidad,
+        cantidad_recibida: esInmediato ? l.cantidad : 0,
+        precio_unitario: l.precio_unitario,
+        udm: l.udm ?? "un",
+        estado_linea: esInmediato ? "recibido" : "pendiente",
+        tiene_serie: l.tiene_serie ?? false,
+        requiere_color: l.requiere_color ?? false,
+        requiere_bateria: l.requiere_bateria ?? false,
+        requiere_outlet: l.requiere_outlet ?? false,
+        requiere_observaciones: l.requiere_observaciones ?? false,
+        nac: l.nac ?? false,
+      })),
+      total: esInmediato ? oc.total : 0,
+    }
+    const ocEstadoNuevo = esInmediato ? "completa" : "confirmada"
+    try {
+      const [recCreada] = await Promise.all([
         guardarRecepcion(recPayload),
         guardarOrdenCompra({ estado: ocEstadoNuevo }, oc.id),
       ])
-      window.location.reload()
+      setOc(prev => prev ? { ...prev, estado: ocEstadoNuevo as any } : prev)
+      if (recCreada) {
+        setRecepciones(prev => prev.map(r => r.id === -oc.id ? recCreada : r))
+      }
+      setConfirmando(false)
     } catch (e: any) {
+      setRecepciones(prev => prev.filter(r => r.id !== -oc.id))
       alert(`Error al confirmar OC: ${e?.message ?? e}`)
       setConfirmando(false)
     }

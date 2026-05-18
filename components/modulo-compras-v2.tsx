@@ -3,7 +3,18 @@
 import React, { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import ComprobantePopup, { type ComprobantePopupProps } from "./comprobante-popup"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
+
+// Componente helper: redirige a /compras/op desde dentro del monolito cuando
+// el activeView quedó en "ordenes_pago" (típicamente porque venimos de un Link
+// viejo o de navegación interna). Hace router.replace en useEffect — fuera de
+// render para no romper React.
+function OrdenesPagoRedirect({ router }: { router: ReturnType<typeof useRouter> }) {
+  React.useEffect(() => {
+    router.replace("/compras/op")
+  }, [router])
+  return <div className="p-12 text-center text-gray-500">Llevándote a Órdenes de Pago…</div>
+}
 import ReactDOM from "react-dom"
 import { Search, Filter, ChevronDown, ChevronRight, X, Plus, FileText, Truck, Receipt, CreditCard, Users, DollarSign, Package, ArrowRight, Eye, Edit, Trash2, Download, Mail, CheckCircle, Clock, AlertCircle, XCircle, MoreHorizontal, Building2, MapPin, Phone, Globe, Calendar, Tag, Percent, Star, TrendingUp, RefreshCw, User, Warehouse, Save, MessageSquare, Settings, Lock, Unlock, FileBox, Ship, Plane, Pencil, ChevronLeft, ChevronRight as ChevronRightIcon } from "lucide-react"
 import BotonVolver from "./ui/boton-volver"
@@ -1259,6 +1270,7 @@ export default function ModuloCompras({
   // Active view state
   // Si embedded=true, forcedView define la vista. Si no, sincroniza con ?view= en la URL.
   const searchParams = useSearchParams()
+  const router = useRouter()
   const initialView = forcedView ?? searchParams?.get("view") ?? "ordenes_compra"
   const [activeView, setActiveView] = useState(initialView)
   useEffect(() => {
@@ -1747,6 +1759,11 @@ export default function ModuloCompras({
     total_conciliado: number; usuario: string; estado: 'activa' | 'cancelada'
     fecha_cancelacion: string | null
     aplicaciones: {debito_tipo: string; debito_numero: string; credito_tipo: string; credito_numero: string; monto: number; debito_moneda?: string; credito_moneda?: string; cotizacion?: number}[]
+    // Flags para distinguir conciliaciones manuales vs auto-generadas por OP confirmar.
+    // Las de OP no se revierten desde acá — hay que cancelar la OP directamente.
+    esOP?: boolean
+    opNumero?: string
+    opId?: string
   }[]>([])
   const [cdcTab, setCdcTab] = useState<'conciliar' | 'historial'>('conciliar')
   const [cdcFiltroTextoDb, setCdcFiltroTextoDb] = useState('')
@@ -3285,7 +3302,60 @@ export default function ModuloCompras({
     const aplicaCircuito = (provOC as any)?.aplica_circuito_compras === true
 
     if (aplicaCircuito) {
-      // ── Circuito de compras: endpoint atómico ──
+      // ── Circuito de compras: endpoint atómico con OPTIMISTIC UI ──
+      // Igual que en la confirmación de recepción, primero actualizamos el UI
+      // local con datos provisorios para que el usuario vea la transición
+      // inmediata. El server llega después y completa con FC + Recepción reales.
+      // Si el server falla, revertimos el estado original.
+      const ocOptimista: OrdenCompra = {
+        ...oc,
+        estado: "confirmada" as any,
+        // FC y Recepción todavía no existen — se llenan cuando vuelve el server
+        factura_circuito_id: -1 as any,      // placeholder negativo = "creando"
+        recepcion_circuito_id: -1 as any,
+      }
+      setOrdenesCompra(prev => prev.map(o => o.id === oc.id ? ocOptimista : o))
+      setSelectedOC(ocOptimista)
+
+      // Placeholder de Recepción en el listado para que aparezca al toque
+      const recPlaceholder: Recepcion = {
+        id: -oc.id,  // ID negativo = placeholder (se reemplaza al volver el server)
+        numero: "REC-•••••",
+        fecha: ahora,
+        estado: "esperando_recepcion" as any,
+        proveedor_id: oc.proveedor_id,
+        proveedor_nombre: oc.proveedor_nombre,
+        documento_origen_tipo: "oc",
+        documento_origen_id: oc.id,
+        documento_origen_ref: oc.numero,
+        sucursal: oc.sucursal ?? "",
+        deposito_destino: oc.deposito_destino ?? "",
+        deposito_destino_id: (oc as any).deposito_destino_id ?? null,
+        ubicacion: (oc as any).ubicacion ?? "",
+        lineas: (oc.lineas ?? []).map(l => ({
+          producto_id: l.producto_id,
+          producto_nombre: l.producto_nombre,
+          producto_sku: l.producto_sku ?? "",
+          cantidad_pedida: l.cantidad,
+          cantidad_recibida: 0,
+          precio_unitario: l.precio_unitario,
+          estado_linea: "pendiente" as const,
+          udm: l.udm ?? "un",
+          tiene_serie: l.tiene_serie ?? false,
+          requiere_color: l.requiere_color ?? false,
+          requiere_bateria: l.requiere_bateria ?? false,
+          requiere_outlet: l.requiere_outlet ?? false,
+          requiere_observaciones: l.requiere_observaciones ?? false,
+          nac: l.nac ?? false,
+        })),
+      } as any
+      setRecepciones(prev => [recPlaceholder, ...prev])
+
+      // Liberar el spinner del botón YA — el usuario percibe la confirmación
+      // como instantánea. El trabajo real sigue en background.
+      setConfirmandoOC(false)
+
+      // Server-side: el endpoint atómico ya está corriendo en paralelo.
       try {
         const res = await fetch(`/api/compras/ordenes-compra/${oc.id}/confirmar`, { method: "POST" })
         const json = await res.json()
@@ -3293,7 +3363,7 @@ export default function ModuloCompras({
 
         const { oc: ocActualizada, factura, recepcion } = json
 
-        // Actualizar OC en estado local
+        // Reemplazar el placeholder con los datos reales
         const ocConfirmada: OrdenCompra = {
           ...oc,
           ...ocActualizada,
@@ -3302,16 +3372,11 @@ export default function ModuloCompras({
           recepcion_circuito_id: recepcion?.id ?? null,
         }
         setOrdenesCompra(prev => prev.map(o => o.id === oc.id ? ocConfirmada : o))
-        setSelectedOC(ocConfirmada)
+        setSelectedOC(prev => prev && prev.id === oc.id ? ocConfirmada : prev)
 
-        // Agregar factura al listado local
-        if (factura) {
-          setFacturasCompra(prev => [{ ...factura, lineas: [] }, ...prev])
-        }
-
-        // Agregar recepción al listado local
+        // Reemplazar el placeholder de recepción con la real
         if (recepcion) {
-          const nuevaRec: Recepcion = {
+          const recReal: Recepcion = {
             ...recepcion,
             documento_origen_tipo: "oc",
             documento_origen_id: oc.id,
@@ -3320,28 +3385,25 @@ export default function ModuloCompras({
             deposito_destino: oc.deposito_destino ?? "",
             deposito_destino_id: (oc as any).deposito_destino_id ?? null,
             ubicacion: (oc as any).ubicacion ?? "",
-            lineas: (oc.lineas ?? []).map(l => ({
-              producto_id: l.producto_id,
-              producto_nombre: l.producto_nombre,
-              producto_sku: l.producto_sku ?? "",
-              cantidad_pedida: l.cantidad,
-              cantidad_recibida: 0,
-              precio_unitario: l.precio_unitario,
-              estado_linea: "pendiente" as const,
-              udm: l.udm ?? "un",
-              tiene_serie: l.tiene_serie ?? false,
-              requiere_color: l.requiere_color ?? false,
-              requiere_bateria: l.requiere_bateria ?? false,
-              requiere_outlet: l.requiere_outlet ?? false,
-              requiere_observaciones: l.requiere_observaciones ?? false,
-              nac: l.nac ?? false,
-            })),
+            lineas: recPlaceholder.lineas,
           }
-          setRecepciones(prev => [nuevaRec, ...prev])
+          setRecepciones(prev => prev.map(r => r.id === -oc.id ? recReal : r))
+        } else {
+          // Si por algún motivo no vino, sacar el placeholder
+          setRecepciones(prev => prev.filter(r => r.id !== -oc.id))
+        }
+
+        // Agregar factura al listado local
+        if (factura) {
+          setFacturasCompra(prev => [{ ...factura, lineas: [] }, ...prev])
         }
       } catch (err: any) {
+        // REVERTIR el optimistic update
         console.error("[circuito] Error al confirmar OC:", err.message)
-        alert("Error al confirmar OC: " + err.message)
+        setOrdenesCompra(prev => prev.map(o => o.id === oc.id ? oc : o))
+        setSelectedOC(prev => prev && prev.id === oc.id ? oc : prev)
+        setRecepciones(prev => prev.filter(r => r.id !== -oc.id))
+        alert("Error al confirmar OC: " + err.message + "\n\nSe revirtió el cambio. Probá de nuevo.")
       }
       return
     }
@@ -8066,6 +8128,12 @@ export default function ModuloCompras({
 
   // ---- Lista OP ----
   const renderOrdenesPago = () => {
+    // OP fue migrado al form modular nuevo en /compras/op. Si llegamos acá
+    // (típicamente por un Link viejo o navegación interna del monolito),
+    // redirigimos al modular en vez de mostrar el form viejo (en deprecación).
+    return <OrdenesPagoRedirect router={router} />
+    // Code legacy debajo queda inalcanzable pero lo dejamos por si necesitamos rollback.
+    // eslint-disable-next-line no-unreachable
     if (selectedOP || creandoOP) return renderFichaOP()
 
     return (
@@ -8766,19 +8834,93 @@ export default function ModuloCompras({
 
   const cargarHistorialCdcCompras = async (proveedorId: number) => {
     const supabase = createSupabaseClient()
-    const { data } = await supabase
-      .from('conciliaciones_deuda_compras')
-      .select('id, fecha, proveedor_id, proveedor_nombre, total_conciliado, usuario, estado, fecha_cancelacion, conciliaciones_deuda_compras_aplicaciones(debito_tipo, debito_numero, credito_tipo, credito_numero, monto, debito_moneda, credito_moneda, cotizacion)')
-      .eq('proveedor_id', proveedorId)
-      .order('fecha', { ascending: false })
-    if (!data) return
-    const loaded = data.map((c: any) => ({
-      id: c.id as number, fecha: c.fecha as string,
-      proveedor_id: c.proveedor_id as number, proveedor_nombre: c.proveedor_nombre as string,
-      total_conciliado: c.total_conciliado as number, usuario: c.usuario as string,
-      estado: c.estado as 'activa' | 'cancelada', fecha_cancelacion: c.fecha_cancelacion as string | null,
-      aplicaciones: (c.conciliaciones_deuda_compras_aplicaciones ?? []) as {debito_tipo: string; debito_numero: string; credito_tipo: string; credito_numero: string; monto: number; debito_moneda?: string; credito_moneda?: string; cotizacion?: number}[],
+    // 1. Conciliaciones manuales desde conciliaciones_deuda_compras + 2. OPs
+    //    confirmadas (que también son conciliaciones — el operador asignó
+    //    medios de pago a facturas/NCs). Las OPs se traen en paralelo con
+    //    sus comprobantes asignados para mostrar las imputaciones en el historial.
+    const [{ data: manualData }, { data: opsData }] = await Promise.all([
+      supabase
+        .from('conciliaciones_deuda_compras')
+        .select('id, fecha, proveedor_id, proveedor_nombre, total_conciliado, usuario, estado, fecha_cancelacion, conciliaciones_deuda_compras_aplicaciones(debito_tipo, debito_numero, credito_tipo, credito_numero, monto, debito_moneda, credito_moneda, cotizacion)')
+        .eq('proveedor_id', proveedorId)
+        .order('fecha', { ascending: false }),
+      supabase
+        .from('compras_ordenes_pago')
+        .select('id, numero, fecha, proveedor_id, proveedor_nombre, importe, moneda, estado, created_by, compras_op_comprobantes(tipo, factura_id, referencia, importe, moneda_comp, cotizacion)')
+        .eq('proveedor_id', proveedorId)
+        .eq('estado', 'publicado')
+        .order('fecha', { ascending: false }),
+    ])
+
+    // Entradas manuales
+    const manualEntries = ((manualData ?? []) as any[]).map(c => ({
+      id: c.id as number,
+      fecha: c.fecha as string,
+      proveedor_id: c.proveedor_id as number,
+      proveedor_nombre: c.proveedor_nombre as string,
+      total_conciliado: c.total_conciliado as number,
+      usuario: c.usuario as string,
+      estado: c.estado as 'activa' | 'cancelada',
+      fecha_cancelacion: c.fecha_cancelacion as string | null,
+      aplicaciones: (c.conciliaciones_deuda_compras_aplicaciones ?? []) as any[],
     }))
+
+    // Entradas auto-generadas por OPs confirmadas
+    // Modelo: para cada comprobante débito (factura) de la OP, generamos una
+    // aplicación {Factura X → OP Y}. Las NCs aplicadas se anotan como
+    // entradas extra {NC X → OP Y} para que el operador vea qué créditos
+    // del proveedor consumió la OP.
+    const opEntries = ((opsData ?? []) as any[])
+      .filter(op => Array.isArray(op.compras_op_comprobantes) && op.compras_op_comprobantes.length > 0)
+      .map(op => {
+        const debitos = (op.compras_op_comprobantes ?? []).filter((c: any) => c.tipo === 'debito')
+        const creditos = (op.compras_op_comprobantes ?? []).filter((c: any) => c.tipo === 'credito')
+        const aplicaciones = [
+          ...debitos.map((c: any) => ({
+            debito_tipo: 'Factura',
+            debito_numero: c.referencia ?? '',
+            credito_tipo: 'OP',
+            credito_numero: op.numero,
+            monto: Number(c.importe ?? 0),
+            debito_moneda: c.moneda_comp ?? 'ARS',
+            credito_moneda: op.moneda ?? 'ARS',
+            cotizacion: c.cotizacion ?? null,
+          })),
+          ...creditos.map((c: any) => ({
+            debito_tipo: 'NC',
+            debito_numero: c.referencia ?? '',
+            credito_tipo: 'OP',
+            credito_numero: op.numero,
+            monto: Number(c.importe ?? 0),
+            debito_moneda: c.moneda_comp ?? 'ARS',
+            credito_moneda: op.moneda ?? 'ARS',
+            cotizacion: c.cotizacion ?? null,
+          })),
+        ]
+        const totalConciliado = aplicaciones.reduce((s, a) => s + a.monto, 0)
+        // ID sintético negativo derivado del UUID — único + distinguible de las manuales
+        const opIdStr = String(op.id)
+        const hashHex = opIdStr.replace(/-/g, '').slice(0, 12) || '0'
+        const idNumerico = -Math.abs(parseInt(hashHex, 16))
+        return {
+          id: idNumerico,
+          fecha: op.fecha as string,
+          proveedor_id: op.proveedor_id as number,
+          proveedor_nombre: op.proveedor_nombre as string,
+          total_conciliado: totalConciliado,
+          usuario: (op.created_by ?? '') as string,
+          estado: 'activa' as const, // OP publicada = conciliación activa. Si se cancela la OP, esto se actualiza.
+          fecha_cancelacion: null,
+          aplicaciones,
+          esOP: true,
+          opNumero: op.numero as string,
+          opId: opIdStr,
+        }
+      })
+
+    const loaded = [...manualEntries, ...opEntries].sort(
+      (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+    )
     setCdcHistorial(prev => [...prev.filter(h => h.proveedor_id !== proveedorId), ...loaded])
   }
 
@@ -8946,6 +9088,30 @@ export default function ModuloCompras({
     finally { setCdcEjecutando(false); setCdcSelDebitos([]); setCdcSelCreditos([]) }
   }
 
+  // Cancela una OP desde el historial de conciliación (cuando la entrada es esOP=true).
+  // Llama al endpoint /cancelar que revierte movimientos, saldos y asiento contable.
+  const cancelarOPDesdeHistorial = async (opId: string) => {
+    const motivo = prompt("Motivo de la cancelación (obligatorio):", "Revertido desde Conciliación de Deuda")
+    if (!motivo?.trim()) return
+    try {
+      const res = await fetch(`/api/compras/ordenes-pago/${opId}/cancelar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ motivo }),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        alert(`Error al cancelar la OP: ${text}`)
+        return
+      }
+      // Refrescar el historial del proveedor actual
+      if (cdcProveedorId) await cargarHistorialCdcCompras(cdcProveedorId)
+      alert("OP cancelada y conciliación revertida.")
+    } catch (e: any) {
+      alert(`Error de red: ${e?.message ?? e}`)
+    }
+  }
+
   const revertirConciliacionCompras = async (concId: number) => {
     if (!confirm('¿Confirmás revertir esta conciliación? Se restaurarán los saldos involucrados.')) return
     setCdcRevertiendoId(concId)
@@ -9005,7 +9171,33 @@ export default function ModuloCompras({
 
   const renderConciliacionDeudaCompras = () => {
     const proveedorSel = proveedores.find(p => p.id === cdcProveedorId)
-    const todasFacts = cdcProveedorId ? facturasCompra.filter(f => f.proveedor_id === cdcProveedorId && f.estado !== 'borrador' && f.estado !== 'cancelada') : []
+    // Débitos = facturas + notas de débito (ND incrementan la deuda al proveedor,
+    // igual que una factura). Ambas se muestran mezcladas en el mismo panel.
+    const facturasDelProv = cdcProveedorId
+      ? facturasCompra.filter(f => f.proveedor_id === cdcProveedorId && f.estado !== 'borrador' && f.estado !== 'cancelada')
+      : []
+    const ndsDelProv = cdcProveedorId
+      ? notasDebitoCompra
+          .filter(n => n.proveedor_id === cdcProveedorId
+            && (n.estado === 'confirmada' || n.estado === 'pendiente')
+            && Number(n.saldo_disponible ?? n.total ?? 0) > 0)
+          .map((n: any) => ({
+            // Map a la forma de "factura" para que el panel las pueda mostrar sin cambios.
+            id: n.id,
+            numero: n.numero,
+            fecha: n.fecha,
+            fecha_vencimiento: n.fecha,
+            total: Number(n.total ?? 0),
+            saldo: Number(n.saldo_disponible ?? n.total ?? 0),
+            moneda: n.moneda ?? 'ARS',
+            estado: n.estado,
+            proveedor_id: n.proveedor_id,
+            condicion_pago: 'ND',
+            nota_venta_numero: '',
+            _esND: true,
+          }))
+      : []
+    const todasFacts = [...facturasDelProv, ...(ndsDelProv as any[])] as typeof facturasDelProv
     const factsARS = todasFacts.filter(f => !f.moneda || f.moneda === 'ARS')
     const factsUSD = todasFacts.filter(f => f.moneda === 'USD')
     const todasOP = cdcProveedorId ? ordenesPago.filter(o => o.proveedor_id === cdcProveedorId && o.estado === 'publicado') : []
@@ -9088,23 +9280,32 @@ export default function ModuloCompras({
                 {filtradas.length > 0 ? filtradas.map(f => {
                   const sel = cdcSelDebitos.find(d => d.id === f.id)
                   const conciliada = f.saldo <= 0
+                  const esND = (f as any)._esND === true
                   return (
-                    <tr key={f.id} onClick={() => !conciliada && toggleDebito(f.id, moneda, f.saldo)}
+                    <tr key={`${esND ? 'nd' : 'fc'}-${f.id}`} onClick={() => !conciliada && toggleDebito(f.id, moneda, f.saldo)}
                       className={`border-b cursor-pointer ${sel ? 'bg-red-50' : 'hover:bg-gray-50'} ${conciliada ? 'opacity-40' : ''}`}>
                       <td className="py-1 px-2 text-blue-600">
                         <span className="inline-flex items-center gap-1.5">
                           {f.numero}
                           <button
                             type="button"
-                            title="Ver factura de compra"
+                            title={esND ? "Ver nota de débito" : "Ver factura de compra"}
                             className="text-gray-400 hover:text-indigo-700"
-                            onClick={e => { e.stopPropagation(); abrirPopupFacturaCompra(f) }}
+                            onClick={e => {
+                              e.stopPropagation()
+                              if (esND) {
+                                const nd = notasDebitoCompra.find(n => n.id === f.id)
+                                if (nd) abrirPopupNDCompra(nd)
+                              } else {
+                                abrirPopupFacturaCompra(f)
+                              }
+                            }}
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </button>
                         </span>
                       </td>
-                      <td className="py-1 px-2 text-gray-500">FC {f.tipo}</td>
+                      <td className="py-1 px-2 text-gray-500">{esND ? "ND" : "FC"}</td>
                       <td className="py-1 px-2 text-gray-500">{f.fecha_vencimiento ? f.fecha_vencimiento.split('T')[0] : '-'}</td>
                       <td className="py-1 px-2 text-right">{moneda === 'USD' ? `USD ${f.total?.toLocaleString('es-AR')}` : `$${f.total?.toLocaleString('es-AR')}`}</td>
                       <td className="py-1 px-2 text-right font-semibold text-red-600">{moneda === 'USD' ? `USD ${f.saldo?.toLocaleString('es-AR')}` : `$${f.saldo?.toLocaleString('es-AR')}`}</td>
@@ -9323,12 +9524,37 @@ export default function ModuloCompras({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <span className={`text-xs px-2 py-0.5 rounded font-medium ${h.estado === 'activa' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{h.estado === 'activa' ? 'Activa' : 'Cancelada'}</span>
+                        {h.esOP && h.opId && (
+                          <a
+                            href={`/compras/op/${h.opId}`}
+                            className="text-xs px-2 py-0.5 rounded font-medium bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                            title="Abrir la Orden de Pago en una nueva pantalla"
+                          >
+                            OP {h.opNumero} →
+                          </a>
+                        )}
                         <span className="text-sm text-gray-600">{h.fecha.split('T')[0]}</span>
                         <span className="text-sm font-semibold">${h.total_conciliado.toLocaleString('es-AR', {minimumFractionDigits:2})}</span>
                         <span className="text-xs text-gray-400">{h.usuario}</span>
                       </div>
                       {h.estado === 'activa' && (
-                        <button onClick={() => revertirConciliacionCompras(h.id)} disabled={cdcRevertiendoId === h.id} className="px-3 py-1 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 disabled:opacity-50">{cdcRevertiendoId === h.id ? 'Revirtiendo...' : 'Revertir'}</button>
+                        <button
+                          onClick={() => {
+                            if (h.esOP && h.opId) {
+                              // Revertir una conciliación auto-generada por OP = cancelar la OP completa.
+                              // Esto revierte movimientos de caja, saldos de facturas/NCs, y el asiento.
+                              if (!confirm(`Revertir esta conciliación va a CANCELAR la OP ${h.opNumero} completa.\n\nSe van a revertir:\n• Los movimientos de caja\n• Los saldos de las facturas pagadas\n• Las NCs aplicadas (saldo disponible vuelve)\n• El asiento contable\n\n¿Continuar?`)) return
+                              cancelarOPDesdeHistorial(h.opId)
+                            } else {
+                              revertirConciliacionCompras(h.id)
+                            }
+                          }}
+                          disabled={cdcRevertiendoId === h.id}
+                          className="px-3 py-1 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 disabled:opacity-50"
+                          title={h.esOP ? `Cancela la OP ${h.opNumero} y revierte toda esta conciliación` : "Revertir esta conciliación manual"}
+                        >
+                          {cdcRevertiendoId === h.id ? 'Revirtiendo...' : 'Revertir'}
+                        </button>
                       )}
                     </div>
                     {h.aplicaciones.length > 0 && (

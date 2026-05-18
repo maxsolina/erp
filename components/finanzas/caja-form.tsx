@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertCircle, ArrowLeft, Save, X, Check } from "lucide-react"
+import { AlertCircle, ArrowLeft, Edit, Save, X, Check } from "lucide-react"
 import { useERP } from "@/contexts/erp-context"
 import { createClient } from "@/lib/supabase/client"
 import { TabValores, TabBancosPermitidos, TabUsuarios, type CajaValor, type CajaUsuario, type CajaBancoPermitido } from "./caja-tabs"
@@ -40,6 +40,11 @@ export default function CajaForm({ initialId }: { initialId?: string }) {
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [okMsg, setOkMsg] = useState<string | null>(null)
+  // Caja nueva → empieza editable. Caja existente → empieza en read-only
+  // hasta que el usuario apriete "Editar".
+  const [modoEdicion, setModoEdicion] = useState(!isEdit)
+  // Snapshot del form al entrar a edición — para poder cancelar y volver atrás.
+  const [snapshotPreEdicion, setSnapshotPreEdicion] = useState<Form | null>(null)
 
   useEffect(() => {
     if (!isEdit || !initialId) return
@@ -63,6 +68,22 @@ export default function CajaForm({ initialId }: { initialId?: string }) {
 
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm(f => ({ ...f, [k]: v }))
 
+  // Entrar a modo edición — snapshotear el form actual para poder cancelar
+  const entrarAEdicion = () => {
+    setSnapshotPreEdicion({ ...form })
+    setModoEdicion(true)
+    setError(null)
+    setOkMsg(null)
+  }
+  // Cancelar edición — restaurar form al snapshot y volver a read-only
+  const cancelarEdicion = () => {
+    if (snapshotPreEdicion) setForm(snapshotPreEdicion)
+    setSnapshotPreEdicion(null)
+    setModoEdicion(false)
+    setError(null)
+    setOkMsg(null)
+  }
+
   const guardar = async () => {
     if (!form.nombre.trim()) return setError("El nombre es obligatorio")
     if (!form.sucursal) return setError("La sucursal es obligatoria")
@@ -83,6 +104,9 @@ export default function CajaForm({ initialId }: { initialId?: string }) {
       } else {
         setOkMsg("Cambios guardados correctamente")
         setTimeout(() => setOkMsg(null), 3000)
+        // Volver a modo lectura — los botones cambian a "Editar"
+        setModoEdicion(false)
+        setSnapshotPreEdicion(null)
       }
     } catch (e: any) {
       setError(`Error de red: ${e?.message ?? e}`)
@@ -111,14 +135,28 @@ export default function CajaForm({ initialId }: { initialId?: string }) {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => router.back()} className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-1">
-            <X className="w-4 h-4" /> Cancelar
-          </button>
-          <button onClick={guardar} disabled={guardando}
-            className={`px-4 py-2 text-sm rounded-lg disabled:opacity-50 flex items-center gap-1 text-white transition-colors ${okMsg ? "bg-green-600 hover:bg-green-700" : "bg-indigo-900 hover:bg-indigo-800"}`}>
-            {okMsg ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {guardando ? "Guardando…" : okMsg ? "Guardado" : "Guardar"}
-          </button>
+          {modoEdicion ? (
+            <>
+              <button
+                onClick={isEdit ? cancelarEdicion : () => router.back()}
+                className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-1"
+              >
+                <X className="w-4 h-4" /> Cancelar
+              </button>
+              <button onClick={guardar} disabled={guardando}
+                className={`px-4 py-2 text-sm rounded-lg disabled:opacity-50 flex items-center gap-1 text-white transition-colors ${okMsg ? "bg-green-600 hover:bg-green-700" : "bg-indigo-900 hover:bg-indigo-800"}`}>
+                {okMsg ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                {guardando ? "Guardando…" : okMsg ? "Guardado" : "Guardar"}
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={entrarAEdicion}
+              className="px-4 py-2 text-sm bg-indigo-900 hover:bg-indigo-800 text-white rounded-lg flex items-center gap-1"
+            >
+              <Edit className="w-4 h-4" /> Editar
+            </button>
+          )}
         </div>
       </div>
 
@@ -135,19 +173,19 @@ export default function CajaForm({ initialId }: { initialId?: string }) {
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
-              <input value={form.nombre} onChange={e => set("nombre", e.target.value)} autoFocus
-                className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <input value={form.nombre} onChange={e => set("nombre", e.target.value)} autoFocus disabled={!modoEdicion}
+                className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-700" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Código</label>
-              <input value={form.codigo} onChange={e => set("codigo", e.target.value)}
+              <input value={form.codigo} onChange={e => set("codigo", e.target.value)} disabled={!modoEdicion}
                 placeholder="ej: CF, ADM, REC"
-                className="w-full border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                className="w-full border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-700" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Sucursal *</label>
-              <select value={form.sucursal} onChange={e => set("sucursal", e.target.value)}
-                className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <select value={form.sucursal} onChange={e => set("sucursal", e.target.value)} disabled={!modoEdicion}
+                className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-700">
                 <option value="">Seleccionar…</option>
                 {sucursales.filter(s => s.activa).map(s => <option key={s.id ?? s.nombre} value={s.nombre}>{s.nombre}</option>)}
               </select>
@@ -155,12 +193,12 @@ export default function CajaForm({ initialId }: { initialId?: string }) {
           </div>
           <div className="space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase">Cierre Diario</p>
-            <label className="flex items-center gap-3 p-3 rounded-md border border-gray-200 hover:bg-gray-50 cursor-pointer">
-              <input type="checkbox" checked={form.cierre_diario_obligatorio} onChange={e => set("cierre_diario_obligatorio", e.target.checked)} className="rounded w-4 h-4" />
+            <label className={`flex items-center gap-3 p-3 rounded-md border border-gray-200 ${modoEdicion ? "hover:bg-gray-50 cursor-pointer" : "bg-gray-50 cursor-not-allowed"}`}>
+              <input type="checkbox" checked={form.cierre_diario_obligatorio} onChange={e => set("cierre_diario_obligatorio", e.target.checked)} disabled={!modoEdicion} className="rounded w-4 h-4" />
               <span className="text-sm">Cierre de caja diario obligatorio</span>
             </label>
-            <label className="flex items-center gap-3 p-3 rounded-md border border-gray-200 hover:bg-gray-50 cursor-pointer">
-              <input type="checkbox" checked={form.activo} onChange={e => set("activo", e.target.checked)} className="rounded w-4 h-4" />
+            <label className={`flex items-center gap-3 p-3 rounded-md border border-gray-200 ${modoEdicion ? "hover:bg-gray-50 cursor-pointer" : "bg-gray-50 cursor-not-allowed"}`}>
+              <input type="checkbox" checked={form.activo} onChange={e => set("activo", e.target.checked)} disabled={!modoEdicion} className="rounded w-4 h-4" />
               <span className="text-sm">Activa</span>
             </label>
           </div>

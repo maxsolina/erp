@@ -15,6 +15,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (opRes.error) return NextResponse.json({ error: opRes.error.message }, { status: 500 })
   return NextResponse.json({
     ...opRes.data,
+    // Alias: la ficha de OP reusa FacturasFicha (genérica) que lee `total`.
+    // En el schema de OP el campo se llama `importe`. Sin este alias el ficha
+    // muestra Total: $0.
+    total: opRes.data.importe ?? 0,
     medios_pago: mediosRes.data ?? [],
     comprobantes: compRes.data ?? [],
   })

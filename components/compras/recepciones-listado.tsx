@@ -126,7 +126,7 @@ export default function RecepcionesListado() {
               // Las de OC sí tienen ficha en /compras/recepciones/[id].
               const esToma = (r as any).documento_origen_tipo === "toma_equipo"
               const href = esToma
-                ? `/?module=compras&view=recepciones&id=${r.id}`
+                ? `/?module=compras&view=recepciones&recepcion_numero=${encodeURIComponent(r.numero)}`
                 : `/compras/recepciones/${r.id}`
               const ocOrigen = esToma ? (r as any).documento_origen_ref : r.orden_compra_numero
               const rowKey = `${esToma ? "toma" : "oc"}-${r.id}`

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertCircle, ArrowLeft, Plus, Save, Trash2, X } from "lucide-react"
+import { AlertCircle, ArrowLeft, Check, Plus, Save, Trash2, X } from "lucide-react"
 import { useERP } from "@/contexts/erp-context"
 import { formatCurrency } from "@/lib/format"
 import { guardarFacturaCompra } from "@/lib/compras-actions"
@@ -306,6 +306,74 @@ export default function FacturaCompraForm({ initialId }: { initialId?: number })
     }
   }
 
+  // Guarda como borrador y, en el mismo flujo, confirma la factura:
+  // genera el asiento contable (DEBE Compras + IVA / HABER Acreedores) y la pasa a estado "pendiente".
+  const confirmar = async () => {
+    const err = validar()
+    if (err) { setError(err); return }
+    if (guardando) return
+    setError(null)
+    setGuardando(true)
+
+    try {
+      const payload: Record<string, any> = {
+        numero: isEdit ? numeroExistente : (numeroComprobante || null),
+        tipo,
+        fecha: fecha || new Date().toISOString().split("T")[0],
+        fecha_vencimiento: fechaVencimiento || null,
+        proveedor_id: proveedorId,
+        proveedor_nombre: proveedorNombre,
+        estado: "borrador", // se persiste como borrador, después la API la pasa a pendiente
+        moneda,
+        cotizacion: cotizacion,
+        tipo_cotizacion: tipoCotizacion || null,
+        sucursal: sucursal || null,
+        subtotal,
+        impuestos: totalImpuestos,
+        total,
+        saldo: total,
+        orden_compra_id: ordenCompraId,
+        lineas: lineas.map((l, i) => ({
+          orden: i,
+          descripcion: l.descripcion,
+          cantidad: l.cantidad,
+          precio_unitario: l.precio_unitario,
+          descuento_pct: l.descuento_pct,
+          subtotal: l.subtotal,
+          cuenta_contable_id: l.cuenta_contable_id,
+          cuenta_codigo: l.cuenta_codigo,
+          cuenta_nombre: l.cuenta_nombre,
+        })),
+      }
+
+      // 1. Persistir la factura (POST si es nueva, PUT si está en edición)
+      const saved = await guardarFacturaCompra(payload, isEdit ? initialId : undefined)
+      const facId = saved.id ?? initialId
+      if (!facId) {
+        setError("No se obtuvo el ID de la factura tras guardar")
+        setGuardando(false)
+        return
+      }
+
+      // 2. Llamar al endpoint de confirmación → genera asiento + estado pendiente
+      const res = await fetch(`/api/compras/facturas/${facId}/confirmar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+      if (!res.ok) {
+        const body = await res.text()
+        setError(`Factura guardada pero falló la confirmación: ${body}`)
+        setGuardando(false)
+        return
+      }
+
+      router.push(`/compras/facturas/${facId}`)
+    } catch (e: any) {
+      setError(`Error al confirmar: ${e?.message ?? e}`)
+      setGuardando(false)
+    }
+  }
+
   if (cargandoBase || cargandoFC) {
     return <div className="p-12 text-center text-gray-500">Cargando…</div>
   }
@@ -362,6 +430,15 @@ export default function FacturaCompraForm({ initialId }: { initialId?: number })
           >
             <Save className="w-4 h-4" />
             {guardando ? "Guardando…" : "Guardar borrador"}
+          </button>
+          <button
+            onClick={confirmar}
+            disabled={guardando || !proveedorId}
+            title="Guarda la factura y la confirma: genera el asiento contable y la pasa a estado pendiente"
+            className="px-4 py-2 text-sm bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg disabled:opacity-50 flex items-center gap-1"
+          >
+            <Check className="w-4 h-4" />
+            {guardando ? "Procesando…" : "Confirmar"}
           </button>
         </div>
       </div>

@@ -12,7 +12,14 @@ export async function GET() {
     .range(0, 49999)
 
   if (error) return dbError(error)
-  return NextResponse.json(data)
+  // Alias importe → total para que el listado genérico (FacturasListado) muestre
+  // el monto correcto. En el schema de OP el campo se llama `importe`, no `total`.
+  // Mismo alias que hace el GET de detalle por id.
+  const mapped = (data ?? []).map((op: any) => ({
+    ...op,
+    total: op.importe ?? 0,
+  }))
+  return NextResponse.json(mapped)
 }
 
 export async function POST(request: Request) {

@@ -19,6 +19,12 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const body = await request.json()
 
+  // Generar número correlativo (ND-YYYY-XXXX) si no viene uno limpio.
+  if (!body.numero || /^ND-\d{10,}$/.test(body.numero)) {
+    const { data: numData } = await supabase.rpc("generar_numero_nd_compra")
+    if (numData) body.numero = numData
+  }
+
   const { data, error } = await supabase
     .from("notas_debito_compra")
     .insert([body])

@@ -840,6 +840,16 @@ function CellHomeERPContent() {
   // Navegación cross-módulo desde historial de costos u otros eventos
   const [pendingRecepcionNumero, setPendingRecepcionNumero] = useState<string | null>(null)
 
+  // Permite abrir una recepción específica desde URL:  /?module=compras&recepcion_numero=REC-00001
+  // Lo usa el botón "Recibir / Editar" en la ficha modular de recepciones para entrar
+  // al form de gestión (que sigue en el monolito).
+  const recepcionNumeroFromUrl = searchParams?.get("recepcion_numero")
+  useEffect(() => {
+    if (recepcionNumeroFromUrl) {
+      setPendingRecepcionNumero(recepcionNumeroFromUrl)
+    }
+  }, [recepcionNumeroFromUrl])
+
   useEffect(() => {
     function handleNavegarRecepcion(e: Event) {
       const { numero } = (e as CustomEvent<{ numero: string }>).detail
@@ -1188,6 +1198,11 @@ function CellHomeERPContent() {
   <div>
   <ModuloCompras
     initialRecepcionNumero={pendingRecepcionNumero}
+    // Cuando hay una recepción pendiente, fijamos la vista para que el monolito
+    // no haga su guard de fallback (que tirá un instante a "ordenes_compra"
+    // antes de que el initialRecepcionNumero useEffect alcance a posicionar bien).
+    // Se libera apenas onNavigationHandled limpia pendingRecepcionNumero.
+    forcedView={pendingRecepcionNumero ? "recepciones" : undefined}
     onNavigationHandled={() => setPendingRecepcionNumero(null)}
   />
   </div>
